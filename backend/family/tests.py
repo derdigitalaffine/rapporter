@@ -1,10 +1,12 @@
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
+from django.utils import timezone
 from rest_framework.test import APIClient
 
-from .models import Family, Membership, Task, InboxItem, ShoppingItem, IntegrationSource
+from .integrations import sync_ics
+from .models import Family, Membership, Task, InboxItem, ShoppingItem, IntegrationSource, FamilyEvent
 
 
 class FamilyApiTests(TestCase):
@@ -80,3 +82,13 @@ class FamilyApiTests(TestCase):
         self.assertEqual(response.status_code,200)
         self.assertEqual(response.data["config"]["bot_token"],"••••••••")
         self.assertEqual(response.data["config"]["chat_id"],"123")
+
+    @patch("family.integrations._get")
+    def test_waste_ics_creates_event_and_reminder(self, mocked_get):
+        tomorrow=timezone.localdate()+timezone.timedelta(days=1)
+        ics=f"""BEGIN:VCALENDAR\nVERSION:2.0\nBEGIN:VEVENT\nUID:waste-1\nDTSTART;VALUE=DATE:{tomorrow:%Y%m%d}\nSUMMARY:Restmüll\nEND:VEVENT\nEND:VCALENDAR\n""".encode()
+        response=Mock();response.content=ics;mocked_get.return_value=response
+        source=IntegrationSource.objects.create(family=self.family,name="Müll",kind="waste",endpoint="https://example.org/waste.ics",config={"adapter":"waste_kl_city"})
+        self.assertEqual(sync_ics(source),1)
+        self.assertTrue(FamilyEvent.objects.filter(source=source,type="waste.collection",title="Restmüll").exists())
+        self.assertTrue(Task.objects.filter(family=self.family,title="Restmüll rausstellen",source__startswith="waste:").exists())
