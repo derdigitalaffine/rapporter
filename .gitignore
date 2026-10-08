@@ -1,0 +1,13 @@
+.env
+.env.*
+!.env.example
+__pycache__/
+*.py[cod]
+.venv/
+node_modules/
+dist/
+coverage/
+.DS_Store
+postgres_data/
+caddy_data/
+caddy_config/
