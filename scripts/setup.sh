@@ -96,8 +96,29 @@ while :; do
 done
 
 if [[ "$HTTPS_PORT" == "443" ]]; then ORIGIN="https://$DOMAIN"; APP_URL="$ORIGIN"; else ORIGIN="https://$DOMAIN:$HTTPS_PORT"; APP_URL="$ORIGIN"; fi
+OAUTH_CALLBACK="$ORIGIN/api/integration-oauth/callback/"
+GOOGLE_OAUTH_CLIENT_ID=""
+GOOGLE_OAUTH_CLIENT_SECRET=""
+MICROSOFT_OAUTH_CLIENT_ID=""
+MICROSOFT_OAUTH_CLIENT_SECRET=""
 
-SUMMARY="TLS: $TLS_MODE\nHost: $DOMAIN\nHTTP-Port: $HTTP_PORT\nHTTPS-Port: $HTTPS_PORT\nApp-URL: $APP_URL\nZeitzone: $TIME_ZONE\nSprache: $INITIAL_LOCALE\nFamilie: $INITIAL_FAMILY_NAME\nAdmin: $DJANGO_SUPERUSER_USERNAME ($DJANGO_SUPERUSER_EMAIL)\nDatenbank: $POSTGRES_DB / $POSTGRES_USER\nWorker: $GUNICORN_WORKERS\nIntegrations-Sync: alle $INTEGRATION_SYNC_SECONDS Sekunden\n\nSecrets werden in .env geschrieben und hier absichtlich nicht angezeigt."
+if yesno "Optionale Kalender-OAuth-Anbieter konfigurieren?\n\nOhne OAuth funktionieren weiterhin ICS/iCal-Kalender.\nCallback-URL für beide Anbieter:\n$OAUTH_CALLBACK"; then
+  if yesno "Google Calendar OAuth aktivieren?\n\nLege in Google Cloud eine Web-OAuth-App mit calendar.readonly an und trage als Redirect-URI ein:\n$OAUTH_CALLBACK"; then
+    GOOGLE_OAUTH_CLIENT_ID=$(input "Google OAuth Client-ID")
+    GOOGLE_OAUTH_CLIENT_SECRET=$(password "Google OAuth Client-Secret")
+  fi
+  if yesno "Microsoft Outlook / Microsoft 365 OAuth aktivieren?\n\nDie App benötigt delegiertes Calendars.Read + offline_access. Redirect-URI:\n$OAUTH_CALLBACK"; then
+    MICROSOFT_OAUTH_CLIENT_ID=$(input "Microsoft OAuth Client-ID")
+    MICROSOFT_OAUTH_CLIENT_SECRET=$(password "Microsoft OAuth Client-Secret")
+  fi
+fi
+
+GOOGLE_STATUS="aus"
+MICROSOFT_STATUS="aus"
+[[ -n "$GOOGLE_OAUTH_CLIENT_ID" ]] && GOOGLE_STATUS="konfiguriert"
+[[ -n "$MICROSOFT_OAUTH_CLIENT_ID" ]] && MICROSOFT_STATUS="konfiguriert"
+
+SUMMARY="TLS: $TLS_MODE\nHost: $DOMAIN\nHTTP-Port: $HTTP_PORT\nHTTPS-Port: $HTTPS_PORT\nApp-URL: $APP_URL\nZeitzone: $TIME_ZONE\nSprache: $INITIAL_LOCALE\nFamilie: $INITIAL_FAMILY_NAME\nAdmin: $DJANGO_SUPERUSER_USERNAME ($DJANGO_SUPERUSER_EMAIL)\nDatenbank: $POSTGRES_DB / $POSTGRES_USER\nWorker: $GUNICORN_WORKERS\nIntegrations-Sync: alle $INTEGRATION_SYNC_SECONDS Sekunden\nGoogle OAuth: $GOOGLE_STATUS\nMicrosoft OAuth: $MICROSOFT_STATUS\n\nSecrets werden in .env geschrieben und hier absichtlich nicht angezeigt."
 if ! yesno "$SUMMARY\n\nKonfiguration schreiben?"; then exit 0; fi
 
 cat > "$ENV_FILE" <<EOF
@@ -125,6 +146,12 @@ DJANGO_SUPERUSER_PASSWORD=$DJANGO_SUPERUSER_PASSWORD
 INITIAL_FAMILY_NAME=$INITIAL_FAMILY_NAME
 GUNICORN_WORKERS=$GUNICORN_WORKERS
 INTEGRATION_SYNC_SECONDS=$INTEGRATION_SYNC_SECONDS
+
+# Optional read-only calendar OAuth. Leave blank to use ICS/iCal only.
+GOOGLE_OAUTH_CLIENT_ID=$GOOGLE_OAUTH_CLIENT_ID
+GOOGLE_OAUTH_CLIENT_SECRET=$GOOGLE_OAUTH_CLIENT_SECRET
+MICROSOFT_OAUTH_CLIENT_ID=$MICROSOFT_OAUTH_CLIENT_ID
+MICROSOFT_OAUTH_CLIENT_SECRET=$MICROSOFT_OAUTH_CLIENT_SECRET
 EOF
 chmod 600 "$ENV_FILE"
 
@@ -140,6 +167,9 @@ if yesno "Konfiguration gespeichert.\n\nDocker-Images jetzt bauen und fam-uh-le 
   echo "fam-uh-le läuft unter: $APP_URL"
   echo "Status: docker compose ps"
   echo "Logs:   docker compose logs -f"
+  if [[ -n "$GOOGLE_OAUTH_CLIENT_ID" || -n "$MICROSOFT_OAUTH_CLIENT_ID" ]]; then
+    echo "OAuth Callback: $OAUTH_CALLBACK"
+  fi
   if [[ "$TLS_MODE" == "internal" ]]; then
     echo
     echo "Internal-CA aktiv. Browser zeigen zunächst eine Vertrauenswarnung, bis die lokale CA installiert ist."
