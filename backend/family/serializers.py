@@ -40,6 +40,17 @@ class TaskSerializer(serializers.ModelSerializer):
     assignee_name = serializers.CharField(source="assignee.username", read_only=True)
     list_name = serializers.CharField(source="task_list.name", read_only=True)
     list_icon = serializers.CharField(source="task_list.icon", read_only=True)
+
+    def validate(self, attrs):
+        family = attrs.get("family") or (self.instance.family if self.instance else None)
+        task_list = attrs.get("task_list")
+        assignee = attrs.get("assignee")
+        if family and task_list and task_list.family_id != family.id:
+            raise serializers.ValidationError({"task_list": "Aufgabenliste gehört nicht zu dieser Familie."})
+        if family and assignee and not Membership.objects.filter(family=family, user=assignee).exists():
+            raise serializers.ValidationError({"assignee": "Person gehört nicht zu dieser Familie."})
+        return attrs
+
     class Meta:
         model = Task
         fields = "__all__"
@@ -48,6 +59,15 @@ class TaskSerializer(serializers.ModelSerializer):
 
 class ShoppingItemSerializer(serializers.ModelSerializer):
     added_by_name = serializers.CharField(source="added_by.username", read_only=True)
+
+    def validate(self, attrs):
+        shopping_list = attrs.get("shopping_list") or (self.instance.shopping_list if self.instance else None)
+        request = self.context.get("request")
+        if shopping_list and request and request.user.is_authenticated:
+            if not Membership.objects.filter(family=shopping_list.family, user=request.user).exists():
+                raise serializers.ValidationError({"shopping_list": "Einkaufsliste gehört nicht zu deiner Familie."})
+        return attrs
+
     class Meta:
         model = ShoppingItem
         fields = "__all__"
