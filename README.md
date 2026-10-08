@@ -4,23 +4,17 @@
 
 **Familie. Organisiert. Gemeinsam.**
 
-Mobile-first Family OS als installierbare PWA: gemeinsame Aufgaben, Einkäufe, Routinen, Kalender, Inbox und öffentliche Datenquellen in einer Oberfläche. Deutsch und Englisch sind ab Werk enthalten; weitere Sprachen können über i18next ergänzt werden.
+Mobile-first Family OS als installierbare PWA: gemeinsame Aufgaben, Einkäufe, Routinen, Kalender, Inbox und öffentliche Datenquellen in einer Oberfläche. Deutsch und Englisch sind ab Werk enthalten.
 
-## Schnellstart – empfohlen
-
-Für den ersten Start gibt es einen terminalbasierten Setup-Wizard mit `dialog`/`whiptail`:
+## Schnellstart
 
 ```bash
 bash scripts/setup.sh
 ```
 
-Der Wizard fragt Hostname/Domain, TLS-Modus, Zeitzone, Standardsprache, Familienname, Admin-Zugang, PostgreSQL-Konfiguration und Workerzahl ab. Django- und Datenbank-Secrets können automatisch kryptografisch generiert werden. Die erzeugte `.env` wird mit Dateirechten `600` gespeichert; vorhandene Konfigurationen werden vor dem Überschreiben gesichert.
+Der `dialog`/`whiptail`-Wizard erzeugt die vollständige `.env`, sichert vorhandene Konfigurationen und kann den Stack direkt starten. Er fragt TLS, Host/Domain, Zeitzone, Sprache, Familienname, Zugangsdaten, PostgreSQL, Worker und Integrationsintervall ab. Unter **Erweiterte Netzwerkeinstellungen** lassen sich außerdem veröffentlichter HTTP- und HTTPS-Port ändern. Standard: 80/443.
 
-**Standard ist internes HTTPS** über Caddys lokale CA (`tls internal`). Damit kann fam-uh-le zuerst im LAN oder auf einem Testserver betrieben werden, ohne eine öffentliche Domain vorauszusetzen.
-
-### Später auf öffentliches Let's Encrypt umschalten
-
-Sobald DNS A/AAAA auf den Server zeigt:
+Standardmäßig läuft Caddy mit internem HTTPS (`tls internal`). Für öffentliches ACME/Let's Encrypt:
 
 ```bash
 bash scripts/tls-mode.sh public
@@ -32,50 +26,64 @@ Zurück auf internes TLS:
 bash scripts/tls-mode.sh internal
 ```
 
-Der Helfer aktualisiert Domain, Django Allowed Hosts, CSRF/CORS Origins und die aktive Caddy-Konfiguration und startet Caddy bei laufendem Stack neu.
-
-### Lokale Caddy-CA exportieren
-
-Damit Geräte dem internen Zertifikat ausdrücklich vertrauen können:
+Lokale Caddy-CA exportieren:
 
 ```bash
 bash scripts/export-caddy-ca.sh
 ```
 
-Das erzeugte `caddy-local-root.crt` sollte ausschließlich auf Geräten installiert werden, die der eigenen fam-uh-le Installation vertrauen sollen.
+> Für Let's Encrypt müssen öffentlich normalerweise Port 80 und/oder 443 erreichbar sein. Abweichende veröffentlichte Ports eignen sich vor allem für LAN/self-signed oder wenn ein vorgeschalteter Router/Reverse-Proxy die Standardports weiterleitet.
 
-## Funktionsumfang
+## Kein Django-Admin für den normalen Betrieb
+
+Alle normalen Familienfunktionen und Integrationen werden in der React-PWA verwaltet. Der Django-Admin bleibt nur als technischer Notfall-/Diagnosezugang erhalten und ist für Einrichtung oder Alltag nicht erforderlich.
+
+Unter **Mehr → Integrationen** gibt es einen geführten Katalog. Eine Verbindung wird beim Anlegen sofort getestet; fehlerhafte Quellen werden nicht gespeichert. Owner und Erwachsene dürfen Integrationen verwalten. Sensitive Werte wie Telegram Bot Tokens werden in API-Antworten maskiert.
+
+## Integrationen
+
+### Müllkalender Kaiserslautern
+
+**Stadt Kaiserslautern:** Der offizielle Stadtbildpflege-Abfallkalender unterstützt individuelle Termine und iCal-Export. In fam-uh-le wird im Integrationskatalog **Müllkalender Stadt Kaiserslautern** gewählt, der offizielle Export geöffnet und die adressbezogene iCal/ICS-URL eingefügt.
+
+**Landkreis Kaiserslautern:** Der Landkreis bietet einen interaktiven Abfuhrplan nach Wohnort und Straße. In fam-uh-le wird **Müllkalender Landkreis Kaiserslautern** gewählt und der adressbezogene Kalenderexport eingebunden.
+
+Nach erfolgreichem Sync erscheinen die Abfuhrtermine im Familienkalender. Für bevorstehende Abfuhren erzeugt fam-uh-le automatisch eine einmalige Aufgabe wie **„Restmüll rausstellen“** für den Vorabend. Duplikate werden verhindert.
+
+### Weitere fertig verdrahtete Adapter
+
+- **ICS/iCal:** beliebige öffentliche HTTPS-Kalender in den Familienkalender importieren.
+- **DWD Wetterwarnungen:** amtliche Warnungen nach Region, standardmäßig Kaiserslautern.
+- **NINA / Warnung.bund:** getrennte vorkonfigurierte Einträge für Stadt Kaiserslautern und Landkreis Kaiserslautern.
+- **7-Tage-Wetter:** Open-Meteo, standardmäßig Kaiserslautern; Koordinaten können im Frontend geändert werden.
+- **Telegram Bot:** normale Nachrichten landen in der Inbox; `/todo ...` erzeugt Aufgaben, `/buy ...` bzw. `/einkauf ...` erzeugt Einkaufsartikel.
+- **PWA Share Target:** Inhalte aus Browsern und unterstützten Messenger-Apps können über das System-Teilen-Menü an fam-uh-le geschickt und anschließend als Aufgabe oder Einkauf übernommen werden.
+
+Ein eigener `scheduler`-Container synchronisiert aktivierte Quellen regelmäßig. Das Intervall wird im Setup als `INTEGRATION_SYNC_SECONDS` gesetzt (Standard: 300 Sekunden). Zusätzlich gibt es in der App **Alle synchronisieren** und Einzel-Sync.
+
+### Bewusste Grenzen
+
+- **WhatsApp:** kein pauschales Lesen privater Familienchats. Unterstützt wird der datensparsame Share-Target-Flow; eine spätere offizielle Business-Integration wäre ein separater Kanal und kein Chat-Import.
+- **Signal:** keine allgemeine offizielle Bot-/Chat-Lese-API; deshalb Share Target statt inoffiziellem Scraping.
+- **Kaiserslautern Müllkalender:** fam-uh-le nutzt die offiziellen adressbezogenen Kalenderexports. Es wird bewusst keine undokumentierte interne Website-API reverse-engineered, weil diese jederzeit brechen könnte.
+- **Google/Apple/Outlook private Kalender:** generisches ICS funktioniert bereits. OAuth-basierte private Account-Verbindungen sind noch nicht Bestandteil des Self-Hosted-Core.
+- **Schulportale/Home Assistant/ÖPNV:** noch keine produktspezifischen Adapter im Core; das normalisierte Integrationsmodell ist dafür vorbereitet.
+
+## Produktfunktionen
 
 - Familien und Rollen: Owner, Erwachsene, Teenager, Kinder, Gäste
-- gemeinsame Aufgaben inkl. Fälligkeit, Priorität und Erledigen
-- gemeinsame Einkaufslisten
+- gemeinsame Aufgaben mit Fälligkeit, Priorität und Erledigen
+- gemeinsame Einkaufslisten mit Menge und Kategorie
 - **Zuletzt gemacht** mit Intervallen und Verlauf
-- Kalenderansicht für interne und importierte Ereignisse
-- Inbox für Inhalte aus Share-Sheet, Browsern und Messengern
+- Familienkalender für interne und importierte Ereignisse
+- Inbox für Share Target und Telegram
 - Inbox → Aufgabe / Einkauf mit einem Tap
-- Integrationsverwaltung inkl. manuellem Sync
-- sicherer HTTPS-only ICS/iCal- und Müllkalender-Adapter
-- normalisiertes Eventmodell für weitere öffentliche Daten
+- Integrationskatalog, Test, Sync, Status und Trennen vollständig im Frontend
+- automatische Müll-Aufgaben aus Abfuhrterminen
+- DWD-/NINA-Warnungen und Wetterdaten im Eventmodell
 - JWT-Login mit automatischem Token-Refresh
-- PWA mit Share Target, Offline-Shell und Maskable Icon
-- responsive Mobile-first UI + Desktop-Erweiterung
-- globales wiederverwendbares Designsystem
-- Django Admin
-- PostgreSQL
-- Docker Compose
-- Caddy als Reverse Proxy/Static Host; initial internes TLS, optional ACME/Let's Encrypt
-- CI für React-Build, Django-Checks/Tests, Shell-Syntax, beide Caddy-Modi und Docker-Build
-
-## Branding
-
-Die Markenassets liegen unter `frontend/public/brand/`:
-
-- `logo-primary.svg` – vollständige Wort-/Bildmarke
-- `icon.svg` – reguläres App-Icon
-- `icon-maskable.svg` – PWA/Android Maskable Icon
-- `frontend/public/logo.svg` – kompakte kompatible Icon-Variante
-
-Die PWA verwendet die finalen Icons direkt im Manifest; Login und Navigation greifen ebenfalls auf diese Assets zurück.
+- PWA mit Offline-Shell, Share Target und Maskable Icon
+- responsive Mobile-first UI und wiederverwendbares Designsystem
 
 ## Architektur
 
@@ -86,75 +94,67 @@ Browser / installierte PWA
       Caddy ─────────────── React Static Build
         │
         ├── /api/* ─────── Django REST API
-        ├── /admin/* ───── Django Admin
         └── /static/* ──── Django Static Files
                               │
                               ▼
                           PostgreSQL
 
-ICS / Müll / Warnungen / Messenger / weitere Adapter
-                         │
-                         ▼
-                  IntegrationSource
-                         │
-                         ▼
-                    FamilyEvent
-                         │
-                  Kalender / Inbox
-                         │
-                         ▼
-               Aufgaben · Einkauf · UI
+Scheduler ──► IntegrationSource ──► Adapter
+                                  ├─ ICS / Müll
+                                  ├─ DWD
+                                  ├─ NINA
+                                  ├─ Open-Meteo
+                                  └─ Telegram
+                                       │
+                          FamilyEvent / Inbox / Task / Einkauf
+                                       │
+                                       ▼
+                                   React PWA
 ```
 
-## Manuelles Deployment
-
-Wer den Wizard nicht verwenden möchte:
+## Deployment
 
 ```bash
 cp .env.example .env
-# Werte anpassen
+# oder empfohlen: bash scripts/setup.sh
 docker compose up -d --build
 ```
 
-`.env.example` startet bewusst mit `Caddyfile.selfsigned`. Für öffentliches TLS `CADDYFILE=Caddyfile` und eine öffentlich auflösbare `DOMAIN` setzen.
+Compose enthält PostgreSQL, Django, den Integrations-Scheduler und Caddy. Caddy kann über `HTTP_PORT`/`HTTPS_PORT` auf frei wählbare Host-Ports veröffentlicht werden; intern bleiben 80/443 unverändert.
 
-Ein erster Haushalt, eine Einkaufsliste und sinnvolle Standardroutinen werden beim initialen Setup idempotent erzeugt. Name, Sprache und Zeitzone der ersten Familie werden aus der `.env` übernommen.
+## Sicherheit
 
-## Öffentliche Daten
+- externe Feed-URLs müssen HTTPS verwenden
+- private, Loopback-, Link-Local- und reservierte Ziele werden gegen SSRF blockiert
+- Familienobjekte werden serverseitig mandantengetrennt
+- Integrationsverwaltung nur für Owner/Erwachsene
+- Connector-Secrets werden nicht im Klartext an die UI zurückgegeben
+- `.env` wird vom Setup mit Dateirechten `600` geschrieben
+- kein Werbetracking und keine Datenweitergabe im Self-Hosted-Core
 
-In Django Admin oder über die REST-API kann eine `IntegrationSource` angelegt werden. Für ICS/Müllkalender:
+## CI
 
-- `kind`: `ics` oder `waste`
-- `endpoint`: öffentliche **HTTPS**-URL
-- optional `config`: `{ "event_type": "waste.collection" }`
+GitHub Actions prüft:
 
-Synchronisieren geht entweder direkt in der App oder per CLI:
-
-```bash
-docker compose exec backend python manage.py sync_integrations
-```
-
-Private, Loopback-, Link-Local- und nicht-HTTPS-Ziele werden blockiert. Weitere Adapter wie DWD/NINA, kommunale APIs, Telegram, Schulsysteme oder Home Assistant können an `backend/family/integrations.py` angebunden werden, ohne das Kernmodell oder die UI umzubauen.
-
-## Navigation
-
-Die Primärnavigation bleibt absichtlich auf fünf häufige Bereiche reduziert:
-
-**Heute · Aufgaben · Einkauf · Zuletzt · Mehr**
-
-Unter **Mehr** befinden sich Kalender, Inbox, Integrationen, Familie, Sprache und Logout. Touch-Targets, Safe Areas, Reduced Motion und Desktop-Layout sind Bestandteil des Basissystems.
+- React Production Build
+- Django Migration Check
+- Django System Check und Tests
+- Setup-/TLS-Shell-Syntax
+- öffentliche und interne Caddy-Konfiguration
+- `docker compose config`
+- vollständigen Docker-Build
 
 ## Repository
 
 ```text
-backend/                  Django + REST API + Tests
-frontend/                 React PWA + Designsystem + Brand Assets
-docker/                   Images
+backend/                   Django REST API, Integrationsadapter, Tests
+frontend/                  React PWA, Designsystem, Brand Assets
+docker/                    Container Images
 scripts/setup.sh           interaktiver Erstsetup-Wizard
 scripts/tls-mode.sh        TLS-Modus umschalten
 scripts/export-caddy-ca.sh lokale Root-CA exportieren
-Caddyfile                  öffentliche ACME/Let's-Encrypt-Konfiguration
-Caddyfile.selfsigned       internes/self-signed TLS
-Docker-compose.yml         Produktionsstack
-.github/workflows/         CI
+Caddyfile                   öffentliches ACME/Let's Encrypt
+Caddyfile.selfsigned        internes TLS
+Docker-compose.yml          Produktionsstack inkl. Scheduler
+.github/workflows/          CI
 ```
