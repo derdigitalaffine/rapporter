@@ -20,7 +20,7 @@ if [[ "$MODE" == "public" ]]; then
   DOMAIN="${NEW_DOMAIN:-$DOMAIN}"
   CADDYFILE=Caddyfile
 else
-  printf 'Lokaler Hostname [%s]: ' "$DOMAIN"
+  printf 'Lokaler Hostname/IP [%s]: ' "$DOMAIN"
   read -r NEW_DOMAIN
   DOMAIN="${NEW_DOMAIN:-$DOMAIN}"
   CADDYFILE=Caddyfile.selfsigned
@@ -53,9 +53,9 @@ PY
 
 cd "$ROOT"
 echo "TLS-Modus auf '$MODE' gesetzt. Host: $DOMAIN"
-if docker compose ps >/dev/null 2>&1; then
+if [[ -n "$(docker compose ps -q caddy 2>/dev/null || true)" ]]; then
   docker compose up -d --force-recreate caddy
   echo "Caddy wurde neu gestartet."
 else
-  echo "Beim nächsten 'docker compose up -d' wird der neue Modus verwendet."
+  echo "Der Stack läuft aktuell nicht. Beim nächsten 'docker compose up -d' wird der neue Modus verwendet."
 fi
