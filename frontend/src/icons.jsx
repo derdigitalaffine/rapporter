@@ -1,7 +1,7 @@
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
   faHouse, faListCheck, faCartShopping, faClockRotateLeft, faEllipsis, faPlus, faCalendarDays, faCloudSun, faTrashCan,
-  faPlug, faInbox, faUsers, faLanguage, faRightFromBracket, faWifi, faTriangleExclamation, faCheck, faRotate,
+  faPlug, faInbox, faUsers, faLanguage, faRightFromBracket, faRightToBracket, faWifi, faTriangleExclamation, faCheck, faRotate,
   faArrowLeft, faChevronRight, faXmark, faWandMagicSparkles, faBolt, faSnowflake, faCloudRain, faBell,
   faMagnifyingGlass, faFilter, faPen, faTrash, faStar, faStore, faLayerGroup, faClock, faUser, faCircleInfo,
   faArrowTrendUp, faFire, faGrip, faCopy, faShareNodes, faLink, faGear, faCirclePlus, faCheckDouble, faBarsProgress,
@@ -11,7 +11,7 @@ import {
 export const icons = {
   home:faHouse, tasks:faListCheck, shopping:faCartShopping, history:faClockRotateLeft, more:faEllipsis, plus:faPlus,
   calendar:faCalendarDays, weather:faCloudSun, waste:faTrashCan, integrations:faPlug, inbox:faInbox, members:faUsers,
-  language:faLanguage, logout:faRightFromBracket, online:faWifi, offline:faTriangleExclamation, check:faCheck, refresh:faRotate,
+  language:faLanguage, logout:faRightFromBracket, login:faRightToBracket, online:faWifi, offline:faTriangleExclamation, check:faCheck, refresh:faRotate,
   back:faArrowLeft, next:faChevronRight, close:faXmark, automation:faWandMagicSparkles, bolt:faBolt, frost:faSnowflake,
   rain:faCloudRain, warning:faBell, search:faMagnifyingGlass, filter:faFilter, edit:faPen, delete:faTrash, favorite:faStar,
   store:faStore, lists:faLayerGroup, clock:faClock, user:faUser, info:faCircleInfo, trend:faArrowTrendUp, hot:faFire,
