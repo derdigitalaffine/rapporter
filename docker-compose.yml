@@ -42,7 +42,7 @@ services:
         condition: service_healthy
     environment:
       POSTGRES_HOST: db
-      INTEGRATION_SYNC_SECONDS: ${INTEGRATION_SYNC_SECONDS:-900}
+      INTEGRATION_SYNC_SECONDS: ${INTEGRATION_SYNC_SECONDS:-300}
     entrypoint: ["/bin/sh", "-c"]
     command: ["while true; do python manage.py sync_integrations || true; sleep $${INTEGRATION_SYNC_SECONDS}; done"]
 
