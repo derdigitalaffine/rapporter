@@ -64,6 +64,18 @@ class FamilyInvitation(TimestampedModel):
         return not self.accepted_at and not self.revoked_at and self.expires_at > timezone.now()
 
 
+class TaskList(TimestampedModel):
+    family = models.ForeignKey(Family, on_delete=models.CASCADE, related_name="task_lists")
+    name = models.CharField(max_length=120)
+    icon = models.CharField(max_length=48, default="list-check")
+    archived = models.BooleanField(default=False)
+    sort_order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ["sort_order", "created_at"]
+        unique_together = ("family", "name")
+
+
 class Task(TimestampedModel):
     class Priority(models.TextChoices):
         LOW = "low", "Low"
@@ -71,6 +83,7 @@ class Task(TimestampedModel):
         HIGH = "high", "High"
 
     family = models.ForeignKey(Family, on_delete=models.CASCADE, related_name="tasks")
+    task_list = models.ForeignKey(TaskList, null=True, blank=True, on_delete=models.SET_NULL, related_name="tasks")
     title = models.CharField(max_length=180)
     notes = models.TextField(blank=True)
     due_at = models.DateTimeField(null=True, blank=True)
@@ -80,13 +93,17 @@ class Task(TimestampedModel):
     priority = models.CharField(max_length=10, choices=Priority.choices, default=Priority.NORMAL)
     recurrence = models.CharField(max_length=120, blank=True)
     source = models.CharField(max_length=40, default="manual")
+    estimate_minutes = models.PositiveIntegerField(null=True, blank=True)
+    tags = models.JSONField(default=list, blank=True)
 
 
 class ShoppingList(TimestampedModel):
     family = models.ForeignKey(Family, on_delete=models.CASCADE, related_name="shopping_lists")
     name = models.CharField(max_length=120, default="Einkauf")
     store = models.CharField(max_length=120, blank=True)
+    icon = models.CharField(max_length=48, default="cart-shopping")
     archived = models.BooleanField(default=False)
+    sort_order = models.PositiveIntegerField(default=0)
 
 
 class ShoppingItem(TimestampedModel):
@@ -94,7 +111,11 @@ class ShoppingItem(TimestampedModel):
     name = models.CharField(max_length=160)
     quantity = models.CharField(max_length=40, blank=True)
     category = models.CharField(max_length=80, blank=True)
+    note = models.CharField(max_length=240, blank=True)
+    aisle = models.CharField(max_length=80, blank=True)
+    favorite = models.BooleanField(default=False)
     checked = models.BooleanField(default=False)
+    checked_at = models.DateTimeField(null=True, blank=True)
     added_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL)
 
 
@@ -156,3 +177,40 @@ class InboxItem(TimestampedModel):
     source = models.CharField(max_length=40, default="share")
     status = models.CharField(max_length=24, default="new")
     parsed = models.JSONField(default=dict, blank=True)
+
+
+class AutomationRule(TimestampedModel):
+    class Trigger(models.TextChoices):
+        WASTE_TOMORROW = "waste_tomorrow", "Waste collection tomorrow"
+        WEATHER_FROST = "weather_frost", "Frost forecast"
+        WEATHER_RAIN = "weather_rain", "Rain forecast"
+        WARNING_ACTIVE = "warning_active", "Official warning active"
+        EVENT_UPCOMING = "event_upcoming", "Upcoming event"
+        DAILY = "daily", "Daily at time"
+
+    class Action(models.TextChoices):
+        TASK_CREATE = "task_create", "Create task"
+        SHOPPING_ADD = "shopping_add", "Add shopping item"
+        INBOX_CREATE = "inbox_create", "Create inbox message"
+
+    family = models.ForeignKey(Family, on_delete=models.CASCADE, related_name="automation_rules")
+    name = models.CharField(max_length=160)
+    icon = models.CharField(max_length=48, default="wand-magic-sparkles")
+    enabled = models.BooleanField(default=True)
+    trigger_type = models.CharField(max_length=40, choices=Trigger.choices)
+    trigger_config = models.JSONField(default=dict, blank=True)
+    action_type = models.CharField(max_length=40, choices=Action.choices)
+    action_config = models.JSONField(default=dict, blank=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="automation_rules_created")
+    last_run_at = models.DateTimeField(null=True, blank=True)
+
+
+class AutomationExecution(TimestampedModel):
+    rule = models.ForeignKey(AutomationRule, on_delete=models.CASCADE, related_name="executions")
+    fingerprint = models.CharField(max_length=220)
+    status = models.CharField(max_length=20, default="success")
+    message = models.CharField(max_length=500, blank=True)
+
+    class Meta:
+        unique_together = ("rule", "fingerprint")
+        ordering = ["-created_at"]
