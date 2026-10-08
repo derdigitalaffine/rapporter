@@ -80,9 +80,14 @@ POSTGRES_USER=$(input "PostgreSQL Benutzer" "famuhle")
 if yesno "Datenbankpasswort automatisch generieren?"; then POSTGRES_PASSWORD=$(random_secret); else POSTGRES_PASSWORD=$(password "PostgreSQL Passwort"); fi
 DJANGO_SECRET_KEY=$(random_secret)
 GUNICORN_WORKERS=$(input "Gunicorn Worker (für kleine Installationen meist 2–4)" "3")
+while :; do
+  INTEGRATION_SYNC_SECONDS=$(input "Automatische Integrationen aktualisieren alle N Sekunden.\nEmpfehlung: 300 (5 Minuten)." "300")
+  [[ "$INTEGRATION_SYNC_SECONDS" =~ ^[0-9]+$ ]] && (( INTEGRATION_SYNC_SECONDS >= 60 )) && break
+  box "Bitte mindestens 60 Sekunden als ganze Zahl angeben."
+done
 ORIGIN="https://$DOMAIN"
 
-SUMMARY="TLS: $TLS_MODE\nHost: $DOMAIN\nZeitzone: $TIME_ZONE\nSprache: $INITIAL_LOCALE\nFamilie: $INITIAL_FAMILY_NAME\nAdmin: $DJANGO_SUPERUSER_USERNAME ($DJANGO_SUPERUSER_EMAIL)\nDatenbank: $POSTGRES_DB / $POSTGRES_USER\nWorker: $GUNICORN_WORKERS\n\nSecrets werden in .env geschrieben und hier absichtlich nicht angezeigt."
+SUMMARY="TLS: $TLS_MODE\nHost: $DOMAIN\nZeitzone: $TIME_ZONE\nSprache: $INITIAL_LOCALE\nFamilie: $INITIAL_FAMILY_NAME\nAdmin: $DJANGO_SUPERUSER_USERNAME ($DJANGO_SUPERUSER_EMAIL)\nDatenbank: $POSTGRES_DB / $POSTGRES_USER\nWorker: $GUNICORN_WORKERS\nIntegrations-Sync: alle $INTEGRATION_SYNC_SECONDS Sekunden\n\nSecrets werden in .env geschrieben und hier absichtlich nicht angezeigt."
 if ! yesno "$SUMMARY\n\nKonfiguration schreiben?"; then exit 0; fi
 
 cat > "$ENV_FILE" <<EOF
@@ -107,6 +112,7 @@ DJANGO_SUPERUSER_EMAIL=$DJANGO_SUPERUSER_EMAIL
 DJANGO_SUPERUSER_PASSWORD=$DJANGO_SUPERUSER_PASSWORD
 INITIAL_FAMILY_NAME=$INITIAL_FAMILY_NAME
 GUNICORN_WORKERS=$GUNICORN_WORKERS
+INTEGRATION_SYNC_SECONDS=$INTEGRATION_SYNC_SECONDS
 EOF
 chmod 600 "$ENV_FILE"
 
