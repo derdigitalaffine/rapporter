@@ -1,6 +1,6 @@
 from django.core.management.base import BaseCommand
 from family.automation import run_all_rules
-from family.integrations import sync_source
+from family.extended_integrations import sync_source
 from family.models import IntegrationSource
 
 
