@@ -31,6 +31,21 @@ services:
       timeout: 5s
       retries: 5
 
+  scheduler:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      backend:
+        condition: service_healthy
+    environment:
+      POSTGRES_HOST: db
+      INTEGRATION_SYNC_SECONDS: ${INTEGRATION_SYNC_SECONDS:-300}
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["while true; do python manage.py sync_integrations || true; sleep $${INTEGRATION_SYNC_SECONDS}; done"]
+
   caddy:
     build:
       context: .
@@ -42,9 +57,9 @@ services:
     environment:
       DOMAIN: ${DOMAIN:-localhost}
     ports:
-      - "80:80"
-      - "443:443"
-      - "443:443/udp"
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+      - "${HTTPS_PORT:-443}:443/udp"
     volumes:
       - ./${CADDYFILE:-Caddyfile.selfsigned}:/etc/caddy/Caddyfile:ro
       - caddy_data:/data

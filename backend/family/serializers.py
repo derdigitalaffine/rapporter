@@ -49,6 +49,14 @@ class RoutineSerializer(serializers.ModelSerializer):
         fields = ["id", "family", "name", "suggested_interval_days", "icon", "active", "last_done_at", "logs"]
 
 class IntegrationSourceSerializer(serializers.ModelSerializer):
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        config = dict(data.get("config") or {})
+        for key in ("bot_token", "api_key", "access_token", "password", "secret"):
+            if key in config:
+                config[key] = "••••••••"
+        data["config"] = config
+        return data
     class Meta:
         model = IntegrationSource
         fields = "__all__"
