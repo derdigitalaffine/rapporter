@@ -1,3 +1,4 @@
+import secrets
 import uuid
 from django.conf import settings
 from django.db import models
@@ -38,6 +39,29 @@ class Membership(TimestampedModel):
 
     class Meta:
         unique_together = ("family", "user")
+
+
+class FamilyInvitation(TimestampedModel):
+    family = models.ForeignKey(Family, on_delete=models.CASCADE, related_name="invitations")
+    token = models.CharField(max_length=96, unique=True, editable=False)
+    role = models.CharField(max_length=16, choices=Membership.Role.choices, default=Membership.Role.ADULT)
+    invited_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="family_invitations_created")
+    email = models.EmailField(blank=True)
+    display_name = models.CharField(max_length=80, blank=True)
+    expires_at = models.DateTimeField()
+    accepted_at = models.DateTimeField(null=True, blank=True)
+    accepted_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="family_invitations_accepted")
+    revoked_at = models.DateTimeField(null=True, blank=True)
+
+    def save(self, *args, **kwargs):
+        if not self.token:
+            self.token = secrets.token_urlsafe(36)
+        super().save(*args, **kwargs)
+
+    @property
+    def is_active(self):
+        from django.utils import timezone
+        return not self.accepted_at and not self.revoked_at and self.expires_at > timezone.now()
 
 
 class Task(TimestampedModel):
