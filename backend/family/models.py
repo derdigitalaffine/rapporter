@@ -141,6 +141,9 @@ class IntegrationSource(TimestampedModel):
         WEATHER = "weather", "Weather"
         WARNING = "warning", "Public warning"
         MESSENGER = "messenger", "Messenger"
+        HOME = "home", "Home automation"
+        TRANSIT = "transit", "Public transit"
+        SCHOOL = "school", "School"
         GENERIC = "generic", "Generic"
 
     family = models.ForeignKey(Family, on_delete=models.CASCADE, related_name="integration_sources")
@@ -187,11 +190,15 @@ class AutomationRule(TimestampedModel):
         WARNING_ACTIVE = "warning_active", "Official warning active"
         EVENT_UPCOMING = "event_upcoming", "Upcoming event"
         DAILY = "daily", "Daily at time"
+        HOME_STATE = "home_state", "Home Assistant entity state"
+        TRANSIT_DELAY = "transit_delay", "Transit delay"
+        TASK_COMPLETED = "task_completed", "Task completed"
 
     class Action(models.TextChoices):
         TASK_CREATE = "task_create", "Create task"
         SHOPPING_ADD = "shopping_add", "Add shopping item"
         INBOX_CREATE = "inbox_create", "Create inbox message"
+        HOME_SERVICE = "home_service", "Call Home Assistant service"
 
     family = models.ForeignKey(Family, on_delete=models.CASCADE, related_name="automation_rules")
     name = models.CharField(max_length=160)
