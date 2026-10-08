@@ -1,11 +1,20 @@
 from rest_framework import serializers
-from .models import Family, Membership, Task, ShoppingList, ShoppingItem, Routine, RoutineLog, IntegrationSource, FamilyEvent, InboxItem
+from .models import Family, Membership, FamilyInvitation, Task, ShoppingList, ShoppingItem, Routine, RoutineLog, IntegrationSource, FamilyEvent, InboxItem
 
 class MembershipSerializer(serializers.ModelSerializer):
     username = serializers.CharField(source="user.username", read_only=True)
     class Meta:
         model = Membership
         fields = ["id", "user", "username", "role", "display_name", "avatar"]
+
+class FamilyInvitationSerializer(serializers.ModelSerializer):
+    active = serializers.BooleanField(source="is_active", read_only=True)
+    invited_by_name = serializers.CharField(source="invited_by.username", read_only=True)
+    family_name = serializers.CharField(source="family.name", read_only=True)
+    class Meta:
+        model = FamilyInvitation
+        fields = ["id", "family", "family_name", "token", "role", "email", "display_name", "expires_at", "accepted_at", "revoked_at", "active", "invited_by", "invited_by_name", "created_at"]
+        read_only_fields = ["token", "accepted_at", "revoked_at", "invited_by"]
 
 class FamilySerializer(serializers.ModelSerializer):
     memberships = MembershipSerializer(many=True, read_only=True)
