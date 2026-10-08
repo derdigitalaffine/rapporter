@@ -31,6 +31,21 @@ services:
       timeout: 5s
       retries: 5
 
+  scheduler:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      backend:
+        condition: service_healthy
+    environment:
+      POSTGRES_HOST: db
+      INTEGRATION_SYNC_SECONDS: ${INTEGRATION_SYNC_SECONDS:-900}
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["while true; do python manage.py sync_integrations || true; sleep $${INTEGRATION_SYNC_SECONDS}; done"]
+
   caddy:
     build:
       context: .
