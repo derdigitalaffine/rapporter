@@ -1,7 +1,7 @@
 import os
 from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand
-from family.models import Family, Membership, TaskList, ShoppingList, Routine
+from family.models import Family, Membership, TaskList, ShoppingList, Routine, AutomationRule
 
 
 class Command(BaseCommand):
@@ -48,6 +48,19 @@ class Command(BaseCommand):
         TaskList.objects.get_or_create(family=family, name="Allgemein", defaults={"icon": "list-check"})
         TaskList.objects.get_or_create(family=family, name="Haushalt", defaults={"icon": "house"})
         ShoppingList.objects.get_or_create(family=family, name="Einkauf", defaults={"icon": "cart-shopping"})
+        AutomationRule.objects.get_or_create(
+            family=family,
+            name="Müll rausstellen",
+            defaults={
+                "created_by": user,
+                "icon": "trash-can",
+                "enabled": True,
+                "trigger_type": AutomationRule.Trigger.WASTE_TOMORROW,
+                "trigger_config": {},
+                "action_type": AutomationRule.Action.TASK_CREATE,
+                "action_config": {"title": "{event_title} rausstellen", "priority": "normal"},
+            },
+        )
         for name, days, icon in [
             ("Bad putzen", 7, "sparkles"),
             ("Bettwäsche wechseln", 14, "bed"),
