@@ -4,13 +4,26 @@ import django.db.models.deletion
 import uuid
 
 
-def create_default_task_lists(apps, schema_editor):
+def create_defaults(apps, schema_editor):
     Family = apps.get_model("family", "Family")
     TaskList = apps.get_model("family", "TaskList")
     Task = apps.get_model("family", "Task")
+    AutomationRule = apps.get_model("family", "AutomationRule")
     for family in Family.objects.all():
         task_list, _ = TaskList.objects.get_or_create(family=family, name="Allgemein", defaults={"icon": "list-check"})
         Task.objects.filter(family=family, task_list__isnull=True).update(task_list=task_list)
+        AutomationRule.objects.get_or_create(
+            family=family,
+            name="Müll rausstellen",
+            defaults={
+                "icon": "trash-can",
+                "enabled": True,
+                "trigger_type": "waste_tomorrow",
+                "trigger_config": {},
+                "action_type": "task_create",
+                "action_config": {"title": "{event_title} rausstellen", "priority": "normal"},
+            },
+        )
 
 
 class Migration(migrations.Migration):
@@ -74,5 +87,5 @@ class Migration(migrations.Migration):
             ],
             options={"ordering": ["-created_at"], "unique_together": {("rule", "fingerprint")}},
         ),
-        migrations.RunPython(create_default_task_lists, migrations.RunPython.noop),
+        migrations.RunPython(create_defaults, migrations.RunPython.noop),
     ]
