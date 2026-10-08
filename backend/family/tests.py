@@ -1,3 +1,4 @@
+from datetime import timedelta
 from unittest.mock import Mock, patch
 
 from django.contrib.auth import get_user_model
@@ -85,7 +86,7 @@ class FamilyApiTests(TestCase):
 
     @patch("family.integrations._get")
     def test_waste_ics_creates_event_and_reminder(self, mocked_get):
-        tomorrow=timezone.localdate()+timezone.timedelta(days=1)
+        tomorrow=timezone.localdate()+timedelta(days=1)
         ics=f"""BEGIN:VCALENDAR\nVERSION:2.0\nBEGIN:VEVENT\nUID:waste-1\nDTSTART;VALUE=DATE:{tomorrow:%Y%m%d}\nSUMMARY:Restmüll\nEND:VEVENT\nEND:VCALENDAR\n""".encode()
         response=Mock();response.content=ics;mocked_get.return_value=response
         source=IntegrationSource.objects.create(family=self.family,name="Müll",kind="waste",endpoint="https://example.org/waste.ics",config={"adapter":"waste_kl_city"})
