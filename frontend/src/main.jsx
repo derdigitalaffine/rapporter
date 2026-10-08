@@ -4,6 +4,7 @@ import './i18n';
 import './styles.css';
 import './sheets.css';
 import './smart.css';
+import './smart-extra.css';
 import App from './App';
 import InviteFlow from './InviteFlow';
 
