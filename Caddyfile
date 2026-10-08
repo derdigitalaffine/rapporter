@@ -1,0 +1,22 @@
+{$DOMAIN:localhost} {
+    encode zstd gzip
+
+    @api path /api/* /admin/* /static/*
+    handle @api {
+        reverse_proxy backend:8000
+    }
+
+    handle {
+        root * /srv
+        try_files {path} /index.html
+        file_server
+    }
+
+    header {
+        -Server
+        X-Content-Type-Options nosniff
+        X-Frame-Options DENY
+        Referrer-Policy strict-origin-when-cross-origin
+        Permissions-Policy "camera=(), microphone=(), geolocation=(self)"
+    }
+}
