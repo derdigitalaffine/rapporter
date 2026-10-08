@@ -1,10 +1,13 @@
 from django.contrib import admin
 from django.urls import include, path
-from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
+
+from family.auth_views import login_view, logout_view, refresh_view, session_view
 
 urlpatterns = [
     path("admin/", admin.site.urls),
-    path("api/auth/token/", TokenObtainPairView.as_view(), name="token_obtain_pair"),
-    path("api/auth/token/refresh/", TokenRefreshView.as_view(), name="token_refresh"),
+    path("api/auth/login/", login_view, name="auth_login"),
+    path("api/auth/refresh/", refresh_view, name="auth_refresh"),
+    path("api/auth/logout/", logout_view, name="auth_logout"),
+    path("api/auth/session/", session_view, name="auth_session"),
     path("api/", include("family.urls")),
 ]
