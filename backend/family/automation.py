@@ -4,7 +4,7 @@ from zoneinfo import ZoneInfo
 from django.db import transaction
 from django.utils import timezone
 
-from .models import AutomationExecution, AutomationRule, FamilyEvent, InboxItem, ShoppingItem, ShoppingList, Task, TaskList
+from .models import AutomationExecution, AutomationRule, FamilyEvent, InboxItem, IntegrationSource, ShoppingItem, ShoppingList, Task, TaskList
 
 
 def _local_now(family):
@@ -46,15 +46,16 @@ def _contexts(rule):
         ]
 
     if trigger == AutomationRule.Trigger.WARNING_ACTIVE:
-        events = FamilyEvent.objects.filter(family=rule.family, type__in=["weather.warning", "public.warning"], starts_at__lte=now).filter(ends_at__isnull=True) | FamilyEvent.objects.filter(family=rule.family, type__in=["weather.warning", "public.warning"], starts_at__lte=now, ends_at__gte=now)
+        base = FamilyEvent.objects.filter(family=rule.family, type__in=["weather.warning", "public.warning"], starts_at__lte=now)
+        events = base.filter(ends_at__isnull=True) | base.filter(ends_at__gte=now)
         return [{"event": e, "event_title": e.title, "severity": e.payload.get("severity") or e.payload.get("level")} for e in events.distinct()]
 
     if trigger == AutomationRule.Trigger.EVENT_UPCOMING:
         hours = int(cfg.get("within_hours", 24))
         event_type = cfg.get("event_type", "calendar.event")
-        contains = str(cfg.get("title_contains", "")).lower().strip()
+        contains = str(cfg.get("title_contains", "")).casefold().strip()
         events = FamilyEvent.objects.filter(family=rule.family, type=event_type, starts_at__gte=now, starts_at__lte=now + timedelta(hours=hours))
-        return [{"event": e, "event_title": e.title} for e in events if not contains or contains in e.title.lower()]
+        return [{"event": e, "event_title": e.title} for e in events if not contains or contains in e.title.casefold()]
 
     if trigger == AutomationRule.Trigger.DAILY:
         target = str(cfg.get("time", "08:00"))
@@ -66,10 +67,93 @@ def _contexts(rule):
             return [{"date": local_now.date().isoformat()}]
         return []
 
+    if trigger == AutomationRule.Trigger.HOME_STATE:
+        entity_id = str(cfg.get("entity_id") or "").strip()
+        desired_state = str(cfg.get("state") or "").casefold().strip()
+        source_id = cfg.get("integration_source")
+        events = FamilyEvent.objects.filter(family=rule.family, type="home.state")
+        if source_id:
+            events = events.filter(source_id=source_id)
+        contexts = []
+        for event in events:
+            payload = event.payload or {}
+            if entity_id and payload.get("entity_id") != entity_id:
+                continue
+            state = str(payload.get("state") or "")
+            if desired_state and state.casefold() != desired_state:
+                continue
+            last_changed = payload.get("last_changed") or event.updated_at.isoformat()
+            contexts.append({
+                "event": event,
+                "event_title": event.title,
+                "entity_id": payload.get("entity_id", ""),
+                "entity_name": event.title,
+                "state": state,
+                "fingerprint": f"home:{event.id}:{state}:{last_changed}",
+            })
+        return contexts
+
+    if trigger == AutomationRule.Trigger.TRANSIT_DELAY:
+        threshold = int(cfg.get("minutes", 5))
+        hours = int(cfg.get("within_hours", 2))
+        source_id = cfg.get("integration_source")
+        events = FamilyEvent.objects.filter(
+            family=rule.family,
+            type="transit.departure",
+            starts_at__gte=now,
+            starts_at__lte=now + timedelta(hours=hours),
+        )
+        if source_id:
+            events = events.filter(source_id=source_id)
+        contexts = []
+        for event in events:
+            payload = event.payload or {}
+            delay = int(payload.get("delay_minutes") or 0)
+            if delay < threshold:
+                continue
+            contexts.append({
+                "event": event,
+                "event_title": event.title,
+                "line": payload.get("line", ""),
+                "destination": payload.get("destination", ""),
+                "stop": payload.get("stop", ""),
+                "delay_minutes": delay,
+            })
+        return contexts
+
+    if trigger == AutomationRule.Trigger.TASK_COMPLETED:
+        contains = str(cfg.get("title_contains") or "").casefold().strip()
+        task_list = cfg.get("task_list")
+        tasks = Task.objects.filter(
+            family=rule.family,
+            completed_at__isnull=False,
+            completed_at__gte=now - timedelta(days=90),
+        ).select_related("task_list")
+        if task_list:
+            tasks = tasks.filter(task_list_id=task_list)
+        contexts = []
+        for task in tasks:
+            if contains and contains not in task.title.casefold():
+                continue
+            contexts.append({
+                "task": task,
+                "task_title": task.title,
+                "event_title": task.title,
+                "list_name": task.task_list.name if task.task_list else "",
+                "completed_at": task.completed_at.isoformat(),
+                "fingerprint": f"task:{task.id}:completed:{task.completed_at.isoformat()}",
+            })
+        return contexts
+
     return []
 
 
 def _fingerprint(rule, context):
+    if context.get("fingerprint"):
+        return f"{rule.id}:{context['fingerprint']}"
+    task = context.get("task")
+    if task:
+        return f"{rule.id}:task:{task.id}:{task.completed_at}"
     event = context.get("event")
     if event:
         return f"{rule.id}:event:{event.id}"
@@ -79,7 +163,7 @@ def _fingerprint(rule, context):
 def _render(value, context):
     text = str(value or "")
     for key, val in context.items():
-        if key == "event":
+        if key in {"event", "task"}:
             continue
         text = text.replace("{" + key + "}", str(val if val is not None else ""))
     return text
@@ -91,6 +175,8 @@ def _act(rule, context):
         task_list = None
         if cfg.get("task_list"):
             task_list = TaskList.objects.filter(id=cfg["task_list"], family=rule.family).first()
+        task_list = task_list or TaskList.objects.filter(family=rule.family, archived=False).first()
+        task_list = task_list or TaskList.objects.create(family=rule.family, name="Allgemein", icon="list-check")
         return Task.objects.create(
             family=rule.family,
             task_list=task_list,
@@ -103,11 +189,19 @@ def _act(rule, context):
         shopping = None
         if cfg.get("shopping_list"):
             shopping = ShoppingList.objects.filter(id=cfg["shopping_list"], family=rule.family, archived=False).first()
-        shopping = shopping or ShoppingList.objects.filter(family=rule.family, archived=False).first()
-        if not shopping:
-            shopping = ShoppingList.objects.create(family=rule.family, name="Einkauf")
+        shopping = shopping or ShoppingList.objects.filter(family=rule.family, archived=False).order_by("sort_order", "created_at").first()
+        shopping = shopping or ShoppingList.objects.create(family=rule.family, name="Einkauf")
         name = _render(cfg.get("name") or "{event_title}", context)
-        item, _ = ShoppingItem.objects.get_or_create(shopping_list=shopping, name=name, checked=False, defaults={"quantity": cfg.get("quantity", ""), "category": cfg.get("category", "")})
+        item = ShoppingItem.objects.filter(shopping_list=shopping, name__iexact=name).order_by("checked", "-updated_at").first()
+        if not item:
+            item = ShoppingItem(shopping_list=shopping, name=name)
+        item.checked = False
+        item.checked_at = None
+        if cfg.get("quantity"):
+            item.quantity = _render(cfg["quantity"], context)
+        if cfg.get("category"):
+            item.category = _render(cfg["category"], context)
+        item.save()
         return item
     if rule.action_type == AutomationRule.Action.INBOX_CREATE:
         return InboxItem.objects.create(
@@ -117,7 +211,33 @@ def _act(rule, context):
             body=_render(cfg.get("body", ""), context),
             parsed={"rule_id": str(rule.id)},
         )
+    if rule.action_type == AutomationRule.Action.HOME_SERVICE:
+        from .extended_integrations import home_assistant_service
+        source = IntegrationSource.objects.filter(
+            id=cfg.get("integration_source"),
+            family=rule.family,
+            kind=IntegrationSource.Kind.HOME,
+            config__adapter="home_assistant",
+        ).first()
+        if not source:
+            raise ValueError("Home-Assistant-Integration für die Regel fehlt.")
+        data = cfg.get("data") if isinstance(cfg.get("data"), dict) else {}
+        return home_assistant_service(
+            source,
+            _render(cfg.get("domain") or "homeassistant", context),
+            _render(cfg.get("service") or "turn_on", context),
+            entity_id=_render(cfg.get("entity_id", ""), context),
+            data=data,
+        )
     raise ValueError("Unsupported automation action")
+
+
+def _result_message(obj):
+    if hasattr(obj, "pk"):
+        return f"{obj.__class__.__name__}:{obj.pk}"
+    if isinstance(obj, dict):
+        return "HomeAssistant:ok"
+    return str(obj)[:500]
 
 
 def run_rule(rule):
@@ -127,13 +247,21 @@ def run_rule(rule):
     for context in _contexts(rule):
         fingerprint = _fingerprint(rule, context)
         with transaction.atomic():
-            execution, created = AutomationExecution.objects.get_or_create(rule=rule, fingerprint=fingerprint, defaults={"status": "running"})
+            execution, created = AutomationExecution.objects.get_or_create(
+                rule=rule,
+                fingerprint=fingerprint,
+                defaults={"status": "running"},
+            )
             if not created:
-                continue
+                if execution.status != "error" or execution.updated_at > timezone.now() - timedelta(minutes=5):
+                    continue
+                execution.status = "running"
+                execution.message = ""
+                execution.save(update_fields=["status", "message", "updated_at"])
             try:
                 obj = _act(rule, context)
                 execution.status = "success"
-                execution.message = f"{obj.__class__.__name__}:{obj.pk}"
+                execution.message = _result_message(obj)
                 execution.save(update_fields=["status", "message", "updated_at"])
                 count += 1
             except Exception as exc:
@@ -157,4 +285,5 @@ RULE_TEMPLATES = [
     {"id": "frost-plants", "name": "Pflanzen bei Frost reinholen", "description": "Wenn Frost angekündigt ist, Aufgabe für die Pflanzen anlegen.", "trigger_type": "weather_frost", "trigger_config": {"temperature": 0, "within_hours": 36}, "action_type": "task_create", "action_config": {"title": "Frost angekündigt – Pflanzen reinholen", "priority": "high"}, "icon": "snowflake"},
     {"id": "warning-inbox", "name": "Amtliche Warnungen in die Inbox", "description": "Wenn eine DWD/NINA-Warnung aktiv ist, in der Familien-Inbox anzeigen.", "trigger_type": "warning_active", "trigger_config": {}, "action_type": "inbox_create", "action_config": {"title": "{event_title}", "body": "Amtliche Warnung – bitte prüfen."}, "icon": "triangle-exclamation"},
     {"id": "rain-laundry", "name": "Wäsche bei Regen erinnern", "description": "Wenn hohe Regenwahrscheinlichkeit besteht, Aufgabe anlegen.", "trigger_type": "weather_rain", "trigger_config": {"probability": 75, "within_hours": 24}, "action_type": "task_create", "action_config": {"title": "Regen wahrscheinlich – Wäsche reinholen", "priority": "normal"}, "icon": "cloud-rain"},
+    {"id": "transit-delay", "name": "ÖPNV-Verspätung melden", "description": "Wenn eine VRN-Abfahrt mindestens 10 Minuten verspätet ist, Hinweis in die Familien-Inbox legen.", "trigger_type": "transit_delay", "trigger_config": {"minutes": 10, "within_hours": 2}, "action_type": "inbox_create", "action_config": {"title": "{line} verspätet", "body": "{line} Richtung {destination}: {delay_minutes} Minuten Verspätung ab {stop}."}, "icon": "bus"},
 ]
