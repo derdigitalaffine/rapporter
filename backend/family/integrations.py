@@ -1,6 +1,7 @@
+import hashlib
 import ipaddress
 import socket
-from datetime import datetime, timezone as dt_timezone
+from datetime import datetime, timedelta, timezone as dt_timezone
 from urllib.parse import urlparse
 
 import requests
@@ -19,18 +20,18 @@ TELEGRAM = "https://api.telegram.org/bot{token}/{method}"
 def _safe_public_https(url: str):
     parsed = urlparse(url)
     if parsed.scheme != "https" or not parsed.hostname:
-        raise ValueError("Only public HTTPS endpoints are allowed")
+        raise ValueError("Nur öffentliche HTTPS-Endpunkte sind erlaubt.")
     for info in socket.getaddrinfo(parsed.hostname, 443, type=socket.SOCK_STREAM):
         ip = ipaddress.ip_address(info[4][0])
         if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
-            raise ValueError("Private network endpoints are not allowed")
+            raise ValueError("Private oder lokale Netzwerkziele sind für externe Integrationen gesperrt.")
 
 
 def _get(url, *, params=None, timeout=15):
     _safe_public_https(url)
-    r = requests.get(url, params=params, timeout=timeout, headers=UA)
-    r.raise_for_status()
-    return r
+    response = requests.get(url, params=params, timeout=timeout, headers=UA)
+    response.raise_for_status()
+    return response
 
 
 def _finish(source, count):
@@ -51,6 +52,26 @@ def _aware(value):
     return value
 
 
+def _waste_reminder(source, title, starts_at, external_id):
+    if not starts_at:
+        return
+    due_at = starts_at - timedelta(hours=5)  # all-day events -> 19:00 on the previous day
+    now = timezone.now()
+    if due_at < now - timedelta(hours=12) or due_at > now + timedelta(days=7):
+        return
+    digest = hashlib.sha1(f"{source.id}:{external_id}".encode()).hexdigest()[:20]
+    Task.objects.get_or_create(
+        family=source.family,
+        source=f"waste:{digest}",
+        defaults={
+            "title": f"{title} rausstellen",
+            "notes": "Automatisch aus dem verbundenen Müllkalender erstellt.",
+            "due_at": due_at,
+            "priority": Task.Priority.NORMAL,
+        },
+    )
+
+
 def sync_ics(source: IntegrationSource):
     if not source.endpoint:
         raise ValueError("Bitte eine öffentliche HTTPS-iCal/ICS-URL angeben.")
@@ -62,13 +83,12 @@ def sync_ics(source: IntegrationSource):
         title = str(component.get("summary", "Termin"))
         start = _aware(component.decoded("dtstart", None))
         end = _aware(component.decoded("dtend", None))
-        event_type = source.config.get("event_type", "calendar.event")
-        if source.kind == IntegrationSource.Kind.WASTE:
-            event_type = "waste.collection"
+        external_id = uid or f"{title}:{start}"
+        event_type = "waste.collection" if source.kind == IntegrationSource.Kind.WASTE else source.config.get("event_type", "calendar.event")
         FamilyEvent.objects.update_or_create(
             family=source.family,
             source=source,
-            external_id=uid or f"{title}:{start}",
+            external_id=external_id,
             defaults={
                 "type": event_type,
                 "title": title,
@@ -78,17 +98,19 @@ def sync_ics(source: IntegrationSource):
                 "payload": {
                     "location": str(component.get("location", "")),
                     "description": str(component.get("description", "")),
-                    "provider": source.config.get("provider", "ics"),
+                    "provider": source.config.get("provider", "ICS/iCal"),
                 },
             },
         )
+        if source.kind == IntegrationSource.Kind.WASTE:
+            _waste_reminder(source, title, start, external_id)
         count += 1
     return _finish(source, count)
 
 
 def sync_dwd(source: IntegrationSource):
     data = _get(DWD_WARNINGS).json()
-    needle = source.config.get("region", "Kaiserslautern").lower()
+    needle = str(source.config.get("region", "Kaiserslautern")).lower()
     count = 0
     active_ids = []
     for cell_id, warnings in (data.get("warnings") or {}).items():
@@ -108,7 +130,13 @@ def sync_dwd(source: IntegrationSource):
                     "starts_at": datetime.fromtimestamp(warning["start"] / 1000, tz=dt_timezone.utc) if warning.get("start") else timezone.now(),
                     "ends_at": datetime.fromtimestamp(warning["end"] / 1000, tz=dt_timezone.utc) if warning.get("end") else None,
                     "actionable": True,
-                    "payload": {"region": region, "level": warning.get("level"), "description": warning.get("description", ""), "instruction": warning.get("instruction", ""), "provider": "DWD"},
+                    "payload": {
+                        "region": region,
+                        "level": warning.get("level"),
+                        "description": warning.get("description", ""),
+                        "instruction": warning.get("instruction", ""),
+                        "provider": "DWD",
+                    },
                 },
             )
             count += 1
@@ -122,23 +150,30 @@ def sync_nina(source: IntegrationSource):
     count = 0
     active_ids = []
     for item in data:
-        payload = item.get("payload") or item
-        ext = str(payload.get("id") or item.get("id") or payload.get("identifier") or "")
-        if not ext:
+        payload = item.get("payload") or {}
+        details = payload.get("data") or {}
+        external = str(payload.get("id") or item.get("id") or "")
+        if not external:
             continue
-        external_id = f"nina:{ext}"
+        external_id = f"nina:{external}"
         active_ids.append(external_id)
+        title = details.get("headline") or ((payload.get("i18nTitle") or {}).get("de")) or "Amtliche Warnung"
         FamilyEvent.objects.update_or_create(
             family=source.family,
             source=source,
             external_id=external_id,
             defaults={
                 "type": "public.warning",
-                "title": payload.get("headline") or payload.get("title") or "Amtliche Warnung",
-                "starts_at": _aware(payload.get("sent") or payload.get("start")) or timezone.now(),
-                "ends_at": _aware(payload.get("expires") or payload.get("end")),
+                "title": title,
+                "starts_at": _aware(payload.get("sent")) or timezone.now(),
+                "ends_at": None,
                 "actionable": True,
-                "payload": {"provider": "NINA/BBK", "severity": payload.get("severity"), "description": payload.get("description") or payload.get("msgType") or "", "ars": ars},
+                "payload": {
+                    "provider": details.get("provider") or "NINA/BBK",
+                    "severity": details.get("severity"),
+                    "message_type": details.get("msgType"),
+                    "ars": ars,
+                },
             },
         )
         count += 1
@@ -189,8 +224,7 @@ def sync_telegram(source: IntegrationSource):
     if not token:
         raise ValueError("Telegram Bot-Token fehlt.")
     offset = int(source.config.get("offset", 0))
-    params = {"timeout": 0, "offset": offset}
-    result = _get(TELEGRAM.format(token=token, method="getUpdates"), params=params).json()
+    result = _get(TELEGRAM.format(token=token, method="getUpdates"), params={"timeout": 0, "offset": offset}).json()
     if not result.get("ok"):
         raise ValueError(result.get("description") or "Telegram API Fehler")
     count = 0
@@ -239,8 +273,8 @@ def sync_source(source: IntegrationSource):
 
 
 INTEGRATION_CATALOG = [
-    {"id": "waste_kl_city", "kind": "waste", "name": "Müllkalender Stadt Kaiserslautern", "description": "Offiziellen adressbezogenen iCal-Export der Stadtbildpflege verbinden.", "help_url": "https://www.stadtbildpflege-kl.de/", "fields": [{"key": "endpoint", "label": "iCal/ICS-URL", "type": "url", "required": True}], "defaults": {"adapter": "waste_kl_city", "provider": "Stadtbildpflege Kaiserslautern", "event_type": "waste.collection"}},
-    {"id": "waste_kl_county", "kind": "waste", "name": "Müllkalender Landkreis Kaiserslautern", "description": "Offiziellen adressbezogenen Kalender des Landkreises verbinden.", "help_url": "https://abfallapp.softwareentwicklung-roth.de/web/KL/de/kalender", "fields": [{"key": "endpoint", "label": "iCal/ICS-URL", "type": "url", "required": True}], "defaults": {"adapter": "waste_kl_county", "provider": "Landkreis Kaiserslautern", "event_type": "waste.collection"}},
+    {"id": "waste_kl_city", "kind": "waste", "name": "Müllkalender Stadt Kaiserslautern", "description": "Offiziellen adressbezogenen iCal-Export der Stadtbildpflege verbinden.", "help_url": "https://www.kaiserslautern.de/serviceportal/onlineservice/index.html.de/index.html?lang=de", "fields": [{"key": "endpoint", "label": "iCal/ICS-URL", "type": "url", "required": True}], "defaults": {"adapter": "waste_kl_city", "provider": "Stadtbildpflege Kaiserslautern", "event_type": "waste.collection"}},
+    {"id": "waste_kl_county", "kind": "waste", "name": "Müllkalender Landkreis Kaiserslautern", "description": "Adressbezogenen Export des offiziellen interaktiven Landkreis-Kalenders verbinden.", "help_url": "https://abfallapp.softwareentwicklung-roth.de/web/KL/de/kalender", "fields": [{"key": "endpoint", "label": "iCal/ICS-URL", "type": "url", "required": True}], "defaults": {"adapter": "waste_kl_county", "provider": "Landkreis Kaiserslautern", "event_type": "waste.collection"}},
     {"id": "ics", "kind": "ics", "name": "Kalender (ICS/iCal)", "description": "Öffentlichen HTTPS-Kalender abonnieren.", "fields": [{"key": "endpoint", "label": "ICS-URL", "type": "url", "required": True}], "defaults": {"adapter": "ics"}},
     {"id": "dwd", "kind": "warning", "name": "DWD Wetterwarnungen", "description": "Amtliche Wetterwarnungen nach Region.", "fields": [{"key": "region", "label": "Region", "type": "text", "default": "Kaiserslautern"}], "defaults": {"adapter": "dwd", "region": "Kaiserslautern"}},
     {"id": "nina_city", "kind": "warning", "name": "NINA · Stadt Kaiserslautern", "description": "Amtliche Bevölkerungsschutzwarnungen für die kreisfreie Stadt.", "fields": [], "defaults": {"adapter": "nina", "ars": "073120000000"}},
