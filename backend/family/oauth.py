@@ -1,5 +1,5 @@
 import os
-from datetime import timedelta
+from datetime import datetime, timedelta
 from urllib.parse import urlencode
 
 import requests
@@ -91,8 +91,7 @@ def complete_oauth(code, state, redirect_uri):
             "redirect_uri": redirect_uri,
             "grant_type": "authorization_code",
         })
-        name = "Google Kalender"
-        adapter = "google_oauth"
+        name, adapter = "Google Kalender", "google_oauth"
     else:
         tokens = _post_token(MICROSOFT_TOKEN, {
             "code": code,
@@ -102,8 +101,7 @@ def complete_oauth(code, state, redirect_uri):
             "grant_type": "authorization_code",
             "scope": "offline_access Calendars.Read",
         })
-        name = "Microsoft Outlook Kalender"
-        adapter = "microsoft_oauth"
+        name, adapter = "Microsoft Outlook Kalender", "microsoft_oauth"
     config = {
         "adapter": adapter,
         "oauth_provider": provider,
@@ -111,12 +109,23 @@ def complete_oauth(code, state, redirect_uri):
         "refresh_token": tokens.get("refresh_token", ""),
         "expires_at": (timezone.now() + timedelta(seconds=max(60, int(tokens.get("expires_in", 3600)) - 60))).isoformat(),
     }
-    source, _ = IntegrationSource.objects.update_or_create(
-        family=family,
-        kind=IntegrationSource.Kind.ICS,
-        config__adapter=adapter,
-        defaults={"name": name, "endpoint": "", "config": config, "enabled": True},
-    )
+    source = IntegrationSource.objects.filter(family=family, config__adapter=adapter).first()
+    if source:
+        source.name = name
+        source.kind = IntegrationSource.Kind.ICS
+        source.endpoint = ""
+        source.config = config
+        source.enabled = True
+        source.save()
+    else:
+        source = IntegrationSource.objects.create(
+            family=family,
+            kind=IntegrationSource.Kind.ICS,
+            name=name,
+            endpoint="",
+            config=config,
+            enabled=True,
+        )
     return source, provider
 
 
@@ -126,7 +135,7 @@ def refresh_access_token(source, provider):
     expires_at = cfg.get("expires_at")
     if access_token and expires_at:
         try:
-            expiry = timezone.datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
+            expiry = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
             if timezone.is_naive(expiry):
                 expiry = timezone.make_aware(expiry)
             if expiry > timezone.now() + timedelta(minutes=2):
