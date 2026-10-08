@@ -17,11 +17,11 @@ fi
 cleanup(){ clear 2>/dev/null || true; }
 trap cleanup EXIT
 
-box(){ "$ui" --title "$TITLE" --msgbox "$1" 12 72; }
-input(){ local label="$1" default="${2:-}" out; out=$("$ui" --title "$TITLE" --inputbox "$label" 10 72 "$default" 3>&1 1>&2 2>&3) || exit 1; printf '%s' "$out"; }
+box(){ "$ui" --title "$TITLE" --msgbox "$1" 14 76; }
+input(){ local label="$1" default="${2:-}" out; out=$("$ui" --title "$TITLE" --inputbox "$label" 11 76 "$default" 3>&1 1>&2 2>&3) || exit 1; printf '%s' "$out"; }
 password(){ local label="$1" out; out=$("$ui" --title "$TITLE" --passwordbox "$label" 10 72 3>&1 1>&2 2>&3) || exit 1; printf '%s' "$out"; }
-yesno(){ "$ui" --title "$TITLE" --yesno "$1" 11 72; }
-menu(){ local label="$1"; shift; "$ui" --title "$TITLE" --menu "$label" 16 76 8 "$@" 3>&1 1>&2 2>&3; }
+yesno(){ "$ui" --title "$TITLE" --yesno "$1" 12 76; }
+menu(){ local label="$1"; shift; "$ui" --title "$TITLE" --menu "$label" 17 78 9 "$@" 3>&1 1>&2 2>&3; }
 
 random_secret(){
   if command -v openssl >/dev/null 2>&1; then openssl rand -base64 48 | tr -d '\n' | tr '/+' '_-'
@@ -32,11 +32,10 @@ PY
   fi
 }
 
-local_ip(){
-  if command -v hostname >/dev/null 2>&1; then hostname -I 2>/dev/null | awk '{print $1}' || true; fi
-}
-
+local_ip(){ command -v hostname >/dev/null 2>&1 && hostname -I 2>/dev/null | awk '{print $1}' || true; }
+valid_port(){ [[ "$1" =~ ^[0-9]+$ ]] && (( $1 >= 1 && $1 <= 65535 )); }
 need(){ command -v "$1" >/dev/null 2>&1 || { box "'$1' fehlt. Bitte installieren und den Wizard erneut starten."; exit 1; }; }
+
 need docker
 if ! docker compose version >/dev/null 2>&1; then box "Docker Compose v2 wurde nicht gefunden."; exit 1; fi
 
@@ -45,16 +44,27 @@ if [[ -f "$ENV_FILE" ]]; then
   cp "$ENV_FILE" "$ENV_FILE.backup.$(date +%Y%m%d-%H%M%S)"
 fi
 
-box "Willkommen bei fam-uh-le.\n\nDieser Assistent erzeugt die vollständige .env, richtet den anfänglichen TLS-Modus ein und kann den Stack anschließend direkt starten.\n\nStandardmäßig wird internes, selbstsigniertes HTTPS verwendet."
+box "Willkommen bei fam-uh-le.\n\nDieser Assistent erzeugt die vollständige .env, richtet TLS ein und kann den Stack direkt starten.\n\nStandardmäßig wird internes HTTPS mit Caddys lokaler CA verwendet."
 
 TLS_MODE=$(menu "TLS-Modus wählen" internal "Self-Signed / Caddy Internal CA (empfohlen für ersten Start/LAN)" public "Öffentliches HTTPS via ACME / Let's Encrypt")
 if [[ "$TLS_MODE" == "internal" ]]; then
   DEFAULT_HOST="$(local_ip)"; DEFAULT_HOST="${DEFAULT_HOST:-localhost}"
-  DOMAIN=$(input "Hostname oder IP für den lokalen Zugriff.\nDie automatisch erkannte LAN-IP ist meist am bequemsten. Alternativ: familie.home.arpa oder eigener DNS-Name." "$DEFAULT_HOST")
+  DOMAIN=$(input "Hostname oder IP für den lokalen Zugriff.\nDie automatisch erkannte LAN-IP ist meist am bequemsten." "$DEFAULT_HOST")
   CADDYFILE="Caddyfile.selfsigned"
 else
   DOMAIN=$(input "Öffentliche Domain. DNS A/AAAA muss auf diesen Server zeigen." "fam-uh-le.example.com")
   CADDYFILE="Caddyfile"
+fi
+
+HTTP_PORT=80
+HTTPS_PORT=443
+if yesno "Erweiterte Netzwerkeinstellungen öffnen?\n\nHier kannst du die veröffentlichten HTTP-/HTTPS-Ports ändern. Intern bleibt Caddy auf 80/443."; then
+  while :; do HTTP_PORT=$(input "Veröffentlichter HTTP-Port" "$HTTP_PORT"); valid_port "$HTTP_PORT" && break; box "Ungültiger Port. Erlaubt: 1–65535."; done
+  while :; do HTTPS_PORT=$(input "Veröffentlichter HTTPS-Port" "$HTTPS_PORT"); valid_port "$HTTPS_PORT" && break; box "Ungültiger Port. Erlaubt: 1–65535."; done
+  if [[ "$HTTP_PORT" == "$HTTPS_PORT" ]]; then box "HTTP- und HTTPS-Port dürfen nicht identisch sein."; exit 1; fi
+  if [[ "$TLS_MODE" == "public" && ( "$HTTP_PORT" != "80" || "$HTTPS_PORT" != "443" ) ]]; then
+    box "Hinweis zu Let's Encrypt:\n\nFür Caddys automatische ACME-Challenges müssen von außen normalerweise Port 80 und/oder 443 erreichbar sein. Abweichende Host-Ports funktionieren nur, wenn ein vorgeschalteter Router/Reverse-Proxy die öffentlichen Standardports passend weiterleitet."
+  fi
 fi
 
 TIME_ZONE=$(input "Zeitzone" "Europe/Berlin")
@@ -64,8 +74,7 @@ DJANGO_SUPERUSER_USERNAME=$(input "Admin-Benutzername" "admin")
 DJANGO_SUPERUSER_EMAIL=$(input "Admin-E-Mail" "admin@example.com")
 
 if yesno "Sicheres Admin-Passwort automatisch generieren?"; then
-  DJANGO_SUPERUSER_PASSWORD=$(random_secret | cut -c1-32)
-  GENERATED_ADMIN=1
+  DJANGO_SUPERUSER_PASSWORD=$(random_secret | cut -c1-32); GENERATED_ADMIN=1
 else
   while :; do
     DJANGO_SUPERUSER_PASSWORD=$(password "Admin-Passwort (mindestens 12 Zeichen)")
@@ -85,9 +94,10 @@ while :; do
   [[ "$INTEGRATION_SYNC_SECONDS" =~ ^[0-9]+$ ]] && (( INTEGRATION_SYNC_SECONDS >= 60 )) && break
   box "Bitte mindestens 60 Sekunden als ganze Zahl angeben."
 done
-ORIGIN="https://$DOMAIN"
 
-SUMMARY="TLS: $TLS_MODE\nHost: $DOMAIN\nZeitzone: $TIME_ZONE\nSprache: $INITIAL_LOCALE\nFamilie: $INITIAL_FAMILY_NAME\nAdmin: $DJANGO_SUPERUSER_USERNAME ($DJANGO_SUPERUSER_EMAIL)\nDatenbank: $POSTGRES_DB / $POSTGRES_USER\nWorker: $GUNICORN_WORKERS\nIntegrations-Sync: alle $INTEGRATION_SYNC_SECONDS Sekunden\n\nSecrets werden in .env geschrieben und hier absichtlich nicht angezeigt."
+if [[ "$HTTPS_PORT" == "443" ]]; then ORIGIN="https://$DOMAIN"; APP_URL="$ORIGIN"; else ORIGIN="https://$DOMAIN:$HTTPS_PORT"; APP_URL="$ORIGIN"; fi
+
+SUMMARY="TLS: $TLS_MODE\nHost: $DOMAIN\nHTTP-Port: $HTTP_PORT\nHTTPS-Port: $HTTPS_PORT\nApp-URL: $APP_URL\nZeitzone: $TIME_ZONE\nSprache: $INITIAL_LOCALE\nFamilie: $INITIAL_FAMILY_NAME\nAdmin: $DJANGO_SUPERUSER_USERNAME ($DJANGO_SUPERUSER_EMAIL)\nDatenbank: $POSTGRES_DB / $POSTGRES_USER\nWorker: $GUNICORN_WORKERS\nIntegrations-Sync: alle $INTEGRATION_SYNC_SECONDS Sekunden\n\nSecrets werden in .env geschrieben und hier absichtlich nicht angezeigt."
 if ! yesno "$SUMMARY\n\nKonfiguration schreiben?"; then exit 0; fi
 
 cat > "$ENV_FILE" <<EOF
@@ -95,6 +105,8 @@ cat > "$ENV_FILE" <<EOF
 TLS_MODE=$TLS_MODE
 CADDYFILE=$CADDYFILE
 DOMAIN=$DOMAIN
+HTTP_PORT=$HTTP_PORT
+HTTPS_PORT=$HTTPS_PORT
 DJANGO_SECRET_KEY=$DJANGO_SECRET_KEY
 DJANGO_DEBUG=false
 DJANGO_ALLOWED_HOSTS=$DOMAIN,backend,localhost,127.0.0.1
@@ -125,7 +137,7 @@ if yesno "Konfiguration gespeichert.\n\nDocker-Images jetzt bauen und fam-uh-le 
   cd "$ROOT"
   docker compose up -d --build
   echo
-  echo "fam-uh-le läuft unter: https://$DOMAIN"
+  echo "fam-uh-le läuft unter: $APP_URL"
   echo "Status: docker compose ps"
   echo "Logs:   docker compose logs -f"
   if [[ "$TLS_MODE" == "internal" ]]; then
@@ -135,5 +147,5 @@ if yesno "Konfiguration gespeichert.\n\nDocker-Images jetzt bauen und fam-uh-le 
     echo "Später öffentliches TLS: bash scripts/tls-mode.sh public"
   fi
 else
-  box "Konfiguration gespeichert.\n\nStart später mit:\n  docker compose up -d --build"
+  box "Konfiguration gespeichert.\n\nStart später mit:\n  docker compose up -d --build\n\nDanach: $APP_URL"
 fi
