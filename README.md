@@ -1,121 +1,116 @@
+<p align="center"><img src="frontend/public/brand/logo-primary.svg" alt="fam-uh-le" width="520"></p>
+
 # fam-uh-le
 
 **Familie. Organisiert. Gemeinsam.**
 
-`fam-uh-le` is a mobile-first family operating system for collaborative tasks, shopping, household routines and public-data integrations. The product is designed as an installable PWA and ships in German and English.
+Mobile-first Family OS als installierbare PWA: gemeinsame Aufgaben, Einkäufe, Routinen, Kalender, Inbox und öffentliche Datenquellen in einer Oberfläche. Deutsch und Englisch sind ab Werk enthalten; weitere Sprachen können über i18next ergänzt werden.
 
-## Included MVP
+## Funktionsumfang
 
-- shared family/role model
-- collaborative task list with assignment, due dates and completion
-- shared shopping lists and live item state
-- **Zuletzt gemacht / Recently done** routines with history and suggested intervals
-- normalized family events for calendars and public data
-- integration sources with a secure HTTPS-only ICS/iCal adapter
-- family inbox model for share-sheet / messenger ingestion
-- JWT authentication
-- responsive mobile-first React interface
-- offline-capable PWA shell
-- German and English i18n
-- reusable global design tokens/components
-- Django admin for operational configuration
-- PostgreSQL persistence
-- Docker Compose production deployment
-- Caddy reverse proxy + automatic HTTPS/Let's Encrypt
-- GitHub Actions build checks
+- Familien und Rollen: Owner, Erwachsene, Teenager, Kinder, Gäste
+- gemeinsame Aufgaben inkl. Fälligkeit, Priorität und Erledigen
+- gemeinsame Einkaufslisten
+- **Zuletzt gemacht** mit Intervallen und Verlauf
+- Kalenderansicht für interne und importierte Ereignisse
+- Inbox für Inhalte aus Share-Sheet, Browsern und Messengern
+- Inbox → Aufgabe / Einkauf mit einem Tap
+- Integrationsverwaltung inkl. manuellem Sync
+- sicherer HTTPS-only ICS/iCal- und Müllkalender-Adapter
+- normalisiertes Eventmodell für weitere öffentliche Daten
+- JWT-Login mit automatischem Token-Refresh
+- PWA mit Share Target, Offline-Shell und Maskable Icon
+- responsive Mobile-first UI + Desktop-Erweiterung
+- globales wiederverwendbares Designsystem
+- Django Admin
+- PostgreSQL
+- Docker Compose
+- Caddy als Reverse Proxy und Static Host mit automatischem Let's Encrypt
+- CI für React-Build, Django-Checks/Tests und Docker-Build
 
-## Architecture
+## Branding
+
+Die Markenassets liegen unter `frontend/public/brand/`:
+
+- `logo-primary.svg` – vollständige Wort-/Bildmarke
+- `icon.svg` – reguläres App-Icon
+- `icon-maskable.svg` – PWA/Android Maskable Icon
+- `frontend/public/logo.svg` – kompakte kompatible Icon-Variante
+
+Die PWA verwendet die finalen Icons direkt im Manifest; Login und Navigation greifen ebenfalls auf diese Assets zurück.
+
+## Architektur
 
 ```text
-Browser / installed PWA
+Browser / installierte PWA
         │
         ▼
-      Caddy ─────────────── static React build
+      Caddy ─────────────── React Static Build
         │
         ├── /api/* ─────── Django REST API
         ├── /admin/* ───── Django Admin
-        └── /static/* ──── Django static files
+        └── /static/* ──── Django Static Files
                               │
                               ▼
                           PostgreSQL
+
+ICS / Müll / Warnungen / Messenger / weitere Adapter
+                         │
+                         ▼
+                  IntegrationSource
+                         │
+                         ▼
+                    FamilyEvent
+                         │
+                  Kalender / Inbox
+                         │
+                         ▼
+               Aufgaben · Einkauf · UI
 ```
 
-External data is normalized before it reaches the UI:
-
-```text
-ICS / waste calendar / warnings / messenger adapters
-                    │
-                    ▼
-           IntegrationSource
-                    │
-                    ▼
-              FamilyEvent
-                    │
-             Rules / Inbox
-                    │
-                    ▼
-        tasks · reminders · UI
-```
-
-## Production deployment
-
-1. Point the DNS A/AAAA record of your domain to the Docker host.
-2. Copy the environment template:
+## Deployment
 
 ```bash
 cp .env.example .env
-```
-
-3. Set at least `DOMAIN`, `DJANGO_SECRET_KEY`, `POSTGRES_PASSWORD` and a strong initial admin password.
-4. Start the stack:
-
-```bash
+# DOMAIN, DJANGO_SECRET_KEY, POSTGRES_PASSWORD und Admin-Zugang setzen
 docker compose up -d --build
 ```
 
-Caddy listens on ports **80/443**, obtains and renews the public TLS certificate automatically when `DOMAIN` resolves to the host, and persists certificate state in the `caddy_data` volume.
+DNS A/AAAA muss auf den Docker-Host zeigen. Caddy lauscht auf **80/443**, holt und erneuert das TLS-Zertifikat automatisch und persistiert Zertifikatsdaten im `caddy_data` Volume.
 
-A first household, shopping list and sensible household routines are bootstrapped idempotently when the initial admin credentials are configured.
+Ein erster Haushalt, eine Einkaufsliste und sinnvolle Standardroutinen werden beim initialen Setup idempotent erzeugt.
 
-## Login
+## Öffentliche Daten
 
-Open `https://<DOMAIN>` and sign in with `DJANGO_SUPERUSER_USERNAME` / `DJANGO_SUPERUSER_PASSWORD`. Operational configuration is available at `/admin/`.
+In Django Admin oder über die REST-API kann eine `IntegrationSource` angelegt werden. Für ICS/Müllkalender:
 
-## Public-data integrations
+- `kind`: `ics` oder `waste`
+- `endpoint`: öffentliche **HTTPS**-URL
+- optional `config`: `{ "event_type": "waste.collection" }`
 
-Create an `IntegrationSource` in Django Admin. For an ICS/iCal source use:
-
-- kind: `ics` or `waste`
-- endpoint: a **public HTTPS** calendar URL
-- optional config: `{ "event_type": "waste.collection" }`
-
-Then run:
+Synchronisieren geht entweder direkt in der App oder per CLI:
 
 ```bash
 docker compose exec backend python manage.py sync_integrations
 ```
 
-The adapter rejects private, loopback, link-local and non-HTTPS targets to reduce SSRF risk. Additional adapters (DWD/NINA, municipal APIs, Telegram, school systems, Home Assistant) can plug into `family/integrations.py` without changing the domain/UI model.
+Private, Loopback-, Link-Local- und nicht-HTTPS-Ziele werden blockiert. Weitere Adapter wie DWD/NINA, kommunale APIs, Telegram, Schulsysteme oder Home Assistant können an `backend/family/integrations.py` angebunden werden, ohne das Kernmodell oder die UI umzubauen.
 
-## Product design
+## Navigation
 
-The primary navigation is deliberately limited to five high-frequency areas:
+Die Primärnavigation bleibt absichtlich auf fünf häufige Bereiche reduziert:
 
 **Heute · Aufgaben · Einkauf · Zuletzt · Mehr**
 
-Touch targets, safe-area handling, reduced-motion support, installability and desktop expansion are part of the base design system. Brand assets live in `frontend/public/logo.svg`.
+Unter **Mehr** befinden sich Kalender, Inbox, Integrationen, Familie, Sprache und Logout. Touch-Targets, Safe Areas, Reduced Motion und Desktop-Layout sind Bestandteil des Basissystems.
 
-## Repository layout
+## Repository
 
 ```text
-backend/              Django + REST API
-frontend/             React PWA
-docker/               image definitions
-Caddyfile              TLS/reverse proxy/static routing
-docker-compose.yml     production stack
+backend/              Django + REST API + Tests
+frontend/             React PWA + Designsystem + Brand Assets
+docker/               Images
+Caddyfile              TLS / Reverse Proxy / Static Routing
+docker-compose.yml     Produktionsstack
 .github/workflows/     CI
 ```
-
-## Development direction
-
-Next adapters/modules are intentionally separable: weather/warnings, municipal waste discovery, messenger share ingestion, calendars, school data, notifications, household automation and rules. The API model is already structured so these features do not need to be hard-wired into the task or shopping modules.
