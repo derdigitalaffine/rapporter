@@ -6,6 +6,44 @@
 
 Mobile-first Family OS als installierbare PWA: gemeinsame Aufgaben, Einkäufe, Routinen, Kalender, Inbox und öffentliche Datenquellen in einer Oberfläche. Deutsch und Englisch sind ab Werk enthalten; weitere Sprachen können über i18next ergänzt werden.
 
+## Schnellstart – empfohlen
+
+Für den ersten Start gibt es einen terminalbasierten Setup-Wizard mit `dialog`/`whiptail`:
+
+```bash
+bash scripts/setup.sh
+```
+
+Der Wizard fragt Hostname/Domain, TLS-Modus, Zeitzone, Standardsprache, Familienname, Admin-Zugang, PostgreSQL-Konfiguration und Workerzahl ab. Django- und Datenbank-Secrets können automatisch kryptografisch generiert werden. Die erzeugte `.env` wird mit Dateirechten `600` gespeichert; vorhandene Konfigurationen werden vor dem Überschreiben gesichert.
+
+**Standard ist internes HTTPS** über Caddys lokale CA (`tls internal`). Damit kann fam-uh-le zuerst im LAN oder auf einem Testserver betrieben werden, ohne eine öffentliche Domain vorauszusetzen.
+
+### Später auf öffentliches Let's Encrypt umschalten
+
+Sobald DNS A/AAAA auf den Server zeigt:
+
+```bash
+bash scripts/tls-mode.sh public
+```
+
+Zurück auf internes TLS:
+
+```bash
+bash scripts/tls-mode.sh internal
+```
+
+Der Helfer aktualisiert Domain, Django Allowed Hosts, CSRF/CORS Origins und die aktive Caddy-Konfiguration und startet Caddy bei laufendem Stack neu.
+
+### Lokale Caddy-CA exportieren
+
+Damit Geräte dem internen Zertifikat ausdrücklich vertrauen können:
+
+```bash
+bash scripts/export-caddy-ca.sh
+```
+
+Das erzeugte `caddy-local-root.crt` sollte ausschließlich auf Geräten installiert werden, die der eigenen fam-uh-le Installation vertrauen sollen.
+
 ## Funktionsumfang
 
 - Familien und Rollen: Owner, Erwachsene, Teenager, Kinder, Gäste
@@ -25,8 +63,8 @@ Mobile-first Family OS als installierbare PWA: gemeinsame Aufgaben, Einkäufe, R
 - Django Admin
 - PostgreSQL
 - Docker Compose
-- Caddy als Reverse Proxy und Static Host mit automatischem Let's Encrypt
-- CI für React-Build, Django-Checks/Tests und Docker-Build
+- Caddy als Reverse Proxy/Static Host; initial internes TLS, optional ACME/Let's Encrypt
+- CI für React-Build, Django-Checks/Tests, Shell-Syntax, beide Caddy-Modi und Docker-Build
 
 ## Branding
 
@@ -68,17 +106,19 @@ ICS / Müll / Warnungen / Messenger / weitere Adapter
                Aufgaben · Einkauf · UI
 ```
 
-## Deployment
+## Manuelles Deployment
+
+Wer den Wizard nicht verwenden möchte:
 
 ```bash
 cp .env.example .env
-# DOMAIN, DJANGO_SECRET_KEY, POSTGRES_PASSWORD und Admin-Zugang setzen
+# Werte anpassen
 docker compose up -d --build
 ```
 
-DNS A/AAAA muss auf den Docker-Host zeigen. Caddy lauscht auf **80/443**, holt und erneuert das TLS-Zertifikat automatisch und persistiert Zertifikatsdaten im `caddy_data` Volume.
+`.env.example` startet bewusst mit `Caddyfile.selfsigned`. Für öffentliches TLS `CADDYFILE=Caddyfile` und eine öffentlich auflösbare `DOMAIN` setzen.
 
-Ein erster Haushalt, eine Einkaufsliste und sinnvolle Standardroutinen werden beim initialen Setup idempotent erzeugt.
+Ein erster Haushalt, eine Einkaufsliste und sinnvolle Standardroutinen werden beim initialen Setup idempotent erzeugt. Name, Sprache und Zeitzone der ersten Familie werden aus der `.env` übernommen.
 
 ## Öffentliche Daten
 
@@ -107,10 +147,14 @@ Unter **Mehr** befinden sich Kalender, Inbox, Integrationen, Familie, Sprache un
 ## Repository
 
 ```text
-backend/              Django + REST API + Tests
-frontend/             React PWA + Designsystem + Brand Assets
-docker/               Images
-Caddyfile              TLS / Reverse Proxy / Static Routing
-docker-compose.yml     Produktionsstack
-.github/workflows/     CI
+backend/                  Django + REST API + Tests
+frontend/                 React PWA + Designsystem + Brand Assets
+docker/                   Images
+scripts/setup.sh           interaktiver Erstsetup-Wizard
+scripts/tls-mode.sh        TLS-Modus umschalten
+scripts/export-caddy-ca.sh lokale Root-CA exportieren
+Caddyfile                  öffentliche ACME/Let's-Encrypt-Konfiguration
+Caddyfile.selfsigned       internes/self-signed TLS
+Docker-compose.yml         Produktionsstack
+.github/workflows/         CI
 ```
