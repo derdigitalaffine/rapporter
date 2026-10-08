@@ -1,9 +1,11 @@
 from django.core.management.base import BaseCommand
+from family.automation import run_all_rules
 from family.integrations import sync_source
 from family.models import IntegrationSource
 
+
 class Command(BaseCommand):
-    help = "Synchronize enabled fam-uh-le integration sources"
+    help = "Synchronize enabled integrations and execute fam-uh-le automation rules"
 
     def handle(self, *args, **options):
         total = 0
@@ -14,4 +16,5 @@ class Command(BaseCommand):
                 self.stdout.write(f"{source.name}: {count}")
             except Exception as exc:
                 self.stderr.write(f"{source.name}: {exc}")
-        self.stdout.write(self.style.SUCCESS(f"Synchronized {total} events"))
+        executed = run_all_rules()
+        self.stdout.write(self.style.SUCCESS(f"Synchronized {total} events; executed {executed} automation actions"))
