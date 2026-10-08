@@ -50,11 +50,14 @@ jobs:
           cache-dependency-path: backend/requirements.txt
       - run: pip install -r backend/requirements.txt
       - working-directory: backend
-        run: python manage.py makemigrations family --check --dry-run || python manage.py makemigrations family
+        run: python manage.py makemigrations family --check --dry-run
       - working-directory: backend
         run: python manage.py migrate && python manage.py check
+      - working-directory: backend
+        run: python manage.py test
 
   containers:
+    needs: [frontend, backend]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

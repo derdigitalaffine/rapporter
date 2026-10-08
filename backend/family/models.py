@@ -119,7 +119,10 @@ class FamilyEvent(TimestampedModel):
     external_id = models.CharField(max_length=180, blank=True)
 
     class Meta:
-        indexes = [models.Index(fields=["family", "starts_at"]), models.Index(fields=["family", "type"])]
+        indexes = [
+            models.Index(fields=["family", "starts_at"], name="fam_evt_family_start_idx"),
+            models.Index(fields=["family", "type"], name="fam_evt_family_type_idx"),
+        ]
 
 
 class InboxItem(TimestampedModel):

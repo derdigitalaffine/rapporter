@@ -2,7 +2,9 @@ from django.db.models import Q
 from django.utils import timezone
 from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action, api_view, permission_classes
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
+from .integrations import sync_source
 from .models import Family, Membership, Task, ShoppingList, ShoppingItem, Routine, RoutineLog, IntegrationSource, FamilyEvent, InboxItem
 from .serializers import FamilySerializer, TaskSerializer, ShoppingListSerializer, ShoppingItemSerializer, RoutineSerializer, RoutineLogSerializer, IntegrationSourceSerializer, FamilyEventSerializer, InboxItemSerializer
 
@@ -13,13 +15,21 @@ def family_ids(user):
 
 class FamilyScopedViewSet(viewsets.ModelViewSet):
     family_lookup = "family_id"
+
     def get_queryset(self):
         return self.queryset.filter(**{f"{self.family_lookup}__in": family_ids(self.request.user)})
+
+    def perform_create(self, serializer):
+        family = serializer.validated_data.get("family")
+        if family and not Membership.objects.filter(family=family, user=self.request.user).exists():
+            raise PermissionDenied()
+        serializer.save()
 
 
 class FamilyViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = FamilySerializer
     permission_classes = [permissions.IsAuthenticated]
+
     def get_queryset(self):
         return Family.objects.filter(memberships__user=self.request.user).distinct()
 
@@ -27,10 +37,11 @@ class FamilyViewSet(viewsets.ReadOnlyModelViewSet):
 class TaskViewSet(FamilyScopedViewSet):
     queryset = Task.objects.all().order_by("completed_at", "due_at", "-created_at")
     serializer_class = TaskSerializer
+
     def perform_create(self, serializer):
         family = serializer.validated_data["family"]
         if not Membership.objects.filter(family=family, user=self.request.user).exists():
-            raise permissions.PermissionDenied()
+            raise PermissionDenied()
         serializer.save(created_by=self.request.user)
 
     @action(detail=True, methods=["post"])
@@ -50,12 +61,14 @@ class ShoppingItemViewSet(viewsets.ModelViewSet):
     queryset = ShoppingItem.objects.select_related("shopping_list").all()
     serializer_class = ShoppingItemSerializer
     permission_classes = [permissions.IsAuthenticated]
+
     def get_queryset(self):
         return self.queryset.filter(shopping_list__family_id__in=family_ids(self.request.user))
+
     def perform_create(self, serializer):
         shopping_list = serializer.validated_data["shopping_list"]
         if shopping_list.family_id not in set(family_ids(self.request.user)):
-            raise permissions.PermissionDenied()
+            raise PermissionDenied()
         serializer.save(added_by=self.request.user)
 
     @action(detail=True, methods=["post"])
@@ -78,8 +91,17 @@ class RoutineViewSet(FamilyScopedViewSet):
 
 
 class IntegrationSourceViewSet(FamilyScopedViewSet):
-    queryset = IntegrationSource.objects.all()
+    queryset = IntegrationSource.objects.all().order_by("kind", "name")
     serializer_class = IntegrationSourceSerializer
+
+    @action(detail=True, methods=["post"])
+    def sync(self, request, pk=None):
+        source = self.get_object()
+        try:
+            count = sync_source(source)
+        except Exception as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({"synced": count, "last_synced_at": source.last_synced_at})
 
 
 class FamilyEventViewSet(FamilyScopedViewSet):
@@ -90,6 +112,32 @@ class FamilyEventViewSet(FamilyScopedViewSet):
 class InboxItemViewSet(FamilyScopedViewSet):
     queryset = InboxItem.objects.all().order_by("-created_at")
     serializer_class = InboxItemSerializer
+
+    @action(detail=True, methods=["post"])
+    def to_task(self, request, pk=None):
+        item = self.get_object()
+        task = Task.objects.create(family=item.family, title=request.data.get("title") or item.title, notes=request.data.get("notes") or item.body, created_by=request.user, source=f"inbox:{item.source}")
+        item.status = "processed"
+        item.save(update_fields=["status", "updated_at"])
+        return Response(TaskSerializer(task).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=["post"])
+    def to_shopping(self, request, pk=None):
+        item = self.get_object()
+        shopping_list = ShoppingList.objects.filter(family=item.family, archived=False).order_by("created_at").first()
+        if not shopping_list:
+            shopping_list = ShoppingList.objects.create(family=item.family, name="Einkauf")
+        shopping_item = ShoppingItem.objects.create(shopping_list=shopping_list, name=request.data.get("name") or item.title, added_by=request.user)
+        item.status = "processed"
+        item.save(update_fields=["status", "updated_at"])
+        return Response(ShoppingItemSerializer(shopping_item).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=["post"])
+    def dismiss(self, request, pk=None):
+        item = self.get_object()
+        item.status = "dismissed"
+        item.save(update_fields=["status", "updated_at"])
+        return Response(self.get_serializer(item).data)
 
 
 @api_view(["GET"])
@@ -106,9 +154,5 @@ def dashboard(request):
     events = FamilyEvent.objects.filter(family_id__in=families, starts_at__gte=now).order_by("starts_at")[:8]
     routines = Routine.objects.filter(family_id__in=families, active=True).prefetch_related("logs")[:8]
     shopping = ShoppingList.objects.filter(family_id__in=families, archived=False).prefetch_related("items")[:4]
-    return Response({
-        "tasks": TaskSerializer(tasks, many=True).data,
-        "events": FamilyEventSerializer(events, many=True).data,
-        "routines": RoutineSerializer(routines, many=True).data,
-        "shopping_lists": ShoppingListSerializer(shopping, many=True).data,
-    })
+    inbox_count = InboxItem.objects.filter(family_id__in=families, status="new").count()
+    return Response({"tasks": TaskSerializer(tasks, many=True).data, "events": FamilyEventSerializer(events, many=True).data, "routines": RoutineSerializer(routines, many=True).data, "shopping_lists": ShoppingListSerializer(shopping, many=True).data, "inbox_count": inbox_count})
