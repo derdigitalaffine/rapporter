@@ -2,6 +2,7 @@ from django.db.models import Q
 from django.utils import timezone
 from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action, api_view, permission_classes
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 from .integrations import sync_source
 from .models import Family, Membership, Task, ShoppingList, ShoppingItem, Routine, RoutineLog, IntegrationSource, FamilyEvent, InboxItem
@@ -21,7 +22,7 @@ class FamilyScopedViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         family = serializer.validated_data.get("family")
         if family and not Membership.objects.filter(family=family, user=self.request.user).exists():
-            raise permissions.PermissionDenied()
+            raise PermissionDenied()
         serializer.save()
 
 
@@ -40,7 +41,7 @@ class TaskViewSet(FamilyScopedViewSet):
     def perform_create(self, serializer):
         family = serializer.validated_data["family"]
         if not Membership.objects.filter(family=family, user=self.request.user).exists():
-            raise permissions.PermissionDenied()
+            raise PermissionDenied()
         serializer.save(created_by=self.request.user)
 
     @action(detail=True, methods=["post"])
@@ -67,7 +68,7 @@ class ShoppingItemViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         shopping_list = serializer.validated_data["shopping_list"]
         if shopping_list.family_id not in set(family_ids(self.request.user)):
-            raise permissions.PermissionDenied()
+            raise PermissionDenied()
         serializer.save(added_by=self.request.user)
 
     @action(detail=True, methods=["post"])
@@ -85,12 +86,7 @@ class RoutineViewSet(FamilyScopedViewSet):
     @action(detail=True, methods=["post"])
     def done(self, request, pk=None):
         routine = self.get_object()
-        log = RoutineLog.objects.create(
-            routine=routine,
-            done_at=timezone.now(),
-            done_by=request.user,
-            note=request.data.get("note", ""),
-        )
+        log = RoutineLog.objects.create(routine=routine, done_at=timezone.now(), done_by=request.user, note=request.data.get("note", ""))
         return Response(RoutineLogSerializer(log).data, status=status.HTTP_201_CREATED)
 
 
@@ -120,13 +116,7 @@ class InboxItemViewSet(FamilyScopedViewSet):
     @action(detail=True, methods=["post"])
     def to_task(self, request, pk=None):
         item = self.get_object()
-        task = Task.objects.create(
-            family=item.family,
-            title=request.data.get("title") or item.title,
-            notes=request.data.get("notes") or item.body,
-            created_by=request.user,
-            source=f"inbox:{item.source}",
-        )
+        task = Task.objects.create(family=item.family, title=request.data.get("title") or item.title, notes=request.data.get("notes") or item.body, created_by=request.user, source=f"inbox:{item.source}")
         item.status = "processed"
         item.save(update_fields=["status", "updated_at"])
         return Response(TaskSerializer(task).data, status=status.HTTP_201_CREATED)
@@ -137,11 +127,7 @@ class InboxItemViewSet(FamilyScopedViewSet):
         shopping_list = ShoppingList.objects.filter(family=item.family, archived=False).order_by("created_at").first()
         if not shopping_list:
             shopping_list = ShoppingList.objects.create(family=item.family, name="Einkauf")
-        shopping_item = ShoppingItem.objects.create(
-            shopping_list=shopping_list,
-            name=request.data.get("name") or item.title,
-            added_by=request.user,
-        )
+        shopping_item = ShoppingItem.objects.create(shopping_list=shopping_list, name=request.data.get("name") or item.title, added_by=request.user)
         item.status = "processed"
         item.save(update_fields=["status", "updated_at"])
         return Response(ShoppingItemSerializer(shopping_item).data, status=status.HTTP_201_CREATED)
@@ -169,10 +155,4 @@ def dashboard(request):
     routines = Routine.objects.filter(family_id__in=families, active=True).prefetch_related("logs")[:8]
     shopping = ShoppingList.objects.filter(family_id__in=families, archived=False).prefetch_related("items")[:4]
     inbox_count = InboxItem.objects.filter(family_id__in=families, status="new").count()
-    return Response({
-        "tasks": TaskSerializer(tasks, many=True).data,
-        "events": FamilyEventSerializer(events, many=True).data,
-        "routines": RoutineSerializer(routines, many=True).data,
-        "shopping_lists": ShoppingListSerializer(shopping, many=True).data,
-        "inbox_count": inbox_count,
-    })
+    return Response({"tasks": TaskSerializer(tasks, many=True).data, "events": FamilyEventSerializer(events, many=True).data, "routines": RoutineSerializer(routines, many=True).data, "shopping_lists": ShoppingListSerializer(shopping, many=True).data, "inbox_count": inbox_count})
