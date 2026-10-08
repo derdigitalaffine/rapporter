@@ -2,6 +2,7 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 from .views import FamilyViewSet, TaskListViewSet, TaskViewSet, ShoppingListViewSet, ShoppingItemViewSet, RoutineViewSet, IntegrationSourceViewSet, AutomationRuleViewSet, FamilyEventViewSet, InboxItemViewSet, dashboard, health
 from .invitation_views import FamilyInvitationViewSet, invitation_info, invitation_register, invitation_accept
+from .membership_views import MembershipViewSet
 from .smart_views import (
     integration_oauth_callback,
     integration_oauth_start,
@@ -17,6 +18,7 @@ from .smart_views import (
 
 router = DefaultRouter()
 router.register("families", FamilyViewSet, basename="family")
+router.register("memberships", MembershipViewSet, basename="membership")
 router.register("task-lists", TaskListViewSet, basename="task-list")
 router.register("tasks", TaskViewSet, basename="task")
 router.register("shopping-lists", ShoppingListViewSet, basename="shopping-list")
