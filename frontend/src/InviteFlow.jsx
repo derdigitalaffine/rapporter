@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { api, isAuthenticated, login, storeTokens } from './api';
+import { api, isAuthenticated, login, markAuthenticated } from './api';
 import { Icon } from './icons';
 
 export default function InviteFlow({token}){
@@ -9,7 +9,7 @@ export default function InviteFlow({token}){
  const [form,setForm]=useState({username:'',password:'',email:'',display_name:''});
  useEffect(()=>{api(`/invite/${token}/`).then(x=>{setInfo(x);setForm(f=>({...f,email:x.email_hint||'',display_name:x.display_name||''}))}).catch(e=>setError(e.message))},[token]);
  const set=(k,v)=>setForm(f=>({...f,[k]:v}));
- async function register(e){e.preventDefault();setBusy(true);setError('');try{const result=await api(`/invite/${token}/register/`,{method:'POST',body:JSON.stringify(form)});storeTokens(result);window.location.replace('/')}catch(e){setError(e.message)}finally{setBusy(false)}}
+ async function register(e){e.preventDefault();setBusy(true);setError('');try{await api(`/invite/${token}/register/`,{method:'POST',body:JSON.stringify(form)});markAuthenticated(true);window.location.replace('/')}catch(e){setError(e.message)}finally{setBusy(false)}}
  async function signIn(e){e.preventDefault();setBusy(true);setError('');try{await login(form.username,form.password);await api(`/invite/${token}/accept/`,{method:'POST',body:JSON.stringify({display_name:form.display_name})});window.location.replace('/')}catch(e){setError(e.message)}finally{setBusy(false)}}
  async function accept(){setBusy(true);setError('');try{await api(`/invite/${token}/accept/`,{method:'POST',body:JSON.stringify({display_name:form.display_name})});window.location.replace('/')}catch(e){setError(e.message)}finally{setBusy(false)}}
  if(!info&&!error)return <main className="login-shell"><img className="brand-wide" src="/brand/logo-primary.svg" alt="fam-uh-le"/><section className="card login-card"><p>{t('pleaseWait')}</p></section></main>;
