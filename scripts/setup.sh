@@ -32,6 +32,10 @@ PY
   fi
 }
 
+local_ip(){
+  if command -v hostname >/dev/null 2>&1; then hostname -I 2>/dev/null | awk '{print $1}' || true; fi
+}
+
 need(){ command -v "$1" >/dev/null 2>&1 || { box "'$1' fehlt. Bitte installieren und den Wizard erneut starten."; exit 1; }; }
 need docker
 if ! docker compose version >/dev/null 2>&1; then box "Docker Compose v2 wurde nicht gefunden."; exit 1; fi
@@ -45,7 +49,8 @@ box "Willkommen bei fam-uh-le.\n\nDieser Assistent erzeugt die vollständige .en
 
 TLS_MODE=$(menu "TLS-Modus wählen" internal "Self-Signed / Caddy Internal CA (empfohlen für ersten Start/LAN)" public "Öffentliches HTTPS via ACME / Let's Encrypt")
 if [[ "$TLS_MODE" == "internal" ]]; then
-  DOMAIN=$(input "Hostname für den lokalen Zugriff.\nBeispiele: fam-uh-le.local, familie.home.arpa oder Server-IP." "fam-uh-le.local")
+  DEFAULT_HOST="$(local_ip)"; DEFAULT_HOST="${DEFAULT_HOST:-localhost}"
+  DOMAIN=$(input "Hostname oder IP für den lokalen Zugriff.\nDie automatisch erkannte LAN-IP ist meist am bequemsten. Alternativ: familie.home.arpa oder eigener DNS-Name." "$DEFAULT_HOST")
   CADDYFILE="Caddyfile.selfsigned"
 else
   DOMAIN=$(input "Öffentliche Domain. DNS A/AAAA muss auf diesen Server zeigen." "fam-uh-le.example.com")
@@ -75,12 +80,7 @@ POSTGRES_USER=$(input "PostgreSQL Benutzer" "famuhle")
 if yesno "Datenbankpasswort automatisch generieren?"; then POSTGRES_PASSWORD=$(random_secret); else POSTGRES_PASSWORD=$(password "PostgreSQL Passwort"); fi
 DJANGO_SECRET_KEY=$(random_secret)
 GUNICORN_WORKERS=$(input "Gunicorn Worker (für kleine Installationen meist 2–4)" "3")
-
-if [[ "$DOMAIN" == *":"* || "$DOMAIN" =~ ^[0-9.]+$ ]]; then
-  ORIGIN="https://$DOMAIN"
-else
-  ORIGIN="https://$DOMAIN"
-fi
+ORIGIN="https://$DOMAIN"
 
 SUMMARY="TLS: $TLS_MODE\nHost: $DOMAIN\nZeitzone: $TIME_ZONE\nSprache: $INITIAL_LOCALE\nFamilie: $INITIAL_FAMILY_NAME\nAdmin: $DJANGO_SUPERUSER_USERNAME ($DJANGO_SUPERUSER_EMAIL)\nDatenbank: $POSTGRES_DB / $POSTGRES_USER\nWorker: $GUNICORN_WORKERS\n\nSecrets werden in .env geschrieben und hier absichtlich nicht angezeigt."
 if ! yesno "$SUMMARY\n\nKonfiguration schreiben?"; then exit 0; fi
@@ -124,8 +124,9 @@ if yesno "Konfiguration gespeichert.\n\nDocker-Images jetzt bauen und fam-uh-le 
   echo "Logs:   docker compose logs -f"
   if [[ "$TLS_MODE" == "internal" ]]; then
     echo
-    echo "Self-Signed/Internal-CA aktiv. Für öffentliches TLS später: bash scripts/tls-mode.sh public"
-    echo "Caddys Root-CA kann bei Bedarf aus dem caddy_data Volume exportiert und auf Clients als vertrauenswürdig installiert werden."
+    echo "Internal-CA aktiv. Browser zeigen zunächst eine Vertrauenswarnung, bis die lokale CA installiert ist."
+    echo "CA exportieren: bash scripts/export-caddy-ca.sh"
+    echo "Später öffentliches TLS: bash scripts/tls-mode.sh public"
   fi
 else
   box "Konfiguration gespeichert.\n\nStart später mit:\n  docker compose up -d --build"
