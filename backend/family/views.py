@@ -4,13 +4,17 @@ from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
-from .integrations import sync_source
+from .integrations import INTEGRATION_CATALOG, sync_source
 from .models import Family, Membership, Task, ShoppingList, ShoppingItem, Routine, RoutineLog, IntegrationSource, FamilyEvent, InboxItem
 from .serializers import FamilySerializer, TaskSerializer, ShoppingListSerializer, ShoppingItemSerializer, RoutineSerializer, RoutineLogSerializer, IntegrationSourceSerializer, FamilyEventSerializer, InboxItemSerializer
 
 
 def family_ids(user):
     return Membership.objects.filter(user=user).values_list("family_id", flat=True)
+
+
+def can_manage_integrations(user, family):
+    return Membership.objects.filter(family=family, user=user, role__in=[Membership.Role.OWNER, Membership.Role.ADULT]).exists()
 
 
 class FamilyScopedViewSet(viewsets.ModelViewSet):
@@ -94,6 +98,48 @@ class IntegrationSourceViewSet(FamilyScopedViewSet):
     queryset = IntegrationSource.objects.all().order_by("kind", "name")
     serializer_class = IntegrationSourceSerializer
 
+    def perform_create(self, serializer):
+        family = serializer.validated_data["family"]
+        if not can_manage_integrations(self.request.user, family):
+            raise PermissionDenied("Nur Erwachsene/Owner können Integrationen verwalten.")
+        serializer.save()
+
+    def perform_update(self, serializer):
+        source = self.get_object()
+        if not can_manage_integrations(self.request.user, source.family):
+            raise PermissionDenied("Nur Erwachsene/Owner können Integrationen verwalten.")
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        if not can_manage_integrations(self.request.user, instance.family):
+            raise PermissionDenied("Nur Erwachsene/Owner können Integrationen verwalten.")
+        instance.delete()
+
+    @action(detail=False, methods=["get"])
+    def catalog(self, request):
+        return Response(INTEGRATION_CATALOG)
+
+    @action(detail=False, methods=["post"])
+    def connect(self, request):
+        family_id = request.data.get("family")
+        catalog_id = request.data.get("catalog_id")
+        family = Family.objects.filter(id=family_id, memberships__user=request.user).first()
+        if not family or not can_manage_integrations(request.user, family):
+            raise PermissionDenied("Nur Erwachsene/Owner können Integrationen verwalten.")
+        item = next((x for x in INTEGRATION_CATALOG if x["id"] == catalog_id), None)
+        if not item:
+            return Response({"detail": "Unbekannte Integration."}, status=status.HTTP_400_BAD_REQUEST)
+        values = dict(request.data.get("values") or {})
+        endpoint = values.pop("endpoint", "")
+        config = {**item.get("defaults", {}), **values}
+        source = IntegrationSource.objects.create(family=family, kind=item["kind"], name=item["name"], endpoint=endpoint, config=config, enabled=True)
+        try:
+            count = sync_source(source)
+        except Exception as exc:
+            source.delete()
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({"source": self.get_serializer(source).data, "synced": count}, status=status.HTTP_201_CREATED)
+
     @action(detail=True, methods=["post"])
     def sync(self, request, pk=None):
         source = self.get_object()
@@ -102,6 +148,17 @@ class IntegrationSourceViewSet(FamilyScopedViewSet):
         except Exception as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return Response({"synced": count, "last_synced_at": source.last_synced_at})
+
+    @action(detail=False, methods=["post"])
+    def sync_all(self, request):
+        total = 0
+        errors = []
+        for source in self.get_queryset().filter(enabled=True):
+            try:
+                total += sync_source(source)
+            except Exception as exc:
+                errors.append({"id": str(source.id), "name": source.name, "detail": str(exc)})
+        return Response({"synced": total, "errors": errors})
 
 
 class FamilyEventViewSet(FamilyScopedViewSet):
@@ -151,7 +208,7 @@ def dashboard(request):
     families = list(Family.objects.filter(memberships__user=request.user).values_list("id", flat=True))
     now = timezone.now()
     tasks = Task.objects.filter(family_id__in=families, completed_at__isnull=True).filter(Q(due_at__isnull=True) | Q(due_at__gte=now)).order_by("due_at", "-created_at")[:8]
-    events = FamilyEvent.objects.filter(family_id__in=families, starts_at__gte=now).order_by("starts_at")[:8]
+    events = FamilyEvent.objects.filter(family_id__in=families, starts_at__gte=now).order_by("starts_at")[:12]
     routines = Routine.objects.filter(family_id__in=families, active=True).prefetch_related("logs")[:8]
     shopping = ShoppingList.objects.filter(family_id__in=families, archived=False).prefetch_related("items")[:4]
     inbox_count = InboxItem.objects.filter(family_id__in=families, status="new").count()
