@@ -2,15 +2,16 @@ from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
-from .models import Family, PushSubscription
+from .models import PushSubscription
 from .push import public_key, push_configured, send_to_subscription
 
 
 @api_view(["GET"])
 def push_config(request):
+    configured = push_configured()
     return Response({
-        "configured": push_configured(),
-        "public_key": public_key() if push_configured() else "",
+        "configured": configured,
+        "public_key": public_key() if configured else "",
         "devices": PushSubscription.objects.filter(user=request.user, active=True).count(),
     })
 
@@ -54,7 +55,7 @@ def push_test(request):
     if not subscription:
         return Response({"detail": "Auf diesem Konto ist kein aktives Push-Gerät registriert."}, status=status.HTTP_400_BAD_REQUEST)
     try:
-        send_to_subscription(subscription, "fam-uh-le", "Benachrichtigungen funktionieren 🎉", "/")
+        send_to_subscription(subscription, "FamilyOS", "Benachrichtigungen funktionieren 🎉", "/")
     except Exception as exc:
         return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
     return Response({"sent": True})

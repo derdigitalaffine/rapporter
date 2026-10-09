@@ -21,26 +21,35 @@ input(){ local label="$1" default="${2:-}" out; out=$("$ui" --title "$TITLE" --i
 password(){ local label="$1" out; out=$("$ui" --title "$TITLE" --passwordbox "$label" 10 72 3>&1 1>&2 2>&3) || exit 1; printf '%s' "$out"; }
 yesno(){ "$ui" --title "$TITLE" --yesno "$1" 12 76; }
 menu(){ local label="$1"; shift; "$ui" --title "$TITLE" --menu "$label" 18 82 10 "$@" 3>&1 1>&2 2>&3; }
-random_secret(){ if command -v openssl >/dev/null 2>&1; then openssl rand -base64 48 | tr -d '\n' | tr '/+' '_-'; else python3 - <<'PY'
-import secrets
-print(secrets.token_urlsafe(48))
-PY
-fi; }
+random_secret(){ openssl rand -base64 48 | tr -d '\n' | tr '/+' '_-'; }
 b64url(){ openssl base64 -A | tr '+/' '-_' | tr -d '='; }
 generate_vapid(){ local tmp; tmp=$(mktemp); openssl ecparam -name prime256v1 -genkey -noout -out "$tmp" 2>/dev/null; VAPID_PRIVATE_KEY=$(openssl ec -in "$tmp" -outform DER 2>/dev/null | b64url); VAPID_PUBLIC_KEY=$(openssl ec -in "$tmp" -pubout -conv_form uncompressed -outform DER 2>/dev/null | tail -c 65 | b64url); rm -f "$tmp"; }
+env_value(){ local key="$1" line; line=$(grep -m1 "^${key}=" "$ENV_FILE" 2>/dev/null || true); printf '%s' "${line#*=}"; }
 local_ip(){ command -v hostname >/dev/null 2>&1 && hostname -I 2>/dev/null | awk '{print $1}' || true; }
 valid_port(){ [[ "$1" =~ ^[0-9]+$ ]] && (( $1 >= 1 && $1 <= 65535 )); }
 valid_bind(){ [[ "$1" == "0.0.0.0" || "$1" == "127.0.0.1" || "$1" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; }
 need(){ command -v "$1" >/dev/null 2>&1 || { box "'$1' fehlt. Bitte installieren und den Wizard erneut starten."; exit 1; }; }
 
 need docker
+need openssl
 if ! docker compose version >/dev/null 2>&1; then box "Docker Compose v2 wurde nicht gefunden."; exit 1; fi
+
+EXISTING_VAPID_PUBLIC_KEY=""
+EXISTING_VAPID_PRIVATE_KEY=""
+EXISTING_VAPID_SUBJECT=""
 if [[ -f "$ENV_FILE" ]]; then
-  if ! yesno "Es existiert bereits eine .env. Möchtest du sie interaktiv überschreiben?\n\nDie bestehende Datei wird als .env.backup.TIMESTAMP gesichert."; then exit 0; fi
+  if ! yesno "Es existiert bereits eine .env. Möchtest du sie interaktiv überschreiben?\n\nDie bestehende Datei wird als .env.backup.TIMESTAMP gesichert. Bestehende gültige VAPID-Schlüssel werden übernommen."; then exit 0; fi
   cp "$ENV_FILE" "$ENV_FILE.backup.$(date +%Y%m%d-%H%M%S)"
+  if ! FAMILYOS_ENV_FILE="$ENV_FILE" bash "$ROOT/scripts/ensure-vapid.sh" >/dev/null; then
+    box "Die bestehende Web-Push-Konfiguration konnte nicht validiert oder repariert werden. Setup wird abgebrochen, damit keine inkonsistenten Schlüssel geschrieben werden."
+    exit 1
+  fi
+  EXISTING_VAPID_PUBLIC_KEY=$(env_value VAPID_PUBLIC_KEY)
+  EXISTING_VAPID_PRIVATE_KEY=$(env_value VAPID_PRIVATE_KEY)
+  EXISTING_VAPID_SUBJECT=$(env_value VAPID_SUBJECT)
 fi
 
-box "Willkommen bei FamilyOS.\n\nDieser Assistent erzeugt die vollständige .env, richtet HTTPS/Reverse Proxy sowie den globalen Superadmin und den ersten Familien-Owner ein.\n\nDer Superadmin verwaltet Familien-Tenants, gehört selbst aber keiner Familie an."
+box "Willkommen bei FamilyOS.\n\nDieser Assistent erzeugt die vollständige .env, richtet HTTPS/Reverse Proxy sowie den globalen Superadmin und den ersten Familien-Owner ein.\n\nDer Superadmin verwaltet Familien-Tenants, gehört selbst aber keiner Familie an.\n\nWeb Push wird serverseitig automatisch vorbereitet; die Browser-Berechtigung bleibt weiterhin freiwillig."
 TLS_MODE=$(menu "Betriebsmodus wählen" internal "Self-Signed / Caddy Internal CA (LAN/erster Start)" public "Öffentliches HTTPS via ACME / Let's Encrypt" proxy "Plain HTTP hinter eigenem Reverse Proxy (TLS dort)")
 COMPOSE_FILE="docker-compose.yml:docker-compose.override.yml"; PUBLIC_SCHEME="https"; PUBLIC_PORT=443; HTTP_BIND="0.0.0.0"; HTTPS_BIND="0.0.0.0"; HTTP_PORT=80; HTTPS_PORT=443
 if [[ "$TLS_MODE" == "internal" ]]; then DEFAULT_HOST="$(local_ip)"; DEFAULT_HOST="${DEFAULT_HOST:-localhost}"; DOMAIN=$(input "Hostname oder IP für den lokalen Zugriff." "$DEFAULT_HOST"); CADDYFILE="Caddyfile.selfsigned"
@@ -86,8 +95,18 @@ if yesno "Optionale Kalender-OAuth-Anbieter konfigurieren?\n\nOhne OAuth funktio
   if yesno "Google Calendar OAuth aktivieren?"; then GOOGLE_OAUTH_CLIENT_ID=$(input "Google OAuth Client-ID"); GOOGLE_OAUTH_CLIENT_SECRET=$(password "Google OAuth Client-Secret"); fi
   if yesno "Microsoft Outlook / Microsoft 365 OAuth aktivieren?"; then MICROSOFT_OAUTH_CLIENT_ID=$(input "Microsoft OAuth Client-ID"); MICROSOFT_OAUTH_CLIENT_SECRET=$(password "Microsoft OAuth Client-Secret"); fi
 fi
-VAPID_PUBLIC_KEY=""; VAPID_PRIVATE_KEY=""; VAPID_SUBJECT="mailto:${DJANGO_SUPERUSER_EMAIL:-admin@example.com}"; PUSH_STATUS="aus"
-if yesno "Web-Push-Benachrichtigungen aktivieren?"; then if command -v openssl >/dev/null 2>&1; then generate_vapid; PUSH_STATUS="konfiguriert"; else box "OpenSSL fehlt. Web Push bleibt deaktiviert."; fi; fi
+
+VAPID_PUBLIC_KEY="$EXISTING_VAPID_PUBLIC_KEY"
+VAPID_PRIVATE_KEY="$EXISTING_VAPID_PRIVATE_KEY"
+VAPID_SUBJECT="${EXISTING_VAPID_SUBJECT:-mailto:${DJANGO_SUPERUSER_EMAIL:-admin@example.com}}"
+if [[ -n "$VAPID_PUBLIC_KEY" && -n "$VAPID_PRIVATE_KEY" ]]; then
+  PUSH_STATUS="serverseitig vorbereitet · bestehende Schlüssel übernommen"
+else
+  generate_vapid
+  PUSH_STATUS="serverseitig vorbereitet · Schlüssel erzeugt"
+fi
+[[ -n "$VAPID_PUBLIC_KEY" && -n "$VAPID_PRIVATE_KEY" ]] || { box "VAPID-Schlüsselpaar konnte nicht erzeugt werden."; exit 1; }
+
 GOOGLE_STATUS="aus"; MICROSOFT_STATUS="aus"; [[ -n "$GOOGLE_OAUTH_CLIENT_ID" ]] && GOOGLE_STATUS="konfiguriert"; [[ -n "$MICROSOFT_OAUTH_CLIENT_ID" ]] && MICROSOFT_STATUS="konfiguriert"
 if [[ "$TLS_MODE" == "proxy" ]]; then NETWORK_SUMMARY="Lokaler TLS/SSL-Listener: aus\nReverse-Proxy-Upstream: http://$HTTP_BIND:$HTTP_PORT\nÖffentliche App-URL: $APP_URL"; else NETWORK_SUMMARY="HTTP-Port: $HTTP_PORT\nHTTPS-Port: $HTTPS_PORT\nApp-URL: $APP_URL"; fi
 SUMMARY="Modus: $TLS_MODE\nHost: $DOMAIN\n$NETWORK_SUMMARY\nZeitzone: $TIME_ZONE\nSprache: $INITIAL_LOCALE\nErste Familie: $INITIAL_FAMILY_NAME\nSuperadmin: $DJANGO_SUPERUSER_USERNAME ($DJANGO_SUPERUSER_EMAIL)\nFamilien-Owner: $INITIAL_OWNER_USERNAME ($INITIAL_OWNER_EMAIL)\nDatenbank: $POSTGRES_DB / $POSTGRES_USER\nWorker: $GUNICORN_WORKERS\nIntegrations-Sync: alle $INTEGRATION_SYNC_SECONDS Sekunden\nGoogle OAuth: $GOOGLE_STATUS\nMicrosoft OAuth: $MICROSOFT_STATUS\nWeb Push: $PUSH_STATUS\n\nSecrets werden in .env geschrieben und hier absichtlich nicht angezeigt."
@@ -141,13 +160,23 @@ VAPID_PRIVATE_KEY=$VAPID_PRIVATE_KEY
 VAPID_SUBJECT=$VAPID_SUBJECT
 EOF
 chmod 600 "$ENV_FILE"
+if ! FAMILYOS_ENV_FILE="$ENV_FILE" bash "$ROOT/scripts/ensure-vapid.sh" >/dev/null; then
+  box "Die erzeugte VAPID-Konfiguration ist ungültig. Setup wurde gestoppt; die .env wurde nicht als erfolgreich akzeptiert."
+  exit 1
+fi
 if [[ "$GENERATED_SUPERADMIN" == 1 ]]; then "$ui" --title "$TITLE" --msgbox "Das Superadmin-Passwort wurde generiert. Bitte jetzt sicher speichern:\n\n$DJANGO_SUPERUSER_PASSWORD\n\nEs steht ebenfalls in .env (Dateirechte 600)." 14 76; fi
 if [[ "$GENERATED_OWNER" == 1 ]]; then "$ui" --title "$TITLE" --msgbox "Das Passwort des ersten Familien-Owners wurde generiert. Bitte jetzt sicher speichern:\n\n$INITIAL_OWNER_PASSWORD\n\nEs steht ebenfalls in .env (Dateirechte 600)." 14 76; fi
 
 if yesno "Konfiguration gespeichert.\n\nDocker-Images jetzt bauen und FamilyOS starten?"; then
-  clear; cd "$ROOT"; docker compose up -d --build; echo; echo "FamilyOS öffentlich: $APP_URL"; echo "Status: docker compose ps"; echo "Logs:   docker compose logs -f"; echo "Backup: bash scripts/backup.sh"
+  clear; cd "$ROOT"; docker compose up -d --build
+  if ! docker compose exec -T backend python manage.py shell -c 'from family.push import push_configured; raise SystemExit(0 if push_configured() else 1)' >/dev/null; then
+    echo "FEHLER: Backend meldet Web Push nach dem Start nicht als konfiguriert." >&2
+    echo "Prüfe .env und führe bei Bedarf aus: bash scripts/ensure-vapid.sh" >&2
+    exit 1
+  fi
+  echo; echo "FamilyOS öffentlich: $APP_URL"; echo "Web Push: serverseitig vorbereitet"; echo "Status: docker compose ps"; echo "Logs:   docker compose logs -f"; echo "Backup: bash scripts/backup.sh"
   [[ -n "$GOOGLE_OAUTH_CLIENT_ID" || -n "$MICROSOFT_OAUTH_CLIENT_ID" ]] && echo "OAuth Callback: $OAUTH_CALLBACK"
   if [[ "$TLS_MODE" == "internal" ]]; then echo; echo "Internal-CA aktiv. CA exportieren: bash scripts/export-caddy-ca.sh"; elif [[ "$TLS_MODE" == "proxy" ]]; then echo; echo "FamilyOS terminiert selbst kein TLS/SSL."; echo "Reverse-Proxy-Upstream: http://$HTTP_BIND:$HTTP_PORT"; fi
 else
-  if [[ "$TLS_MODE" == "proxy" ]]; then box "Konfiguration gespeichert.\n\nStart später mit:\n  docker compose up -d --build\n\nReverse-Proxy-Upstream: http://$HTTP_BIND:$HTTP_PORT\nÖffentlich: $APP_URL"; else box "Konfiguration gespeichert.\n\nStart später mit:\n  docker compose up -d --build\n\nDanach: $APP_URL"; fi
+  if [[ "$TLS_MODE" == "proxy" ]]; then box "Konfiguration gespeichert.\n\nStart später mit:\n  docker compose up -d --build\n\nReverse-Proxy-Upstream: http://$HTTP_BIND:$HTTP_PORT\nÖffentlich: $APP_URL\n\nWeb Push ist serverseitig vorbereitet."; else box "Konfiguration gespeichert.\n\nStart später mit:\n  docker compose up -d --build\n\nDanach: $APP_URL\n\nWeb Push ist serverseitig vorbereitet."; fi
 fi
