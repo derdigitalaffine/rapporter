@@ -50,6 +50,18 @@ def send_to_subscription(subscription, title, body="", url="/", *, tag="fam-uh-l
     return True
 
 
+def send_user_push(user, title, body="", url="/", *, tag="fam-uh-le"):
+    subscriptions = PushSubscription.objects.filter(active=True, user=user)
+    sent, errors = 0, 0
+    for subscription in subscriptions:
+        try:
+            send_to_subscription(subscription, title, body, url, tag=tag)
+            sent += 1
+        except Exception:
+            errors += 1
+    return {"sent": sent, "errors": errors}
+
+
 def send_family_push(family, title, body="", url="/", *, tag="fam-uh-le"):
     subscriptions = PushSubscription.objects.filter(
         active=True,

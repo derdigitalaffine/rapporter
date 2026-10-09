@@ -6,4 +6,5 @@ class FamilyConfig(AppConfig):
     name = "family"
 
     def ready(self):
+        from . import models_features  # noqa: F401
         from . import signals  # noqa: F401
