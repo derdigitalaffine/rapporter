@@ -1,13 +1,17 @@
-from .models import Family
+from .models import Family, FamilyEvent
 
 
 class ActiveTenantFilterBackend:
-    """Apply tenant lifecycle status to every DRF queryset automatically."""
+    """Apply tenant lifecycle status and public API domain boundaries."""
 
     def filter_queryset(self, request, queryset, view):
         model = queryset.model
         if model is Family:
             return queryset.filter(status=Family.Status.ACTIVE)
+        if model is FamilyEvent:
+            return queryset.filter(family__status=Family.Status.ACTIVE).exclude(
+                type__in=["weather.current", "weather.forecast"]
+            )
         field_names = {field.name for field in model._meta.get_fields()}
         if "family" in field_names:
             return queryset.filter(family__status=Family.Status.ACTIVE)
