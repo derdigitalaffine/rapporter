@@ -63,6 +63,11 @@ export default function GlobalCreate({page,family,role,context={},onCreate,suppr
   function anchorCurrentHistory(){
     const href=`${location.pathname}${location.search}${location.hash}`;
     const base={...(history.state||{}),page};delete base.createPalette;delete base.createFlow;
+    if(!base.appNavigation&&!base.appOverlayBase){
+      const anchored={...base,appOverlayBase:true};
+      history.pushState(anchored,'',href);
+      return {base:anchored,href};
+    }
     history.replaceState(base,'',href);
     return {base,href};
   }
