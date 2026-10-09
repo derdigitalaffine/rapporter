@@ -12,9 +12,9 @@ import {
 
 export const icons = {
   home:faHouse, smartHome:faHouse, tasks:faListCheck, shopping:faCartShopping, history:faClockRotateLeft, more:faEllipsis, plus:faPlus,
-  calendar:faCalendarDays, weather:faCloudSun, waste:faTrashCan, integrations:faPlug, inbox:faInbox, members:faUsers,
+  calendar:faCalendarDays, weather:faCloudSun, waste:faTrashCan, integrations:faPlug, inbox:faInbox, members:faUsers, users:faUsers,
   language:faLanguage, logout:faRightFromBracket, login:faRightToBracket, online:faWifi, offline:faTriangleExclamation, check:faCheck, refresh:faRotate,
-  back:faArrowLeft, next:faChevronRight, close:faXmark, automation:faWandMagicSparkles, bolt:faBolt, frost:faSnowflake,
+  back:faArrowLeft, next:faChevronRight, chevronRight:faChevronRight, close:faXmark, automation:faWandMagicSparkles, bolt:faBolt, frost:faSnowflake,
   rain:faCloudRain, warning:faBell, search:faMagnifyingGlass, filter:faFilter, edit:faPen, delete:faTrash, favorite:faStar,
   store:faStore, lists:faLayerGroup, clock:faClock, user:faUser, info:faCircleInfo, trend:faArrowTrendUp, hot:faFire,
   drag:faGrip, copy:faCopy, share:faShareNodes, link:faLink, settings:faGear, addCircle:faCirclePlus, doneAll:faCheckDouble,
