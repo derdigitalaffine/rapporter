@@ -60,6 +60,6 @@ export default function FeedbackHost(){
           <button className={confirm.danger?'destructive':'primary compact'} onClick={()=>answer(true)}>{confirm.confirmLabel}</button>
         </div>
       </section>
-    </div>
+    </div>}
   </>;
 }
