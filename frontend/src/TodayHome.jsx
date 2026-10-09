@@ -5,6 +5,7 @@ import OnboardingCard from './OnboardingCard';
 import './onboarding.css';
 
 const isWarning=e=>e?.type?.includes('warning');
+const isCurrentWeather=e=>e?.type==='weather.current';
 const isToday=date=>date&&new Date(date).toDateString()===new Date().toDateString();
 const isOverdue=task=>task?.due_at&&!task.completed_at&&new Date(task.due_at)<new Date()&&!isToday(task.due_at);
 const timeValue=e=>e?.starts_at?new Date(e.starts_at).getTime():Number.MAX_SAFE_INTEGER;
@@ -22,6 +23,31 @@ function taskDueLabel(task,t,language){
   if(isOverdue(task))return `${t('due')} · ${formatDateTime(language,date,{dateStyle:'short'})}`;
   if(isToday(task.due_at))return `${t('today')} ${formatDateTime(language,date,{timeStyle:'short'})}`;
   return formatDateTime(language,date,{dateStyle:'medium'});
+}
+
+function weatherCodeLabel(code,language){
+  const de=language?.startsWith('de');
+  if(code===0)return de?'Klar':'Clear';
+  if([1,2].includes(code))return de?'Leicht bewölkt':'Partly cloudy';
+  if(code===3)return de?'Bewölkt':'Cloudy';
+  if([45,48].includes(code))return de?'Nebel':'Fog';
+  if(code>=51&&code<=57)return de?'Nieselregen':'Drizzle';
+  if(code>=61&&code<=67)return de?'Regen':'Rain';
+  if(code>=71&&code<=77)return de?'Schnee':'Snow';
+  if(code>=80&&code<=82)return de?'Regenschauer':'Rain showers';
+  if([85,86].includes(code))return de?'Schneeschauer':'Snow showers';
+  if(code>=95)return de?'Gewitter':'Thunderstorm';
+  return de?'Aktuell':'Current';
+}
+
+function currentWeatherMeta(event,language){
+  const payload=event?.payload||{};
+  const de=language?.startsWith('de');
+  const parts=[];
+  if(payload.weather_code!==null&&payload.weather_code!==undefined)parts.push(weatherCodeLabel(Number(payload.weather_code),language));
+  if(payload.apparent_temperature!==null&&payload.apparent_temperature!==undefined)parts.push(`${de?'Gefühlt':'Feels like'} ${payload.apparent_temperature} °C`);
+  if(payload.wind_speed!==null&&payload.wind_speed!==undefined)parts.push(`${de?'Wind':'Wind'} ${payload.wind_speed} km/h`);
+  return parts.join(' · ');
 }
 
 function routineIsDue(routine){
@@ -57,7 +83,8 @@ export default function TodayHome({data,family,t,onTask,open}){
   const language=i18n.language;
   const openTasks=(data.tasks||[]).filter(x=>!x.completed_at);
   const shopping=(data.shopping_lists||[]).flatMap(x=>x.items||[]).filter(x=>!x.checked);
-  const events=[...(data.events||[])].filter(e=>!e.starts_at||new Date(e.starts_at).getTime()>=Date.now()-3600000).sort((a,b)=>timeValue(a)-timeValue(b));
+  const currentWeather=(data.events||[]).find(isCurrentWeather);
+  const events=[...(data.events||[])].filter(e=>!isCurrentWeather(e)&&(!e.starts_at||new Date(e.starts_at).getTime()>=Date.now()-3600000)).sort((a,b)=>timeValue(a)-timeValue(b));
   const warnings=events.filter(isWarning).slice(0,2);
   const urgentTasks=openTasks.filter(x=>isOverdue(x)||x.priority==='high').slice(0,4);
   const urgentCount=warnings.length+urgentTasks.length;
@@ -81,6 +108,14 @@ export default function TodayHome({data,family,t,onTask,open}){
     </header>
 
     <OnboardingCard family={family} data={data} open={open}/>
+
+    {currentWeather&&<section className="today-section" data-testid="current-weather">
+      <div className="today-section-head"><h2>{t('weather')}</h2><small>{formatEventDate(currentWeather.starts_at,t,language)}</small></div>
+      <div className="today-next-event">
+        <EventIcon event={currentWeather}/>
+        <div className="grow"><strong>{currentWeather.title}</strong><span>{currentWeatherMeta(currentWeather,language)}</span><small>{currentWeather.payload?.provider||currentWeather.type}</small></div>
+      </div>
+    </section>}
 
     {urgentCount>0&&<section className="today-section today-important">
       <div className="today-section-head"><div><small>{t('priority').toUpperCase()}</small><h2>{t('today')} · {t('priority')}</h2></div><span>{urgentCount}</span></div>
