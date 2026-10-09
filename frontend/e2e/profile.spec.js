@@ -33,9 +33,9 @@ test('user updates family name birthday and visibility without changing role',as
  const current=await installProfileMock(page);
  await page.goto('/?page=profile');
  await page.getByLabel('Name in dieser Familie').fill('Alex Familie');
- await page.getByLabel('Tag').fill('29');
- await page.getByLabel('Monat').fill('2');
- await page.getByLabel(/Jahr/).fill('2000');
+ await page.getByRole('spinbutton',{name:'Tag',exact:true}).fill('29');
+ await page.getByRole('spinbutton',{name:'Monat',exact:true}).fill('2');
+ await page.getByRole('spinbutton',{name:/^Jahr/}).fill('2000');
  await page.getByLabel(/Wer darf meinen Geburtstag/).selectOption('full_date');
  await page.getByRole('button',{name:'Speichern'}).click();
  await expect(page.getByText('Profil gespeichert.')).toBeVisible();
