@@ -1,4 +1,5 @@
 import io
+import uuid
 from datetime import date
 from decimal import Decimal
 from unittest.mock import patch
@@ -77,6 +78,61 @@ class ExpenseApiTests(TestCase):
         rows = {row["name"]: Decimal(row["balance"]) for row in balance.data["members"]}
         self.assertEqual(rows["Alex"], Decimal("5.00"))
         self.assertEqual(rows["Sam"], Decimal("-5.00"))
+
+    def test_quick_add_accepts_local_decimal_and_safe_defaults(self):
+        response = self.client.post("/api/expenses/", {
+            "family": str(self.family.id),
+            "title": "",
+            "total_amount": "12,50",
+            "currency": "EUR",
+            "participants": [str(self.alex.id), str(self.sam.id)],
+            "split_type": "equal",
+            "client_request_id": str(uuid.uuid4()),
+        }, format="json")
+        self.assertEqual(response.status_code, 201, response.data)
+        expense = Expense.objects.get(id=response.data["id"])
+        self.assertEqual(expense.total_amount, Decimal("12.50"))
+        self.assertEqual(expense.title, "Ausgabe")
+        self.assertEqual(expense.paid_by, self.alex)
+        self.assertEqual(expense.source, Expense.Source.MANUAL)
+        self.assertEqual(sum(expense.shares.values_list("amount", flat=True)), Decimal("12.50"))
+
+    def test_quick_add_client_request_id_is_idempotent(self):
+        request_id = str(uuid.uuid4())
+        payload = {
+            "family": str(self.family.id),
+            "total_amount": "10.00",
+            "currency": "EUR",
+            "participants": [str(self.alex.id), str(self.sam.id)],
+            "split_type": "equal",
+            "client_request_id": request_id,
+        }
+        first = self.client.post("/api/expenses/", payload, format="json")
+        second = self.client.post("/api/expenses/", payload, format="json")
+        self.assertEqual(first.status_code, 201, first.data)
+        self.assertEqual(second.status_code, 201, second.data)
+        self.assertEqual(first.data["id"], second.data["id"])
+        self.assertEqual(Expense.objects.filter(client_request_id=request_id).count(), 1)
+
+    def test_quick_add_rejects_non_positive_amounts(self):
+        base = {
+            "family": str(self.family.id),
+            "currency": "EUR",
+            "participants": [str(self.alex.id), str(self.sam.id)],
+            "split_type": "equal",
+        }
+        for value in ["0", "-1.00"]:
+            response = self.client.post("/api/expenses/", {**base, "total_amount": value}, format="json")
+            self.assertEqual(response.status_code, 400, response.data)
+
+    def test_quick_add_rejects_participants_from_another_family(self):
+        response = self.client.post("/api/expenses/", {
+            "family": str(self.family.id),
+            "total_amount": "10.00",
+            "participants": [str(self.alex.id), str(self.other_membership.id)],
+            "split_type": "equal",
+        }, format="json")
+        self.assertEqual(response.status_code, 400, response.data)
 
     def test_percentage_split_preserves_original_values_for_editing(self):
         payload = {
