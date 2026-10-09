@@ -1,4 +1,4 @@
-const CACHE='fam-uh-le-v4';
+const CACHE='fam-uh-le-v5';
 const APP_SHELL=['/','/manifest.webmanifest','/brand/icon-192.png','/brand/icon-512.png'];
 
 self.addEventListener('install',event=>{
@@ -21,14 +21,24 @@ function isPrivateRequest(request){
 self.addEventListener('fetch',event=>{
   const request=event.request;
   if(request.method!=='GET'||isPrivateRequest(request))return;
+  const url=new URL(request.url);
+
+  // Vite bundles are content-hashed and should never be pinned by the service worker.
+  // Let the browser HTTP cache handle them so a deployment cannot mix old HTML with old JS.
+  if(url.pathname.startsWith('/assets/'))return;
+
   if(request.mode==='navigate'){
-    event.respondWith(fetch(request).catch(()=>caches.match('/')));
+    event.respondWith(fetch(request).then(response=>{
+      if(response.ok){
+        const copy=response.clone();
+        caches.open(CACHE).then(cache=>cache.put('/',copy));
+      }
+      return response;
+    }).catch(()=>caches.match('/')));
     return;
   }
-  event.respondWith(caches.match(request).then(cached=>cached||fetch(request).then(response=>{
-    if(response.ok){const copy=response.clone();caches.open(CACHE).then(cache=>cache.put(request,copy));}
-    return response;
-  })));
+
+  event.respondWith(fetch(request).catch(()=>caches.match(request)));
 });
 
 self.addEventListener('push',event=>{
