@@ -50,12 +50,12 @@ export default function FeedbackHost(){
       </div>)}
     </div>
     {confirm&&<div className="sheet-backdrop confirm-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)answer(false)}}>
-      <section className="confirm-dialog" role="alertdialog" aria-modal="true" aria-labelledby="confirm-title" aria-describedby="confirm-message">
+      <section className="confirm-dialog" role="alertdialog" aria-modal="true" aria-labelledby="confirm-title" aria-describedby={confirm.message?'confirm-message':undefined}>
         <div className={`confirm-icon ${confirm.danger?'danger':''}`}><Icon name={confirm.danger?'warning':'info'}/></div>
         <h2 id="confirm-title">{confirm.title}</h2>
         {confirm.message&&<p id="confirm-message">{confirm.message}</p>}
         <div className="confirm-actions">
-          <button className="secondary" onClick={()=>answer(false)} autoFocus>{confirm.cancelLabel}</button>
+          <button className="secondary" data-dialog-cancel onClick={()=>answer(false)} autoFocus>{confirm.cancelLabel}</button>
           <button className={confirm.danger?'destructive':'primary compact'} onClick={()=>answer(true)}>{confirm.confirmLabel}</button>
         </div>
       </section>
