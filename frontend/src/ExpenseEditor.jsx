@@ -15,9 +15,10 @@ const localMidday=date=>new Date(`${date}T12:00:00`).toISOString();
 function initialValues(expense,splitType){
  const result={};
  for(const share of expense?.shares||[]){
-  if(splitType==='exact')result[share.member]=String(share.amount);
-  else if(splitType==='percentage'&&Number(expense?.total_amount)>0)result[share.member]=String((Number(share.amount)/Number(expense.total_amount)*100).toFixed(2));
-  else if(splitType==='shares')result[share.member]=String(share.amount);
+  const original=share.split_value;
+  if(splitType==='exact')result[share.member]=String(original??share.amount);
+  else if(splitType==='percentage'&&Number(expense?.total_amount)>0)result[share.member]=original!==null&&original!==undefined?String(original):String((Number(share.amount)/Number(expense.total_amount)*100).toFixed(2));
+  else if(splitType==='shares')result[share.member]=String(original??share.amount);
  }
  return result;
 }
@@ -31,13 +32,13 @@ function formFrom(expense,members){
 function confidenceLabel(value,t){if(value>=.82)return['good',t('expensesUi.confidenceHigh')];if(value>=.55)return['warn',t('expensesUi.confidenceMedium')];return['low',t('expensesUi.confidenceLow')]}
 
 export default function ExpenseEditor({family,expense=null,onClose,onSaved}){
- const {t}=useTranslation();const members=family?.memberships||[];const {membership}=useFamilyPermissions(family);const isExisting=Boolean(expense?.id);const [stage,setStage]=useState(isExisting?'form':'capture');const [draft,setDraft]=useState(expense);const [form,setForm]=useState(()=>formFrom(expense,members));const [busy,setBusy]=useState(false);const [error,setError]=useState('');const [quality,setQuality]=useState(expense?.extraction?.structured_data?.quality_warnings||[]);const cancelled=useRef(false);
+ const {t}=useTranslation();const members=family?.memberships||[];const {membership}=useFamilyPermissions(family);const isExisting=Boolean(expense?.id);const [stage,setStage]=useState(isExisting?'form':'capture');const [draft,setDraft]=useState(expense);const [form,setForm]=useState(()=>formFrom(expense,members));const [busy,setBusy]=useState(false);const [error,setError]=useState('');const [quality,setQuality]=useState(expense?.extraction?.quality_warnings||[]);const cancelled=useRef(false);
  useEffect(()=>()=>{cancelled.current=true},[]);
  useEffect(()=>{if(!form.paid_by&&membership?.id)setForm(value=>({...value,paid_by:String(membership.id)}))},[membership?.id,form.paid_by]);
  const extraction=draft?.extraction;const status=draft?.receipt_status;const confidences=extraction?.field_confidences||{};
  const receiptUrl=draft?.receipt_available?`${import.meta.env.VITE_API_BASE||'/api'}/expenses/${draft.id}/receipt-file/`:'';
  const selectedMembers=useMemo(()=>members.filter(member=>form.participants.includes(String(member.id))),[members,form.participants]);
- function mergeDetected(next){setDraft(next);setQuality(next?.extraction?.structured_data?.quality_warnings||quality);setForm(current=>({...current,title:next?.merchant||next?.title||current.title,amount:next?.total_amount||current.amount,date:next?.extraction?.date||dateOnly(next?.occurred_at)||current.date,currency:next?.currency||current.currency,paid_by:String(next?.paid_by||current.paid_by||'')}))}
+ function mergeDetected(next){setDraft(next);setQuality(next?.extraction?.quality_warnings||quality);setForm(current=>({...current,title:next?.merchant||next?.title||current.title,amount:next?.total_amount||current.amount,date:next?.extraction?.date||dateOnly(next?.occurred_at)||current.date,currency:next?.currency||current.currency,paid_by:String(next?.paid_by||current.paid_by||'')}))}
  async function pollReceipt(id){for(let attempt=0;attempt<36&&!cancelled.current;attempt++){await sleep(attempt<8?500:900);if(cancelled.current)return;try{const next=await api(`/expenses/${id}/`);mergeDetected(next);if(['review','failed','ready'].includes(next.receipt_status)){setStage('form');return}}catch(err){setError(err.message);setStage('form');return}}setStage('form')}
  async function upload(file){if(!file)return;setBusy(true);setError('');setStage('processing');try{const body=new FormData();body.append('family',family.id);body.append('receipt',file);const created=await api('/expenses/receipt/',{method:'POST',body});mergeDetected(created);setQuality(created.quality_warnings||[]);setBusy(false);await pollReceipt(created.id)}catch(err){setError(err.message);setBusy(false);setStage('capture')}}
  function toggleMember(id){setForm(value=>{const key=String(id);const selected=value.participants.includes(key);const participants=selected?value.participants.filter(item=>item!==key):[...value.participants,key];const split_values={...value.split_values};if(selected)delete split_values[key];return{...value,participants,split_values}})}

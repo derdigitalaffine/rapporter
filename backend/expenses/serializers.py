@@ -16,22 +16,21 @@ class ExpenseShareSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ExpenseShare
-        fields = ["id", "member", "member_name", "amount", "split_type"]
+        fields = ["id", "member", "member_name", "amount", "split_type", "split_value"]
 
 
 class ReceiptExtractionSerializer(serializers.ModelSerializer):
-    structured_data = serializers.SerializerMethodField()
+    quality_warnings = serializers.SerializerMethodField()
 
-    def get_structured_data(self, obj):
-        # Candidate OCR lines stay server-side. The client only needs safe quality hints.
-        data = obj.structured_data or {}
-        return {"quality_warnings": data.get("quality_warnings", [])}
+    def get_quality_warnings(self, obj):
+        warnings = (obj.structured_data or {}).get("quality_warnings", [])
+        return [value for value in warnings if value in {"low_resolution", "dark"}]
 
     class Meta:
         model = ReceiptExtraction
         fields = [
             "id", "status", "merchant", "date", "total", "subtotal", "tax", "currency",
-            "structured_data", "field_confidences", "parser_version", "processed_at",
+            "field_confidences", "quality_warnings", "parser_version", "processed_at",
         ]
 
 
@@ -107,9 +106,16 @@ class ExpenseSerializer(serializers.ModelSerializer):
         except ValueError as exc:
             raise serializers.ValidationError({"split": str(exc)}) from exc
         members = {str(member.id): member for member in Membership.objects.filter(family=expense.family, id__in=participants)}
+        normalized_values = {str(key): Decimal(str(value)) for key, value in (split_values or {}).items()}
         expense.shares.all().delete()
         ExpenseShare.objects.bulk_create([
-            ExpenseShare(expense=expense, member=members[member_id], amount=amount, split_type=split_type)
+            ExpenseShare(
+                expense=expense,
+                member=members[member_id],
+                amount=amount,
+                split_type=split_type,
+                split_value=None if split_type == ExpenseShare.SplitType.EQUAL else normalized_values.get(member_id),
+            )
             for member_id, amount in split.items()
         ])
 

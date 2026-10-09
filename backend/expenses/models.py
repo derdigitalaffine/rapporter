@@ -56,6 +56,7 @@ class ExpenseShare(TimestampedModel):
     member = models.ForeignKey(Membership, on_delete=models.PROTECT, related_name="expense_shares")
     amount = models.DecimalField(max_digits=12, decimal_places=2)
     split_type = models.CharField(max_length=16, choices=SplitType.choices, default=SplitType.EQUAL)
+    split_value = models.DecimalField(max_digits=12, decimal_places=4, null=True, blank=True)
 
     class Meta:
         unique_together = ("expense", "member")

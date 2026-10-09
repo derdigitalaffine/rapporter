@@ -78,6 +78,31 @@ class ExpenseApiTests(TestCase):
         self.assertEqual(rows["Alex"], Decimal("5.00"))
         self.assertEqual(rows["Sam"], Decimal("-5.00"))
 
+    def test_percentage_split_preserves_original_values_for_editing(self):
+        payload = {
+            "family": str(self.family.id),
+            "title": "Brunch",
+            "total_amount": "10.00",
+            "currency": "EUR",
+            "paid_by": str(self.alex.id),
+            "participants": [str(self.alex.id), str(self.sam.id)],
+            "split_type": "percentage",
+            "split_values": {str(self.alex.id): "33.33", str(self.sam.id): "66.67"},
+        }
+        response = self.client.post("/api/expenses/", payload, format="json")
+        self.assertEqual(response.status_code, 201, response.data)
+        values = {row["member"]: Decimal(row["split_value"]) for row in response.data["shares"]}
+        self.assertEqual(values[str(self.alex.id)], Decimal("33.3300"))
+        self.assertEqual(values[str(self.sam.id)], Decimal("66.6700"))
+
+        expense_id = response.data["id"]
+        payload["total_amount"] = "12.00"
+        updated = self.client.patch(f"/api/expenses/{expense_id}/", payload, format="json")
+        self.assertEqual(updated.status_code, 200, updated.data)
+        self.assertEqual(sum(Decimal(row["amount"]) for row in updated.data["shares"]), Decimal("12.00"))
+        updated_values = {row["member"]: Decimal(row["split_value"]) for row in updated.data["shares"]}
+        self.assertEqual(updated_values, values)
+
     def test_settlement_changes_balance_without_creating_expense(self):
         expense = Expense.objects.create(family=self.family, title="Taxi", total_amount="20.00", currency="EUR", paid_by=self.alex, created_by=self.user)
         ExpenseShare.objects.create(expense=expense, member=self.alex, amount="10.00")
@@ -90,6 +115,13 @@ class ExpenseApiTests(TestCase):
         summary = balance_summary(self.family, "EUR")
         self.assertTrue(all(row["balance"] == Decimal("0.00") for row in summary.values()))
         self.assertEqual(simplify_balances(summary), [])
+
+        voided = self.client.post(f"/api/expenses/settlements/{response.data['id']}/void/", {}, format="json")
+        self.assertEqual(voided.status_code, 200, voided.data)
+        self.assertIsNotNone(voided.data["voided_at"])
+        summary = balance_summary(self.family, "EUR")
+        self.assertEqual(summary[str(self.alex.id)]["balance"], Decimal("10.00"))
+        self.assertEqual(summary[str(self.sam.id)]["balance"], Decimal("-10.00"))
 
     def test_cross_family_expense_is_not_visible(self):
         foreign = Expense.objects.create(family=self.other_family, title="Privat", total_amount="5.00", paid_by=self.other_membership, created_by=self.outsider)
@@ -113,6 +145,37 @@ class ExpenseApiTests(TestCase):
         extraction = ReceiptExtraction.objects.get(expense=expense)
         self.assertEqual(extraction.status, ReceiptExtraction.Status.QUEUED)
         enqueue.assert_called_once_with(extraction.id)
+
+    def test_receipt_api_exposes_quality_hints_but_not_raw_ocr_evidence(self):
+        expense = Expense.objects.create(
+            family=self.family,
+            title="Beleg",
+            total_amount="7.00",
+            paid_by=self.alex,
+            created_by=self.user,
+            source=Expense.Source.RECEIPT,
+            receipt_status=Expense.ReceiptStatus.REVIEW,
+            receipt_content=b"private-image",
+            receipt_mime="image/jpeg",
+        )
+        ReceiptExtraction.objects.create(
+            expense=expense,
+            status=ReceiptExtraction.Status.REVIEW,
+            merchant="MARKT",
+            total="7.00",
+            raw_text="SECRET OCR TEXT",
+            error="internal detail",
+            structured_data={"quality_warnings": ["dark"], "total_candidates": [{"line": "SECRET OCR TEXT"}]},
+            field_confidences={"merchant": 0.8, "total": 0.9},
+        )
+        response = self.client.get(f"/api/expenses/{expense.id}/")
+        self.assertEqual(response.status_code, 200, response.data)
+        extraction = response.data["extraction"]
+        self.assertEqual(extraction["quality_warnings"], ["dark"])
+        self.assertNotIn("structured_data", extraction)
+        self.assertNotIn("raw_text", extraction)
+        self.assertNotIn("error", extraction)
+        self.assertNotIn("SECRET OCR TEXT", str(response.data))
 
     def test_receipt_file_is_tenant_scoped(self):
         foreign = Expense.objects.create(family=self.other_family, title="Privat", total_amount="5.00", paid_by=self.other_membership, created_by=self.outsider, receipt_content=b"secret", receipt_mime="image/jpeg")
