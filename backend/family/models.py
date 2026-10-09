@@ -14,10 +14,15 @@ class TimestampedModel(models.Model):
 
 
 class Family(TimestampedModel):
+    class Status(models.TextChoices):
+        ACTIVE = "active", "Active"
+        SUSPENDED = "suspended", "Suspended"
+
     name = models.CharField(max_length=120)
     slug = models.SlugField(max_length=120, unique=True)
     locale = models.CharField(max_length=8, default="de")
     timezone = models.CharField(max_length=64, default="Europe/Berlin")
+    status = models.CharField(max_length=16, choices=Status.choices, default=Status.ACTIVE, db_index=True)
 
     def __str__(self):
         return self.name
@@ -61,7 +66,7 @@ class FamilyInvitation(TimestampedModel):
     @property
     def is_active(self):
         from django.utils import timezone
-        return not self.accepted_at and not self.revoked_at and self.expires_at > timezone.now()
+        return self.family.status == Family.Status.ACTIVE and not self.accepted_at and not self.revoked_at and self.expires_at > timezone.now()
 
 
 class TaskList(TimestampedModel):

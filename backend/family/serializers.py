@@ -7,7 +7,7 @@ def _validate_family_access(serializer, attrs):
     family = attrs.get("family") or (getattr(serializer.instance, "family", None) if serializer.instance else None)
     request = serializer.context.get("request")
     if family and request and request.user.is_authenticated:
-        if not Membership.objects.filter(family=family, user=request.user).exists():
+        if family.status != Family.Status.ACTIVE or not Membership.objects.filter(family=family, user=request.user).exists():
             raise PermissionDenied("Familie ist für diesen Benutzer nicht verfügbar.")
     return family
 
@@ -34,7 +34,8 @@ class FamilySerializer(serializers.ModelSerializer):
     memberships = MembershipSerializer(many=True, read_only=True)
     class Meta:
         model = Family
-        fields = ["id", "name", "slug", "locale", "timezone", "memberships"]
+        fields = ["id", "name", "slug", "locale", "timezone", "status", "memberships"]
+        read_only_fields = ["status"]
 
 
 class TaskListSerializer(serializers.ModelSerializer):
@@ -78,7 +79,7 @@ class ShoppingItemSerializer(serializers.ModelSerializer):
         shopping_list = attrs.get("shopping_list") or (self.instance.shopping_list if self.instance else None)
         request = self.context.get("request")
         if shopping_list and request and request.user.is_authenticated:
-            if not Membership.objects.filter(family=shopping_list.family, user=request.user).exists():
+            if shopping_list.family.status != Family.Status.ACTIVE or not Membership.objects.filter(family=shopping_list.family, user=request.user).exists():
                 raise PermissionDenied("Einkaufsliste gehört nicht zu deiner Familie.")
         return attrs
 
