@@ -6,6 +6,7 @@ const listeners=new Set();
 const emit=payload=>listeners.forEach(fn=>fn(payload));
 
 export function toast(message,{type='info',actionLabel='',onAction=null,duration=6000}={}){
+  if(message==='unauthorized')return null;
   const id=nextId++;
   emit({kind:'toast',id,message,type,actionLabel,onAction,duration});
   return id;
