@@ -3,7 +3,13 @@
   "private": true,
   "version": "0.2.0",
   "type": "module",
-  "scripts": {"dev": "vite --host 0.0.0.0", "i18n:check": "node scripts/check-i18n.mjs", "build": "npm run i18n:check && vite build", "preview": "vite preview --host 0.0.0.0"},
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "i18n:check": "node scripts/check-i18n.mjs",
+    "build": "npm run i18n:check && vite build",
+    "preview": "vite preview --host 0.0.0.0",
+    "e2e": "playwright test"
+  },
   "dependencies": {
     "@vitejs/plugin-react": "latest",
     "vite": "latest",
@@ -17,5 +23,8 @@
     "i18next": "latest",
     "react-i18next": "latest"
   },
-  "devDependencies": {}
+  "devDependencies": {
+    "@axe-core/playwright": "latest",
+    "@playwright/test": "latest"
+  }
 }
