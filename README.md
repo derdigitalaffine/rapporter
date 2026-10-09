@@ -14,13 +14,20 @@ fam-uh-le ist ein self-hosted, mobile-first **Family OS** als installierbare PWA
 
 Alternativ funktioniert weiterhin `bash scripts/setup.sh`.
 
-Der `dialog`/`whiptail`-Wizard erzeugt die `.env`, sichert vorhandene Konfigurationen und kann den Stack direkt starten. Er führt durch TLS, Domain/IP, HTTP-/HTTPS-Port, Zeitzone, Sprache, Familie, Admin, PostgreSQL, Scheduler-Intervall sowie optional Google-/Microsoft-Kalender-OAuth und Web Push.
+Der `dialog`/`whiptail`-Wizard erzeugt die `.env`, sichert vorhandene Konfigurationen und kann den Stack direkt starten. Er führt durch Betriebsmodus, Domain/IP, Ports, Zeitzone, Sprache, Familie, Admin, PostgreSQL, Scheduler-Intervall sowie optional Google-/Microsoft-Kalender-OAuth und Web Push.
 
-Standardmäßig läuft Caddy mit internem HTTPS (`tls internal`). TLS später umschalten:
+Es gibt drei Betriebsmodi:
+
+- `internal`: internes HTTPS mit Caddys lokaler CA (`tls internal`)
+- `public`: öffentliches HTTPS direkt in Caddy via ACME / Let's Encrypt
+- `proxy`: **kein TLS/SSL im fam-uh-le-Stack**; Caddy lauscht nur per HTTP hinter einem eigenen Reverse Proxy, der HTTPS terminiert
+
+Modus später umschalten:
 
 ```bash
 ./scripts/tls-mode.sh public
 ./scripts/tls-mode.sh internal
+./scripts/tls-mode.sh proxy
 ```
 
 Lokale Caddy-CA exportieren:
@@ -29,7 +36,42 @@ Lokale Caddy-CA exportieren:
 ./scripts/export-caddy-ca.sh
 ```
 
-> Für öffentliches Let's Encrypt müssen normalerweise Port 80 und/oder 443 von außen erreichbar sein. Benutzerdefinierte Host-Ports eignen sich für LAN/internal TLS oder einen vorgeschalteten Router/Reverse-Proxy.
+> Für öffentliches Let's Encrypt müssen normalerweise Port 80 und/oder 443 von außen erreichbar sein. Im `proxy`-Modus veröffentlicht fam-uh-le dagegen standardmäßig nur `127.0.0.1:8080` per HTTP und belegt keinen Host-Port 443.
+
+### Hinter einem eigenen Reverse Proxy
+
+Wähle im Setup `proxy`, wenn Nginx, Traefik, HAProxy, Caddy, Nginx Proxy Manager oder ein anderer vorgeschalteter Proxy bereits Zertifikate/TLS verwaltet. Der Wizard erzeugt dann u. a.:
+
+```dotenv
+TLS_MODE=proxy
+COMPOSE_FILE=docker-compose.yml
+CADDYFILE=Caddyfile.proxy
+DOMAIN=fam-uh-le.example.com
+PUBLIC_SCHEME=https
+PUBLIC_HOST=fam-uh-le.example.com
+HTTP_BIND=127.0.0.1
+HTTP_PORT=8080
+```
+
+Der vorgeschaltete Proxy zeigt auf:
+
+```text
+http://127.0.0.1:8080
+```
+
+TLS endet ausschließlich am vorgeschalteten Proxy. `Caddyfile.proxy` setzt für Django den öffentlichen Host und `X-Forwarded-Proto: https`, damit Secure-Cookies, CSRF und OAuth-Callback-URLs trotz des internen HTTP-Hops korrekt bleiben.
+
+Beispiel für Nginx auf demselben Host:
+
+```nginx
+location / {
+    proxy_pass http://127.0.0.1:8080;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+```
+
+Läuft der Reverse Proxy auf einem anderen Host oder in einer getrennten Container-Umgebung, setze `HTTP_BIND` auf eine von ihm erreichbare IPv4-Adresse (ggf. `0.0.0.0`) und schütze diesen HTTP-Upstream per Firewall bzw. privatem Netz vor direktem Internetzugriff. Der öffentliche Zugriff muss weiterhin HTTPS verwenden, weil die Anwendung Secure-Cookies und Web-Push verwendet.
 
 ## Kein Django-Admin im Alltag
 
@@ -162,6 +204,8 @@ Web Push ist im Setup optional. Der Wizard kann VAPID-Schlüssel automatisch erz
 - `.env` erhält im Setup Dateirechte `600`
 - kein Werbetracking und keine Datenweitergabe im Self-Hosted-Core
 
+Im `proxy`-Modus ist der interne Hop bewusst unverschlüsseltes HTTP. Deshalb lauscht er standardmäßig nur auf `127.0.0.1`; bei einer abweichenden Bind-Adresse muss der Upstream durch Netzwerkregeln geschützt werden. Öffentlich bleibt HTTPS erforderlich.
+
 ## Backup & Restore
 
 Datenbankbackup im PostgreSQL-Custom-Format:
@@ -185,6 +229,9 @@ Für automatisierte Wiederherstellung kann nach bewusster Prüfung `--yes` als z
 ```text
 Browser / installierte PWA
         │
+        ▼
+[optional: eigener Reverse Proxy + TLS]
+        │ HTTP im proxy-Modus
         ▼
       Caddy ─────────────── React Static Build
         │
@@ -218,7 +265,9 @@ cp .env.example .env
 docker compose up -d --build
 ```
 
-Compose enthält PostgreSQL, Django, Integrations-/Regel-Scheduler und Caddy. `HTTP_PORT` und `HTTPS_PORT` legen die veröffentlichten Host-Ports fest; intern bleiben 80/443 unverändert.
+Compose enthält PostgreSQL, Django, Integrations-/Regel-Scheduler und Caddy. Im normalen `internal`/`public`-Betrieb wird `docker-compose.override.yml` automatisch zusätzlich geladen und veröffentlicht den HTTPS-Port. Der Setup-Wizard setzt dafür `COMPOSE_FILE=docker-compose.yml:docker-compose.override.yml`.
+
+Im `proxy`-Betrieb setzt der Wizard dagegen `COMPOSE_FILE=docker-compose.yml`; damit wird nur der HTTP-Port aus dem Basis-Compose veröffentlicht und Host-Port 443 bleibt vollständig frei für den eigenen Reverse Proxy. `HTTP_BIND` und `HTTP_PORT` bestimmen diesen internen Upstream.
 
 ## CI
 
@@ -229,8 +278,8 @@ GitHub Actions prüft:
 - Django System Check
 - Regressionstests für Familie, Memory, Automationen, Cookie-Auth, Einladungen, Push und Integrations-Backoff
 - Setup-/TLS-Shell-Syntax
-- öffentliche und interne Caddy-Konfiguration
-- `docker compose config`
+- öffentliche, interne und Reverse-Proxy-Caddy-Konfiguration
+- Compose-Konfiguration mit TLS **und** im reinen HTTP-Reverse-Proxy-Modus
 - vollständigen Docker-Build
 
 ## Repository
@@ -240,12 +289,14 @@ backend/                     Django REST API, Regeln, Integrationen, Tests
 frontend/                    React PWA, FA7 UI, Brand/PWA Assets
 docker/                      Container Images
 scripts/setup.sh             interaktiver Setup-Wizard
-scripts/tls-mode.sh          TLS-Modus umschalten
+scripts/tls-mode.sh          Betriebsmodus internal/public/proxy umschalten
 scripts/export-caddy-ca.sh   lokale Root-CA exportieren
 scripts/backup.sh            PostgreSQL-Backup
 scripts/restore.sh           PostgreSQL-Restore
 Caddyfile                    öffentliches ACME/Let's Encrypt
 Caddyfile.selfsigned         internes TLS
-docker-compose.yml           Produktionsstack inkl. Scheduler
+Caddyfile.proxy              reines HTTP hinter eigenem Reverse Proxy
+docker-compose.yml           Basisstack mit HTTP-Port
+docker-compose.override.yml  HTTPS-Port-Mapping für internal/public
 .github/workflows/           CI
 ```
