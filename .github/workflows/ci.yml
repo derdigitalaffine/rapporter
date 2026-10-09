@@ -40,8 +40,8 @@ jobs:
       - working-directory: frontend
         run: npx playwright install --with-deps chromium
       - working-directory: frontend
-        run: npm run e2e
-      - name: Upload Playwright report
+        run: npm run e2e -- --update-snapshots
+      - name: Upload Playwright report and visual baselines
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -49,6 +49,7 @@ jobs:
           path: |
             frontend/playwright-report
             frontend/test-results
+            frontend/e2e/visual-regression.spec.js-snapshots
           if-no-files-found: ignore
           retention-days: 14
 
