@@ -8,3 +8,5 @@ whitenoise>=6.8,<7
 icalendar>=6,<7
 requests>=2.32,<3
 pywebpush>=2,<3
+Pillow>=11,<12
+pytesseract>=0.3.13,<0.4

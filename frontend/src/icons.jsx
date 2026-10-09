@@ -6,7 +6,8 @@ import {
   faMagnifyingGlass, faFilter, faPen, faTrash, faStar, faStore, faLayerGroup, faClock, faUser, faCircleInfo,
   faArrowTrendUp, faFire, faGrip, faCopy, faShareNodes, faLink, faGear, faCirclePlus, faCheckDouble, faBarsProgress,
   faLocationDot, faTags, faGaugeHigh, faRobot, faEnvelope, faArrowDownShortWide, faBus, faGraduationCap, faLightbulb,
-  faDownload, faPlay, faHeart, faBoxArchive, faSliders, faRoute
+  faDownload, faPlay, faHeart, faBoxArchive, faSliders, faRoute, faReceipt, faCamera, faUpload, faEuroSign, faLock,
+  faMoneyBillTransfer
 } from '@fortawesome/free-solid-svg-icons';
 
 export const icons = {
@@ -19,7 +20,8 @@ export const icons = {
   drag:faGrip, copy:faCopy, share:faShareNodes, link:faLink, settings:faGear, addCircle:faCirclePlus, doneAll:faCheckDouble,
   progress:faBarsProgress, location:faLocationDot, tags:faTags, priority:faGaugeHigh, robot:faRobot, email:faEnvelope,
   sort:faArrowDownShortWide, transit:faBus, school:faGraduationCap, light:faLightbulb, install:faDownload, play:faPlay,
-  heart:faHeart, archive:faBoxArchive, sliders:faSliders, route:faRoute,
+  heart:faHeart, archive:faBoxArchive, sliders:faSliders, route:faRoute, receipt:faReceipt, camera:faCamera, upload:faUpload,
+  euro:faEuroSign, lock:faLock, settle:faMoneyBillTransfer,
 };
 
 export function Icon({name, size=18, className='', title}){
