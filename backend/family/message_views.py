@@ -15,7 +15,7 @@ class FamilyMessageViewSet(viewsets.ModelViewSet):
     serializer_class=InboxItemSerializer;permission_classes=[permissions.IsAuthenticated]
     def get_queryset(self):
         family_ids=Membership.objects.filter(user=self.request.user).values_list("family_id",flat=True);owner_family_ids=Membership.objects.filter(user=self.request.user,role=Membership.Role.OWNER).values_list("family_id",flat=True)
-        visible=(~Q(source="manual_message")|Q(audience=InboxItem.Audience.FAMILY)|Q(created_by=self.request.user)|Q(receipts__membership__user=self.request.user));not_withdrawn=Q(withdrawn_at__isnull=True)|Q(created_by=self.request.user)|Q(family_id__in=owner_family_ids)
+        visible=(~Q(source="manual_message")|Q(created_by=self.request.user)|Q(receipts__membership__user=self.request.user)|Q(family_id__in=owner_family_ids));not_withdrawn=Q(withdrawn_at__isnull=True)|Q(created_by=self.request.user)|Q(family_id__in=owner_family_ids)
         return InboxItem.objects.filter(family_id__in=family_ids).filter(visible).filter(not_withdrawn).select_related("family","created_by").prefetch_related("receipts__membership__user").distinct().order_by("-important","-created_at")
     def perform_create(self,serializer):
         family=serializer.validated_data["family"];membership=Membership.objects.filter(family=family,user=self.request.user).first()
