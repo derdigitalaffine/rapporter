@@ -1,3 +1,4 @@
+from django.db import transaction
 from django.db.models.signals import post_delete, post_save, pre_delete, pre_save
 from django.dispatch import receiver
 
@@ -99,5 +100,12 @@ def membership_before_delete(sender,instance,**kwargs):
 @receiver(post_save,sender=InboxItem)
 def inbox_after_save(sender,instance,created,**kwargs):
     actor=current_actor()
-    # Manual family messages resolve their explicit recipient set in FamilyMessageViewSet.
     if created and actor and instance.source not in {"automation","manual_message"} and not _system_request():notify_domain_event(instance.family,"inbox.created",actor=actor,context={"item":instance.title,"inbox_id":instance.id})
+
+# Private image cleanup also runs for ORM/admin family cascades.
+from .board_models import BoardImage
+from .private_images import remove_image
+
+@receiver(post_delete, sender=BoardImage)
+def cleanup_board_image(sender, instance, **kwargs):
+    transaction.on_commit(lambda: remove_image(instance.key))
