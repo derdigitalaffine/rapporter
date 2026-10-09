@@ -3,7 +3,7 @@ export const nativeBarcodeFormats={
  qr_code:'qrcode',data_matrix:'datamatrix',pdf417:'pdf417',aztec:'aztec',
 };
 
-export const requiredOneDimensionalNativeFormats=['ean_13','ean_8','code_128'];
+export const requiredOneDimensionalNativeFormats=['ean_13','ean_8','upc_a','upc_e','code_128','code_39','itf'];
 
 export function nativeScannerPlan(supported=[]){
  const accepted=supported.filter(item=>nativeBarcodeFormats[item]);
