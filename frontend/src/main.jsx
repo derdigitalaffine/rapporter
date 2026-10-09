@@ -8,9 +8,11 @@ import './smart.css';
 import './smart-extra.css';
 import './design-system.css';
 import './feedback.css';
+import './accessibility.css';
 import App from './App';
 import InviteFlow from './InviteFlow';
 import FeedbackHost from './feedback';
+import AccessibilityManager from './AccessibilityManager';
 
 class BootErrorBoundary extends React.Component {
   constructor(props){super(props);this.state={error:null}}
@@ -24,7 +26,7 @@ class BootErrorBoundary extends React.Component {
 
 const inviteMatch=window.location.pathname.match(/^\/invite\/([^/]+)\/?$/);
 const root=document.getElementById('root');
-ReactDOM.createRoot(root).render(<React.StrictMode><BootErrorBoundary><FeedbackHost/>{inviteMatch?<InviteFlow token={inviteMatch[1]}/>:<App/>}</BootErrorBoundary></React.StrictMode>);
+ReactDOM.createRoot(root).render(<React.StrictMode><BootErrorBoundary><AccessibilityManager/><FeedbackHost/>{inviteMatch?<InviteFlow token={inviteMatch[1]}/>:<App/>}</BootErrorBoundary></React.StrictMode>);
 
 if('serviceWorker' in navigator){
   window.addEventListener('load',()=>{
