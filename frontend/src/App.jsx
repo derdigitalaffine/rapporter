@@ -31,7 +31,7 @@ export default function App(){
  async function routineDone(x){try{await api(`/routines/${x.id}/done/`,{method:'POST',body:'{}'});load();toast(`${x.name}: ${t('todayLower')}`,{type:'success'})}catch(e){toast(e.message||t('saveFailed'),{type:'error'})}}
  const detail=['calendar','inbox','integrations','members','automations','notifications'].includes(active);
  const pages={
-  home:<TodayHome data={data} t={t} onTask={toggleTask} open={setActive}/>,
+  home:<TodayHome data={data} family={family} t={t} onTask={toggleTask} open={setActive}/>,
   tasks:<SmartTasks family={family} onChanged={load}/>,
   shopping:<SmartShopping family={family} onChanged={load}/>,
   routines:<RoutinesPage routines={data.routines||[]} family={family} t={t} done={routineDone} onChanged={load}/>,
