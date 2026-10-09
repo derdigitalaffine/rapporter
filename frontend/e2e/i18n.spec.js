@@ -17,7 +17,7 @@ test('DE to EN also changes calendar and integration locale-sensitive copy',asyn
  await boot(page);
  await switchToEnglish(page);
 
- await page.getByRole('button',{name:'Calendar',exact:true}).click();
+ await page.locator('.bottom-nav').getByRole('button',{name:'Calendar',exact:true}).click();
  await expect(page.getByText('Family agenda',{exact:true})).toBeVisible();
  await expect(page.getByRole('button',{name:/Show past/})).toBeVisible();
  await expect(page.getByText('Vergangene anzeigen',{exact:true})).toHaveCount(0);
