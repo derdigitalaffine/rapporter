@@ -11,7 +11,7 @@ function formatEventDate(value){
   if(isToday(value))return `Heute · ${new Intl.DateTimeFormat(undefined,{timeStyle:'short'}).format(date)}`;
   const tomorrow=new Date();tomorrow.setDate(tomorrow.getDate()+1);
   if(date.toDateString()===tomorrow.toDateString())return `Morgen · ${new Intl.DateTimeFormat(undefined,{timeStyle:'short'}).format(date)}`;
-  return new Intl.DateTimeFormat(undefined,{weekday:'short',dateStyle:'medium',timeStyle:'short'}).format(date);
+  return new Intl.DateTimeFormat(undefined,{weekday:'short',day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}).format(date);
 }
 
 function taskDueLabel(task){
