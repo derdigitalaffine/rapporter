@@ -41,6 +41,14 @@ jobs:
         run: npx playwright install --with-deps chromium
       - working-directory: frontend
         run: npm run e2e
+      - name: Upload visual regression diffs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-regression-diffs-${{ github.run_attempt }}
+          path: frontend/test-results/**/*.png
+          if-no-files-found: ignore
+          retention-days: 14
       - name: Upload Playwright report
         if: always()
         uses: actions/upload-artifact@v4
