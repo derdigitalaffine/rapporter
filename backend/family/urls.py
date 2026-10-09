@@ -3,6 +3,7 @@ from rest_framework.routers import DefaultRouter
 from .views import FamilyViewSet, TaskListViewSet, TaskViewSet, ShoppingListViewSet, ShoppingItemViewSet, RoutineViewSet, IntegrationSourceViewSet, AutomationRuleViewSet, FamilyEventViewSet, InboxItemViewSet, dashboard, health
 from .invitation_views import FamilyInvitationViewSet, invitation_info, invitation_register, invitation_accept
 from .membership_views import MembershipViewSet
+from .push_views import push_config, push_subscribe, push_test, push_unsubscribe
 from .smart_views import (
     integration_oauth_callback,
     integration_oauth_start,
@@ -36,6 +37,10 @@ urlpatterns = [
     path("invite/<str:token>/", invitation_info),
     path("invite/<str:token>/register/", invitation_register),
     path("invite/<str:token>/accept/", invitation_accept),
+    path("push/config/", push_config),
+    path("push/subscribe/", push_subscribe),
+    path("push/unsubscribe/", push_unsubscribe),
+    path("push/test/", push_test),
     path("smart/tasks/quick-add/", task_quick_add),
     path("smart/shopping/quick-add/", shopping_quick_add),
     path("smart/shopping/<uuid:item_id>/favorite/", shopping_toggle_favorite),
