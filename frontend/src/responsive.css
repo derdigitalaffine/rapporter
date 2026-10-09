@@ -1,0 +1,75 @@
+/* Responsive layout layer: mobile-first, then tablet/desktop/wide. */
+
+:root{--content-reading:680px;--content-wide:1180px;--side-nav-width:132px}
+html,body,#root{max-width:100%;overflow-x:hidden}
+.content{min-width:0}
+.quick-sheet,.integration-sheet,.confirm-dialog{max-width:min(680px,100vw)}
+.quick-form,.automation-builder .builder-fields{min-width:0}
+.quick-form>label,.builder-fields>label,.page-intro{max-width:var(--content-reading)}
+
+@media (min-width:760px){
+  .app-shell{max-width:var(--content-wide);padding-left:calc(var(--side-nav-width) + 32px);padding-right:28px}
+  .topbar{min-height:72px}
+  .bottom-nav{left:max(20px,calc(50% - var(--content-wide)/2));top:92px;width:var(--side-nav-width);gap:10px}
+  .bottom-nav button{height:62px;display:grid;grid-template-columns:30px 1fr;justify-items:start;align-items:center;gap:10px;padding:0 14px;font-size:12px;text-align:left}
+  .bottom-nav button svg{justify-self:center}
+  .bottom-nav button span{display:block;white-space:nowrap}
+  .bottom-nav button.active{background:var(--green-soft);border-color:color-mix(in srgb,var(--green) 25%,var(--line));color:var(--green)}
+  .bottom-nav i{top:7px;right:8px}
+  .content{padding-top:20px}
+  .smart-page,.today-page{max-width:none}
+  .smart-head,.page-head{align-items:flex-start}
+  .quick-sheet{width:min(680px,calc(100vw - 48px));border-radius:24px 24px 0 0}
+  .form-grid,.builder-field-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .integration-group>.stack,.automation-template-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+  .integration-group>.stack .card{margin:0}
+}
+
+@media (min-width:960px){
+  :root{--side-nav-width:148px}
+  .app-shell{max-width:1320px;padding-left:calc(var(--side-nav-width) + 40px);padding-right:40px}
+  .bottom-nav{left:max(24px,calc(50% - 660px));width:var(--side-nav-width)}
+  .today-main-grid{grid-template-columns:minmax(0,1.15fr) minmax(320px,.85fr);align-items:start}
+  .today-important-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .today-routines{grid-template-columns:repeat(4,minmax(0,1fr))}
+  .shopping-groups{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;align-items:start}
+  .shopping-group{min-width:0}
+  .automation-template-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .automation-grid .rule-row{grid-template-columns:auto minmax(0,1fr) auto}
+  .calendar-agenda,.timeline{max-width:920px}
+  .members-layout,.notification-layout{max-width:900px}
+}
+
+@media (min-width:1180px){
+  .app-shell{max-width:1480px;padding-left:190px;padding-right:52px}
+  .bottom-nav{left:max(30px,calc(50% - 740px));width:154px}
+  .content{max-width:1240px}
+  .today-page{display:block}
+  .today-main-grid{grid-template-columns:minmax(0,1.2fr) minmax(360px,.8fr);gap:22px}
+  .smart-page:not(.shopping-page) .smart-card-list{max-width:980px}
+  .shopping-page .shopping-groups{grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}
+  .integration-group>.stack{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .automation-template-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .guided-builder{max-width:960px}
+  .builder-choice-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .quick-sheet{border-radius:24px;bottom:24px;max-height:calc(100dvh - 48px)}
+  .sheet-backdrop{align-items:center;padding:24px}
+}
+
+@media (min-width:1440px){
+  .app-shell{max-width:1560px}
+  .content{max-width:1320px}
+  .today-important-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .integration-group>.stack{grid-template-columns:repeat(3,minmax(0,1fr))}
+}
+
+@media (orientation:landscape) and (max-height:620px){
+  .topbar{position:relative}
+  .quick-sheet{max-height:calc(100dvh - 24px);overflow:auto}
+}
+
+@supports(padding:max(0px)){
+  .app-shell{padding-left:env(safe-area-inset-left);padding-right:env(safe-area-inset-right)}
+  @media(min-width:760px){.app-shell{padding-left:max(calc(var(--side-nav-width) + 32px),env(safe-area-inset-left));padding-right:max(28px,env(safe-area-inset-right))}}
+  @media(min-width:1180px){.app-shell{padding-left:max(190px,env(safe-area-inset-left));padding-right:max(52px,env(safe-area-inset-right))}}
+}
