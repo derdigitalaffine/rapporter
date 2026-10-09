@@ -12,6 +12,19 @@ export async function queueShoppingPatch(familyId,targetId,payload){
   const mutation={id:uuid(),familyId:String(familyId),type:'patch',targetId:String(targetId),payload,createdAt:Date.now(),attempts:0,status:'pending'};
   await putShoppingMutation(mutation);return mutation;
 }
+export async function queueShoppingDelete(familyId,targetId){
+  const target=String(targetId);
+  const rows=await listShoppingMutations(familyId);
+  if(target.startsWith('offline-')){
+    const pendingAdd=rows.find(row=>row.type==='add'&&String(row.localId)===target);
+    if(pendingAdd){
+      await Promise.all(rows.filter(row=>row.id===pendingAdd.id||String(row.targetId)===target).map(row=>deleteShoppingMutation(row.id)));
+      return {cancelled:true,targetId:target};
+    }
+  }
+  const mutation={id:uuid(),familyId:String(familyId),type:'delete',targetId:target,createdAt:Date.now(),attempts:0,status:'pending'};
+  await putShoppingMutation(mutation);return mutation;
+}
 
 export function applyShoppingMutations(lists,mutations){
   const next=structuredClone(lists||[]);
@@ -25,6 +38,9 @@ export function applyShoppingMutations(lists,mutations){
     }
     if(mutation.type==='patch'){
       const found=findItem(mutation.targetId);if(found){Object.assign(found.item,mutation.payload,{_offlinePending:true})}
+    }
+    if(mutation.type==='delete'){
+      const found=findItem(mutation.targetId);if(found){found.list.items=found.list.items.filter(row=>String(row.id)!==String(mutation.targetId))}
     }
   }
   for(const list of next){list.open_count=(list.items||[]).filter(item=>!item.checked).length;list.checked_count=(list.items||[]).filter(item=>item.checked).length}
@@ -52,6 +68,10 @@ export async function flushShoppingMutations(familyId){
         const target=resolved.get(mutation.targetId)||mutation.targetId;
         if(String(target).startsWith('offline-'))throw new Error('offline_target_unresolved');
         await api(`/shopping-items/${target}/`,{method:'PATCH',body:JSON.stringify(mutation.payload)});synced++;
+      }else if(mutation.type==='delete'){
+        const target=resolved.get(mutation.targetId)||mutation.targetId;
+        if(String(target).startsWith('offline-'))throw new Error('offline_target_unresolved');
+        await api(`/shopping-items/${target}/`,{method:'DELETE'});synced++;
       }
     }
     await Promise.all(all.map(mutation=>deleteShoppingMutation(mutation.id)));
