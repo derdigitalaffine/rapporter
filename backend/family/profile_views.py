@@ -5,6 +5,7 @@ from datetime import date
 from pathlib import Path
 
 from django.conf import settings
+from django.db import transaction
 from django.http import FileResponse, Http404
 from PIL import Image, ImageOps, UnidentifiedImageError
 from rest_framework import permissions, status
@@ -89,19 +90,19 @@ def profile_detail(request):
             month, day, year = _validated_birthday(profile, request.data)
         except (TypeError, ValueError) as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
-        profile.birth_month = month
-        profile.birth_day = day
-        profile.birth_year = year
-        profile.save(update_fields=["birth_month", "birth_day", "birth_year", "updated_at"])
-        if membership:
-            if "display_name" in request.data:
-                membership.display_name = str(request.data.get("display_name") or "").strip()[:80]
-            if "birthday_visibility" in request.data:
-                visibility = request.data.get("birthday_visibility")
-                if visibility not in Membership.BirthdayVisibility.values:
-                    return Response({"detail": "Ungültige Geburtstagssichtbarkeit."}, status=status.HTTP_400_BAD_REQUEST)
+        visibility = request.data.get("birthday_visibility", membership.birthday_visibility if membership else Membership.BirthdayVisibility.HIDDEN)
+        if visibility not in Membership.BirthdayVisibility.values:
+            return Response({"detail": "Ungültige Geburtstagssichtbarkeit."}, status=status.HTTP_400_BAD_REQUEST)
+        with transaction.atomic():
+            profile.birth_month = month
+            profile.birth_day = day
+            profile.birth_year = year
+            profile.save(update_fields=["birth_month", "birth_day", "birth_year", "updated_at"])
+            if membership:
+                if "display_name" in request.data:
+                    membership.display_name = str(request.data.get("display_name") or "").strip()[:80]
                 membership.birthday_visibility = visibility
-            membership.save(update_fields=["display_name", "birthday_visibility", "updated_at"])
+                membership.save(update_fields=["display_name", "birthday_visibility", "updated_at"])
     return Response(_payload(profile, membership))
 
 
