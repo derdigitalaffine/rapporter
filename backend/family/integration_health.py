@@ -3,6 +3,16 @@ from datetime import timedelta
 from django.utils import timezone
 
 from .extended_integrations import sync_source as raw_sync_source
+from .weather_integrations import sync_dwd, sync_weather
+
+
+def _sync_source(source):
+    adapter = (source.config or {}).get("adapter")
+    if adapter == "dwd":
+        return sync_dwd(source)
+    if adapter == "weather":
+        return sync_weather(source)
+    return raw_sync_source(source)
 
 
 def sync_with_health(source, *, force=False):
@@ -16,7 +26,7 @@ def sync_with_health(source, *, force=False):
     source.last_sync_status = "running"
     source.save(update_fields=["last_attempt_at", "last_sync_status", "updated_at"])
     try:
-        count = raw_sync_source(source)
+        count = _sync_source(source)
     except Exception as exc:
         source.refresh_from_db()
         failures = source.consecutive_failures + 1
