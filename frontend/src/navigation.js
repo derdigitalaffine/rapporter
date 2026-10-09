@@ -1,4 +1,4 @@
-export const APP_PAGES=new Set(['home','tasks','shopping','routines','more','calendar','inbox','integrations','members','automations','notifications','loyalty']);
+export const APP_PAGES=new Set(['home','tasks','shopping','routines','more','calendar','weather','inbox','integrations','members','automations','notifications','loyalty']);
 
 export function pageFromLocation(search=location.search){
  const params=new URLSearchParams(search);
