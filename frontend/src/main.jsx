@@ -17,6 +17,7 @@ import App from './App';
 import InviteFlow from './InviteFlow';
 import FeedbackHost from './feedback';
 import AccessibilityManager from './AccessibilityManager';
+import DeepLinkTarget from './DeepLinkTarget';
 
 class BootErrorBoundary extends React.Component {
   constructor(props){super(props);this.state={error:null}}
@@ -30,7 +31,7 @@ class BootErrorBoundary extends React.Component {
 
 const inviteMatch=window.location.pathname.match(/^\/invite\/([^/]+)\/?$/);
 const root=document.getElementById('root');
-ReactDOM.createRoot(root).render(<React.StrictMode><BootErrorBoundary><AccessibilityManager/><FeedbackHost/>{inviteMatch?<InviteFlow token={inviteMatch[1]}/>:<App/>}</BootErrorBoundary></React.StrictMode>);
+ReactDOM.createRoot(root).render(<React.StrictMode><BootErrorBoundary><AccessibilityManager/><FeedbackHost/>{inviteMatch?<InviteFlow token={inviteMatch[1]}/>:<><App/><DeepLinkTarget/></>}</BootErrorBoundary></React.StrictMode>);
 
 if('serviceWorker' in navigator){
   window.addEventListener('load',()=>{

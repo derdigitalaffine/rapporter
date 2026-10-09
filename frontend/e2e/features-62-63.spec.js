@@ -17,12 +17,6 @@ async function installLoyaltyApi(page){
  return {getCards:()=>cards,revokeAll:()=>{cards=[]}};
 }
 
-async function boot(page,path='/'){
- await installApiMocks(page,{language:'de'});
- await page.goto(path);
- await page.waitForLoadState('networkidle');
-}
-
 test('notification preferences are separate per-family controls',async({page})=>{
  await installApiMocks(page,{language:'de'});
  const prefs={membership:'member-1',family:'family-1',tasks:true,task_assigned:true,shopping:true,calendar:true,family_updates:true,messages:true,routines:true};
@@ -32,6 +26,26 @@ test('notification preferences are separate per-family controls',async({page})=>
  await expect(shopping).toBeChecked();await shopping.uncheck();await expect(shopping).not.toBeChecked();
  expect(prefs.shopping).toBe(false);
  await expect(page.getByText('Diese Auswahl ist unabhängig von der Gerätefreigabe oben')).toBeVisible();
+});
+
+test('notification deep link resolves the concrete task and survives reload',async({page})=>{
+ await installApiMocks(page,{language:'de'});
+ await page.route('**/api/tasks/task-1/',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({id:'task-1',family:'family-1',task_list:'tasks-1',title:'Wäsche aufhängen',notes:'Balkon',list_name:'Alltag',assignee_name:'Alex'})}));
+ await page.goto('/?page=tasks&task=task-1&list=tasks-1');
+ const target=page.getByRole('dialog');
+ await expect(target.getByRole('heading',{name:'Wäsche aufhängen'})).toBeVisible();
+ await expect(target.getByText('Alltag')).toBeVisible();
+ await expect(target.getByText('Balkon')).toBeVisible();
+ await page.reload();
+ await expect(page.getByRole('dialog').getByRole('heading',{name:'Wäsche aufhängen'})).toBeVisible();
+ await expect(page).toHaveURL(/task=task-1/);
+});
+
+test('missing notification target falls back to its parent area',async({page})=>{
+ await installApiMocks(page,{language:'de'});
+ await page.goto('/?page=calendar&event=missing');
+ await expect(page.getByRole('heading',{name:'Kalender'})).toBeVisible();
+ await expect(page.getByRole('dialog')).toHaveCount(0);
 });
 
 test('manual loyalty card creation, sharing and offline revocation sync',async({page,context})=>{
