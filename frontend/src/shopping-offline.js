@@ -37,11 +37,14 @@ async function failMutation(mutation,error){
 }
 
 export async function flushShoppingMutations(familyId){
-  if(typeof navigator!=='undefined'&&!navigator.onLine)return {synced:0,pending:(await listShoppingMutations(familyId)).length,failed:0};
-  const mutations=await listShoppingMutations(familyId);if(!mutations.length)return {synced:0,pending:0,failed:0};
+  const all=await listShoppingMutations(familyId);
+  const failedCount=all.filter(m=>m.status==='failed').length;
+  if(failedCount)return {synced:0,pending:all.length-failedCount,failed:failedCount,blocked:true};
+  if(typeof navigator!=='undefined'&&!navigator.onLine)return {synced:0,pending:all.length,failed:0};
+  if(!all.length)return {synced:0,pending:0,failed:0};
   const resolved=new Map();let synced=0;
   try{
-    for(const mutation of mutations){
+    for(const mutation of all){
       if(mutation.type==='add'){
         const result=await api('/smart/shopping/quick-add/',{method:'POST',body:JSON.stringify(mutation.payload)});
         const item=result?.item||result;resolved.set(mutation.localId,String(item.id));synced++;
@@ -51,11 +54,10 @@ export async function flushShoppingMutations(familyId){
         await api(`/shopping-items/${target}/`,{method:'PATCH',body:JSON.stringify(mutation.payload)});synced++;
       }
     }
-    await Promise.all(mutations.map(mutation=>deleteShoppingMutation(mutation.id)));
+    await Promise.all(all.map(mutation=>deleteShoppingMutation(mutation.id)));
     return {synced,pending:0,failed:0};
   }catch(error){
-    const failed=mutations.find(mutation=>mutation.status==='failed')||mutations[Math.min(synced,mutations.length-1)];
-    if(failed)await failMutation(failed,error);
+    const failed=all[Math.min(synced,all.length-1)];if(failed)await failMutation(failed,error);
     const remaining=await listShoppingMutations(familyId);
     return {synced:0,pending:remaining.filter(m=>m.status!=='failed').length,failed:remaining.filter(m=>m.status==='failed').length,error};
   }
