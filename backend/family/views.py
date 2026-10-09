@@ -141,6 +141,14 @@ class ShoppingItemViewSet(viewsets.ModelViewSet):
             raise PermissionDenied()
         serializer.save(added_by=self.request.user)
 
+    def perform_update(self, serializer):
+        item = serializer.instance
+        checked = serializer.validated_data.get("checked", item.checked)
+        if checked != item.checked:
+            serializer.save(checked_at=timezone.now() if checked else None)
+        else:
+            serializer.save()
+
     @action(detail=True, methods=["post"])
     def toggle(self, request, pk=None):
         item = self.get_object()
@@ -159,7 +167,7 @@ class ShoppingItemViewSet(viewsets.ModelViewSet):
 
 
 class RoutineViewSet(FamilyScopedViewSet):
-    queryset = Routine.objects.prefetch_related("logs").all()
+    queryset = Routine.objects.select_related("family").prefetch_related("logs").all()
     serializer_class = RoutineSerializer
 
     @action(detail=True, methods=["post"])
@@ -332,7 +340,7 @@ def dashboard(request):
     now = timezone.now()
     tasks = Task.objects.filter(family_id__in=families, completed_at__isnull=True).select_related("task_list", "assignee").order_by("due_at", "-created_at")[:12]
     events = FamilyEvent.objects.filter(family_id__in=families, starts_at__gte=now).order_by("starts_at")[:12]
-    routines = Routine.objects.filter(family_id__in=families, active=True).prefetch_related("logs")[:8]
+    routines = Routine.objects.filter(family_id__in=families, active=True).select_related("family").prefetch_related("logs")[:8]
     shopping = ShoppingList.objects.filter(family_id__in=families, archived=False).prefetch_related("items").order_by("sort_order", "created_at")[:8]
     task_lists = TaskList.objects.filter(family_id__in=families, archived=False).prefetch_related("tasks")[:12]
     inbox_count = InboxItem.objects.filter(family_id__in=families, status="new").count()

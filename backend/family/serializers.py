@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from rest_framework.exceptions import PermissionDenied
 from .models import Family, Membership, FamilyInvitation, TaskList, Task, ShoppingList, ShoppingItem, Routine, RoutineLog, IntegrationSource, FamilyEvent, InboxItem, InboxReceipt, AutomationRule, AutomationExecution
+from .predictions import routine_prediction
 
 
 def _validate_family_access(serializer, attrs):
@@ -114,15 +115,23 @@ class RoutineLogSerializer(serializers.ModelSerializer):
 class RoutineSerializer(serializers.ModelSerializer):
     logs = RoutineLogSerializer(many=True, read_only=True)
     last_done_at = serializers.SerializerMethodField()
+    prediction = serializers.SerializerMethodField()
+
     def get_last_done_at(self, obj):
-        log = obj.logs.order_by("-done_at").first()
-        return log.done_at if log else None
+        cache = getattr(obj, "_prefetched_objects_cache", {})
+        logs = list(cache.get("logs") or obj.logs.all())
+        return max((log.done_at for log in logs if log.done_at), default=None)
+
+    def get_prediction(self, obj):
+        return routine_prediction(obj)
+
     def validate(self, attrs):
         _validate_family_access(self, attrs)
         return attrs
+
     class Meta:
         model = Routine
-        fields = ["id", "family", "name", "suggested_interval_days", "icon", "active", "last_done_at", "logs"]
+        fields = ["id", "family", "name", "icon", "active", "last_done_at", "prediction", "logs"]
 
 
 class IntegrationSourceSerializer(serializers.ModelSerializer):
