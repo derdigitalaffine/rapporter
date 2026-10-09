@@ -1,0 +1,172 @@
+import {test,expect} from '@playwright/test';
+import AxeBuilder from '@axe-core/playwright';
+import {installApiMocks} from './mock-api.js';
+
+async function boot(page,{path='/',authenticated=true,language='de',dismissOnboarding=true}={}){
+  await installApiMocks(page,{authenticated,language,dismissOnboarding});
+  await page.goto(path);
+  await page.waitForLoadState('networkidle');
+}
+
+async function expectNoSevereA11y(page,scope='main'){
+  const scan=new AxeBuilder({page}).include(scope).withTags(['wcag2a','wcag2aa','wcag21a','wcag21aa']);
+  const results=await scan.analyze();
+  const severe=results.violations.filter(item=>['critical','serious'].includes(item.impact));
+  expect(severe,JSON.stringify(severe.map(item=>({id:item.id,impact:item.impact,help:item.help,nodes:item.nodes.map(node=>node.target)})),null,2)).toEqual([]);
+}
+
+async function capture(page,testInfo,name){
+  const path=testInfo.outputPath(`${name}.png`);
+  await page.screenshot({path,fullPage:true});
+  await testInfo.attach(name,{path,contentType:'image/png'});
+}
+
+async function openBottom(page,label){
+  await page.locator('.bottom-nav').getByRole('button',{name:new RegExp(`^${label}$`)}).click();
+}
+
+test('login, Today and DE/EN smoke',async({page},testInfo)=>{
+  await boot(page,{authenticated:false});
+  await page.getByLabel('Benutzername').fill('alex');
+  await page.getByLabel('Passwort').fill('correct-horse-battery-staple');
+  await page.getByRole('button',{name:'Anmelden',exact:true}).click();
+  await expect(page.locator('.bottom-nav')).toBeVisible();
+  await expect(page.getByRole('heading',{name:/Hallo Familie/i})).toBeVisible();
+  await expectNoSevereA11y(page);
+  await capture(page,testInfo,'today-de');
+
+  await openBottom(page,'Mehr');
+  await page.getByRole('button',{name:/Sprache/i}).click();
+  await expect(page.getByRole('heading',{name:'More',exact:true})).toBeVisible();
+  await expect(page.locator('.bottom-nav').getByText('Today',{exact:true})).toBeVisible();
+  await expectNoSevereA11y(page);
+  await capture(page,testInfo,'more-en');
+});
+
+test('task quick add, edit focus, Escape and completion',async({page},testInfo)=>{
+  await boot(page);
+  await openBottom(page,'Aufgaben');
+  const quick=page.locator('.smart-input input');
+  await quick.fill('Spülmaschine ausräumen');
+  await quick.press('Enter');
+  const row=page.locator('.smart-row').filter({hasText:'Spülmaschine ausräumen'});
+  await expect(row).toBeVisible();
+  await row.locator('.row-main-button').click();
+  const dialog=page.getByRole('dialog');
+  await expect(dialog).toBeVisible();
+  await expect(dialog.locator('input').first()).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(dialog).toBeHidden();
+  await expect(row.locator('.row-main-button')).toBeFocused();
+
+  await row.locator('.smart-check').click();
+  await expect(row).toBeHidden();
+  await expectNoSevereA11y(page);
+  await capture(page,testInfo,'tasks');
+});
+
+test('shopping add, in-store completion and edit',async({page},testInfo)=>{
+  await boot(page);
+  await openBottom(page,'Einkauf');
+  const quick=page.locator('.smart-input input');
+  await quick.fill('Brot');
+  await quick.press('Enter');
+  await expect(page.getByText('Brot',{exact:true})).toBeVisible();
+
+  await page.getByRole('button',{name:/Im Laden/i}).click();
+  await expect(page.locator('.shopping-page')).toHaveClass(/store-mode/);
+  const milk=page.locator('.smart-row').filter({hasText:'Milch'});
+  await milk.locator('.smart-check').click();
+  await expect(page.getByText(/1 von 2|1\/2/)).toBeVisible();
+
+  await page.getByRole('button',{name:/Planen/i}).click();
+  const bread=page.locator('.smart-row').filter({hasText:'Brot'});
+  await bread.locator('.row-main-button').click();
+  const dialog=page.getByRole('dialog');
+  await dialog.getByLabel('Menge').fill('2');
+  await dialog.getByRole('button',{name:'Speichern',exact:true}).click();
+  await expect(page.getByText('2',{exact:true}).first()).toBeVisible();
+  await expectNoSevereA11y(page);
+  await capture(page,testInfo,'shopping');
+});
+
+test('calendar create, edit and delete',async({page},testInfo)=>{
+  await boot(page,{path:'/?page=calendar'});
+  await page.getByRole('button',{name:'Termin hinzufügen'}).click();
+  let dialog=page.getByRole('dialog');
+  await dialog.getByLabel('Titel').fill('Elternabend');
+  await dialog.getByRole('button',{name:'Speichern',exact:true}).click();
+  await expect(page.getByText('Elternabend',{exact:true})).toBeVisible();
+
+  await page.locator('.agenda-event').filter({hasText:'Elternabend'}).click();
+  dialog=page.getByRole('dialog');
+  await dialog.getByRole('button',{name:'Termin bearbeiten'}).click();
+  dialog=page.getByRole('dialog');
+  await dialog.getByLabel('Titel').fill('Elternabend Schule');
+  await dialog.getByRole('button',{name:'Speichern',exact:true}).click();
+  await expect(page.getByText('Elternabend Schule',{exact:true})).toBeVisible();
+
+  await page.locator('.agenda-event').filter({hasText:'Elternabend Schule'}).click();
+  await page.getByRole('dialog').getByRole('button',{name:'Termin bearbeiten'}).click();
+  await page.getByRole('dialog').getByRole('button',{name:'Termin löschen'}).click();
+  const confirm=page.getByRole('alertdialog');
+  await expect(confirm).toBeVisible();
+  await confirm.getByRole('button',{name:'Termin löschen'}).click();
+  await expect(page.getByText('Elternabend Schule',{exact:true})).toHaveCount(0);
+  await expectNoSevereA11y(page);
+  await capture(page,testInfo,'calendar');
+});
+
+test('family invitation reaches clear share success state',async({page},testInfo)=>{
+  await boot(page,{path:'/?page=members'});
+  await page.getByRole('button',{name:'Person einladen'}).click();
+  let dialog=page.getByRole('dialog');
+  await dialog.getByLabel('Anzeigename').fill('Oma');
+  await dialog.getByRole('button',{name:/Weiter zu Rolle/}).click();
+  dialog=page.getByRole('dialog');
+  await dialog.getByText('Gast',{exact:true}).first().click();
+  await dialog.getByRole('button',{name:'Einladung erstellen'}).click();
+  await expect(dialog.getByText('EINLADUNG ERSTELLT',{exact:true})).toBeVisible();
+  await expect(dialog.getByRole('button',{name:'Teilen'})).toBeVisible();
+  await expect(dialog.getByRole('button',{name:'Link kopieren'})).toBeVisible();
+  await expectNoSevereA11y(page);
+  await capture(page,testInfo,'family-invite');
+});
+
+test('automation template can be activated',async({page},testInfo)=>{
+  await boot(page,{path:'/?page=automations'});
+  const template=page.locator('.automation-template').first();
+  await expect(template).toBeVisible();
+  await template.click();
+  await expect(page.locator('.rule-row').filter({hasText:'Müll rausstellen'})).toBeVisible();
+  await expectNoSevereA11y(page);
+  await capture(page,testInfo,'automations');
+});
+
+test('integration error state has a working retry',async({page},testInfo)=>{
+  await boot(page,{path:'/?page=integrations'});
+  const card=page.locator('.integration-card').filter({hasText:'Open-Meteo'});
+  await expect(card).toContainText('Zeitüberschreitung beim Abruf');
+  await card.getByRole('button',{name:/Synchronisieren|Erneut versuchen|Sync/i}).first().click();
+  await expect(card).not.toContainText('Zeitüberschreitung beim Abruf');
+  await expectNoSevereA11y(page);
+  await capture(page,testInfo,'integrations');
+});
+
+test('service worker registers and never caches API responses',async({page})=>{
+  await boot(page);
+  const result=await page.evaluate(async()=>{
+    if(!('serviceWorker' in navigator))return {supported:false};
+    const registration=await navigator.serviceWorker.ready;
+    const keys=await caches.keys();
+    const urls=[];
+    for(const key of keys){
+      const cache=await caches.open(key);
+      for(const request of await cache.keys())urls.push(new URL(request.url).pathname);
+    }
+    return {supported:true,scope:registration.scope,keys,urls};
+  });
+  expect(result.supported).toBe(true);
+  expect(result.keys.some(key=>key.startsWith('fam-uh-le-'))).toBe(true);
+  expect(result.urls.some(path=>path.startsWith('/api/'))).toBe(false);
+});
