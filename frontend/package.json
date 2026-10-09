@@ -8,7 +8,9 @@
     "i18n:check": "node scripts/check-i18n.mjs",
     "build": "npm run i18n:check && vite build",
     "preview": "vite preview --host 0.0.0.0",
-    "e2e": "playwright test"
+    "e2e": "playwright test",
+    "e2e:visual": "playwright test e2e/visual-regression.spec.js",
+    "e2e:visual:update": "playwright test e2e/visual-regression.spec.js --update-snapshots"
   },
   "dependencies": {
     "@vitejs/plugin-react": "latest",
