@@ -90,6 +90,17 @@ test('shopping add, in-store completion and edit',async({page},testInfo)=>{
   await capture(page,testInfo,'shopping');
 });
 
+test('calendar hides past events by default and can reveal them',async({page})=>{
+  await boot(page,{path:'/?page=calendar'});
+  await expect(page.getByText('Kinderarzt',{exact:true})).toBeVisible();
+  await expect(page.getByText('Gestern erledigt',{exact:true})).toHaveCount(0);
+  const history=page.getByRole('button',{name:'Vergangene anzeigen'});
+  await expect(history).toBeVisible();
+  await history.click();
+  await expect(page.getByText('Gestern erledigt',{exact:true})).toBeVisible();
+  await expect(page.getByRole('button',{name:'Vergangene ausblenden'})).toHaveAttribute('aria-pressed','true');
+});
+
 test('calendar create, edit and delete',async({page},testInfo)=>{
   await boot(page,{path:'/?page=calendar'});
   await page.getByRole('button',{name:'Termin hinzufügen'}).click();
