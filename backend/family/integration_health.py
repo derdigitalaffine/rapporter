@@ -1,0 +1,47 @@
+from datetime import timedelta
+
+from django.utils import timezone
+
+from .extended_integrations import sync_source as raw_sync_source
+
+
+def sync_with_health(source, *, force=False):
+    now = timezone.now()
+    if not source.enabled:
+        return 0
+    if not force and source.next_sync_at and source.next_sync_at > now:
+        return 0
+
+    source.last_attempt_at = now
+    source.last_sync_status = "running"
+    source.save(update_fields=["last_attempt_at", "last_sync_status", "updated_at"])
+    try:
+        count = raw_sync_source(source)
+    except Exception as exc:
+        source.refresh_from_db()
+        failures = source.consecutive_failures + 1
+        # 5m, 10m, 20m ... capped at 6h. Manual sync bypasses the wait.
+        delay_minutes = min(360, 5 * (2 ** min(failures - 1, 7)))
+        source.last_attempt_at = now
+        source.last_sync_status = "error"
+        source.last_sync_error = str(exc)[:4000]
+        source.consecutive_failures = failures
+        source.next_sync_at = now + timedelta(minutes=delay_minutes)
+        source.save(update_fields=[
+            "last_attempt_at", "last_sync_status", "last_sync_error",
+            "consecutive_failures", "next_sync_at", "updated_at",
+        ])
+        raise
+
+    source.refresh_from_db()
+    source.last_attempt_at = now
+    source.last_success_at = timezone.now()
+    source.last_sync_status = "success"
+    source.last_sync_error = ""
+    source.consecutive_failures = 0
+    source.next_sync_at = None
+    source.save(update_fields=[
+        "last_attempt_at", "last_success_at", "last_sync_status",
+        "last_sync_error", "consecutive_failures", "next_sync_at", "updated_at",
+    ])
+    return count
