@@ -7,7 +7,8 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 
-from .extended_integrations import INTEGRATION_CATALOG, sync_source
+from .extended_integrations import INTEGRATION_CATALOG
+from .integration_health import sync_with_health
 from .models import Family, IntegrationSource, Membership, ShoppingItem, ShoppingList, Task, TaskList
 from .oauth import authorization_url, complete_oauth, oauth_available
 from .serializers import IntegrationSourceSerializer, ShoppingItemSerializer, TaskSerializer
@@ -62,10 +63,11 @@ def smart_integration_connect(request):
         enabled=True,
     )
     try:
-        count = sync_source(source)
+        count = sync_with_health(source, force=True)
     except Exception as exc:
-        source.delete()
-        return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        # Keep the failed source so the user can see diagnostics and retry/edit it.
+        source.refresh_from_db()
+        return Response({"detail": str(exc), "source": IntegrationSourceSerializer(source).data}, status=status.HTTP_400_BAD_REQUEST)
     return Response({"source": IntegrationSourceSerializer(source).data, "synced": count}, status=status.HTTP_201_CREATED)
 
 
@@ -75,11 +77,12 @@ def smart_integration_sync(request, source_id):
     if not source:
         return Response({"detail": "Integration nicht gefunden."}, status=status.HTTP_404_NOT_FOUND)
     try:
-        count = sync_source(source)
+        count = sync_with_health(source, force=True)
     except Exception as exc:
-        return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        source.refresh_from_db()
+        return Response({"detail": str(exc), "source": IntegrationSourceSerializer(source).data}, status=status.HTTP_400_BAD_REQUEST)
     source.refresh_from_db()
-    return Response({"synced": count, "last_synced_at": source.last_synced_at})
+    return Response({"synced": count, "source": IntegrationSourceSerializer(source).data})
 
 
 @api_view(["POST"])
@@ -88,9 +91,10 @@ def smart_integration_sync_all(request):
     sources = IntegrationSource.objects.filter(family__memberships__user=request.user, enabled=True).distinct()
     for source in sources:
         try:
-            total += sync_source(source)
+            total += sync_with_health(source, force=True)
         except Exception as exc:
-            errors.append({"id": str(source.id), "name": source.name, "detail": str(exc)})
+            source.refresh_from_db()
+            errors.append({"id": str(source.id), "name": source.name, "detail": str(exc), "next_sync_at": source.next_sync_at})
     return Response({"synced": total, "errors": errors})
 
 
@@ -120,7 +124,7 @@ def integration_oauth_callback(request):
     redirect_uri = request.build_absolute_uri("/api/integration-oauth/callback/")
     try:
         source, provider = complete_oauth(code, state_value, redirect_uri)
-        sync_source(source)
+        sync_with_health(source, force=True)
     except Exception as exc:
         return redirect(f"/?{urlencode({'integration_error': str(exc)})}")
     return redirect(f"/?{urlencode({'integration_connected': provider})}")
