@@ -12,6 +12,10 @@ export default function ShoppingTextMode({items=[],onAddMany,onRename,onRemove})
   const [busy,setBusy]=useState(false);
   const textareaRef=useRef(null);
 
+  useEffect(()=>{
+    if(!busy)textareaRef.current?.focus();
+  },[busy]);
+
   async function addText(value=draft){
     const names=lines(value);
     if(!names.length||busy)return;
@@ -19,7 +23,6 @@ export default function ShoppingTextMode({items=[],onAddMany,onRename,onRemove})
     try{
       await onAddMany(names);
       setDraft('');
-      requestAnimationFrame(()=>textareaRef.current?.focus());
     }finally{setBusy(false)}
   }
 

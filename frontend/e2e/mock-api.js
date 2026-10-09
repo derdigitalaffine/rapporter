@@ -141,6 +141,7 @@ export async function installApiMocks(page,{authenticated=true,language='de',dis
     }
     if(path==='/integration-hub/sync-all/'&&method==='POST')return json(route,{synced:3,errors:[]});
 
+    if(path==='/routines/'&&method==='GET')return json(route,state.routines);
     if(path==='/inbox/'&&method==='GET')return json(route,[]);
     if(path==='/push/config/'&&method==='GET')return json(route,{configured:false,subscriptions:0});
     if(method==='GET')return json(route,[]);

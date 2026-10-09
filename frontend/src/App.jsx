@@ -19,7 +19,6 @@ import WeatherHub from './WeatherHub';
 import ExpensesHub from './ExpensesHub';
 import GlobalCreate from './GlobalCreate';
 import CreateFlowHost from './CreateFlowHost';
-import RoutineEditor from './RoutineEditor';
 import SuperAdmin from './SuperAdmin';
 import BirthdaysHub from './BirthdaysHub';
 import './birthday-i18n';
@@ -59,7 +58,7 @@ export default function App(){
  async function switchFamily(nextId){if(!nextId||String(nextId)===String(family?.id))return;localStorage.setItem(ACTIVE_FAMILY_KEY,String(nextId));setActiveFamilyId(String(nextId));setCreateFlow(null);setCreateRevision(0);navigate('home');setData(demo);setLoaded(false);await load(String(nextId))}
  async function installApp(){if(!installPrompt)return;await installPrompt.prompt();try{await installPrompt.userChoice}finally{setInstallPrompt(null)}}
  async function toggleTask(x){try{await api(`/tasks/${x.id}/toggle/`,{method:'POST'});load()}catch(e){toast(e.message||t('saveFailed'),{type:'error'})}}
- async function routineDone(x){try{await api(`/routines/${x.id}/done/`,{method:'POST',body:'{}'});load();toast(`${x.name}: ${t('todayLower')}`,{type:'success'})}catch(e){toast(e.message||t('saveFailed'),{type:'error'})}}
+
  function showOnboarding(){if(family?.id)localStorage.removeItem(`famuhle-onboarding-dismissed:${family.id}`);navigate('home')}
  function openCreate(id,context={}){const href=`${location.pathname}${location.search}${location.hash}`;history.pushState({...history.state,createFlow:id},'',href);setCreateFlow({id,context})}
  function closeCreate(){if(history.state?.createFlow)history.back();else setCreateFlow(null)}
@@ -73,4 +72,3 @@ export default function App(){
 function MorePage({family,data,t,i18n,open,onShowOnboarding,onLogout,installable,onInstall}){const items=[['routines',t('routineUi.title'),'history',''],['profile',t('profileUi.title'),'user',''],['birthdays',t('birthdayUi.title'),'calendar',''],['calendar',t('calendar'),'calendar',''],['expenses',t('createUi.expense'),'receipt',''],['loyalty',t('loyaltyUi.title'),'store',''],['inbox',t('inbox'),'inbox',data.inbox_count||''],['notifications',t('notifications'),'warning',''],['integrations',t('integrations'),'integrations',''],['automations',t('ifThen'),'automation',data.automation_count||''],['members',t('members'),'members','']];return <><PageHead title={t('more')}/>{installable&&<Card><button className="menu-row install-row" onClick={onInstall}><Icon name="install"/><span><strong>{t('installApp')}</strong><small>{t('pwaHint')}</small></span><Icon name="next"/></button></Card>}<Card><button className="menu-row" onClick={onShowOnboarding}><Icon name="progress"/><span><strong>{t('onboarding.setupMenu')}</strong><small>{t('onboarding.setupMenuHint')}</small></span><Icon name="next"/></button>{items.map(([id,label,icon,count])=><button className="menu-row" key={id} onClick={()=>open(id)}><Icon name={icon}/><span>{label}</span><span className="menu-tail">{count?<b className="count-badge">{count}</b>:null}<Icon name="next"/></span></button>)}</Card><Card><button className="menu-row" onClick={()=>switchLanguage(i18n)}><Icon name="language"/><span>{t('language')}</span><strong>{i18n.language.toUpperCase()}</strong></button><button className="menu-row danger-text" onClick={onLogout}><Icon name="logout"/><span>{t('logout')}</span></button></Card>{family&&<p className="family-note">{family.name} · {family.timezone}</p>}</>}
 
 function switchLanguage(i18n){const l=i18n.language?.startsWith('de')?'en':'de';i18n.changeLanguage(l);localStorage.setItem('famuhle-language',l)}
-function distance(date,t){if(!date)return t('never');const d=Math.max(0,Math.floor((Date.now()-new Date(date).getTime())/86400000));return d===0?t('todayLower'):t('daysAgo',{count:d})}

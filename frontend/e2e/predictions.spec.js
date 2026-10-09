@@ -8,20 +8,20 @@ const prediction={
   defaults:{quantity:'1',category:'Haushalt',aisle:'Reinigung',store:'Markt'},
 };
 
-test('routine editor uses learned forecast instead of manual interval',async({page})=>{
+test('routine editor shows learned cadence and keeps frequency goals optional',async({page})=>{
   const state=await installApiMocks(page);
   state.routines.push({
     id:'routine-1',family:'family-1',name:'Bad putzen',icon:'history',active:true,
     last_done_at:new Date(Date.now()-7*86400000).toISOString(),logs:[],
-    prediction:{status:'due',expected_interval_days:7,confidence:.84,sample_count:5,interval_count:4,days_until_expected:0},
+    target_count:null,target_period_days:7,reminder_enabled:true,prediction:{status:'due',expected_at:new Date().toISOString(),learned_interval_days:7,expected_interval_days:7,confidence:.84,sample_count:5,interval_count:4,days_until_expected:0},
   });
 
   await page.goto('/?page=routines');
   await page.locator('.row-main-button').filter({hasText:'Bad putzen'}).click();
 
   const dialog=page.getByRole('dialog');
-  await expect(dialog).toContainText('Wahrscheinlich wieder dran');
-  await expect(dialog).toContainText('Meist etwa alle 7 Tage');
+  await expect(dialog).toContainText('Jetzt fällig');
+  await expect(dialog).toContainText('Tatsächlich etwa alle 7 Tage');
   await expect(dialog.getByText(/Intervall/i)).toHaveCount(0);
   await expect(dialog.locator('input[type="number"]')).toHaveCount(0);
 });
