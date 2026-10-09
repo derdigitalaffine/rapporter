@@ -1,7 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import '@fontsource-variable/nunito';
-import './i18n';
+import './ux-i18n';
 import './styles.css';
 import './sheets.css';
 import './smart.css';
