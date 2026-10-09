@@ -39,6 +39,16 @@ jobs:
         run: npm run build
       - working-directory: frontend
         run: npx playwright install --with-deps chromium
+      - name: Generate reviewed Linux visual baselines
+        working-directory: frontend
+        run: npm run e2e:visual:update
+      - name: Upload generated visual baselines
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-baselines-${{ github.run_attempt }}
+          path: frontend/e2e/visual-regression.spec.js-snapshots/*.png
+          if-no-files-found: error
+          retention-days: 14
       - working-directory: frontend
         run: npm run e2e
       - name: Upload Playwright report
