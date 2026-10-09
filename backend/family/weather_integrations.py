@@ -1,5 +1,6 @@
 import json
 from datetime import datetime, timezone as dt_timezone
+from zoneinfo import ZoneInfo
 
 from django.utils import timezone
 
@@ -77,12 +78,18 @@ def sync_weather(source):
     config = source.config or {}
     lat = config.get("latitude", 49.44)
     lon = config.get("longitude", 7.77)
+    timezone_name = source.family.timezone or "Europe/Berlin"
     params = {
         "latitude": lat,
         "longitude": lon,
-        "timezone": source.family.timezone,
+        "timezone": timezone_name,
         "current": "temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,precipitation,wind_speed_10m",
-        "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,wind_speed_10m_max",
+        "daily": (
+            "weather_code,temperature_2m_max,temperature_2m_min,"
+            "apparent_temperature_max,apparent_temperature_min,"
+            "precipitation_probability_max,precipitation_sum,"
+            "wind_speed_10m_max,wind_gusts_10m_max,sunrise,sunset,uv_index_max"
+        ),
         "forecast_days": 7,
     }
     data = _get(OPEN_METEO, params=params).json()
@@ -97,7 +104,7 @@ def sync_weather(source):
             defaults={
                 "type": "weather.current",
                 "title": _current_title(current),
-                "starts_at": _aware_weather_time(current.get("time")),
+                "starts_at": _aware_weather_time(current.get("time"), timezone_name),
                 "ends_at": None,
                 "actionable": False,
                 "payload": {
@@ -117,7 +124,7 @@ def sync_weather(source):
 
     daily = data.get("daily") or {}
     active_daily_ids = []
-    times = daily.get("time", [])
+    times = daily.get("time", [])[:7]
     for i, day in enumerate(times):
         external_id = f"weather:{day}"
         active_daily_ids.append(external_id)
@@ -128,16 +135,24 @@ def sync_weather(source):
             defaults={
                 "type": "weather.forecast",
                 "title": f"Wetter {day}",
-                "starts_at": _aware_weather_time(day),
+                "starts_at": _aware_weather_time(day, timezone_name),
                 "ends_at": None,
                 "actionable": False,
                 "payload": {
                     "provider": "Open-Meteo",
+                    "date": day,
                     "weather_code": _at(daily.get("weather_code"), i),
                     "temp_max": _at(daily.get("temperature_2m_max"), i),
                     "temp_min": _at(daily.get("temperature_2m_min"), i),
-                    "rain_probability": _at(daily.get("precipitation_probability_max"), i),
+                    "apparent_temp_max": _at(daily.get("apparent_temperature_max"), i),
+                    "apparent_temp_min": _at(daily.get("apparent_temperature_min"), i),
+                    "precipitation_probability": _at(daily.get("precipitation_probability_max"), i),
+                    "precipitation_sum": _at(daily.get("precipitation_sum"), i),
                     "wind_max": _at(daily.get("wind_speed_10m_max"), i),
+                    "wind_gust_max": _at(daily.get("wind_gusts_10m_max"), i),
+                    "sunrise": _at(daily.get("sunrise"), i),
+                    "sunset": _at(daily.get("sunset"), i),
+                    "uv_index_max": _at(daily.get("uv_index_max"), i),
                 },
             },
         )
@@ -146,7 +161,7 @@ def sync_weather(source):
     return _finish(source, count)
 
 
-def _aware_weather_time(value):
+def _aware_weather_time(value, timezone_name=None):
     if not value:
         return timezone.now()
     if isinstance(value, str):
@@ -154,7 +169,11 @@ def _aware_weather_time(value):
     else:
         parsed = value
     if timezone.is_naive(parsed):
-        parsed = timezone.make_aware(parsed)
+        try:
+            zone = ZoneInfo(timezone_name or "Europe/Berlin")
+        except Exception:
+            zone = timezone.get_current_timezone()
+        parsed = timezone.make_aware(parsed, zone)
     return parsed
 
 
