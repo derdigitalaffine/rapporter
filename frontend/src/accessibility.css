@@ -1,0 +1,20 @@
+/* Accessibility hardening shared across all current and future screens. */
+:where(.row-action,.smart-check,.check,.rule-actions button,.toast-close,.bottom-nav button,.menu-row,.member-edit-row,.event-button){min-height:44px}
+:where(.row-action,.smart-check,.check,.rule-actions button){min-width:44px}
+
+:where(button,a,input,select,textarea,summary):focus-visible{
+  outline:3px solid color-mix(in srgb,var(--color-focus) 55%,white);
+  outline-offset:3px;
+}
+
+[role="dialog"],[role="alertdialog"]{scroll-margin:16px}
+[role="dialog"]:focus-visible,[role="alertdialog"]:focus-visible{outline:none}
+
+[inert]{user-select:none}
+
+.error[role="alert"]{border-left:3px solid var(--color-danger)}
+
+@media(max-width:480px){
+  .quick-form input,.quick-form select,.quick-form textarea{font-size:16px}
+  .action-row button,.small-action{min-height:44px}
+}
