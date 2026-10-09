@@ -3,10 +3,10 @@ import tempfile
 from pathlib import Path
 
 from django.contrib.auth import get_user_model
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 from PIL import Image
 from rest_framework.test import APIClient
-from django.core.files.uploadedfile import SimpleUploadedFile
 
 from .models import Family, Membership, UserProfile
 
@@ -42,6 +42,12 @@ class ProfileTests(TestCase):
         mime = {"PNG": "image/png", "JPEG": "image/jpeg", "WEBP": "image/webp"}[fmt]
         return SimpleUploadedFile(name, buffer.getvalue(), content_type=mime)
 
+    def _family_memberships(self):
+        response = self.client.get("/api/families/")
+        self.assertEqual(response.status_code, 200)
+        families = response.data.get("results", response.data)
+        return families[0]["memberships"]
+
     def test_user_can_read_and_update_own_profile(self):
         response = self.client.patch(
             f"/api/profile/?family={self.family.id}",
@@ -66,26 +72,35 @@ class ProfileTests(TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertFalse(UserProfile.objects.filter(user=self.owner, birth_month__isnull=False).exists())
 
+    def test_invalid_visibility_does_not_partially_store_birthday(self):
+        response = self.client.patch(
+            f"/api/profile/?family={self.family.id}",
+            {"family": str(self.family.id), "birth_month": 3, "birth_day": 12, "birth_year": 1990, "birthday_visibility": "everyone"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        profile = UserProfile.objects.get(user=self.owner)
+        self.assertIsNone(profile.birth_month)
+        self.owner_membership.refresh_from_db()
+        self.assertEqual(self.owner_membership.birthday_visibility, Membership.BirthdayVisibility.DAY_MONTH)
+
     def test_membership_serialization_respects_birthday_visibility(self):
         UserProfile.objects.create(user=self.member, birth_month=3, birth_day=12, birth_year=2010)
         self.member_membership.birthday_visibility = Membership.BirthdayVisibility.HIDDEN
         self.member_membership.save(update_fields=["birthday_visibility"])
-        response = self.client.get("/api/families/")
-        row = next(x for x in response.data[0]["memberships"] if x["user"] == self.member.id)
+        row = next(x for x in self._family_memberships() if x["user"] == self.member.id)
         self.assertIsNone(row["birth_month"])
         self.assertIsNone(row["birth_year"])
 
         self.member_membership.birthday_visibility = Membership.BirthdayVisibility.DAY_MONTH
         self.member_membership.save(update_fields=["birthday_visibility"])
-        response = self.client.get("/api/families/")
-        row = next(x for x in response.data[0]["memberships"] if x["user"] == self.member.id)
+        row = next(x for x in self._family_memberships() if x["user"] == self.member.id)
         self.assertEqual((row["birth_month"], row["birth_day"]), (3, 12))
         self.assertIsNone(row["birth_year"])
 
         self.member_membership.birthday_visibility = Membership.BirthdayVisibility.FULL_DATE
         self.member_membership.save(update_fields=["birthday_visibility"])
-        response = self.client.get("/api/families/")
-        row = next(x for x in response.data[0]["memberships"] if x["user"] == self.member.id)
+        row = next(x for x in self._family_memberships() if x["user"] == self.member.id)
         self.assertEqual(row["birth_year"], 2010)
 
     def test_other_user_profile_cannot_be_patched(self):
@@ -95,7 +110,7 @@ class ProfileTests(TestCase):
             {"birthday_visibility": "hidden"},
             format="json",
         )
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 403)
         self.member_membership.refresh_from_db()
         self.assertEqual(self.member_membership.birthday_visibility, Membership.BirthdayVisibility.DAY_MONTH)
         profile = UserProfile.objects.get(user=self.member)
