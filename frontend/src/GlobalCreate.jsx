@@ -60,7 +60,13 @@ export default function GlobalCreate({page,family,role,context={},onCreate,suppr
     if(selector){const label=document.querySelector(selector)?.textContent?.replace(/\s+/g,' ').trim();if(label)next.activeListLabel=label}
     return next;
   }
-  function openPalette(){history.pushState({...history.state,createPalette:true},'',`${location.pathname}${location.search}${location.hash}`);setPaletteOpen(true)}
+  function openPalette(){
+    const href=`${location.pathname}${location.search}${location.hash}`;
+    const base={...(history.state||{}),page};delete base.createPalette;delete base.createFlow;
+    history.replaceState(base,'',href);
+    history.pushState({...base,createPalette:true},'',href);
+    setPaletteOpen(true);
+  }
   function closePalette(){pendingAction.current=null;if(history.state?.createPalette)history.back();else{setPaletteOpen(false);setRestoreFocus(true)}}
   function choose(action){const actionContext=currentContext();pendingAction.current={action,context:actionContext};if(history.state?.createPalette)history.back();else{setPaletteOpen(false);pendingAction.current=null;action.open({open:onCreate,context:actionContext})}}
   function activate(){if(direct){direct.open({open:onCreate,context:currentContext()});return}openPalette()}
