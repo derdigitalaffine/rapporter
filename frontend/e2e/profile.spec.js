@@ -21,7 +21,7 @@ test('profile is reachable from More and survives reload',async({page})=>{
  await installApiMocks(page);
  await installProfileMock(page);
  await page.goto('/?page=more');
- await page.getByRole('button',{name:/Mein Profil/}).click();
+ await page.locator('main .menu-row').filter({hasText:'Mein Profil'}).click();
  await expect(page).toHaveURL(/page=profile/);
  await expect(page.getByRole('heading',{name:'Mein Profil'})).toBeVisible();
  await page.reload();
