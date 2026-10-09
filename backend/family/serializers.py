@@ -131,7 +131,7 @@ class IntegrationSourceSerializer(serializers.ModelSerializer):
     def to_representation(self, instance):
         data = super().to_representation(instance)
         config = dict(data.get("config") or {})
-        for key in ("bot_token", "api_key", "access_token", "refresh_token", "password", "secret", "client_secret"):
+        for key in ("bot_token", "api_key", "access_token", "refresh_token", "password", "secret", "client_secret", "ics_content"):
             if key in config and config[key]:
                 config[key] = "••••••••"
         if config.get("secret_endpoint") and data.get("endpoint"):
