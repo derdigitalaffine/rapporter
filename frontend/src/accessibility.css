@@ -13,6 +13,7 @@
 [inert]{user-select:none}
 
 .error[role="alert"]{border-left:3px solid var(--color-danger)}
+.role-badge.role-guest{color:var(--color-muted)!important}
 
 @media(max-width:480px){
   .quick-form input,.quick-form select,.quick-form textarea{font-size:16px}
