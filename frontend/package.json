@@ -20,6 +20,9 @@
     "@fortawesome/free-solid-svg-icons": "latest",
     "@fortawesome/free-regular-svg-icons": "latest",
     "@fortawesome/react-fontawesome": "latest",
+    "@zxing/browser": "latest",
+    "@zxing/library": "latest",
+    "bwip-js": "latest",
     "i18next": "latest",
     "qrcode": "latest",
     "react-i18next": "latest"
