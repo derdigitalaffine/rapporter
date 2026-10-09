@@ -1,3 +1,5 @@
+import i18n from './i18n';
+import {formatDateTime} from './locale';
 import {Icon} from './icons';
 import OnboardingCard from './OnboardingCard';
 import './onboarding.css';
@@ -7,19 +9,19 @@ const isToday=date=>date&&new Date(date).toDateString()===new Date().toDateStrin
 const isOverdue=task=>task?.due_at&&!task.completed_at&&new Date(task.due_at)<new Date()&&!isToday(task.due_at);
 const timeValue=e=>e?.starts_at?new Date(e.starts_at).getTime():Number.MAX_SAFE_INTEGER;
 
-function formatEventDate(value,t){
+function formatEventDate(value,t,language){
   if(!value)return '';
   const date=new Date(value);
-  if(isToday(value))return `${t('today')} · ${new Intl.DateTimeFormat(undefined,{timeStyle:'short'}).format(date)}`;
-  return new Intl.DateTimeFormat(undefined,{weekday:'short',day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}).format(date);
+  if(isToday(value))return `${t('today')} · ${formatDateTime(language,date,{timeStyle:'short'})}`;
+  return formatDateTime(language,date,{weekday:'short',day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'});
 }
 
-function taskDueLabel(task,t){
+function taskDueLabel(task,t,language){
   if(!task.due_at)return '';
   const date=new Date(task.due_at);
-  if(isOverdue(task))return `${t('due')} · ${new Intl.DateTimeFormat(undefined,{dateStyle:'short'}).format(date)}`;
-  if(isToday(task.due_at))return `${t('today')} ${new Intl.DateTimeFormat(undefined,{timeStyle:'short'}).format(date)}`;
-  return new Intl.DateTimeFormat(undefined,{dateStyle:'medium'}).format(date);
+  if(isOverdue(task))return `${t('due')} · ${formatDateTime(language,date,{dateStyle:'short'})}`;
+  if(isToday(task.due_at))return `${t('today')} ${formatDateTime(language,date,{timeStyle:'short'})}`;
+  return formatDateTime(language,date,{dateStyle:'medium'});
 }
 
 function routineIsDue(routine){
@@ -35,8 +37,8 @@ function EventIcon({event}){
   return <span className={`today-event-icon ${isWarning(event)?'warning':''}`}><Icon name={name}/></span>;
 }
 
-function TaskRow({task,onTask,t}){
-  const due=taskDueLabel(task,t);
+function TaskRow({task,onTask,t,language}){
+  const due=taskDueLabel(task,t,language);
   return <div className={`today-task-row ${isOverdue(task)?'overdue':''}`}>
     <button className="today-check" onClick={()=>onTask(task)} aria-label={`${task.title} · ${t('processed')}`}><Icon name="check"/></button>
     <div className="grow">
@@ -52,6 +54,7 @@ function TaskRow({task,onTask,t}){
 }
 
 export default function TodayHome({data,family,t,onTask,open}){
+  const language=i18n.language;
   const openTasks=(data.tasks||[]).filter(x=>!x.completed_at);
   const shopping=(data.shopping_lists||[]).flatMap(x=>x.items||[]).filter(x=>!x.checked);
   const events=[...(data.events||[])].filter(e=>!e.starts_at||new Date(e.starts_at).getTime()>=Date.now()-3600000).sort((a,b)=>timeValue(a)-timeValue(b));
@@ -66,7 +69,7 @@ export default function TodayHome({data,family,t,onTask,open}){
   return <div className="today-page">
     <header className="today-hero">
       <div>
-        <p>{new Intl.DateTimeFormat(undefined,{weekday:'long',day:'numeric',month:'long'}).format(new Date())}</p>
+        <p>{formatDateTime(language,new Date(),{weekday:'long',day:'numeric',month:'long'})}</p>
         <h1>{t('greeting')}</h1>
         <span>{urgentCount?`${urgentCount} · ${t('priority')}`:t('allDone')}</span>
       </div>
@@ -83,9 +86,9 @@ export default function TodayHome({data,family,t,onTask,open}){
       <div className="today-section-head"><div><small>{t('priority').toUpperCase()}</small><h2>{t('today')} · {t('priority')}</h2></div><span>{urgentCount}</span></div>
       <div className="today-important-grid">
         {warnings.map(event=><button key={`event-${event.id}`} className="today-important-card warning" onClick={()=>open('calendar')}>
-          <EventIcon event={event}/><div><small>{event.type==='public.warning'?t('publicWarning'):t('weatherWarning')}</small><strong>{event.title}</strong><span>{formatEventDate(event.starts_at,t)}</span></div><Icon name="next"/>
+          <EventIcon event={event}/><div><small>{event.type==='public.warning'?t('publicWarning'):t('weatherWarning')}</small><strong>{event.title}</strong><span>{formatEventDate(event.starts_at,t,language)}</span></div><Icon name="next"/>
         </button>)}
-        {urgentTasks.map(task=><div key={`task-${task.id}`} className="today-important-card task"><span className="today-event-icon danger"><Icon name="priority"/></span><div><small>{isOverdue(task)?t('due').toUpperCase():t('priority').toUpperCase()}</small><strong>{task.title}</strong><span>{[taskDueLabel(task,t),task.assignee_name].filter(Boolean).join(' · ')}</span></div><button className="today-check" onClick={()=>onTask(task)} aria-label={`${task.title} · ${t('processed')}`}><Icon name="check"/></button></div>)}
+        {urgentTasks.map(task=><div key={`task-${task.id}`} className="today-important-card task"><span className="today-event-icon danger"><Icon name="priority"/></span><div><small>{isOverdue(task)?t('due').toUpperCase():t('priority').toUpperCase()}</small><strong>{task.title}</strong><span>{[taskDueLabel(task,t,language),task.assignee_name].filter(Boolean).join(' · ')}</span></div><button className="today-check" onClick={()=>onTask(task)} aria-label={`${task.title} · ${t('processed')}`}><Icon name="check"/></button></div>)}
       </div>
     </section>}
 
@@ -93,7 +96,7 @@ export default function TodayHome({data,family,t,onTask,open}){
       <div className="today-section-head"><h2>{t('nextUp')}</h2><button className="today-link" onClick={()=>open('calendar')}>{t('calendar')} <Icon name="next"/></button></div>
       <button className="today-next-event" onClick={()=>open('calendar')}>
         <EventIcon event={nextEvent}/>
-        <div className="grow"><strong>{nextEvent.title}</strong><span>{formatEventDate(nextEvent.starts_at,t)}{nextEvent.payload?.location?` · ${nextEvent.payload.location}`:''}</span><small>{nextEvent.payload?.provider||nextEvent.type}</small></div>
+        <div className="grow"><strong>{nextEvent.title}</strong><span>{formatEventDate(nextEvent.starts_at,t,language)}{nextEvent.payload?.location?` · ${nextEvent.payload.location}`:''}</span><small>{nextEvent.payload?.provider||nextEvent.type}</small></div>
         <Icon name="next"/>
       </button>
     </section>}
@@ -101,7 +104,7 @@ export default function TodayHome({data,family,t,onTask,open}){
     <div className="today-main-grid">
       <section className="today-section">
         <div className="today-section-head"><h2>{t('today')}</h2><button className="today-link" onClick={()=>open('tasks')}>{t('all')} <Icon name="next"/></button></div>
-        <div className="today-panel">{todayTasks.length?todayTasks.map(task=><TaskRow task={task} onTask={onTask} t={t} key={task.id}/>):<div className="today-calm"><Icon name="doneAll"/><strong>{t('onboarding.emptyTaskTitle')}</strong><span>{t('onboarding.emptyTaskHint')}</span><button className="primary compact today-empty-action" onClick={()=>open('tasks')}><Icon name="plus"/> {t('addTask')}</button></div>}</div>
+        <div className="today-panel">{todayTasks.length?todayTasks.map(task=><TaskRow task={task} onTask={onTask} t={t} language={language} key={task.id}/>):<div className="today-calm"><Icon name="doneAll"/><strong>{t('onboarding.emptyTaskTitle')}</strong><span>{t('onboarding.emptyTaskHint')}</span><button className="primary compact today-empty-action" onClick={()=>open('tasks')}><Icon name="plus"/> {t('addTask')}</button></div>}</div>
       </section>
 
       <section className="today-section">
