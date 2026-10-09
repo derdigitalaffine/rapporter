@@ -25,7 +25,7 @@ export default function GlobalCreate({page,family,role,context={},onCreate,suppr
   },[]);
 
   useEffect(()=>{
-    const update=()=>setExternalDialog(Boolean(document.querySelector('.sheet-backdrop:not(.create-palette-backdrop),[role="dialog"][aria-modal="true"]:not(.create-palette-sheet)')));
+    const update=()=>setExternalDialog(Boolean(document.querySelector('.sheet-backdrop:not(.create-palette-backdrop),[role="dialog"][aria-modal="true"]:not(.create-palette-sheet),.toast-region .toast')));
     update();const observer=new MutationObserver(update);observer.observe(document.body,{childList:true,subtree:true});return()=>observer.disconnect();
   },[]);
 
