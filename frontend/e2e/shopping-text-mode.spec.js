@@ -61,5 +61,6 @@ test('Textmodus renames and removes existing rows without losing shopping metada
   await page.getByRole('button',{name:'Im Laden'}).click();
   await expect(page.getByLabel('Artikel zeilenweise hinzufügen')).toHaveCount(0);
   await expect(page.locator('.shopping-page')).toHaveClass(/store-mode/);
-  await expect(page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1)).resolves.toBe(true);
+  const noHorizontalOverflow=await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1);
+  expect(noHorizontalOverflow).toBe(true);
 });
