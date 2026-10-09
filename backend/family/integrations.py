@@ -14,6 +14,7 @@ DWD_WARNINGS = "https://www.dwd.de/DWD/warnungen/warnapp/json/warnings.json"
 NINA_DASHBOARD = "https://warnung.bund.de/api31/dashboard/{ars}.json"
 OPEN_METEO = "https://api.open-meteo.com/v1/forecast"
 TELEGRAM = "https://api.telegram.org/bot{token}/{method}"
+MAX_ICS_UPLOAD_BYTES = 2 * 1024 * 1024
 
 
 def _safe_public_https(url: str):
@@ -61,11 +62,40 @@ def _aware(value):
     return value
 
 
+def validate_ics_bytes(content):
+    raw = content.encode("utf-8") if isinstance(content, str) else bytes(content or b"")
+    if not raw:
+        raise ValueError("Die ICS-Datei ist leer.")
+    if len(raw) > MAX_ICS_UPLOAD_BYTES:
+        raise ValueError("Die ICS-Datei darf höchstens 2 MB groß sein.")
+    try:
+        calendar = Calendar.from_ical(raw)
+    except Exception as exc:
+        raise ValueError("Die Datei ist kein gültiger ICS/iCal-Kalender.") from exc
+    if getattr(calendar, "name", "") != "VCALENDAR":
+        raise ValueError("Die Datei enthält keinen gültigen VCALENDAR-Kalender.")
+    return calendar
+
+
+def normalize_ics_upload(content):
+    raw = bytes(content or b"")
+    validate_ics_bytes(raw)
+    try:
+        return raw.decode("utf-8-sig")
+    except UnicodeDecodeError as exc:
+        raise ValueError("Die ICS-Datei muss UTF-8-kodiert sein.") from exc
+
+
 def sync_ics(source: IntegrationSource):
-    if not source.endpoint:
-        raise ValueError("Bitte eine öffentliche HTTPS-iCal/ICS-URL angeben.")
-    response = _get(source.endpoint)
-    calendar = Calendar.from_ical(response.content)
+    config = source.config or {}
+    snapshot = config.get("ics_content")
+    if snapshot:
+        raw = snapshot.encode("utf-8")
+    else:
+        if not source.endpoint:
+            raise ValueError("Bitte eine öffentliche HTTPS-iCal/ICS-URL oder eine ICS-Datei angeben.")
+        raw = _get(source.endpoint).content
+    calendar = validate_ics_bytes(raw)
     count = 0
     for component in calendar.walk("VEVENT"):
         uid = str(component.get("uid", ""))
@@ -73,7 +103,7 @@ def sync_ics(source: IntegrationSource):
         start = _aware(component.decoded("dtstart", None))
         end = _aware(component.decoded("dtend", None))
         external_id = uid or f"{title}:{start}"
-        event_type = "waste.collection" if source.kind == IntegrationSource.Kind.WASTE else source.config.get("event_type", "calendar.event")
+        event_type = "waste.collection" if source.kind == IntegrationSource.Kind.WASTE else config.get("event_type", "calendar.event")
         FamilyEvent.objects.update_or_create(
             family=source.family,
             source=source,
@@ -87,7 +117,7 @@ def sync_ics(source: IntegrationSource):
                 "payload": {
                     "location": str(component.get("location", "")),
                     "description": str(component.get("description", "")),
-                    "provider": source.config.get("provider", "ICS/iCal"),
+                    "provider": config.get("provider", "ICS/iCal"),
                 },
             },
         )
@@ -261,7 +291,7 @@ def sync_source(source: IntegrationSource):
 
 
 INTEGRATION_CATALOG = [
-    {"id": "waste_kl_city", "kind": "waste", "name": "Müllkalender Stadt Kaiserslautern", "description": "Offiziellen adressbezogenen iCal-Export der Stadtbildpflege verbinden.", "help_url": "https://www.kaiserslautern.de/serviceportal/onlineservice/index.html.de/index.html?lang=de", "fields": [{"key": "endpoint", "label": "iCal/ICS-URL", "type": "url", "required": True}], "defaults": {"adapter": "waste_kl_city", "provider": "Stadtbildpflege Kaiserslautern", "event_type": "waste.collection"}},
+    {"id": "waste_kl_city", "kind": "waste", "name": "Müllkalender Stadt Kaiserslautern", "description": "Heruntergeladene ICS-Datei der Stadtbildpflege importieren.", "help_url": "https://www.kaiserslautern.de/serviceportal/onlineservice/index.html.de/index.html?lang=de", "fields": [{"key": "ics_file", "label": "ICS-Datei", "type": "file", "accept": ".ics,text/calendar", "required": True}], "defaults": {"adapter": "waste_kl_city", "provider": "Stadtbildpflege Kaiserslautern", "event_type": "waste.collection", "static_ics": True}},
     {"id": "waste_kl_county", "kind": "waste", "name": "Müllkalender Landkreis Kaiserslautern", "description": "Adressbezogenen Export des offiziellen interaktiven Landkreis-Kalenders verbinden.", "help_url": "https://abfallapp.softwareentwicklung-roth.de/web/KL/de/kalender", "fields": [{"key": "endpoint", "label": "iCal/ICS-URL", "type": "url", "required": True}], "defaults": {"adapter": "waste_kl_county", "provider": "Landkreis Kaiserslautern", "event_type": "waste.collection"}},
     {"id": "ics", "kind": "ics", "name": "Kalender (ICS/iCal)", "description": "Öffentlichen HTTPS-Kalender abonnieren.", "fields": [{"key": "endpoint", "label": "ICS-URL", "type": "url", "required": True}], "defaults": {"adapter": "ics"}},
     {"id": "dwd", "kind": "warning", "name": "DWD Wetterwarnungen", "description": "Amtliche Wetterwarnungen nach Region.", "fields": [{"key": "region", "label": "Region", "type": "text", "default": "Kaiserslautern"}], "defaults": {"adapter": "dwd", "region": "Kaiserslautern"}},
