@@ -1,0 +1,16 @@
+import {useState} from 'react';
+import {useTranslation} from 'react-i18next';
+import {Icon} from './icons';
+import {formatDateTime} from './locale';
+import './workflow-i18n';
+import './task-board.css';
+
+export default function TaskBoard({tasks,columns,onMove,onToggle,onEdit,busy}){
+ const {t,i18n}=useTranslation();const [selected,setSelected]=useState(columns[0]?.id);const [allDone,setAllDone]=useState(false);const [dragging,setDragging]=useState('');
+ const active=columns.some(x=>x.id===selected)?selected:columns[0]?.id;
+ function drop(event,column,before){event.preventDefault();const id=event.dataTransfer.getData('text/plain')||dragging;setDragging('');if(id&&id!==before)onMove(id,column.id,before)}
+ return <div className="task-board"><div className="board-status-tabs" role="group" aria-label={t('workflowUi.status')}>{columns.map(column=><button key={column.id} aria-pressed={active===column.id} className={active===column.id?'active':''} onClick={()=>setSelected(column.id)}>{column.name} <b>{tasks.filter(x=>x.workflow_column===column.id).length}</b></button>)}</div><div className="board-columns">{columns.map(column=>{
+  const rows=tasks.filter(x=>x.workflow_column===column.id).sort((a,b)=>Number(a.workflow_position)-Number(b.workflow_position)||String(a.id).localeCompare(String(b.id)));const visible=column.is_terminal&&!allDone?rows.slice(-20):rows;
+  return <section key={column.id} className={`board-column ${active===column.id?'selected':''}`} aria-label={column.name} onDragOver={e=>e.preventDefault()} onDrop={e=>drop(e,column)}><h2>{column.name} <span>{rows.length}</span></h2>{visible.map(task=><article className="board-card" key={task.id} draggable={!busy} onDragStart={e=>{e.dataTransfer.setData('text/plain',task.id);setDragging(task.id)}} onDragEnd={()=>setDragging('')} onDragOver={e=>{e.preventDefault();e.stopPropagation()}} onDrop={e=>{e.stopPropagation();drop(e,column,task.id)}}><div className="board-card-title"><button className={`smart-check ${task.completed_at?'checked':''}`} aria-label={`${task.title} · ${t(task.completed_at?'reopen':'complete')}`} disabled={busy} onClick={()=>onToggle(task)}><Icon name="check"/></button><button className="board-edit" onClick={()=>onEdit(task)}><strong>{task.title}</strong></button></div><div className="board-meta">{task.assignee_name&&<span><Icon name="user"/>{task.assignee_name}</span>}{task.due_at&&<span><Icon name="clock"/>{formatDateTime(i18n.language,task.due_at,{dateStyle:'short'})}</span>}{task.priority==='high'&&<span className="danger-text">{t('important')}</span>}{task.estimate_minutes&&<span>{task.estimate_minutes} min</span>}{(task.tags||[]).map(tag=><span key={tag}>{tag}</span>)}</div><label className="board-status-label"><span className="sr-only">{t('workflowUi.move',{title:task.title})}</span><select value={task.workflow_column||''} onChange={e=>onMove(task.id,e.target.value)} disabled={busy}>{columns.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></label></article>)}{!rows.length&&<p className="board-empty">{t('noData')}</p>}{column.is_terminal&&rows.length>20&&!allDone&&<button className="secondary compact" onClick={()=>setAllDone(true)}>{t('workflowUi.allDone')}</button>}</section>
+ })}</div><span className="sr-only" role="status">{busy?t('saving'):''}</span></div>
+}

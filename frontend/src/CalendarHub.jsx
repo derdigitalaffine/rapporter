@@ -1,6 +1,7 @@
 import {useEffect,useMemo,useState} from 'react';
 import i18n from './i18n';
 import './calendar-i18n';
+import './birthday-i18n';
 import {api} from './api';
 import {Icon} from './icons';
 import {toast} from './feedback';
@@ -10,10 +11,10 @@ import './calendar-hub.css';
 
 const unwrap=x=>x?.results||x||[];
 const nativeEvent=e=>!e.source&&e.type==='calendar.event';
-const sourceKey=e=>nativeEvent(e)?'family':e.type?.includes('warning')?'warning':e.type?.includes('waste')?'waste':e.type?.includes('weather')?'weather':e.type?.includes('transit')?'transit':e.type?.includes('school')?'school':'calendar';
-const sourceLabelKey={family:'sourceFamily',warning:'sourceWarnings',waste:'sourceWaste',weather:'sourceWeather',transit:'sourceTransit',school:'sourceSchool',calendar:'sourceCalendar'};
-const sourceIcons={family:'members',warning:'warning',waste:'waste',weather:'weather',transit:'transit',school:'school',calendar:'calendar'};
-const sourceLabel=(key,t)=>t(`calendarUi.${sourceLabelKey[key]||'sourceCalendar'}`);
+const sourceKey=e=>e.type==='birthday'?'birthday':nativeEvent(e)?'family':e.type?.includes('warning')?'warning':e.type?.includes('waste')?'waste':e.type?.includes('weather')?'weather':e.type?.includes('transit')?'transit':e.type?.includes('school')?'school':'calendar';
+const sourceLabelKey={birthday:'sourceBirthdays',family:'sourceFamily',warning:'sourceWarnings',waste:'sourceWaste',weather:'sourceWeather',transit:'sourceTransit',school:'sourceSchool',calendar:'sourceCalendar'};
+const sourceIcons={birthday:'calendar',family:'members',warning:'warning',waste:'waste',weather:'weather',transit:'transit',school:'school',calendar:'calendar'};
+const sourceLabel=(key,t)=>key==='birthday'?t('birthdayUi.title'):t(`calendarUi.${sourceLabelKey[key]||'sourceCalendar'}`);
 
 export default function CalendarHub({family,onBack,t}){
  const [events,setEvents]=useState([]);const [edit,setEdit]=useState(null);const [detail,setDetail]=useState(null);const [filter,setFilter]=useState('all');const [showPast,setShowPast]=useState(false);
@@ -29,7 +30,7 @@ export default function CalendarHub({family,onBack,t}){
  return <div className="smart-page calendar-agenda"><div className="page-head"><button className="back-button" onClick={onBack} aria-label={t('back')}><Icon name="back"/></button><div className="grow"><small>{t('calendarUi.agenda')}</small><h1>{t('calendar')}</h1></div></div><p className="page-intro">{t('calendarHint')}</p>
  {filters.length>1&&<div className="calendar-filters" aria-label={t('calendarUi.sources')}><button className={filter==='all'?'active':''} onClick={()=>setFilter('all')}><Icon name="calendar"/> {t('all')}</button>{filters.map(key=><button key={key} className={filter===key?'active':''} onClick={()=>setFilter(key)}><Icon name={sourceIcons[key]||'calendar'}/>{key==='family'?(family?.name||sourceLabel(key,t)):sourceLabel(key,t)}</button>)}</div>}
  {hasPast&&<div className="calendar-history-toggle"><button className="secondary compact" aria-pressed={showPast} onClick={()=>setShowPast(value=>!value)}><Icon name="calendar"/>{t(showPast?'calendarUi.hidePast':'calendarUi.showPast')}</button></div>}
- <div className="agenda-days">{grouped.length?grouped.map(([day,rows])=><section className="agenda-day" key={day}><div className="agenda-day-head"><div><small>{dayRelativeLabel(day,t,language)}</small><h2>{dayLongLabel(day,t,language)}</h2></div><span>{rows.length}</span></div><div className="agenda-list">{rows.map(e=><AgendaEvent key={e.id} event={e} family={family} t={t} language={language} onOpen={()=>setDetail(e)}/>)}</div></section>):<div className="smart-empty"><Icon name="calendar" size={34}/><strong>{t('noUpcoming')}</strong><span>{filter==='all'?t('calendarAddHint'):t('calendarUi.noSourceEntries')}</span>{filter!=='all'&&<button className="secondary compact" onClick={()=>setFilter('all')}>{t('calendarUi.showAllSources')}</button>}</div>}</div>
+ <div className="agenda-days">{grouped.length?grouped.map(([day,rows])=><section className="agenda-day" key={day}><div className="agenda-day-head"><div><small>{dayRelativeLabel(day,t,language)}</small><h2>{dayLongLabel(day,t,language)}</h2></div><span>{rows.length}</span></div><div className="agenda-list">{rows.map(e=><AgendaEvent key={e.id} event={e} family={family} t={t} language={language} onOpen={()=>e.type==='birthday'?window.location.assign(e.payload.url):setDetail(e)}/>)}</div></section>):<div className="smart-empty"><Icon name="calendar" size={34}/><strong>{t('noUpcoming')}</strong><span>{filter==='all'?t('calendarAddHint'):t('calendarUi.noSourceEntries')}</span>{filter!=='all'&&<button className="secondary compact" onClick={()=>setFilter('all')}>{t('calendarUi.showAllSources')}</button>}</div>}</div>
  {detail&&<EventDetail event={detail} family={family} t={t} language={language} onClose={()=>setDetail(null)} onEdit={nativeEvent(detail)?()=>editEvent(detail):null}/>} 
  {edit&&<EventEditor family={family} event={edit.id?edit:null} onClose={()=>setEdit(null)} onSaved={async()=>{setEdit(null);await load()}}/>}</div>
 }

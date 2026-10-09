@@ -17,6 +17,8 @@ def shopping_item_purchase_before_save(sender, instance, **kwargs):
 
 @receiver(post_save, sender=ShoppingItem)
 def shopping_item_purchase_after_save(sender, instance, created, **kwargs):
+    if instance.birthday_context:
+        return
     was_checked = False if created else bool(getattr(instance, "_purchase_previous_checked", False))
     if was_checked or not instance.checked or not instance.checked_at:
         return

@@ -14,6 +14,7 @@ function targetFromLocation(){
     const list=params.get('list');
     if(list)return {page,key:'list',endpoint:`/task-lists/${encodeURIComponent(list)}/`};
   }
+  if(page==='shopping'&&params.get('mode')==='store')return null;
   if(page==='shopping'){
     const item=params.get('item');
     if(item)return {page,key:'item',endpoint:`/shopping-items/${encodeURIComponent(item)}/`};

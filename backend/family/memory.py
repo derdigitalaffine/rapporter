@@ -11,6 +11,8 @@ def normalize_name(value):
 
 
 def remember_entry(instance, *, bump=False):
+    if getattr(instance,"birthday_context",None):
+        return None
     if isinstance(instance, Task):
         family = instance.family
         kind = EntryMemory.Kind.TASK

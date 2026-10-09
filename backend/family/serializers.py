@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from rest_framework.exceptions import PermissionDenied
-from .models import Family, Membership, FamilyInvitation, TaskList, Task, ShoppingList, ShoppingItem, Routine, RoutineLog, IntegrationSource, FamilyEvent, InboxItem, InboxReceipt, AutomationRule, AutomationExecution
+from .models import Family, Membership, FamilyInvitation, TaskList, Task, TaskWorkflowColumn, ShoppingList, ShoppingItem, Routine, RoutineLog, IntegrationSource, FamilyEvent, InboxItem, InboxReceipt, AutomationRule, AutomationExecution
 from .predictions import routine_prediction
 
 
@@ -13,12 +13,52 @@ def _validate_family_access(serializer, attrs):
     return family
 
 
+def _membership_profile(obj):
+    try:
+        return obj.user.familyos_profile
+    except Exception:
+        return None
+
+
 class MembershipSerializer(serializers.ModelSerializer):
     username = serializers.CharField(source="user.username", read_only=True)
+    avatar = serializers.SerializerMethodField()
+    avatar_url = serializers.SerializerMethodField()
+    birth_month = serializers.SerializerMethodField()
+    birth_day = serializers.SerializerMethodField()
+    birth_year = serializers.SerializerMethodField()
+
+    def _birthday_visible(self, obj):
+        request = self.context.get("request")
+        if request and request.user.is_authenticated and request.user.id == obj.user_id:
+            return "full_date"
+        return obj.birthday_visibility
+
+    def get_avatar(self, obj):
+        return self.get_avatar_url(obj)
+
+    def get_avatar_url(self, obj):
+        profile = _membership_profile(obj)
+        if profile and profile.avatar_key:
+            return f"/api/profile/avatar/{obj.user_id}/128/?v={profile.avatar_version}"
+        return obj.avatar or ""
+
+    def get_birth_month(self, obj):
+        profile = _membership_profile(obj)
+        return profile.birth_month if profile and self._birthday_visible(obj) != Membership.BirthdayVisibility.HIDDEN else None
+
+    def get_birth_day(self, obj):
+        profile = _membership_profile(obj)
+        return profile.birth_day if profile and self._birthday_visible(obj) != Membership.BirthdayVisibility.HIDDEN else None
+
+    def get_birth_year(self, obj):
+        profile = _membership_profile(obj)
+        return profile.birth_year if profile and self._birthday_visible(obj) == Membership.BirthdayVisibility.FULL_DATE else None
+
     class Meta:
         model = Membership
-        fields = ["id", "family", "user", "username", "role", "display_name", "avatar"]
-        read_only_fields = ["family", "user"]
+        fields = ["id", "family", "user", "username", "role", "display_name", "avatar", "avatar_url", "birthday_visibility", "birth_month", "birth_day", "birth_year"]
+        read_only_fields = ["family", "user", "avatar", "avatar_url", "birth_month", "birth_day", "birth_year"]
 
 
 class FamilyInvitationSerializer(serializers.ModelSerializer):
@@ -39,20 +79,51 @@ class FamilySerializer(serializers.ModelSerializer):
         read_only_fields = ["status"]
 
 
+class WorkflowColumnSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TaskWorkflowColumn
+        fields = ["id", "task_list", "name", "key", "position", "kind", "is_terminal", "archived"]
+        read_only_fields = ["task_list", "key"]
+
+
 class TaskListSerializer(serializers.ModelSerializer):
+    workflow_columns = WorkflowColumnSerializer(many=True, read_only=True)
     open_count = serializers.SerializerMethodField()
     done_count = serializers.SerializerMethodField()
-    def get_open_count(self, obj): return obj.tasks.filter(completed_at__isnull=True).count()
-    def get_done_count(self, obj): return obj.tasks.filter(completed_at__isnull=False).count()
+    def get_open_count(self, obj): return self._visible_tasks(obj).filter(completed_at__isnull=True).count()
+    def get_done_count(self, obj): return self._visible_tasks(obj).filter(completed_at__isnull=False).count()
+    def _visible_tasks(self,obj):
+        request=self.context.get("request")
+        return obj.tasks.exclude(hidden_from_user=request.user) if request else obj.tasks.filter(hidden_from_user__isnull=True)
     def validate(self, attrs):
         _validate_family_access(self, attrs)
+        if "workflow_enabled" in attrs:
+            family = attrs.get("family") or self.instance.family
+            request = self.context.get("request")
+            if request and not Membership.objects.filter(family=family, user=request.user, role__in=["owner", "adult"]).exists():
+                raise PermissionDenied("Only owners/adults can configure workflows.")
         return attrs
+    def create(self, validated_data):
+        from .task_workflow import configure_workflow
+        from django.db import transaction
+        with transaction.atomic():
+            enabled = validated_data.pop("workflow_enabled", False)
+            instance = super().create(validated_data)
+            return configure_workflow(instance, True) if enabled else instance
+    def update(self, instance, validated_data):
+        from .task_workflow import configure_workflow
+        from django.db import transaction
+        with transaction.atomic():
+            enabled = validated_data.pop("workflow_enabled", instance.workflow_enabled)
+            instance = super().update(instance, validated_data)
+            return configure_workflow(instance, enabled)
     class Meta:
         model = TaskList
-        fields = ["id", "family", "name", "icon", "archived", "sort_order", "open_count", "done_count", "created_at", "updated_at"]
+        fields = ["id", "family", "name", "icon", "archived", "sort_order", "workflow_enabled", "workflow_columns", "open_count", "done_count", "created_at", "updated_at"]
 
 
 class TaskSerializer(serializers.ModelSerializer):
+    workflow_status = serializers.CharField(source="workflow_column.name", read_only=True)
     assignee_name = serializers.CharField(source="assignee.username", read_only=True)
     list_name = serializers.CharField(source="task_list.name", read_only=True)
     list_icon = serializers.CharField(source="task_list.icon", read_only=True)
@@ -65,12 +136,15 @@ class TaskSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({"task_list": "Aufgabenliste gehört nicht zu dieser Familie."})
         if family and assignee and not Membership.objects.filter(family=family, user=assignee).exists():
             raise serializers.ValidationError({"assignee": "Person gehört nicht zu dieser Familie."})
+        column = attrs.get("workflow_column")
+        if column and (not task_list or not task_list.workflow_enabled or column.task_list_id != task_list.id or column.archived):
+            raise serializers.ValidationError({"workflow_column": "Column does not belong to this active workflow."})
         return attrs
 
     class Meta:
         model = Task
         fields = "__all__"
-        read_only_fields = ["created_by"]
+        read_only_fields = ["created_by", "workflow_position"]
 
 
 class ShoppingItemSerializer(serializers.ModelSerializer):
@@ -91,11 +165,15 @@ class ShoppingItemSerializer(serializers.ModelSerializer):
 
 
 class ShoppingListSerializer(serializers.ModelSerializer):
-    items = ShoppingItemSerializer(many=True, read_only=True)
+    items = serializers.SerializerMethodField()
+    def _visible_items(self,obj):
+        request=self.context.get("request")
+        return obj.items.exclude(hidden_from_user=request.user) if request else obj.items.filter(hidden_from_user__isnull=True)
+    def get_items(self,obj): return ShoppingItemSerializer(self._visible_items(obj),many=True,context=self.context).data
     open_count = serializers.SerializerMethodField()
     checked_count = serializers.SerializerMethodField()
-    def get_open_count(self, obj): return obj.items.filter(checked=False).count()
-    def get_checked_count(self, obj): return obj.items.filter(checked=True).count()
+    def get_open_count(self, obj): return self._visible_items(obj).filter(checked=False).count()
+    def get_checked_count(self, obj): return self._visible_items(obj).filter(checked=True).count()
     def validate(self, attrs):
         _validate_family_access(self, attrs)
         return attrs
