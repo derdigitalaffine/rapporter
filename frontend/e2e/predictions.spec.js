@@ -17,7 +17,7 @@ test('routine editor uses learned forecast instead of manual interval',async({pa
   });
 
   await page.goto('/?page=routines');
-  await page.getByRole('button',{name:/Bad putzen/}).click();
+  await page.locator('.row-main-button').filter({hasText:'Bad putzen'}).click();
 
   const dialog=page.getByRole('dialog');
   await expect(dialog).toContainText('Wahrscheinlich wieder dran');
