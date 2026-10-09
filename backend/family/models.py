@@ -203,12 +203,31 @@ class FamilyEvent(TimestampedModel):
 
 
 class InboxItem(TimestampedModel):
+    class Audience(models.TextChoices):
+        FAMILY = "family", "Whole family"
+        SELECTED = "selected", "Selected members"
+
     family = models.ForeignKey(Family, on_delete=models.CASCADE, related_name="inbox_items")
     title = models.CharField(max_length=200)
     body = models.TextField(blank=True)
     source = models.CharField(max_length=40, default="share")
     status = models.CharField(max_length=24, default="new")
     parsed = models.JSONField(default=dict, blank=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="created_family_messages")
+    audience = models.CharField(max_length=16, choices=Audience.choices, default=Audience.FAMILY)
+    important = models.BooleanField(default=False)
+    context = models.JSONField(default=dict, blank=True)
+    withdrawn_at = models.DateTimeField(null=True, blank=True)
+
+
+class InboxReceipt(TimestampedModel):
+    item = models.ForeignKey(InboxItem, on_delete=models.CASCADE, related_name="receipts")
+    membership = models.ForeignKey(Membership, on_delete=models.CASCADE, related_name="inbox_receipts")
+    read_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        unique_together = ("item", "membership")
+        indexes = [models.Index(fields=["membership", "read_at"], name="fam_inbox_receipt_idx")]
 
 
 class PushSubscription(TimestampedModel):

@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from rest_framework.exceptions import PermissionDenied
-from .models import Family, Membership, FamilyInvitation, TaskList, Task, ShoppingList, ShoppingItem, Routine, RoutineLog, IntegrationSource, FamilyEvent, InboxItem, AutomationRule, AutomationExecution
+from .models import Family, Membership, FamilyInvitation, TaskList, Task, ShoppingList, ShoppingItem, Routine, RoutineLog, IntegrationSource, FamilyEvent, InboxItem, InboxReceipt, AutomationRule, AutomationExecution
 
 
 def _validate_family_access(serializer, attrs):
@@ -158,12 +158,82 @@ class FamilyEventSerializer(serializers.ModelSerializer):
 
 
 class InboxItemSerializer(serializers.ModelSerializer):
+    title = serializers.CharField(required=False, allow_blank=True)
+    recipient_ids = serializers.ListField(child=serializers.UUIDField(), write_only=True, required=False)
+    recipients = serializers.SerializerMethodField()
+    created_by_name = serializers.SerializerMethodField()
+    unread = serializers.SerializerMethodField()
+    read_at = serializers.SerializerMethodField()
+    can_withdraw = serializers.SerializerMethodField()
+
     def validate(self, attrs):
-        _validate_family_access(self, attrs)
+        family = _validate_family_access(self, attrs)
+        recipient_ids = attrs.get("recipient_ids") or []
+        if family and recipient_ids:
+            found = Membership.objects.filter(family=family, id__in=recipient_ids).count()
+            if found != len(set(recipient_ids)):
+                raise serializers.ValidationError({"recipient_ids": "Mindestens ein Empfänger gehört nicht zu dieser Familie."})
         return attrs
+
+    def _membership(self, obj):
+        request = self.context.get("request")
+        if not request or not request.user.is_authenticated:
+            return None
+        return Membership.objects.filter(family=obj.family, user=request.user).first()
+
+    def _receipt(self, obj):
+        membership = self._membership(obj)
+        if not membership:
+            return None
+        return next((row for row in obj.receipts.all() if row.membership_id == membership.id), None)
+
+    def get_recipients(self, obj):
+        return [{"id": str(row.membership_id), "display_name": row.membership.display_name or row.membership.user.username, "username": row.membership.user.username} for row in obj.receipts.all()]
+
+    def get_created_by_name(self, obj):
+        if not obj.created_by:
+            return "FamilyOS"
+        membership = Membership.objects.filter(family=obj.family, user=obj.created_by).first()
+        return (membership.display_name if membership else "") or obj.created_by.get_short_name() or obj.created_by.username
+
+    def get_unread(self, obj):
+        request = self.context.get("request")
+        if request and obj.created_by_id == request.user.id:
+            return False
+        receipt = self._receipt(obj)
+        if receipt:
+            return receipt.read_at is None
+        return obj.status == "new"
+
+    def get_read_at(self, obj):
+        receipt = self._receipt(obj)
+        return receipt.read_at if receipt else None
+
+    def get_can_withdraw(self, obj):
+        request = self.context.get("request")
+        if not request or not request.user.is_authenticated:
+            return False
+        if obj.created_by_id == request.user.id:
+            return True
+        return Membership.objects.filter(family=obj.family, user=request.user, role=Membership.Role.OWNER).exists()
+
+    def create(self, validated_data):
+        validated_data.pop("recipient_ids", None)
+        return super().create(validated_data)
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        if instance.withdrawn_at:
+            data["status"] = "withdrawn"
+        elif instance.status == "new":
+            request = self.context.get("request")
+            data["status"] = "sent" if request and instance.created_by_id == request.user.id else ("new" if data["unread"] else "read")
+        return data
+
     class Meta:
         model = InboxItem
-        fields = "__all__"
+        fields = ["id", "family", "title", "body", "source", "status", "parsed", "created_by", "created_by_name", "audience", "important", "context", "withdrawn_at", "recipient_ids", "recipients", "unread", "read_at", "can_withdraw", "created_at", "updated_at"]
+        read_only_fields = ["source", "status", "created_by", "withdrawn_at"]
 
 
 class AutomationExecutionSerializer(serializers.ModelSerializer):
