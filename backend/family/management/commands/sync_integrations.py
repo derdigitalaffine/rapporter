@@ -1,15 +1,15 @@
 from django.core.management.base import BaseCommand
 from family.automation import run_all_rules
 from family.integration_health import sync_with_health
-from family.models import IntegrationSource
+from family.models import Family, IntegrationSource
 
 
 class Command(BaseCommand):
-    help = "Synchronize enabled integrations and execute fam-uh-le automation rules"
+    help = "Synchronize enabled integrations and execute FamilyOS automation rules"
 
     def handle(self, *args, **options):
         total = 0
-        for source in IntegrationSource.objects.filter(enabled=True):
+        for source in IntegrationSource.objects.filter(enabled=True, family__status=Family.Status.ACTIVE):
             try:
                 count = sync_with_health(source)
                 total += count
