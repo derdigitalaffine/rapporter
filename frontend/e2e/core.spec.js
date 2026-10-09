@@ -145,10 +145,11 @@ test('automation template can be activated',async({page},testInfo)=>{
 
 test('integration error state has a working retry',async({page},testInfo)=>{
   await boot(page,{path:'/?page=integrations'});
-  const card=page.locator('.integration-card').filter({hasText:'Open-Meteo'});
-  await expect(card).toContainText('Zeitüberschreitung beim Abruf');
-  await card.getByRole('button',{name:/Synchronisieren|Erneut versuchen|Sync/i}).first().click();
-  await expect(card).not.toContainText('Zeitüberschreitung beim Abruf');
+  const card=page.locator('.integration-health-card').filter({hasText:'Open-Meteo'});
+  await expect(card).toContainText('Synchronisierung fehlgeschlagen');
+  await expect(card).toContainText('Die Quelle war nicht erreichbar');
+  await card.getByRole('button',{name:'Erneut versuchen'}).click();
+  await expect(card).not.toContainText('Synchronisierung fehlgeschlagen');
   await expectNoSevereA11y(page);
   await capture(page,testInfo,'integrations');
 });
