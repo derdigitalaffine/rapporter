@@ -79,7 +79,7 @@ function TaskRow({task,onTask,t,language}){
   </div>;
 }
 
-export default function TodayHome({data,family,t,onTask,open}){
+export default function TodayHome({data,family,t,onTask,open,onCreate}){
   const language=i18n.language;
   const openTasks=(data.tasks||[]).filter(x=>!x.completed_at);
   const shopping=(data.shopping_lists||[]).flatMap(x=>x.items||[]).filter(x=>!x.checked);
@@ -92,6 +92,9 @@ export default function TodayHome({data,family,t,onTask,open}){
   const nextEvent=events.find(e=>!isWarning(e));
   const todayTasks=openTasks.filter(x=>(isToday(x.due_at)||!x.due_at)&&!urgentTaskIds.has(x.id)).sort((a,b)=>Number(b.priority==='high')-Number(a.priority==='high')).slice(0,5);
   const dueRoutines=(data.routines||[]).filter(routineIsDue).slice(0,4);
+  const taskListId=(data.task_lists||[]).find(list=>!list.archived)?.id||'';
+  const shoppingListId=(data.shopping_lists||[]).find(list=>!list.archived)?.id||'';
+  const quickCreate=(id,fallback,context={})=>onCreate?onCreate(id,context):open(fallback);
 
   return <div className="today-page">
     <header className="today-hero">
@@ -101,9 +104,9 @@ export default function TodayHome({data,family,t,onTask,open}){
         <span>{urgentCount?`${urgentCount} · ${t('priority')}`:t('allDone')}</span>
       </div>
       <div className="today-quick-actions">
-        <button onClick={()=>open('tasks')} aria-label={`${t('add')} · ${t('tasks')}`}><Icon name="plus"/><span>{t('tasks')}</span></button>
-        <button onClick={()=>open('shopping')} aria-label={`${t('add')} · ${t('shopping')}`}><Icon name="shopping"/><span>{t('shopping')}</span></button>
-        <button onClick={()=>open('calendar')} aria-label={`${t('add')} · ${t('calendar')}`}><Icon name="calendar"/><span>{t('calendar')}</span></button>
+        <button onClick={()=>quickCreate('task','tasks',{taskListId})} aria-label={`${t('add')} · ${t('tasks')}`}><Icon name="plus"/><span>{t('tasks')}</span></button>
+        <button onClick={()=>quickCreate('shoppingItem','shopping',{shoppingListId})} aria-label={`${t('add')} · ${t('shopping')}`}><Icon name="shopping"/><span>{t('shopping')}</span></button>
+        <button onClick={()=>quickCreate('event','calendar')} aria-label={`${t('add')} · ${t('calendar')}`}><Icon name="calendar"/><span>{t('calendar')}</span></button>
       </div>
     </header>
 
