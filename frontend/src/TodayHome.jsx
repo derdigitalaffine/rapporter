@@ -2,6 +2,7 @@ import i18n from './i18n';
 import {formatDateTime} from './locale';
 import {Icon} from './icons';
 import OnboardingCard from './OnboardingCard';
+import {requestCreate} from './create-request';
 import './onboarding.css';
 
 const isWarning=e=>e?.type?.includes('warning');
@@ -101,9 +102,9 @@ export default function TodayHome({data,family,t,onTask,open}){
         <span>{urgentCount?`${urgentCount} · ${t('priority')}`:t('allDone')}</span>
       </div>
       <div className="today-quick-actions">
-        <button onClick={()=>open('tasks')} aria-label={`${t('add')} · ${t('tasks')}`}><Icon name="plus"/><span>{t('tasks')}</span></button>
-        <button onClick={()=>open('shopping')} aria-label={`${t('add')} · ${t('shopping')}`}><Icon name="shopping"/><span>{t('shopping')}</span></button>
-        <button onClick={()=>open('calendar')} aria-label={`${t('add')} · ${t('calendar')}`}><Icon name="calendar"/><span>{t('calendar')}</span></button>
+        <button onClick={()=>requestCreate('task',{source:'todayQuickAction'})} aria-label={`${t('add')} · ${t('tasks')}`}><Icon name="plus"/><span>{t('tasks')}</span></button>
+        <button onClick={()=>requestCreate('shoppingItem',{source:'todayQuickAction'})} aria-label={`${t('add')} · ${t('shopping')}`}><Icon name="shopping"/><span>{t('shopping')}</span></button>
+        <button onClick={()=>requestCreate('event',{source:'todayQuickAction'})} aria-label={`${t('add')} · ${t('calendar')}`}><Icon name="calendar"/><span>{t('calendar')}</span></button>
       </div>
     </header>
 
@@ -139,7 +140,7 @@ export default function TodayHome({data,family,t,onTask,open}){
     <div className="today-main-grid">
       <section className="today-section">
         <div className="today-section-head"><h2>{t('today')}</h2><button className="today-link" onClick={()=>open('tasks')}>{t('all')} <Icon name="next"/></button></div>
-        <div className="today-panel">{todayTasks.length?todayTasks.map(task=><TaskRow task={task} onTask={onTask} t={t} language={language} key={task.id}/>):<div className="today-calm"><Icon name="doneAll"/><strong>{t('onboarding.emptyTaskTitle')}</strong><span>{t('onboarding.emptyTaskHint')}</span><button className="primary compact today-empty-action" onClick={()=>open('tasks')}><Icon name="plus"/> {t('addTask')}</button></div>}</div>
+        <div className="today-panel">{todayTasks.length?todayTasks.map(task=><TaskRow task={task} onTask={onTask} t={t} language={language} key={task.id}/>):<div className="today-calm"><Icon name="doneAll"/><strong>{t('onboarding.emptyTaskTitle')}</strong><span>{t('onboarding.emptyTaskHint')}</span><button className="primary compact today-empty-action" onClick={()=>requestCreate('task',{source:'todayEmptyState'})}><Icon name="plus"/> {t('addTask')}</button></div>}</div>
       </section>
 
       <section className="today-section">

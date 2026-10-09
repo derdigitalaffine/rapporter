@@ -2,7 +2,8 @@ import {useEffect,useMemo,useRef,useState} from 'react';
 import {useTranslation} from 'react-i18next';
 import './create-i18n';
 import {Icon} from './icons';
-import {availableCreateActions,CREATE_PAGES,directCreateAction} from './create-actions';
+import {availableCreateActions,CREATE_PAGES,createActionById,directCreateAction} from './create-actions';
+import {CREATE_REQUEST_EVENT} from './create-request';
 
 const CAPABILITIES={loyalty:true,messages:false};
 
@@ -53,6 +54,17 @@ export default function GlobalCreate({page,family,role,context={},onCreate,suppr
     window.addEventListener('keydown',keydown);window.addEventListener('popstate',pop);requestAnimationFrame(()=>firstActionRef.current?.focus());
     return()=>{window.removeEventListener('keydown',keydown);window.removeEventListener('popstate',pop)};
   },[paletteOpen,onCreate]);
+
+  useEffect(()=>{
+    const requested=event=>{
+      if(!eligible||suppressed||paletteOpen||externalDialog)return;
+      const action=createActionById(event.detail?.id,options);if(!action)return;
+      anchorCurrentHistory();
+      action.open({open:onCreate,context:{...currentContext(),...(event.detail?.context||{})}});
+    };
+    window.addEventListener(CREATE_REQUEST_EVENT,requested);
+    return()=>window.removeEventListener(CREATE_REQUEST_EVENT,requested);
+  },[eligible,suppressed,paletteOpen,externalDialog,options,onCreate,page,context]);
 
   function currentContext(){
     const next={...context,origin:page};
