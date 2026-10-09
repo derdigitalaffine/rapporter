@@ -7,8 +7,8 @@ from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
-from rest_framework_simplejwt.tokens import RefreshToken
 
+from .auth_views import set_user_cookies
 from .models import Family, FamilyInvitation, Membership
 from .serializers import FamilyInvitationSerializer, MembershipSerializer
 
@@ -137,13 +137,12 @@ def invitation_register(request, token):
             return Response({"detail": "Diese Einladung ist für eine andere E-Mail-Adresse bestimmt."}, status=status.HTTP_403_FORBIDDEN)
         user = User.objects.create_user(username=username, email=email, password=password, first_name=display_name)
         membership = accept_for_user(invite, user, display_name)
-        refresh = RefreshToken.for_user(user)
-        return Response({
-            "access": str(refresh.access_token),
-            "refresh": str(refresh),
+        response = Response({
+            "authenticated": True,
             "membership": MembershipSerializer(membership).data,
             "family": {"id": str(invite.family_id), "name": invite.family.name},
         }, status=status.HTTP_201_CREATED)
+        return set_user_cookies(response, user)
 
 
 @api_view(["POST"])

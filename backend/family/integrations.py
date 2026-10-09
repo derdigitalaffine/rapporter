@@ -1,14 +1,13 @@
-import hashlib
 import ipaddress
 import socket
-from datetime import datetime, timedelta, timezone as dt_timezone
-from urllib.parse import urlparse
+from datetime import datetime, timezone as dt_timezone
+from urllib.parse import urljoin, urlparse
 
 import requests
 from icalendar import Calendar
 from django.utils import timezone
 
-from .models import FamilyEvent, InboxItem, IntegrationSource, ShoppingList, ShoppingItem, Task
+from .models import FamilyEvent, InboxItem, IntegrationSource, ShoppingList, ShoppingItem, Task, TaskList
 
 UA = {"User-Agent": "fam-uh-le/1.0 (+family-dashboard)"}
 DWD_WARNINGS = "https://www.dwd.de/DWD/warnungen/warnapp/json/warnings.json"
@@ -28,10 +27,20 @@ def _safe_public_https(url: str):
 
 
 def _get(url, *, params=None, timeout=15):
-    _safe_public_https(url)
-    response = requests.get(url, params=params, timeout=timeout, headers=UA)
-    response.raise_for_status()
-    return response
+    current = url
+    for _ in range(4):
+        _safe_public_https(current)
+        response = requests.get(current, params=params, timeout=timeout, headers=UA, allow_redirects=False)
+        if response.is_redirect or response.is_permanent_redirect:
+            location = response.headers.get("Location")
+            if not location:
+                raise ValueError("Integration lieferte eine ungültige Weiterleitung.")
+            current = urljoin(current, location)
+            params = None
+            continue
+        response.raise_for_status()
+        return response
+    raise ValueError("Zu viele Weiterleitungen beim Abruf der Integration.")
 
 
 def _finish(source, count):
@@ -50,26 +59,6 @@ def _aware(value):
     if timezone.is_naive(value):
         value = timezone.make_aware(value)
     return value
-
-
-def _waste_reminder(source, title, starts_at, external_id):
-    if not starts_at:
-        return
-    due_at = starts_at - timedelta(hours=5)  # all-day events -> 19:00 on the previous day
-    now = timezone.now()
-    if due_at < now - timedelta(hours=12) or due_at > now + timedelta(days=7):
-        return
-    digest = hashlib.sha1(f"{source.id}:{external_id}".encode()).hexdigest()[:20]
-    Task.objects.get_or_create(
-        family=source.family,
-        source=f"waste:{digest}",
-        defaults={
-            "title": f"{title} rausstellen",
-            "notes": "Automatisch aus dem verbundenen Müllkalender erstellt.",
-            "due_at": due_at,
-            "priority": Task.Priority.NORMAL,
-        },
-    )
 
 
 def sync_ics(source: IntegrationSource):
@@ -102,8 +91,6 @@ def sync_ics(source: IntegrationSource):
                 },
             },
         )
-        if source.kind == IntegrationSource.Kind.WASTE:
-            _waste_reminder(source, title, start, external_id)
         count += 1
     return _finish(source, count)
 
@@ -241,7 +228,8 @@ def sync_telegram(source: IntegrationSource):
             continue
         sender = (msg.get("from") or {}).get("first_name") or "Telegram"
         if text.lower().startswith(("/todo ", "/task ")):
-            Task.objects.create(family=source.family, title=text.split(" ", 1)[1], source="telegram")
+            task_list, _ = TaskList.objects.get_or_create(family=source.family, name="Allgemein", defaults={"icon": "list-check"})
+            Task.objects.create(family=source.family, task_list=task_list, title=text.split(" ", 1)[1], source="telegram")
         elif text.lower().startswith(("/buy ", "/einkauf ")):
             shopping = ShoppingList.objects.filter(family=source.family, archived=False).first() or ShoppingList.objects.create(family=source.family, name="Einkauf")
             ShoppingItem.objects.create(shopping_list=shopping, name=text.split(" ", 1)[1])

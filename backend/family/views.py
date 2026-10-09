@@ -1,20 +1,63 @@
+from collections import defaultdict
 from django.db.models import Q
 from django.utils import timezone
 from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
+
+from .automation import RULE_TEMPLATES, run_rule
 from .integrations import INTEGRATION_CATALOG, sync_source
-from .models import Family, Membership, Task, ShoppingList, ShoppingItem, Routine, RoutineLog, IntegrationSource, FamilyEvent, InboxItem
-from .serializers import FamilySerializer, TaskSerializer, ShoppingListSerializer, ShoppingItemSerializer, RoutineSerializer, RoutineLogSerializer, IntegrationSourceSerializer, FamilyEventSerializer, InboxItemSerializer
+from .models import Family, Membership, TaskList, Task, ShoppingList, ShoppingItem, Routine, RoutineLog, IntegrationSource, FamilyEvent, InboxItem, AutomationRule
+from .serializers import FamilySerializer, TaskListSerializer, TaskSerializer, ShoppingListSerializer, ShoppingItemSerializer, RoutineSerializer, RoutineLogSerializer, IntegrationSourceSerializer, FamilyEventSerializer, InboxItemSerializer, AutomationRuleSerializer
 
 
 def family_ids(user):
     return Membership.objects.filter(user=user).values_list("family_id", flat=True)
 
 
-def can_manage_integrations(user, family):
+def can_manage_settings(user, family):
     return Membership.objects.filter(family=family, user=user, role__in=[Membership.Role.OWNER, Membership.Role.ADULT]).exists()
+
+
+def _family_for_request(request):
+    family_id = request.query_params.get("family") or request.data.get("family")
+    if family_id:
+        return Family.objects.filter(id=family_id, memberships__user=request.user).first()
+    return Family.objects.filter(memberships__user=request.user).first()
+
+
+def _smart_history(rows, query, fields, limit=12):
+    query = (query or "").strip().casefold()
+    grouped = {}
+    now = timezone.now()
+    for row in rows:
+        key = (row.name or "").strip().casefold()
+        if not key or (query and query not in key):
+            continue
+        entry = grouped.setdefault(key, {"name": row.name, "count": 0, "last_used": row.updated_at, "values": defaultdict(lambda: defaultdict(int))})
+        entry["count"] += 1
+        if row.updated_at and row.updated_at > entry["last_used"]:
+            entry["last_used"] = row.updated_at
+            entry["name"] = row.name
+        for field in fields:
+            value = getattr(row, field, None)
+            if value not in (None, "", [], {}):
+                try:
+                    hash(value)
+                    entry["values"][field][value] += 1
+                except TypeError:
+                    pass
+    result = []
+    for entry in grouped.values():
+        age_days = max(0, (now - entry["last_used"]).days) if entry["last_used"] else 999
+        score = entry["count"] * 20 + max(0, 30 - min(age_days, 30))
+        item = {"name": entry["name"], "count": entry["count"], "last_used": entry["last_used"], "score": score}
+        for field, choices in entry["values"].items():
+            if choices:
+                item[field] = max(choices, key=choices.get)
+        result.append(item)
+    return sorted(result, key=lambda x: (-x["score"], x["name"].casefold()))[:limit]
 
 
 class FamilyScopedViewSet(viewsets.ModelViewSet):
@@ -33,20 +76,35 @@ class FamilyScopedViewSet(viewsets.ModelViewSet):
 class FamilyViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = FamilySerializer
     permission_classes = [permissions.IsAuthenticated]
-
     def get_queryset(self):
         return Family.objects.filter(memberships__user=self.request.user).distinct()
 
 
+class TaskListViewSet(FamilyScopedViewSet):
+    queryset = TaskList.objects.prefetch_related("tasks").all()
+    serializer_class = TaskListSerializer
+
+    def perform_create(self, serializer):
+        family = serializer.validated_data["family"]
+        if not Membership.objects.filter(family=family, user=self.request.user).exists():
+            raise PermissionDenied()
+        serializer.save()
+
+
 class TaskViewSet(FamilyScopedViewSet):
-    queryset = Task.objects.all().order_by("completed_at", "due_at", "-created_at")
+    queryset = Task.objects.select_related("task_list", "assignee").all().order_by("completed_at", "due_at", "-created_at")
     serializer_class = TaskSerializer
 
     def perform_create(self, serializer):
         family = serializer.validated_data["family"]
         if not Membership.objects.filter(family=family, user=self.request.user).exists():
             raise PermissionDenied()
-        serializer.save(created_by=self.request.user)
+        task_list = serializer.validated_data.get("task_list")
+        if task_list and task_list.family_id != family.id:
+            raise PermissionDenied()
+        if not task_list:
+            task_list, _ = TaskList.objects.get_or_create(family=family, name="Allgemein", defaults={"icon": "list-check"})
+        serializer.save(created_by=self.request.user, task_list=task_list)
 
     @action(detail=True, methods=["post"])
     def toggle(self, request, pk=None):
@@ -55,14 +113,22 @@ class TaskViewSet(FamilyScopedViewSet):
         task.save(update_fields=["completed_at", "updated_at"])
         return Response(self.get_serializer(task).data)
 
+    @action(detail=False, methods=["get"])
+    def suggestions(self, request):
+        family = _family_for_request(request)
+        if not family:
+            return Response([])
+        rows = Task.objects.filter(family=family).order_by("-updated_at")[:600]
+        return Response(_smart_history(rows, request.query_params.get("q"), ["notes", "priority", "estimate_minutes"], 10))
+
 
 class ShoppingListViewSet(FamilyScopedViewSet):
-    queryset = ShoppingList.objects.prefetch_related("items").all()
+    queryset = ShoppingList.objects.prefetch_related("items").all().order_by("sort_order", "created_at")
     serializer_class = ShoppingListSerializer
 
 
 class ShoppingItemViewSet(viewsets.ModelViewSet):
-    queryset = ShoppingItem.objects.select_related("shopping_list").all()
+    queryset = ShoppingItem.objects.select_related("shopping_list", "added_by").all()
     serializer_class = ShoppingItemSerializer
     permission_classes = [permissions.IsAuthenticated]
 
@@ -79,8 +145,17 @@ class ShoppingItemViewSet(viewsets.ModelViewSet):
     def toggle(self, request, pk=None):
         item = self.get_object()
         item.checked = not item.checked
-        item.save(update_fields=["checked", "updated_at"])
+        item.checked_at = timezone.now() if item.checked else None
+        item.save(update_fields=["checked", "checked_at", "updated_at"])
         return Response(self.get_serializer(item).data)
+
+    @action(detail=False, methods=["get"])
+    def suggestions(self, request):
+        family = _family_for_request(request)
+        if not family:
+            return Response([])
+        rows = ShoppingItem.objects.filter(shopping_list__family=family).order_by("-updated_at")[:1000]
+        return Response(_smart_history(rows, request.query_params.get("q"), ["quantity", "category", "aisle", "note"], 12))
 
 
 class RoutineViewSet(FamilyScopedViewSet):
@@ -100,18 +175,18 @@ class IntegrationSourceViewSet(FamilyScopedViewSet):
 
     def perform_create(self, serializer):
         family = serializer.validated_data["family"]
-        if not can_manage_integrations(self.request.user, family):
+        if not can_manage_settings(self.request.user, family):
             raise PermissionDenied("Nur Erwachsene/Owner können Integrationen verwalten.")
         serializer.save()
 
     def perform_update(self, serializer):
         source = self.get_object()
-        if not can_manage_integrations(self.request.user, source.family):
+        if not can_manage_settings(self.request.user, source.family):
             raise PermissionDenied("Nur Erwachsene/Owner können Integrationen verwalten.")
         serializer.save()
 
     def perform_destroy(self, instance):
-        if not can_manage_integrations(self.request.user, instance.family):
+        if not can_manage_settings(self.request.user, instance.family):
             raise PermissionDenied("Nur Erwachsene/Owner können Integrationen verwalten.")
         instance.delete()
 
@@ -121,18 +196,15 @@ class IntegrationSourceViewSet(FamilyScopedViewSet):
 
     @action(detail=False, methods=["post"])
     def connect(self, request):
-        family_id = request.data.get("family")
-        catalog_id = request.data.get("catalog_id")
-        family = Family.objects.filter(id=family_id, memberships__user=request.user).first()
-        if not family or not can_manage_integrations(request.user, family):
+        family = Family.objects.filter(id=request.data.get("family"), memberships__user=request.user).first()
+        if not family or not can_manage_settings(request.user, family):
             raise PermissionDenied("Nur Erwachsene/Owner können Integrationen verwalten.")
-        item = next((x for x in INTEGRATION_CATALOG if x["id"] == catalog_id), None)
+        item = next((x for x in INTEGRATION_CATALOG if x["id"] == request.data.get("catalog_id")), None)
         if not item:
             return Response({"detail": "Unbekannte Integration."}, status=status.HTTP_400_BAD_REQUEST)
         values = dict(request.data.get("values") or {})
         endpoint = values.pop("endpoint", "")
-        config = {**item.get("defaults", {}), **values}
-        source = IntegrationSource.objects.create(family=family, kind=item["kind"], name=item["name"], endpoint=endpoint, config=config, enabled=True)
+        source = IntegrationSource.objects.create(family=family, kind=item["kind"], name=item["name"], endpoint=endpoint, config={**item.get("defaults", {}), **values}, enabled=True)
         try:
             count = sync_source(source)
         except Exception as exc:
@@ -151,14 +223,66 @@ class IntegrationSourceViewSet(FamilyScopedViewSet):
 
     @action(detail=False, methods=["post"])
     def sync_all(self, request):
-        total = 0
-        errors = []
+        total, errors = 0, []
         for source in self.get_queryset().filter(enabled=True):
             try:
                 total += sync_source(source)
             except Exception as exc:
                 errors.append({"id": str(source.id), "name": source.name, "detail": str(exc)})
         return Response({"synced": total, "errors": errors})
+
+
+class AutomationRuleViewSet(FamilyScopedViewSet):
+    queryset = AutomationRule.objects.prefetch_related("executions").all().order_by("-enabled", "name")
+    serializer_class = AutomationRuleSerializer
+
+    def perform_create(self, serializer):
+        family = serializer.validated_data["family"]
+        if not can_manage_settings(self.request.user, family):
+            raise PermissionDenied("Nur Erwachsene/Owner können Regeln verwalten.")
+        serializer.save(created_by=self.request.user)
+
+    def perform_update(self, serializer):
+        rule = self.get_object()
+        if not can_manage_settings(self.request.user, rule.family):
+            raise PermissionDenied("Nur Erwachsene/Owner können Regeln verwalten.")
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        if not can_manage_settings(self.request.user, instance.family):
+            raise PermissionDenied("Nur Erwachsene/Owner können Regeln verwalten.")
+        instance.delete()
+
+    @action(detail=False, methods=["get"])
+    def templates(self, request):
+        return Response(RULE_TEMPLATES)
+
+    @action(detail=False, methods=["post"])
+    def from_template(self, request):
+        family = Family.objects.filter(id=request.data.get("family"), memberships__user=request.user).first()
+        if not family or not can_manage_settings(request.user, family):
+            raise PermissionDenied("Nur Erwachsene/Owner können Regeln verwalten.")
+        template = next((x for x in RULE_TEMPLATES if x["id"] == request.data.get("template_id")), None)
+        if not template:
+            return Response({"detail": "Unbekannte Regelvorlage."}, status=status.HTTP_400_BAD_REQUEST)
+        rule = AutomationRule.objects.create(family=family, created_by=request.user, name=template["name"], icon=template["icon"], trigger_type=template["trigger_type"], trigger_config=template["trigger_config"], action_type=template["action_type"], action_config=template["action_config"])
+        return Response(self.get_serializer(rule).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=["post"])
+    def run(self, request, pk=None):
+        rule = self.get_object()
+        if not can_manage_settings(request.user, rule.family):
+            raise PermissionDenied()
+        return Response({"executed": run_rule(rule)})
+
+    @action(detail=True, methods=["post"])
+    def toggle(self, request, pk=None):
+        rule = self.get_object()
+        if not can_manage_settings(request.user, rule.family):
+            raise PermissionDenied()
+        rule.enabled = not rule.enabled
+        rule.save(update_fields=["enabled", "updated_at"])
+        return Response(self.get_serializer(rule).data)
 
 
 class FamilyEventViewSet(FamilyScopedViewSet):
@@ -173,7 +297,8 @@ class InboxItemViewSet(FamilyScopedViewSet):
     @action(detail=True, methods=["post"])
     def to_task(self, request, pk=None):
         item = self.get_object()
-        task = Task.objects.create(family=item.family, title=request.data.get("title") or item.title, notes=request.data.get("notes") or item.body, created_by=request.user, source=f"inbox:{item.source}")
+        task_list, _ = TaskList.objects.get_or_create(family=item.family, name="Allgemein", defaults={"icon": "list-check"})
+        task = Task.objects.create(family=item.family, task_list=task_list, title=request.data.get("title") or item.title, notes=request.data.get("notes") or item.body, created_by=request.user, source=f"inbox:{item.source}")
         item.status = "processed"
         item.save(update_fields=["status", "updated_at"])
         return Response(TaskSerializer(task).data, status=status.HTTP_201_CREATED)
@@ -181,9 +306,7 @@ class InboxItemViewSet(FamilyScopedViewSet):
     @action(detail=True, methods=["post"])
     def to_shopping(self, request, pk=None):
         item = self.get_object()
-        shopping_list = ShoppingList.objects.filter(family=item.family, archived=False).order_by("created_at").first()
-        if not shopping_list:
-            shopping_list = ShoppingList.objects.create(family=item.family, name="Einkauf")
+        shopping_list = ShoppingList.objects.filter(family=item.family, archived=False).order_by("sort_order", "created_at").first() or ShoppingList.objects.create(family=item.family, name="Einkauf")
         shopping_item = ShoppingItem.objects.create(shopping_list=shopping_list, name=request.data.get("name") or item.title, added_by=request.user)
         item.status = "processed"
         item.save(update_fields=["status", "updated_at"])
@@ -207,9 +330,11 @@ def health(request):
 def dashboard(request):
     families = list(Family.objects.filter(memberships__user=request.user).values_list("id", flat=True))
     now = timezone.now()
-    tasks = Task.objects.filter(family_id__in=families, completed_at__isnull=True).filter(Q(due_at__isnull=True) | Q(due_at__gte=now)).order_by("due_at", "-created_at")[:8]
+    tasks = Task.objects.filter(family_id__in=families, completed_at__isnull=True).select_related("task_list", "assignee").order_by("due_at", "-created_at")[:12]
     events = FamilyEvent.objects.filter(family_id__in=families, starts_at__gte=now).order_by("starts_at")[:12]
     routines = Routine.objects.filter(family_id__in=families, active=True).prefetch_related("logs")[:8]
-    shopping = ShoppingList.objects.filter(family_id__in=families, archived=False).prefetch_related("items")[:4]
+    shopping = ShoppingList.objects.filter(family_id__in=families, archived=False).prefetch_related("items").order_by("sort_order", "created_at")[:8]
+    task_lists = TaskList.objects.filter(family_id__in=families, archived=False).prefetch_related("tasks")[:12]
     inbox_count = InboxItem.objects.filter(family_id__in=families, status="new").count()
-    return Response({"tasks": TaskSerializer(tasks, many=True).data, "events": FamilyEventSerializer(events, many=True).data, "routines": RoutineSerializer(routines, many=True).data, "shopping_lists": ShoppingListSerializer(shopping, many=True).data, "inbox_count": inbox_count})
+    automation_count = AutomationRule.objects.filter(family_id__in=families, enabled=True).count()
+    return Response({"tasks": TaskSerializer(tasks, many=True).data, "task_lists": TaskListSerializer(task_lists, many=True).data, "events": FamilyEventSerializer(events, many=True).data, "routines": RoutineSerializer(routines, many=True).data, "shopping_lists": ShoppingListSerializer(shopping, many=True).data, "inbox_count": inbox_count, "automation_count": automation_count})

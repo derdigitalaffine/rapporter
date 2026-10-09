@@ -1,0 +1,10 @@
+.suggestion-label{padding:9px 13px 6px;font-size:.72rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);background:var(--soft)}
+.row-main-button{display:block;width:100%;border:0;background:transparent;text-align:left;padding:0;color:inherit;font:inherit;cursor:pointer}
+.row-main-button:hover strong{text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:3px}
+.toolbar-hint{display:inline-flex;align-items:center;gap:6px;color:var(--muted);font-size:.8rem;margin-right:auto}
+.favorite-badge{display:inline-flex;align-items:center;gap:4px;font-size:.72rem;padding:3px 6px;border-radius:8px;background:#fff8d8;color:#936700}
+.toggle-label{display:flex!important;grid-template-columns:none!important;align-items:center;gap:9px!important;padding:10px 0}.toggle-label input{width:auto!important}.toggle-label span{display:flex;align-items:center;gap:7px}
+.integration-group>h3{display:flex;align-items:center;gap:8px;color:var(--text)}
+.automation-builder small{font-weight:500;color:var(--muted)}
+.smart-row>.row-action.favorite{color:#e5a500}
+@media(max-width:540px){.toolbar-hint{flex-basis:100%}.smart-toolbar{flex-wrap:wrap}.smart-row{gap:8px}.smart-row>.row-action{padding:5px}}

@@ -1,7 +1,7 @@
 import os
 from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand
-from family.models import Family, Membership, ShoppingList, Routine
+from family.models import Family, Membership, TaskList, ShoppingList, Routine, AutomationRule
 
 
 class Command(BaseCommand):
@@ -35,35 +35,37 @@ class Command(BaseCommand):
             slug="meine-familie",
             defaults={"name": family_name, "locale": locale, "timezone": timezone},
         )
-        if family_created is False:
+        if not family_created:
             changed = False
-            if family.name != family_name:
-                family.name = family_name
-                changed = True
-            if family.locale != locale:
-                family.locale = locale
-                changed = True
-            if family.timezone != timezone:
-                family.timezone = timezone
-                changed = True
+            for field, value in [("name", family_name), ("locale", locale), ("timezone", timezone)]:
+                if getattr(family, field) != value:
+                    setattr(family, field, value)
+                    changed = True
             if changed:
                 family.save(update_fields=["name", "locale", "timezone", "updated_at"])
 
-        Membership.objects.get_or_create(
+        Membership.objects.get_or_create(family=family, user=user, defaults={"role": Membership.Role.OWNER, "display_name": username})
+        TaskList.objects.get_or_create(family=family, name="Allgemein", defaults={"icon": "list-check"})
+        TaskList.objects.get_or_create(family=family, name="Haushalt", defaults={"icon": "house"})
+        ShoppingList.objects.get_or_create(family=family, name="Einkauf", defaults={"icon": "cart-shopping"})
+        AutomationRule.objects.get_or_create(
             family=family,
-            user=user,
-            defaults={"role": Membership.Role.OWNER, "display_name": username},
+            name="Müll rausstellen",
+            defaults={
+                "created_by": user,
+                "icon": "trash-can",
+                "enabled": True,
+                "trigger_type": AutomationRule.Trigger.WASTE_TOMORROW,
+                "trigger_config": {},
+                "action_type": AutomationRule.Action.TASK_CREATE,
+                "action_config": {"title": "{event_title} rausstellen", "priority": "normal"},
+            },
         )
-        ShoppingList.objects.get_or_create(family=family, name="Einkauf")
         for name, days, icon in [
             ("Bad putzen", 7, "sparkles"),
             ("Bettwäsche wechseln", 14, "bed"),
             ("Kühlschrank reinigen", 30, "snowflake"),
             ("Wasserfilter wechseln", 30, "droplets"),
         ]:
-            Routine.objects.get_or_create(
-                family=family,
-                name=name,
-                defaults={"suggested_interval_days": days, "icon": icon},
-            )
+            Routine.objects.get_or_create(family=family, name=name, defaults={"suggested_interval_days": days, "icon": icon})
         self.stdout.write(self.style.SUCCESS("fam-uh-le bootstrap complete"))
