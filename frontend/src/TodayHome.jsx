@@ -1,4 +1,6 @@
 import {Icon} from './icons';
+import OnboardingCard from './OnboardingCard';
+import './onboarding.css';
 
 const isWarning=e=>e?.type?.includes('warning');
 const isToday=date=>date&&new Date(date).toDateString()===new Date().toDateString();
@@ -49,7 +51,7 @@ function TaskRow({task,onTask,t}){
   </div>;
 }
 
-export default function TodayHome({data,t,onTask,open}){
+export default function TodayHome({data,family,t,onTask,open}){
   const openTasks=(data.tasks||[]).filter(x=>!x.completed_at);
   const shopping=(data.shopping_lists||[]).flatMap(x=>x.items||[]).filter(x=>!x.checked);
   const events=[...(data.events||[])].filter(e=>!e.starts_at||new Date(e.starts_at).getTime()>=Date.now()-3600000).sort((a,b)=>timeValue(a)-timeValue(b));
@@ -75,6 +77,8 @@ export default function TodayHome({data,t,onTask,open}){
       </div>
     </header>
 
+    <OnboardingCard family={family} data={data} open={open}/>
+
     {urgentCount>0&&<section className="today-section today-important">
       <div className="today-section-head"><div><small>{t('priority').toUpperCase()}</small><h2>{t('today')} · {t('priority')}</h2></div><span>{urgentCount}</span></div>
       <div className="today-important-grid">
@@ -97,13 +101,13 @@ export default function TodayHome({data,t,onTask,open}){
     <div className="today-main-grid">
       <section className="today-section">
         <div className="today-section-head"><h2>{t('today')}</h2><button className="today-link" onClick={()=>open('tasks')}>{t('all')} <Icon name="next"/></button></div>
-        <div className="today-panel">{todayTasks.length?todayTasks.map(task=><TaskRow task={task} onTask={onTask} t={t} key={task.id}/>):<div className="today-calm"><Icon name="doneAll"/><strong>{t('allDone')}</strong><span>{t('tasks')}: 0</span></div>}</div>
+        <div className="today-panel">{todayTasks.length?todayTasks.map(task=><TaskRow task={task} onTask={onTask} t={t} key={task.id}/>):<div className="today-calm"><Icon name="doneAll"/><strong>{t('onboarding.emptyTaskTitle')}</strong><span>{t('onboarding.emptyTaskHint')}</span><button className="primary compact today-empty-action" onClick={()=>open('tasks')}><Icon name="plus"/> {t('addTask')}</button></div>}</div>
       </section>
 
       <section className="today-section">
         <div className="today-section-head"><div><h2>{t('shopping')}</h2><small>{shopping.length} · {t('shoppingItems')}</small></div><button className="today-link" onClick={()=>open('shopping')}>{t('list')} <Icon name="next"/></button></div>
         <button className="today-shopping-card" onClick={()=>open('shopping')}>
-          <div className="today-shopping-summary"><span className="today-shopping-icon"><Icon name="shopping"/></span><div><strong>{shopping.length?`${shopping.length} ${t('shoppingItems')}`:t('shoppingEmpty')}</strong><span>{t('list')}</span></div></div>
+          <div className="today-shopping-summary"><span className="today-shopping-icon"><Icon name="shopping"/></span><div><strong>{shopping.length?`${shopping.length} ${t('shoppingItems')}`:t('onboarding.emptyShoppingTitle')}</strong><span>{shopping.length?t('list'):t('onboarding.emptyShoppingHint')}</span></div></div>
           {shopping.length>0&&<div className="today-shopping-chips">{shopping.slice(0,6).map(item=><span key={item.id}>{item.quantity&&<b>{item.quantity}</b>} {item.name}</span>)}{shopping.length>6&&<span>+{shopping.length-6}</span>}</div>}
         </button>
       </section>
