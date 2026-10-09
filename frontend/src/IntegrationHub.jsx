@@ -6,6 +6,7 @@ import {Icon} from './icons';
 import {confirmAction,toast} from './feedback';
 import {useFamilyPermissions} from './family-permissions';
 import {formatDateTime,formatRelative} from './locale';
+import {useDirtyForm} from './dirty-state';
 import './integration-hub.css';
 
 const unwrap=x=>x?.results||x||[];
@@ -45,6 +46,7 @@ function friendlySyncError(message,t){if(!message)return t('integrationUi.errorG
 function ConnectSheet({item,family,t,onClose,onConnected}){
  const initial={};for(const f of item.fields||[])initial[f.key]=f.type==='file'?null:(f.default??'');
  const [values,setValues]=useState(initial);const [busy,setBusy]=useState(false);const [error,setError]=useState('');
+ useDirtyForm(Object.keys(initial).some(key=>values[key]!==initial[key]));
  const fileFields=(item.fields||[]).filter(f=>f.type==='file');
  async function submit(e){e.preventDefault();setBusy(true);setError('');try{let body;if(fileFields.length){const formData=new FormData();const scalar={};for(const f of item.fields||[]){if(f.type==='file'){if(values[f.key])formData.append(f.key,values[f.key])}else scalar[f.key]=values[f.key]}formData.append('family',family.id);formData.append('catalog_id',item.id);formData.append('values',JSON.stringify(scalar));body=formData}else body=JSON.stringify({family:family.id,catalog_id:item.id,values});const result=await api('/integration-hub/connect/',{method:'POST',body});await onConnected(result)}catch(e){const message=e.message||t('connectionFailed');setError(message);toast(message,{type:'error'});setBusy(false)}}
  const waste=item.id?.startsWith('waste_');
