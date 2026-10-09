@@ -1,7 +1,13 @@
+import unicodedata
+import uuid
+
 from django.conf import settings
 from django.db import migrations, models
 import django.db.models.deletion
-import uuid
+
+
+def normalize_name(value):
+    return unicodedata.normalize("NFKC", value or "").strip().casefold()
 
 
 def seed_checked_items(apps, schema_editor):
@@ -9,7 +15,7 @@ def seed_checked_items(apps, schema_editor):
     ShoppingPurchaseEvent = apps.get_model("family", "ShoppingPurchaseEvent")
     for item in ShoppingItem.objects.filter(checked=True, checked_at__isnull=False).select_related("shopping_list"):
         name = (item.name or "").strip()
-        normalized = name.casefold()
+        normalized = normalize_name(name)
         if not normalized:
             continue
         ShoppingPurchaseEvent.objects.get_or_create(
