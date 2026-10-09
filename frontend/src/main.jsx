@@ -1,5 +1,6 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
+import '@fontsource-variable/nunito';
 import './i18n';
 import './styles.css';
 import './sheets.css';
