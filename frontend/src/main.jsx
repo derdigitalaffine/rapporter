@@ -6,6 +6,7 @@ import './styles.css';
 import './sheets.css';
 import './smart.css';
 import './smart-extra.css';
+import './design-system.css';
 import App from './App';
 import InviteFlow from './InviteFlow';
 
