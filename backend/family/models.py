@@ -13,6 +13,15 @@ class TimestampedModel(models.Model):
         abstract = True
 
 
+class UserProfile(TimestampedModel):
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="familyos_profile")
+    avatar_key = models.CharField(max_length=64, blank=True)
+    avatar_version = models.UUIDField(default=uuid.uuid4, editable=False)
+    birth_month = models.PositiveSmallIntegerField(null=True, blank=True)
+    birth_day = models.PositiveSmallIntegerField(null=True, blank=True)
+    birth_year = models.PositiveSmallIntegerField(null=True, blank=True)
+
+
 class Family(TimestampedModel):
     class Status(models.TextChoices):
         ACTIVE = "active", "Active"
@@ -36,11 +45,17 @@ class Membership(TimestampedModel):
         CHILD = "child", "Child"
         GUEST = "guest", "Guest"
 
+    class BirthdayVisibility(models.TextChoices):
+        HIDDEN = "hidden", "Hidden"
+        DAY_MONTH = "day_month", "Day and month"
+        FULL_DATE = "full_date", "Full date"
+
     family = models.ForeignKey(Family, on_delete=models.CASCADE, related_name="memberships")
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="family_memberships")
     role = models.CharField(max_length=16, choices=Role.choices, default=Role.ADULT)
     display_name = models.CharField(max_length=80, blank=True)
     avatar = models.CharField(max_length=255, blank=True)
+    birthday_visibility = models.CharField(max_length=16, choices=BirthdayVisibility.choices, default=BirthdayVisibility.DAY_MONTH)
 
     class Meta:
         unique_together = ("family", "user")
