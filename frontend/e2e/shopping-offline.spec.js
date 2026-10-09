@@ -2,9 +2,27 @@ import {test,expect} from '@playwright/test';
 import {installApiMocks} from './mock-api.js';
 
 async function boot(page){const state=await installApiMocks(page,{dismissOnboarding:true});await page.goto('/');await page.waitForLoadState('networkidle');await page.locator('.bottom-nav').getByRole('button',{name:'Einkauf'}).click();await expect(page.getByText('Milch',{exact:true})).toBeVisible();return state}
+async function waitForOfflineShell(page){
+  await page.evaluate(async()=>{
+    if(!('serviceWorker' in navigator))throw new Error('service_worker_unavailable');
+    await navigator.serviceWorker.ready;
+    if(!navigator.serviceWorker.controller){
+      await new Promise((resolve,reject)=>{
+        const timeout=setTimeout(()=>reject(new Error('service_worker_controller_timeout')),6000);
+        navigator.serviceWorker.addEventListener('controllerchange',()=>{clearTimeout(timeout);resolve()},{once:true});
+      });
+    }
+    const keys=await caches.keys();
+    const cacheName=keys.find(key=>key.startsWith('fam-uh-le-'));
+    if(!cacheName)throw new Error('offline_shell_cache_missing');
+    const cache=await caches.open(cacheName);const paths=(await cache.keys()).map(request=>new URL(request.url).pathname);
+    if(!paths.some(path=>path.startsWith('/assets/')&&path.endsWith('.js')))throw new Error('offline_js_bundle_missing');
+  });
+}
 
 test('shopping add, check, edit and favorite survive offline reload and sync once after reconnect',async({page,context})=>{
   const state=await boot(page);
+  await waitForOfflineShell(page);
   await context.setOffline(true);
 
   const quick=page.locator('.smart-input input');
