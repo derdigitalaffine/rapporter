@@ -1,5 +1,5 @@
-const CACHE='fam-uh-le-v6';
-const STATIC_SHELL=['/manifest.webmanifest','/brand/icon-192.png','/brand/icon-512.png'];
+const CACHE='fam-uh-le-v7';
+const STATIC_SHELL=['/manifest.webmanifest','/brand/icon-192.png','/brand/icon-512.png','/brand/icon.svg'];
 
 async function cacheAppShell(){
   const cache=await caches.open(CACHE);
@@ -29,6 +29,19 @@ function isPrivateRequest(request){
   return url.origin!==self.location.origin || url.pathname.startsWith('/api/') || url.pathname.startsWith('/admin/') || url.pathname.startsWith('/share.html');
 }
 
+async function networkFirst(request,{cacheKey=request}={}){
+  try{
+    const response=await fetch(request);
+    if(!response||!response.ok)throw new Error(`network_${response?.status||0}`);
+    const copy=response.clone();
+    await caches.open(CACHE).then(cache=>cache.put(cacheKey,copy));
+    return response;
+  }catch{
+    const cached=await caches.match(cacheKey);
+    return cached||Response.error();
+  }
+}
+
 self.addEventListener('fetch',event=>{
   const request=event.request;
   if(request.method!=='GET'||isPrivateRequest(request))return;
@@ -37,25 +50,16 @@ self.addEventListener('fetch',event=>{
   // Vite bundles are content-hashed. Network-first keeps deployments fresh while
   // the matching hashed bundle remains available when the device is offline.
   if(url.pathname.startsWith('/assets/')){
-    event.respondWith(fetch(request).then(response=>{
-      if(response.ok){const copy=response.clone();event.waitUntil(caches.open(CACHE).then(cache=>cache.put(request,copy)))}
-      return response;
-    }).catch(()=>caches.match(request).then(cached=>cached||Response.error())));
+    event.respondWith(networkFirst(request));
     return;
   }
 
   if(request.mode==='navigate'){
-    event.respondWith(fetch(request).then(response=>{
-      if(response.ok){
-        const copy=response.clone();
-        event.waitUntil(caches.open(CACHE).then(cache=>cache.put('/',copy)));
-      }
-      return response;
-    }).catch(()=>caches.match('/')));
+    event.respondWith(networkFirst(request,{cacheKey:'/'}));
     return;
   }
 
-  event.respondWith(fetch(request).catch(()=>caches.match(request)));
+  event.respondWith(networkFirst(request));
 });
 
 self.addEventListener('push',event=>{
