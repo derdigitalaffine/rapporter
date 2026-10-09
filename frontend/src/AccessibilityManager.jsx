@@ -27,6 +27,8 @@ function focusables(dialog){
 }
 
 function initialFocus(dialog){
+  const current=document.activeElement;
+  if(current instanceof HTMLElement&&dialog.contains(current)&&visible(current))return current;
   const preferred=dialog.querySelector('[data-autofocus],input[autofocus],textarea[autofocus],select[autofocus]');
   if(preferred instanceof HTMLElement&&!preferred.hasAttribute('disabled'))return preferred;
   return focusables(dialog)[0]||dialog;
