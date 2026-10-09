@@ -9,6 +9,7 @@
     "vite": "latest",
     "react": "latest",
     "react-dom": "latest",
+    "@fontsource-variable/nunito": "latest",
     "@fortawesome/fontawesome-svg-core": "latest",
     "@fortawesome/free-solid-svg-icons": "latest",
     "@fortawesome/free-regular-svg-icons": "latest",
