@@ -64,6 +64,7 @@ export default function AccessibilityManager(){
     let active=null;
     let restoreBackground=()=>{};
     let restoreFocus=null;
+    let lastOutsideFocus=document.activeElement instanceof HTMLElement?document.activeElement:null;
     let focusTimer=0;
 
     function activate(next){
@@ -77,7 +78,10 @@ export default function AccessibilityManager(){
         if(target instanceof HTMLElement&&target.isConnected)target.focus({preventScroll:true});
         return;
       }
-      if(!active)restoreFocus=document.activeElement;
+      if(!active){
+        const current=document.activeElement;
+        restoreFocus=lastOutsideFocus instanceof HTMLElement&&lastOutsideFocus.isConnected?lastOutsideFocus:(current instanceof HTMLElement&&!next.contains(current)?current:null);
+      }
       active=next;
       labelDialog(active);
       if(!active.hasAttribute('tabindex'))active.setAttribute('tabindex','-1');
@@ -86,6 +90,10 @@ export default function AccessibilityManager(){
     }
 
     function refresh(){activate(topDialog())}
+    function onFocusIn(event){
+      const target=event.target;
+      if(target instanceof HTMLElement&&!topDialog())lastOutsideFocus=target;
+    }
 
     function onKeyDown(event){
       if(!active||!active.isConnected)return;
@@ -104,10 +112,12 @@ export default function AccessibilityManager(){
 
     const observer=new MutationObserver(refresh);
     observer.observe(document.body,{subtree:true,childList:true});
+    document.addEventListener('focusin',onFocusIn,true);
     document.addEventListener('keydown',onKeyDown,true);
     refresh();
     return()=>{
       observer.disconnect();
+      document.removeEventListener('focusin',onFocusIn,true);
       document.removeEventListener('keydown',onKeyDown,true);
       window.clearTimeout(focusTimer);
       restoreBackground();
