@@ -102,6 +102,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Seed official images from public mirror
+        run: |
+          for spec in "python:3.13-slim" "node:22-alpine" "caddy:2-alpine"; do
+            mirror="public.ecr.aws/docker/library/${spec}"
+            docker pull "$mirror"
+            docker tag "$mirror" "$spec"
+          done
       - name: Validate shell setup tools
         run: bash -n scripts/setup.sh scripts/ensure-vapid.sh scripts/test-vapid-setup.sh scripts/tls-mode.sh scripts/export-caddy-ca.sh
       - name: Verify automatic VAPID provisioning
