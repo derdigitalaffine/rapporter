@@ -10,4 +10,5 @@ urlpatterns = [
     path("api/auth/logout/", logout_view, name="auth_logout"),
     path("api/auth/session/", session_view, name="auth_session"),
     path("api/", include("family.urls")),
+    path("api/", include("expenses.urls")),
 ]
