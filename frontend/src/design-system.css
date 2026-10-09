@@ -1,0 +1,111 @@
+:root{
+  /* Canonical palette */
+  --color-bg:#f7f8f3;
+  --color-surface:#ffffff;
+  --color-text:#173c43;
+  --color-muted:#6c7b7e;
+  --color-border:#e7ebe5;
+  --color-brand:#173c43;
+  --color-positive:#4d9a72;
+  --color-positive-soft:#e4f3e9;
+  --color-accent:#ff8a47;
+  --color-accent-soft:#fff0e5;
+  --color-warning:#9b6b00;
+  --color-warning-soft:#fff3cf;
+  --color-danger:#c94f4f;
+  --color-danger-soft:#fdeaea;
+  --color-info:#387d91;
+  --color-info-soft:#e9f6fb;
+
+  /* Semantic aliases used by feature styles */
+  --card:var(--color-surface);
+  --surface:var(--color-surface);
+  --text:var(--color-text);
+  --ink:var(--color-text);
+  --muted:var(--color-muted);
+  --line:var(--color-border);
+  --brand:var(--color-brand);
+  --positive:var(--color-positive);
+  --green:var(--color-positive);
+  --green-soft:var(--color-positive-soft);
+  --soft:#f0f3ef;
+  --bg:var(--color-bg);
+  --peach:var(--color-accent);
+  --peach-soft:var(--color-accent-soft);
+  --red:var(--color-danger);
+
+  /* Interaction semantics */
+  --color-action-primary:var(--color-brand);
+  --color-action-secondary:var(--color-positive-soft);
+  --color-focus:#277f86;
+  --color-selected:var(--color-positive);
+  --color-disabled:#aeb8b6;
+
+  /* Spacing */
+  --space-1:4px;
+  --space-2:8px;
+  --space-3:12px;
+  --space-4:16px;
+  --space-6:24px;
+  --space-8:32px;
+
+  /* Radius */
+  --radius-sm:10px;
+  --radius-md:14px;
+  --radius-lg:20px;
+  --radius-xl:26px;
+  --radius-pill:999px;
+
+  /* Elevation */
+  --shadow-sm:0 4px 16px rgba(28,58,60,.06);
+  --shadow-md:0 8px 28px rgba(28,58,60,.08);
+  --shadow-lg:0 18px 50px rgba(20,48,52,.14);
+  --shadow:var(--shadow-md);
+
+  /* Typography */
+  --font-family:'Nunito Variable','Nunito',system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  --font-size-caption:.72rem;
+  --font-size-meta:.8rem;
+  --font-size-body:.95rem;
+  --font-size-title:1.05rem;
+  --font-size-h2:1.25rem;
+  --font-size-h1:1.75rem;
+}
+
+html{font-family:var(--font-family);color:var(--color-text);background:var(--color-bg)}
+body,button,input,select,textarea{font-family:var(--font-family)}
+
+button,a,input,select,textarea,summary{outline:none}
+:where(button,a,input,select,textarea,summary):focus-visible{
+  outline:3px solid color-mix(in srgb,var(--color-focus) 42%,transparent);
+  outline-offset:2px;
+}
+
+button:disabled,[aria-disabled="true"]{cursor:not-allowed;opacity:.52}
+
+.primary{
+  background:var(--color-action-primary);
+  color:#fff;
+  border-radius:var(--radius-md);
+  min-height:44px;
+  transition:transform .12s ease,box-shadow .12s ease,opacity .12s ease;
+}
+.primary:not(:disabled):active{transform:translateY(1px)}
+
+.small-action,.fab-inline,.icon-button,.back-button,.sheet-close{
+  min-width:44px;
+  min-height:44px;
+}
+
+.ghost-danger,.danger-text{color:var(--color-danger)}
+.error{background:var(--color-danger-soft);color:#8b3434}
+
+.card,.smart-row,.automation-builder,.automation-template,.rule-row,.done-items{
+  border-color:var(--color-border);
+}
+
+.status-pill,.role-pill,.chip,.sync-badge{border-radius:var(--radius-pill)}
+
+@media(prefers-reduced-motion:reduce){
+  *,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
+}
