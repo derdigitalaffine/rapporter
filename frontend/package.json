@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.2.0",
   "type": "module",
-  "scripts": {"dev": "vite --host 0.0.0.0", "build": "vite build", "preview": "vite preview --host 0.0.0.0"},
+  "scripts": {"dev": "vite --host 0.0.0.0", "i18n:check": "node scripts/check-i18n.mjs", "build": "npm run i18n:check && vite build", "preview": "vite preview --host 0.0.0.0"},
   "dependencies": {
     "@vitejs/plugin-react": "latest",
     "vite": "latest",
