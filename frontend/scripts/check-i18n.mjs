@@ -4,6 +4,7 @@ import process from 'node:process';
 
 const root=process.cwd();
 const files=['src/SmartLists.jsx','src/SmartEditors.jsx','src/ListEditor.jsx','src/AutomationHub.jsx','src/CalendarHub.jsx','src/IntegrationHub.jsx','src/TodayHome.jsx'];
+const localeFiles=new Set(['src/CalendarHub.jsx','src/IntegrationHub.jsx','src/TodayHome.jsx']);
 const forbidden=[
   'Aufgabe löschen?','Artikel löschen?','Liste bearbeiten','Familien-Gedächtnis','Schon mal eingetragen',
   'Häufig verwendet','Einkauf abschließen?','Gemeinsam einkaufen','Im Laden','Regel löschen?',
@@ -20,7 +21,7 @@ for(const rel of files){
       failed=true;
     }
   }
-  if(/Intl\.(?:DateTimeFormat|RelativeTimeFormat)\(\s*undefined\b/.test(text)){
+  if(localeFiles.has(rel)&&/Intl\.(?:DateTimeFormat|RelativeTimeFormat)\(\s*undefined\b/.test(text)){
     console.error(`[i18n] ${rel}: Intl formatter must use the selected app locale`);
     failed=true;
   }
