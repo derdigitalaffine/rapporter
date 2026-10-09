@@ -1,7 +1,6 @@
 import os
 from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand
-from django.utils.text import slugify
 from family.models import Family, Membership, TaskList, ShoppingList, Routine, AutomationRule
 
 
@@ -36,8 +35,10 @@ class Command(BaseCommand):
         family_name = os.getenv("INITIAL_FAMILY_NAME", "Meine Familie")
         locale = os.getenv("INITIAL_LOCALE", "de")
         family_timezone = os.getenv("TIME_ZONE", "Europe/Berlin")
+        # Keep the historical bootstrap slug so upgrades never create a second
+        # household merely because INITIAL_FAMILY_NAME was customized.
         family, family_created = Family.objects.get_or_create(
-            slug=slugify(family_name)[:120] or "meine-familie",
+            slug="meine-familie",
             defaults={"name": family_name, "locale": locale, "timezone": family_timezone},
         )
         if not family_created:
