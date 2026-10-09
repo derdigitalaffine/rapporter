@@ -18,6 +18,7 @@ import InviteFlow from './InviteFlow';
 import FeedbackHost from './feedback';
 import AccessibilityManager from './AccessibilityManager';
 import DeepLinkTarget from './DeepLinkTarget';
+import PwaUpdateManager from './PwaUpdateManager';
 
 class BootErrorBoundary extends React.Component {
   constructor(props){super(props);this.state={error:null}}
@@ -31,19 +32,4 @@ class BootErrorBoundary extends React.Component {
 
 const inviteMatch=window.location.pathname.match(/^\/invite\/([^/]+)\/?$/);
 const root=document.getElementById('root');
-ReactDOM.createRoot(root).render(<React.StrictMode><BootErrorBoundary><AccessibilityManager/><FeedbackHost/>{inviteMatch?<InviteFlow token={inviteMatch[1]}/>:<><App/><DeepLinkTarget/></>}</BootErrorBoundary></React.StrictMode>);
-
-if('serviceWorker' in navigator){
-  window.addEventListener('load',()=>{
-    const hadController=Boolean(navigator.serviceWorker.controller);
-    let reloading=false;
-    if(hadController){
-      navigator.serviceWorker.addEventListener('controllerchange',()=>{
-        if(reloading)return;
-        reloading=true;
-        window.location.reload();
-      });
-    }
-    navigator.serviceWorker.register('/sw.js',{updateViaCache:'none'}).then(registration=>registration.update()).catch(error=>console.warn('Service Worker registration failed',error));
-  });
-}
+ReactDOM.createRoot(root).render(<React.StrictMode><BootErrorBoundary><AccessibilityManager/><FeedbackHost/><PwaUpdateManager/>{inviteMatch?<InviteFlow token={inviteMatch[1]}/>:<><App/><DeepLinkTarget/></>}</BootErrorBoundary></React.StrictMode>);
