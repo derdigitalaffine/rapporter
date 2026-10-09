@@ -1,3 +1,5 @@
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
 from django.utils import timezone
 from rest_framework.decorators import api_view
 from rest_framework.exceptions import PermissionDenied
@@ -16,6 +18,15 @@ def _active_family(request):
             raise PermissionDenied("Familie ist für diesen Benutzer nicht verfügbar.")
         return family
     return families.first()
+
+
+def _family_day_start(family, now):
+    try:
+        family_timezone = ZoneInfo(family.timezone)
+    except (ZoneInfoNotFoundError, ValueError, TypeError):
+        family_timezone = timezone.get_current_timezone()
+    local_now = now.astimezone(family_timezone)
+    return local_now.replace(hour=0, minute=0, second=0, microsecond=0).astimezone(now.tzinfo)
 
 
 @api_view(["GET"])
@@ -37,10 +48,17 @@ def dashboard(request):
     upcoming = FamilyEvent.objects.filter(family=family, starts_at__gte=now).order_by("starts_at")
     events = list(upcoming[:12])
 
-    # TodayHome always needs the next two collection dates, even if many other
-    # calendar events occur before them and would otherwise push them out of
-    # the compact dashboard event window.
-    next_waste = list(upcoming.filter(type__startswith="waste.")[:2])
+    # Waste calendars often encode collection dates as all-day events at 00:00.
+    # Keep today's collection visible for the whole local family day and always
+    # include the next two collection dates even when many other events precede them.
+    waste_floor = _family_day_start(family, now)
+    next_waste = list(
+        FamilyEvent.objects.filter(
+            family=family,
+            type__startswith="waste.",
+            starts_at__gte=waste_floor,
+        ).order_by("starts_at")[:2]
+    )
     known_ids = {event.id for event in events}
     events.extend(event for event in next_waste if event.id not in known_ids)
     events.sort(key=lambda event: event.starts_at or now)
