@@ -5,7 +5,7 @@ from rest_framework.decorators import api_view
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.response import Response
 
-from .models import Family, Membership
+from .models import Membership
 from .models_features import PredictionFeedback
 from .predictions import predictions_for
 
@@ -27,10 +27,10 @@ def prediction_feedback(request):
     kind=request.data.get("kind");subject_key=str(request.data.get("subject_key") or "").strip();action=request.data.get("action")
     if kind not in PredictionFeedback.Kind.values or not subject_key:raise ValidationError({"detail":"Ungültige Vorhersage."})
     if action not in {"accept","dismiss","snooze"}:raise ValidationError({"action":"Unbekannte Aktion."})
-    row,_=PredictionFeedback.objects.get_or_create(family=family,membership=membership,kind=kind,subject_key=subject_key)
-    row.last_action=action
+    row,_=PredictionFeedback.objects.get_or_create(family=family,membership=membership,kind=kind,subject_key=subject_key);row.last_action=action
     if action in {"accept","dismiss"}:row.dismissed=True;row.snoozed_until=None
     else:
-        days=max(1,min(int(request.data.get("days") or 3),30));row.dismissed=False;row.snoozed_until=timezone.now()+timedelta(days=days)
-    row.save(update_fields=["last_action","dismissed","snoozed_until","updated_at"])
-    return Response({"ok":True,"action":action,"snoozed_until":row.snoozed_until})
+        try:days=int(request.data.get("days") or 3)
+        except (TypeError,ValueError):raise ValidationError({"days":"Ungültige Dauer."})
+        days=max(1,min(days,30));row.dismissed=False;row.snoozed_until=timezone.now()+timedelta(days=days)
+    row.save(update_fields=["last_action","dismissed","snoozed_until","updated_at"]);return Response({"ok":True,"action":action,"snoozed_until":row.snoozed_until})
