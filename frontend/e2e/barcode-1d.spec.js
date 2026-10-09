@@ -1,5 +1,5 @@
 import {test,expect} from '@playwright/test';
-import {nativeScannerPlan} from '../src/barcode-scanner.js';
+import {nativeScannerPlan,requiredOneDimensionalNativeFormats} from '../src/barcode-scanner.js';
 
 test('keeps JS fallback when native BarcodeDetector only supports QR',()=>{
  const plan=nativeScannerPlan(['qr_code']);
@@ -8,11 +8,17 @@ test('keeps JS fallback when native BarcodeDetector only supports QR',()=>{
  expect(plan.useFallback).toBe(true);
 });
 
-test('recognizes native EAN-13, EAN-8 and Code 128 coverage',()=>{
- const plan=nativeScannerPlan(['qr_code','ean_13','ean_8','code_128','upc_a']);
+test('keeps JS fallback when native detector is missing any supported 1D symbology',()=>{
+ const almostComplete=['qr_code',...requiredOneDimensionalNativeFormats.filter(format=>format!=='upc_e')];
+ const plan=nativeScannerPlan(almostComplete);
  expect(plan.accepted).toContain('ean_13');
- expect(plan.accepted).toContain('ean_8');
- expect(plan.accepted).toContain('code_128');
+ expect(plan.accepted).toContain('upc_a');
+ expect(plan.oneDimensionalComplete).toBe(false);
+ expect(plan.useFallback).toBe(true);
+});
+
+test('uses native-only path when all configured 1D formats are available',()=>{
+ const plan=nativeScannerPlan(['qr_code',...requiredOneDimensionalNativeFormats]);
  expect(plan.oneDimensionalComplete).toBe(true);
  expect(plan.useFallback).toBe(false);
 });
