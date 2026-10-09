@@ -188,6 +188,16 @@ class InboxItem(TimestampedModel):
     parsed = models.JSONField(default=dict, blank=True)
 
 
+class PushSubscription(TimestampedModel):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="famuhle_push_subscriptions")
+    endpoint = models.TextField(unique=True)
+    p256dh = models.TextField()
+    auth = models.TextField()
+    user_agent = models.CharField(max_length=240, blank=True)
+    active = models.BooleanField(default=True)
+    last_success_at = models.DateTimeField(null=True, blank=True)
+
+
 class AutomationRule(TimestampedModel):
     class Trigger(models.TextChoices):
         WASTE_TOMORROW = "waste_tomorrow", "Waste collection tomorrow"
@@ -205,6 +215,7 @@ class AutomationRule(TimestampedModel):
         SHOPPING_ADD = "shopping_add", "Add shopping item"
         INBOX_CREATE = "inbox_create", "Create inbox message"
         HOME_SERVICE = "home_service", "Call Home Assistant service"
+        PUSH_NOTIFY = "push_notify", "Send push notification"
 
     family = models.ForeignKey(Family, on_delete=models.CASCADE, related_name="automation_rules")
     name = models.CharField(max_length=160)
