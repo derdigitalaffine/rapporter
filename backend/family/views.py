@@ -1,4 +1,5 @@
 from collections import defaultdict
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db.models import Q
 from django.utils import timezone
 from rest_framework import permissions, status, viewsets
@@ -64,7 +65,10 @@ class FamilyScopedViewSet(viewsets.ModelViewSet):
     family_lookup = "family_id"
 
     def get_queryset(self):
-        return self.queryset.filter(**{f"{self.family_lookup}__in": family_ids(self.request.user)})
+        queryset = self.queryset.filter(**{f"{self.family_lookup}__in": family_ids(self.request.user)})
+        if self.queryset.model is Task:
+            queryset = queryset.exclude(hidden_from_user=self.request.user)
+        return queryset
 
     def perform_create(self, serializer):
         family = serializer.validated_data.get("family")
@@ -81,7 +85,7 @@ class FamilyViewSet(viewsets.ReadOnlyModelViewSet):
 
 
 class TaskListViewSet(FamilyScopedViewSet):
-    queryset = TaskList.objects.prefetch_related("tasks").all()
+    queryset = TaskList.objects.prefetch_related("tasks", "workflow_columns").all()
     serializer_class = TaskListSerializer
 
     def perform_create(self, serializer):
@@ -90,9 +94,14 @@ class TaskListViewSet(FamilyScopedViewSet):
             raise PermissionDenied()
         serializer.save()
 
+    @action(detail=True, methods=["get", "post"], url_path="workflow-columns")
+    def workflow_columns(self, request, pk=None):
+        from .workflow_views import list_columns
+        return list_columns(self, request)
+
 
 class TaskViewSet(FamilyScopedViewSet):
-    queryset = Task.objects.select_related("task_list", "assignee").all().order_by("completed_at", "due_at", "-created_at")
+    queryset = Task.objects.select_related("task_list", "assignee", "workflow_column").all().order_by("completed_at", "due_at", "-created_at")
     serializer_class = TaskSerializer
 
     def perform_create(self, serializer):
@@ -108,17 +117,41 @@ class TaskViewSet(FamilyScopedViewSet):
 
     @action(detail=True, methods=["post"])
     def toggle(self, request, pk=None):
-        task = self.get_object()
-        task.completed_at = None if task.completed_at else timezone.now()
-        task.save(update_fields=["completed_at", "updated_at"])
+        from django.db import transaction
+        with transaction.atomic():
+            task = self.get_object()
+            if task.task_list_id:
+                TaskList.objects.select_for_update().get(pk=task.task_list_id)
+            task.refresh_from_db()
+            task.completed_at = None if task.completed_at else timezone.now()
+            task.save(update_fields=["completed_at", "updated_at"])
         return Response(self.get_serializer(task).data)
+
+    @action(detail=True, methods=["post"])
+    def move(self, request, pk=None):
+        from .models import TaskWorkflowColumn
+        from .task_workflow import move_task
+        from rest_framework.exceptions import ValidationError
+        try:
+            column = TaskWorkflowColumn.objects.get(pk=request.data.get("column_id"))
+        except (TaskWorkflowColumn.DoesNotExist, ValueError, TypeError, DjangoValidationError):
+            raise ValidationError({"column_id": "Invalid workflow column."})
+        task = move_task(self.get_object(), column, request.data.get("before_task_id"))
+        return Response(self.get_serializer(task).data)
+
+    @action(detail=True, methods=["get"], url_path="status-history")
+    def status_history(self, request, pk=None):
+        rows = self.get_object().status_events.select_related("from_column", "to_column", "changed_by")
+        page = self.paginate_queryset(rows)
+        result = [{"id": str(row.id), "from": row.from_column.name if row.from_column else None, "to": row.to_column.name if row.to_column else None, "changed_by": row.changed_by.username if row.changed_by else "FamilyOS", "changed_at": row.created_at, "source": row.source} for row in page]
+        return self.get_paginated_response(result)
 
     @action(detail=False, methods=["get"])
     def suggestions(self, request):
         family = _family_for_request(request)
         if not family:
             return Response([])
-        rows = Task.objects.filter(family=family).order_by("-updated_at")[:600]
+        rows = Task.objects.filter(family=family,birthday_context__isnull=True).order_by("-updated_at")[:600]
         return Response(_smart_history(rows, request.query_params.get("q"), ["notes", "priority", "estimate_minutes"], 10))
 
 
@@ -133,7 +166,7 @@ class ShoppingItemViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        return self.queryset.filter(shopping_list__family_id__in=family_ids(self.request.user))
+        return self.queryset.filter(shopping_list__family_id__in=family_ids(self.request.user)).exclude(hidden_from_user=self.request.user)
 
     def perform_create(self, serializer):
         shopping_list = serializer.validated_data["shopping_list"]
@@ -167,14 +200,70 @@ class ShoppingItemViewSet(viewsets.ModelViewSet):
 
 
 class RoutineViewSet(FamilyScopedViewSet):
-    queryset = Routine.objects.select_related("family").prefetch_related("logs").all()
+    queryset = Routine.objects.select_related("family").prefetch_related("logs__done_by", "reminder_states__membership").all()
     serializer_class = RoutineSerializer
+
+    def get_queryset(self):
+        rows = super().get_queryset()
+        family = self.request.query_params.get("family")
+        return rows.filter(family_id=family) if family else rows
 
     @action(detail=True, methods=["post"])
     def done(self, request, pk=None):
+        from django.db import transaction
+        from uuid import UUID
+        from rest_framework.exceptions import ValidationError
+        request_id = request.data.get("request_id")
+        try:
+            request_id = UUID(str(request_id)) if request_id else None
+        except ValueError:
+            raise ValidationError({"request_id": "Invalid request ID."})
+        note = str(request.data.get("note", ""))
+        if len(note)>240:
+            raise ValidationError({"note": "Maximum 240 characters."})
+        with transaction.atomic():
+            routine = self.get_object()
+            Routine.objects.select_for_update().get(pk=routine.pk)
+            if not routine.active:
+                raise ValidationError({"routine": "Reactivate this routine before recording it."})
+            log = routine.logs.filter(request_id=request_id).first() if request_id else None
+            created = log is None
+            if log is None:
+                log = RoutineLog.objects.create(routine=routine, done_at=timezone.now(), done_by=request.user, note=note, request_id=request_id)
+            elif log.done_by_id!=request.user.id:
+                raise PermissionDenied()
+        return Response(RoutineLogSerializer(log).data, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+
+    @action(detail=True, methods=["get"])
+    def history(self, request, pk=None):
+        rows = self.get_object().logs.select_related("done_by").all()
+        page = self.paginate_queryset(rows)
+        return self.get_paginated_response(RoutineLogSerializer(page, many=True).data)
+
+    @action(detail=True, methods=["delete"], url_path="logs/(?P<log_id>[^/.]+)")
+    def remove_log(self, request, pk=None, log_id=None):
+        from django.shortcuts import get_object_or_404
         routine = self.get_object()
-        log = RoutineLog.objects.create(routine=routine, done_at=timezone.now(), done_by=request.user, note=request.data.get("note", ""))
-        return Response(RoutineLogSerializer(log).data, status=status.HTTP_201_CREATED)
+        log = get_object_or_404(routine.logs, pk=log_id)
+        if log.done_by_id!=request.user.id and not can_manage_settings(request.user,routine.family):
+            raise PermissionDenied()
+        log.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @action(detail=True, methods=["post"])
+    def snooze(self, request, pk=None):
+        from datetime import timedelta
+        from rest_framework.exceptions import ValidationError
+        from .models import RoutineReminderState
+        routine = self.get_object()
+        hours = request.data.get("hours",24)
+        if not isinstance(hours,int) or isinstance(hours,bool) or not 0<=hours<=168:
+            raise ValidationError({"hours":"Choose 0–168 hours."})
+        membership = Membership.objects.get(family=routine.family,user=request.user)
+        state,_ = RoutineReminderState.objects.get_or_create(routine=routine,membership=membership)
+        state.snoozed_until = timezone.now()+timedelta(hours=hours) if hours else None
+        state.save(update_fields=["snoozed_until","updated_at"])
+        return Response({"snoozed_until":state.snoozed_until})
 
 
 class IntegrationSourceViewSet(FamilyScopedViewSet):
@@ -340,7 +429,7 @@ def health(request):
 def dashboard(request):
     families = list(Family.objects.filter(memberships__user=request.user).values_list("id", flat=True))
     now = timezone.now()
-    tasks = Task.objects.filter(family_id__in=families, completed_at__isnull=True).select_related("task_list", "assignee").order_by("due_at", "-created_at")[:12]
+    tasks = Task.objects.exclude(hidden_from_user=request.user).filter(family_id__in=families, completed_at__isnull=True).select_related("task_list", "assignee").order_by("due_at", "-created_at")[:12]
     events = FamilyEvent.objects.filter(family_id__in=families, starts_at__gte=now).order_by("starts_at")[:12]
     routines = Routine.objects.filter(family_id__in=families, active=True).select_related("family").prefetch_related("logs")[:8]
     shopping = ShoppingList.objects.filter(family_id__in=families, archived=False).prefetch_related("items").order_by("sort_order", "created_at")[:8]

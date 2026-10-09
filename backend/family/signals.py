@@ -20,6 +20,12 @@ def _member_name(membership):return membership.display_name or membership.user.g
 def task_before_save(sender,instance,**kwargs):instance._notification_previous=_previous(instance,Task,["title","notes","due_at","completed_at","assignee_id","task_list_id","priority"])
 @receiver(post_save,sender=Task)
 def task_after_save(sender,instance,created,**kwargs):
+    if instance.birthday_context:
+        from .models import BirthdayGiftPlan
+        plans=BirthdayGiftPlan.objects.filter(linked_task=instance)
+        if instance.completed_at:plans.exclude(status="given").update(status="ready")
+        else:plans.filter(status="ready").update(status="planned")
+        return
     remember_entry(instance,bump=created);actor=current_actor() or (instance.created_by if created else None)
     if not actor or str(instance.source).startswith("rule:"):return
     context={"item":instance.title,"task_id":instance.id,"list_id":instance.task_list_id,"list":instance.task_list.name if instance.task_list_id else "Aufgaben"}
@@ -44,6 +50,7 @@ def shopping_list_after_save(sender,instance,created,**kwargs):
 def shopping_item_before_save(sender,instance,**kwargs):instance._notification_previous=_previous(instance,ShoppingItem,["name","quantity","category","note","aisle","checked","shopping_list_id"])
 @receiver(post_save,sender=ShoppingItem)
 def shopping_item_after_save(sender,instance,created,**kwargs):
+    if instance.birthday_context:return
     remember_entry(instance,bump=created);actor=current_actor() or (instance.added_by if created else None)
     if not actor or _system_request() or (created and instance.added_by_id and instance.added_by_id!=actor.id):return
     context={"item":instance.name,"item_id":instance.id,"list":instance.shopping_list.name,"list_id":instance.shopping_list_id}

@@ -13,6 +13,8 @@ class NotificationPreference(TimestampedModel):
     family_updates = models.BooleanField(default=True)
     messages = models.BooleanField(default=True)
     routines = models.BooleanField(default=True)
+    birthdays = models.BooleanField(default=True)
+    birthday_prepare = models.BooleanField(default=True)
 
 
 class LoyaltyCard(TimestampedModel):

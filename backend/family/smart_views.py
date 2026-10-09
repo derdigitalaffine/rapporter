@@ -182,7 +182,7 @@ def task_quick_add(request):
             return Response({"detail": "Aufgabenliste nicht gefunden."}, status=status.HTTP_400_BAD_REQUEST)
     task_list = task_list or TaskList.objects.filter(family=family, archived=False).first()
     task_list = task_list or TaskList.objects.create(family=family, name="Allgemein", icon="list-check")
-    task = Task.objects.filter(family=family, task_list=task_list, title__iexact=title, completed_at__isnull=True).order_by("-updated_at").first()
+    task = Task.objects.filter(birthday_context__isnull=True,family=family, task_list=task_list, title__iexact=title, completed_at__isnull=True).order_by("-updated_at").first()
     reused = bool(task)
     if not task:
         task = Task(family=family, task_list=task_list, title=title, created_by=request.user)
@@ -214,7 +214,7 @@ def shopping_quick_add(request):
             return Response({"detail": "Einkaufsliste nicht gefunden."}, status=status.HTTP_400_BAD_REQUEST)
     shopping = shopping or ShoppingList.objects.filter(family=family, archived=False).order_by("sort_order", "created_at").first()
     shopping = shopping or ShoppingList.objects.create(family=family, name="Einkauf")
-    item = ShoppingItem.objects.filter(shopping_list=shopping, name__iexact=name).order_by("checked", "-updated_at").first()
+    item = ShoppingItem.objects.filter(birthday_context__isnull=True,shopping_list=shopping, name__iexact=name).order_by("checked", "-updated_at").first()
     reused = bool(item)
     if not item:
         item = ShoppingItem(shopping_list=shopping, name=name, added_by=request.user)
@@ -233,7 +233,7 @@ def shopping_quick_add(request):
 
 @api_view(["POST"])
 def shopping_toggle_favorite(request, item_id):
-    item = ShoppingItem.objects.filter(id=item_id, shopping_list__family__memberships__user=request.user).first()
+    item = ShoppingItem.objects.exclude(hidden_from_user=request.user).filter(id=item_id, shopping_list__family__memberships__user=request.user).first()
     if not item:
         return Response({"detail": "Artikel nicht gefunden."}, status=status.HTTP_404_NOT_FOUND)
     item.favorite = not item.favorite
@@ -246,5 +246,5 @@ def shopping_clear_checked(request, list_id):
     shopping = ShoppingList.objects.filter(id=list_id, family__memberships__user=request.user).first()
     if not shopping:
         return Response({"detail": "Einkaufsliste nicht gefunden."}, status=status.HTTP_404_NOT_FOUND)
-    count, _ = shopping.items.filter(checked=True).delete()
+    count, _ = shopping.items.exclude(hidden_from_user=request.user).filter(checked=True).delete()
     return Response({"deleted": count})

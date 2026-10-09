@@ -12,7 +12,7 @@ class NotificationPreferenceSerializer(serializers.ModelSerializer):
         model = NotificationPreference
         fields = [
             "membership", "family", "tasks", "task_assigned", "shopping", "calendar",
-            "family_updates", "messages", "routines", "updated_at",
+            "family_updates", "messages", "routines", "birthdays", "birthday_prepare", "updated_at",
         ]
         read_only_fields = ["membership", "family", "updated_at"]
 

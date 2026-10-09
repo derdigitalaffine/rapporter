@@ -6,6 +6,7 @@ from .push import send_user_push
 
 
 EVENT_SPECS = {
+    "task.status_changed": {"pref":"task_assigned", "parent":"tasks", "title":{"de":"Aufgabenstatus geändert", "en":"Task status changed"}, "body":{"de":"{item}: {status}", "en":"{item}: {status}"}},
     "task.list.created": {"pref": "tasks", "title": {"de": "Neue Aufgabenliste", "en": "New task list"}, "body": {"de": "{actor} hat „{list}“ angelegt.", "en": "{actor} created “{list}”."}},
     "task.created": {"pref": "tasks", "title": {"de": "Neue Aufgabe", "en": "New task"}, "body": {"de": "{actor} hat „{item}“ zu {list} hinzugefügt.", "en": "{actor} added “{item}” to {list}."}},
     "task.assigned": {"pref": "task_assigned", "parent": "tasks", "title": {"de": "Neue Aufgabe für dich", "en": "New task for you"}, "body": {"de": "Dir wurde „{item}“ zugewiesen.", "en": "“{item}” was assigned to you."}},

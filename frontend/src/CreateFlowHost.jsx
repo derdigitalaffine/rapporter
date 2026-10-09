@@ -1,3 +1,4 @@
+import BirthdayEditor from './BirthdayEditor';
 import {useState} from 'react';
 import {TaskEditor,ShoppingEditor} from './SmartEditors';
 import ListEditor from './ListEditor';
@@ -16,6 +17,7 @@ export default function CreateFlowHost({action,family,data,context={},onClose,on
  const taskListId=selectedTaskList?.id||(context.taskListId&&context.taskListId!=='all'?context.taskListId:taskLists[0]?.id||'');
  const shoppingList=selectedShoppingList||(context.shoppingListId&&context.shoppingListId!=='all'?shoppingLists.find(list=>String(list.id)===String(context.shoppingListId)):shoppingLists[0]);
  async function saved(){await onRefresh?.();onClose()}
+ if(action==='birthday')return <BirthdayEditor family={family} onClose={onClose} onSaved={saved}/>;
  if(action==='task')return <TaskEditor family={family} lists={taskLists} members={family.memberships||[]} defaultListId={taskListId} onClose={onClose} onSaved={saved}/>;
  if(action==='shoppingItem'){
   if(!shoppingLists.length)return <ListEditor type="shopping" family={family} onClose={onClose} onSaved={async list=>{setCreatedShoppingList(list);await onRefresh?.()}}/>;

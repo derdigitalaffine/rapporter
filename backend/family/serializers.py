@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from rest_framework.exceptions import PermissionDenied
-from .models import Family, Membership, FamilyInvitation, TaskList, Task, ShoppingList, ShoppingItem, Routine, RoutineLog, IntegrationSource, FamilyEvent, InboxItem, InboxReceipt, AutomationRule, AutomationExecution
+from .models import Family, Membership, FamilyInvitation, TaskList, Task, TaskWorkflowColumn, ShoppingList, ShoppingItem, Routine, RoutineLog, IntegrationSource, FamilyEvent, InboxItem, InboxReceipt, AutomationRule, AutomationExecution
 from .predictions import routine_prediction
 
 
@@ -79,20 +79,51 @@ class FamilySerializer(serializers.ModelSerializer):
         read_only_fields = ["status"]
 
 
+class WorkflowColumnSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TaskWorkflowColumn
+        fields = ["id", "task_list", "name", "key", "position", "kind", "is_terminal", "archived"]
+        read_only_fields = ["task_list", "key"]
+
+
 class TaskListSerializer(serializers.ModelSerializer):
+    workflow_columns = WorkflowColumnSerializer(many=True, read_only=True)
     open_count = serializers.SerializerMethodField()
     done_count = serializers.SerializerMethodField()
-    def get_open_count(self, obj): return obj.tasks.filter(completed_at__isnull=True).count()
-    def get_done_count(self, obj): return obj.tasks.filter(completed_at__isnull=False).count()
+    def get_open_count(self, obj): return self._visible_tasks(obj).filter(completed_at__isnull=True).count()
+    def get_done_count(self, obj): return self._visible_tasks(obj).filter(completed_at__isnull=False).count()
+    def _visible_tasks(self,obj):
+        request=self.context.get("request")
+        return obj.tasks.exclude(hidden_from_user=request.user) if request else obj.tasks.filter(hidden_from_user__isnull=True)
     def validate(self, attrs):
         _validate_family_access(self, attrs)
+        if "workflow_enabled" in attrs:
+            family = attrs.get("family") or self.instance.family
+            request = self.context.get("request")
+            if request and not Membership.objects.filter(family=family, user=request.user, role__in=["owner", "adult"]).exists():
+                raise PermissionDenied("Only owners/adults can configure workflows.")
         return attrs
+    def create(self, validated_data):
+        from .task_workflow import configure_workflow
+        from django.db import transaction
+        with transaction.atomic():
+            enabled = validated_data.pop("workflow_enabled", False)
+            instance = super().create(validated_data)
+            return configure_workflow(instance, True) if enabled else instance
+    def update(self, instance, validated_data):
+        from .task_workflow import configure_workflow
+        from django.db import transaction
+        with transaction.atomic():
+            enabled = validated_data.pop("workflow_enabled", instance.workflow_enabled)
+            instance = super().update(instance, validated_data)
+            return configure_workflow(instance, enabled)
     class Meta:
         model = TaskList
-        fields = ["id", "family", "name", "icon", "archived", "sort_order", "open_count", "done_count", "created_at", "updated_at"]
+        fields = ["id", "family", "name", "icon", "archived", "sort_order", "workflow_enabled", "workflow_columns", "open_count", "done_count", "created_at", "updated_at"]
 
 
 class TaskSerializer(serializers.ModelSerializer):
+    workflow_status = serializers.CharField(source="workflow_column.name", read_only=True)
     assignee_name = serializers.CharField(source="assignee.username", read_only=True)
     list_name = serializers.CharField(source="task_list.name", read_only=True)
     list_icon = serializers.CharField(source="task_list.icon", read_only=True)
@@ -105,12 +136,15 @@ class TaskSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({"task_list": "Aufgabenliste gehört nicht zu dieser Familie."})
         if family and assignee and not Membership.objects.filter(family=family, user=assignee).exists():
             raise serializers.ValidationError({"assignee": "Person gehört nicht zu dieser Familie."})
+        column = attrs.get("workflow_column")
+        if column and (not task_list or not task_list.workflow_enabled or column.task_list_id != task_list.id or column.archived):
+            raise serializers.ValidationError({"workflow_column": "Column does not belong to this active workflow."})
         return attrs
 
     class Meta:
         model = Task
         fields = "__all__"
-        read_only_fields = ["created_by"]
+        read_only_fields = ["created_by", "workflow_position"]
 
 
 class ShoppingItemSerializer(serializers.ModelSerializer):
@@ -131,11 +165,15 @@ class ShoppingItemSerializer(serializers.ModelSerializer):
 
 
 class ShoppingListSerializer(serializers.ModelSerializer):
-    items = ShoppingItemSerializer(many=True, read_only=True)
+    items = serializers.SerializerMethodField()
+    def _visible_items(self,obj):
+        request=self.context.get("request")
+        return obj.items.exclude(hidden_from_user=request.user) if request else obj.items.filter(hidden_from_user__isnull=True)
+    def get_items(self,obj): return ShoppingItemSerializer(self._visible_items(obj),many=True,context=self.context).data
     open_count = serializers.SerializerMethodField()
     checked_count = serializers.SerializerMethodField()
-    def get_open_count(self, obj): return obj.items.filter(checked=False).count()
-    def get_checked_count(self, obj): return obj.items.filter(checked=True).count()
+    def get_open_count(self, obj): return self._visible_items(obj).filter(checked=False).count()
+    def get_checked_count(self, obj): return self._visible_items(obj).filter(checked=True).count()
     def validate(self, attrs):
         _validate_family_access(self, attrs)
         return attrs
@@ -153,13 +191,39 @@ class RoutineLogSerializer(serializers.ModelSerializer):
 
 
 class RoutineSerializer(serializers.ModelSerializer):
-    logs = RoutineLogSerializer(many=True, read_only=True)
+    logs = serializers.SerializerMethodField()
     last_done_at = serializers.SerializerMethodField()
     prediction = serializers.SerializerMethodField()
+    log_count = serializers.SerializerMethodField()
+    period_count = serializers.SerializerMethodField()
+    snoozed_until = serializers.SerializerMethodField()
+
+    def _logs(self, obj):
+        cache = getattr(obj, "_prefetched_objects_cache", {})
+        return list(cache["logs"] if "logs" in cache else obj.logs.all())
+
+    def get_logs(self, obj):
+        return RoutineLogSerializer(sorted(self._logs(obj), key=lambda x:x.done_at, reverse=True)[:10], many=True).data
+
+    def get_log_count(self, obj):
+        return len(self._logs(obj))
+
+    def get_period_count(self, obj):
+        from datetime import timedelta
+        from django.utils import timezone
+        start = timezone.now()-timedelta(days=obj.target_period_days)
+        return sum(log.done_at>=start for log in self._logs(obj))
+
+    def get_snoozed_until(self, obj):
+        request = self.context.get("request")
+        if not request:
+            return None
+        state = next((x for x in obj.reminder_states.all() if x.membership.user_id==request.user.id), None)
+        from django.utils import timezone
+        return state.snoozed_until if state and state.snoozed_until and state.snoozed_until>timezone.now() else None
 
     def get_last_done_at(self, obj):
-        cache = getattr(obj, "_prefetched_objects_cache", {})
-        logs = list(cache.get("logs") or obj.logs.all())
+        logs = self._logs(obj)
         return max((log.done_at for log in logs if log.done_at), default=None)
 
     def get_prediction(self, obj):
@@ -167,11 +231,17 @@ class RoutineSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         _validate_family_access(self, attrs)
+        count = attrs.get("target_count", self.instance.target_count if self.instance else None)
+        period = attrs.get("target_period_days", self.instance.target_period_days if self.instance else 7)
+        if count is not None and (count<1 or count>100 or period/count<1/24):
+            raise serializers.ValidationError({"target_count": "Choose 1–100 times, at most once per hour."})
+        if not 1<=period<=365:
+            raise serializers.ValidationError({"target_period_days": "Choose 1–365 days."})
         return attrs
 
     class Meta:
         model = Routine
-        fields = ["id", "family", "name", "icon", "active", "last_done_at", "prediction", "logs"]
+        fields = ["id", "family", "name", "icon", "active", "target_count", "target_period_days", "reminder_enabled", "last_done_at", "prediction", "logs", "log_count", "period_count", "snoozed_until"]
 
 
 class IntegrationSourceSerializer(serializers.ModelSerializer):

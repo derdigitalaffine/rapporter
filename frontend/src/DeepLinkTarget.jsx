@@ -14,6 +14,7 @@ function targetFromLocation(){
     const list=params.get('list');
     if(list)return {page,key:'list',endpoint:`/task-lists/${encodeURIComponent(list)}/`};
   }
+  if(page==='shopping'&&params.get('mode')==='store')return null;
   if(page==='shopping'){
     const item=params.get('item');
     if(item)return {page,key:'item',endpoint:`/shopping-items/${encodeURIComponent(item)}/`};
@@ -22,7 +23,7 @@ function targetFromLocation(){
   }
   if(page==='calendar'&&params.get('event'))return {page,key:'event',endpoint:`/events/${encodeURIComponent(params.get('event'))}/`};
   if(page==='inbox'&&params.get('item'))return {page,key:'item',endpoint:`/inbox/${encodeURIComponent(params.get('item'))}/`};
-  if(page==='routines'&&params.get('routine'))return {page,key:'routine',endpoint:`/routines/${encodeURIComponent(params.get('routine'))}/`};
+  // The routines hub owns its editable, reload-safe detail view.
   return null;
 }
 

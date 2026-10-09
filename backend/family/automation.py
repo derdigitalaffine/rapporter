@@ -97,7 +97,7 @@ def _contexts(rule):
     if trigger == AutomationRule.Trigger.TASK_COMPLETED:
         contains = str(cfg.get("title_contains") or "").casefold().strip()
         task_list = cfg.get("task_list")
-        tasks = Task.objects.filter(family=rule.family, completed_at__isnull=False, completed_at__gte=now - timedelta(days=90)).select_related("task_list")
+        tasks = Task.objects.filter(birthday_context__isnull=True,family=rule.family, completed_at__isnull=False, completed_at__gte=now - timedelta(days=90)).select_related("task_list")
         if task_list:
             tasks = tasks.filter(task_list_id=task_list)
         contexts = []
@@ -141,7 +141,7 @@ def _act(rule, context):
         shopping = ShoppingList.objects.filter(id=cfg.get("shopping_list"), family=rule.family, archived=False).first() if cfg.get("shopping_list") else None
         shopping = shopping or ShoppingList.objects.filter(family=rule.family, archived=False).order_by("sort_order", "created_at").first() or ShoppingList.objects.create(family=rule.family, name="Einkauf")
         name = _render(cfg.get("name") or "{event_title}", context)
-        item = ShoppingItem.objects.filter(shopping_list=shopping, name__iexact=name).order_by("checked", "-updated_at").first() or ShoppingItem(shopping_list=shopping, name=name)
+        item = ShoppingItem.objects.filter(birthday_context__isnull=True,shopping_list=shopping, name__iexact=name).order_by("checked", "-updated_at").first() or ShoppingItem(shopping_list=shopping, name=name)
         item.checked = False; item.checked_at = None
         if cfg.get("quantity"): item.quantity = _render(cfg["quantity"], context)
         if cfg.get("category"): item.category = _render(cfg["category"], context)

@@ -1,5 +1,6 @@
 import {useEffect,useState} from 'react';
 import './notification-i18n';
+import './birthday-i18n';
 import './notification-settings.css';
 import {api} from './api';
 import {Icon} from './icons';
@@ -8,7 +9,7 @@ import {toast} from './feedback';
 function decodeKey(value){
  const padding='='.repeat((4-value.length%4)%4);const base64=(value+padding).replace(/-/g,'+').replace(/_/g,'/');const raw=atob(base64);return Uint8Array.from([...raw].map(c=>c.charCodeAt(0)));
 }
-const preferenceKeys=['tasks','task_assigned','shopping','calendar','family_updates','messages','routines'];
+const preferenceKeys=['tasks','task_assigned','shopping','calendar','family_updates','messages','routines','birthdays','birthday_prepare'];
 
 export default function NotificationSettings({family,onBack,onOpenAutomations,t}){
  const [config,setConfig]=useState(null);const [subscription,setSubscription]=useState(null);const [preferences,setPreferences]=useState(null);const [busy,setBusy]=useState(false);const [prepared,setPrepared]=useState(false);const [preferenceBusy,setPreferenceBusy]=useState('');
@@ -30,7 +31,7 @@ export default function NotificationSettings({family,onBack,onOpenAutomations,t}
   {supported&&config?.configured&&!subscription&&permission!=='denied'&&prepared&&<section className="card notification-card permission-stage"><div className="settings-hero-icon"><Icon name="warning" size={24}/></div><div className="grow"><strong>{t('pushUx.permissionTitle')}</strong><span>{t('pushUx.permissionText')}</span><div className="push-actions"><button className="primary" onClick={enable} disabled={busy}><Icon name="warning"/> {t('pushUx.requestPermission')}</button><button className="secondary" onClick={()=>setPrepared(false)} disabled={busy}>{t('pushUx.notNow')}</button></div></div></section>}
   {subscription&&<section className="card notification-card"><div className="settings-hero-icon"><Icon name="check" size={24}/></div><div className="grow"><strong>{t('pushUx.activeTitle')}</strong><span>{t('pushUx.activeText')}</span>{config?.devices>0&&<span className="push-device-count">{t('pushUx.devicesContext',{count:config.devices})}</span>}<span>{t('pushUx.testHint')}</span><div className="push-actions"><button className="primary" onClick={test} disabled={busy}><Icon name="warning"/> {t('sendTest')}</button><button className="ghost-danger" onClick={disable} disabled={busy}><Icon name="close"/> {t('disableNotifications')}</button></div></div></section>}
  </div>
- {preferences&&<section className="card notification-preferences"><div className="preference-head"><Icon name="sliders"/><div><strong>{t('pushUx.preferenceTitle')}</strong><span>{t('pushUx.preferenceIntro')}</span></div></div><div className="preference-list">{preferenceKeys.map(key=><label className={`preference-row ${key==='task_assigned'?'preference-child':''}`} key={key}><span><strong>{t(`pushUx.preference.${key}`)}</strong>{key==='task_assigned'&&<small>{t('pushUx.assignedHint')}</small>}</span><input type="checkbox" checked={!!preferences[key]} disabled={preferenceBusy===key||(key==='task_assigned'&&!preferences.tasks)} onChange={()=>togglePreference(key)}/></label>)}</div><small className="preference-footnote">{t('pushUx.preferenceDeviceSeparation')}</small></section>}
+ {preferences&&<section className="card notification-preferences"><div className="preference-head"><Icon name="sliders"/><div><strong>{t('pushUx.preferenceTitle')}</strong><span>{t('pushUx.preferenceIntro')}</span></div></div><div className="preference-list">{preferenceKeys.map(key=><label className={`preference-row ${key==='task_assigned'?'preference-child':''}`} key={key}><span><strong>{key==='birthdays'?t('birthdayUi.dayPref'):key==='birthday_prepare'?t('birthdayUi.preparePref'):t(`pushUx.preference.${key}`)}</strong>{key==='task_assigned'&&<small>{t('pushUx.assignedHint')}</small>}</span><input type="checkbox" checked={!!preferences[key]} disabled={preferenceBusy===key||(key==='task_assigned'&&!preferences.tasks)} onChange={()=>togglePreference(key)}/></label>)}</div><small className="preference-footnote">{t('pushUx.preferenceDeviceSeparation')}</small></section>}
  <section className="card push-privacy"><Icon name="info"/><div><strong>{t('pushUx.privacyTitle')}</strong><span>{t('pushUx.privacyText')}</span></div></section>
  <section className="card push-rules-card"><Icon name="automation"/><div className="grow"><strong>{t('pushRulesTitle')}</strong><span>{t('pushUx.rulesCtaHint')}</span></div><button className="primary compact" onClick={openRules}><Icon name="automation"/> {t('pushUx.rulesCta')}</button></section>
  </div>

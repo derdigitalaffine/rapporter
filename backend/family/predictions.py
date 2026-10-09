@@ -77,72 +77,49 @@ def _routine_logs(routine: Routine):
 
 
 def routine_prediction(routine: Routine, now=None):
+    """A goal is the deadline; reliable observations can suggest an earlier visit.
+
+    Recent intervals carry more weight. Repeated taps less than one hour apart do
+    not distort learned cadence. Missing logs anchor a goal to creation time.
+    """
     now = now or timezone.now()
     zone = _zone(routine.family)
-    logs = _routine_logs(routine)
-    if not logs:
-        return {
-            "status": "not_enough_data",
-            "expected_interval_days": None,
-            "expected_at": None,
-            "window_start": None,
-            "window_end": None,
-            "preparation_start": None,
-            "confidence": 0.0,
-            "sample_count": 0,
-            "interval_count": 0,
-            "days_until_expected": None,
-        }
-
+    logs = [log for log in _routine_logs(routine) if log.done_at<=now]
     local_times = [row.done_at.astimezone(zone) for row in logs]
-    intervals = []
-    for previous, current in zip(local_times, local_times[1:]):
-        day_gap = (current.date() - previous.date()).days
-        if day_gap >= MIN_INTERVAL_DAYS:
-            intervals.append(float(day_gap))
-    stats = _interval_stats(intervals)
-    if stats is None:
-        return {
-            "status": "not_enough_data",
-            "expected_interval_days": None,
-            "expected_at": None,
-            "window_start": None,
-            "window_end": None,
-            "preparation_start": None,
-            "confidence": 0.0,
-            "sample_count": len(logs),
-            "interval_count": 0,
-            "days_until_expected": None,
-        }
-
-    expected_at = local_times[-1] + timedelta(days=stats["expected_interval_days"])
-    window_start = expected_at - timedelta(days=stats["window_half_days"])
-    window_end = expected_at + timedelta(days=stats["window_half_days"])
-    preparation_start = window_start - timedelta(days=stats["preparation_days"])
+    intervals = [(b-a).total_seconds()/86400 for a,b in zip(local_times,local_times[1:])]
+    usable = [x for x in intervals if x>=1/24][-MAX_INTERVAL_SAMPLES:]
+    # Preserve the shopping estimator; routines also support multiple runs a day.
+    stats = _interval_stats([max(1, x) for x in usable]) if usable else None
+    learned = _weighted_median(usable) if usable else None
+    if learned and stats:
+        variability = median([abs(x-learned) for x in usable])/learned
+        stats["confidence"] = round(min(.95, (.20+.16*min(5,len(usable)))*(.55+.45*max(.15,1-min(1,variability*3)))),2)
+    goal = routine.target_period_days/routine.target_count if routine.target_count else None
+    confidence = stats["confidence"] if stats else 0.0
+    expected = goal
+    if learned is not None:
+        expected = learned if goal is None else min(goal, goal*(1-confidence*.5)+learned*confidence*.5)
+    base = {"target_interval_days": round(goal,3) if goal else None, "learned_interval_days": round(learned,3) if learned else None, "confidence": confidence, "sample_count": len(logs), "interval_count": len(usable), "basis": "goal_and_history" if goal and learned else "goal" if goal else "history" if learned else "learning"}
+    if expected is None:
+        return {**base, "status": "not_enough_data", "expected_interval_days": None, "expected_at": None, "window_start": None, "window_end": None, "preparation_start": None, "days_until_expected": None}
+    anchor = local_times[-1] if local_times else routine.created_at.astimezone(zone)
+    expected_at = anchor+timedelta(days=expected)
+    half_window = min(expected*.1, 1) if goal else stats["window_half_days"]
+    window_start = expected_at-timedelta(days=half_window)
+    window_end = expected_at+timedelta(days=half_window)
+    # A wish is actionable even before learning. Never postpone its deadline.
+    if goal:
+        window_end = min(window_end,anchor+timedelta(days=goal))
     local_now = now.astimezone(zone)
-    days_until = round((expected_at - local_now).total_seconds() / 86400)
-
-    if stats["confidence"] < 0.55 or stats["interval_count"] < 2:
+    if goal is None and (confidence<.55 or len(usable)<2):
         status = "learning"
-    elif local_now > window_end:
+    elif local_now>window_end:
         status = "overdue"
-    elif local_now >= window_start:
+    elif local_now>=window_start:
         status = "due"
     else:
         status = "upcoming"
-
-    return {
-        "status": status,
-        "expected_interval_days": stats["expected_interval_days"],
-        "expected_at": expected_at,
-        "window_start": window_start,
-        "window_end": window_end,
-        "preparation_start": preparation_start,
-        "confidence": stats["confidence"],
-        "sample_count": len(logs),
-        "interval_count": stats["interval_count"],
-        "days_until_expected": days_until,
-    }
+    return {**base, "status": status, "expected_interval_days": round(expected,3), "expected_at": expected_at, "window_start": window_start, "window_end": window_end, "preparation_start": window_start-timedelta(days=min(1,expected*.1)), "days_until_expected": round((expected_at-local_now).total_seconds()/86400)}
 
 
 def _event_intervals(events, family):
