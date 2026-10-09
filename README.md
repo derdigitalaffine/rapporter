@@ -17,7 +17,7 @@ Der `dialog`/`whiptail`-Wizard erzeugt `.env`, sichert vorhandene Konfiguratione
 - **Superadmin** – globaler Plattformzugang für Familien-Tenants; gehört keiner Familie an.
 - **Familien-Owner** – normaler Owner-Zugang der ersten Familie.
 
-Das Setup führt außerdem durch Betriebsmodus, Domain/IP, Ports, Zeitzone, Sprache, erste Familie, PostgreSQL, Scheduler-Intervall sowie optional Google-/Microsoft-Kalender-OAuth und Web Push.
+Das Setup führt außerdem durch Betriebsmodus, Domain/IP, Ports, Zeitzone, Sprache, erste Familie, PostgreSQL, Scheduler-Intervall sowie optional Google-/Microsoft-Kalender-OAuth. Die serverseitige Web-Push-Infrastruktur wird automatisch vorbereitet; die Benachrichtigungsberechtigung bleibt weiterhin eine bewusste Browser-/Benutzerentscheidung.
 
 ### Betriebsmodi
 
@@ -90,7 +90,16 @@ Scheduler und Integrations-Syncs laufen tenantbezogen; gesperrte Familien werden
 
 ## PWA & Push
 
-FamilyOS enthält 192/512-PNG-App-Icons, maskable Varianten, Install-Flow, PWA-Shortcuts und Share Target. Der Service Worker cached keine `/api/`, `/admin/` oder privaten Nutzerdaten. Web Push ist im Setup optional und wird pro Gerät im Browser freigegeben.
+FamilyOS enthält 192/512-PNG-App-Icons, maskable Varianten, Install-Flow, PWA-Shortcuts und Share Target. Der Service Worker cached keine `/api/`, `/admin/` oder privaten Nutzerdaten.
+
+Das Setup erzeugt automatisch ein P-256-VAPID-Schlüsselpaar und speichert es ausschließlich in `.env`. Bei einem erneuten Setup bleibt ein vorhandenes gültiges Paar unverändert, damit bereits registrierte Browser-Subscriptions nicht durch unnötige Schlüsselrotation beschädigt werden. Fehlende oder inkonsistente VAPID-Werte können auf bestehenden Installationen nicht-interaktiv repariert werden:
+
+```bash
+bash scripts/ensure-vapid.sh
+docker compose restart backend
+```
+
+Der private VAPID-Key wird nie über die API ausgeliefert. Im Browser bleibt Web Push opt-in: Erst wenn ein Nutzer Benachrichtigungen aktiviert, wird die Browser-Berechtigung angefragt.
 
 ## Auth & Sicherheit
 
@@ -132,8 +141,8 @@ GitHub Actions prüft unter anderem:
 - React Production Build
 - Django `makemigrations --check --dry-run`, Migrationen und System Check
 - Backend-Regressionstests
-- Playwright-E2E
-- Setup-/TLS-Shell-Syntax
+- Playwright-E2E inkl. visueller Regressionen
+- Setup-/TLS-Shell-Syntax und automatische/idempotente VAPID-Erzeugung
 - Caddy- und Compose-Konfiguration
 - vollständigen Docker-Build
 
@@ -143,6 +152,7 @@ GitHub Actions prüft unter anderem:
 backend/                     Django REST API, Tenants, Regeln, Integrationen, Tests
 frontend/                    React PWA, Superadmin UI, Brand/PWA Assets
 scripts/setup.sh             interaktiver Setup-Wizard
+scripts/ensure-vapid.sh      idempotente VAPID-Prüfung/Reparatur
 scripts/tls-mode.sh          Betriebsmodus internal/public/proxy
 scripts/backup.sh            PostgreSQL-Backup
 scripts/restore.sh           PostgreSQL-Restore
