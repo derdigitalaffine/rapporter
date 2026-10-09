@@ -5,7 +5,7 @@ from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 
 from .feature_serializers import LoyaltyCardSerializer, NotificationPreferenceSerializer
-from .models import Family, Membership
+from .models import Membership
 from .models_features import LoyaltyCard, NotificationPreference
 
 
@@ -37,8 +37,9 @@ class LoyaltyCardViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         memberships = Membership.objects.filter(user=self.request.user)
         membership_ids = memberships.values_list("id", flat=True)
+        family_ids = memberships.values_list("family_id", flat=True)
         owner_family_ids = memberships.filter(role=Membership.Role.OWNER).values_list("family_id", flat=True)
-        queryset = LoyaltyCard.objects.filter(
+        queryset = LoyaltyCard.objects.filter(family_id__in=family_ids).filter(
             Q(created_by=self.request.user)
             | Q(shared_with__id__in=membership_ids)
             | Q(family_id__in=owner_family_ids)

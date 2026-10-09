@@ -131,6 +131,14 @@ class LoyaltyCardTests(TestCase):
         self.client.force_authenticate(self.shared)
         self.assertEqual(len(self.rows(self.client.get(f"/api/loyalty-cards/sync/?family={self.family.id}"))), 0)
 
+    def test_creator_loses_access_after_leaving_family(self):
+        card = LoyaltyCard.objects.create(family=self.family, name="Former member card", barcode_value="ABC123", barcode_format="code128", created_by=self.owner)
+        self.owner_member.delete()
+        response = self.client.get(f"/api/loyalty-cards/{card.id}/")
+        self.assertEqual(response.status_code, 404)
+        sync = self.client.get(f"/api/loyalty-cards/sync/?family={self.family.id}")
+        self.assertEqual(len(self.rows(sync)), 0)
+
     def test_barcode_format_validation(self):
         response = self.client.post("/api/loyalty-cards/", {
             "family": str(self.family.id), "name": "EAN", "barcode_value": "123", "barcode_format": "ean13",
