@@ -8,7 +8,12 @@ router = DefaultRouter()
 router.register("expenses", ExpenseViewSet, basename="expense")
 router.register("expense-settlements", SettlementViewSet, basename="expense-settlement")
 
+settlement_collection = SettlementViewSet.as_view({"get": "list", "post": "create"})
+settlement_void = SettlementViewSet.as_view({"post": "void"})
+
 urlpatterns = [
+    path("expenses/settlements/", settlement_collection, name="expense-settlement-collection"),
+    path("expenses/settlements/<uuid:pk>/void/", settlement_void, name="expense-settlement-void"),
     path("expenses/<uuid:expense_id>/receipt-file/", receipt_file, name="expense-receipt-file"),
     path("", include(router.urls)),
 ]

@@ -10,7 +10,7 @@ from PIL import Image
 from rest_framework.test import APIClient
 
 from family.models import Family, Membership
-from .models import Expense, ExpenseShare, ReceiptExtraction, Settlement
+from .models import Expense, ExpenseShare, ReceiptExtraction
 from .money import balance_summary, build_split, simplify_balances
 from .ocr import parse_receipt_text
 
@@ -82,7 +82,7 @@ class ExpenseApiTests(TestCase):
         expense = Expense.objects.create(family=self.family, title="Taxi", total_amount="20.00", currency="EUR", paid_by=self.alex, created_by=self.user)
         ExpenseShare.objects.create(expense=expense, member=self.alex, amount="10.00")
         ExpenseShare.objects.create(expense=expense, member=self.sam, amount="10.00")
-        response = self.client.post("/api/expense-settlements/", {
+        response = self.client.post("/api/expenses/settlements/", {
             "family": str(self.family.id), "from_member": str(self.sam.id), "to_member": str(self.alex.id), "amount": "10.00", "currency": "EUR"
         }, format="json")
         self.assertEqual(response.status_code, 201, response.data)
@@ -102,7 +102,8 @@ class ExpenseApiTests(TestCase):
         buffer = io.BytesIO()
         image.save(buffer, format="PNG")
         upload = SimpleUploadedFile("receipt.png", buffer.getvalue(), content_type="image/png")
-        response = self.client.post("/api/expenses/receipt/", {"family": str(self.family.id), "receipt": upload}, format="multipart")
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self.client.post("/api/expenses/receipt/", {"family": str(self.family.id), "receipt": upload}, format="multipart")
         self.assertEqual(response.status_code, 202, response.data)
         expense = Expense.objects.get(id=response.data["id"])
         self.assertEqual(expense.status, Expense.Status.DRAFT)
@@ -119,7 +120,9 @@ class ExpenseApiTests(TestCase):
         self.assertEqual(response.status_code, 404)
 
     def test_no_implicit_cross_currency_settlement(self):
-        Expense.objects.create(family=self.family, title="EUR", total_amount="10.00", currency="EUR", paid_by=self.alex, created_by=self.user)
+        expense = Expense.objects.create(family=self.family, title="EUR", total_amount="10.00", currency="EUR", paid_by=self.alex, created_by=self.user)
+        ExpenseShare.objects.create(expense=expense, member=self.sam, amount="10.00")
         summary_eur = balance_summary(self.family, "EUR")
         summary_usd = balance_summary(self.family, "USD")
         self.assertNotEqual(summary_eur[str(self.alex.id)]["balance"], summary_usd[str(self.alex.id)]["balance"])
+        self.assertEqual(summary_usd[str(self.alex.id)]["balance"], Decimal("0.00"))

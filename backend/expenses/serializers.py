@@ -24,7 +24,7 @@ class ReceiptExtractionSerializer(serializers.ModelSerializer):
         model = ReceiptExtraction
         fields = [
             "id", "status", "merchant", "date", "total", "subtotal", "tax", "currency",
-            "structured_data", "field_confidences", "parser_version", "processed_at", "error",
+            "structured_data", "field_confidences", "parser_version", "processed_at",
         ]
 
 
