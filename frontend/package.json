@@ -21,6 +21,7 @@
     "@fortawesome/free-regular-svg-icons": "latest",
     "@fortawesome/react-fontawesome": "latest",
     "i18next": "latest",
+    "qrcode": "latest",
     "react-i18next": "latest"
   },
   "devDependencies": {

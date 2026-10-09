@@ -1,3 +1,4 @@
+import json
 from urllib.parse import urlencode
 
 from django.shortcuts import redirect
@@ -9,6 +10,7 @@ from rest_framework.response import Response
 
 from .extended_integrations import INTEGRATION_CATALOG
 from .integration_health import sync_with_health
+from .integrations import normalize_ics_upload
 from .models import Family, IntegrationSource, Membership, ShoppingItem, ShoppingList, Task, TaskList
 from .oauth import authorization_url, complete_oauth, oauth_available
 from .serializers import IntegrationSourceSerializer, ShoppingItemSerializer, TaskSerializer
@@ -28,6 +30,16 @@ def _can_manage(user, family):
 
 def _catalog_item(catalog_id):
     return next((item for item in INTEGRATION_CATALOG if item["id"] == catalog_id), None)
+
+
+def _integration_values(request):
+    raw = request.data.get("values") or {}
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            raise ValueError("Ungültige Integrationsdaten.") from exc
+    return dict(raw)
 
 
 @api_view(["GET"])
@@ -51,7 +63,23 @@ def smart_integration_connect(request):
         return Response({"detail": "Unbekannte Integration."}, status=status.HTTP_400_BAD_REQUEST)
     if item.get("oauth_provider"):
         return Response({"detail": "Diese Integration wird über OAuth verbunden."}, status=status.HTTP_400_BAD_REQUEST)
-    values = dict(request.data.get("values") or {})
+    try:
+        values = _integration_values(request)
+        for field in item.get("fields", []):
+            if field.get("type") != "file":
+                continue
+            uploaded = request.FILES.get(field["key"])
+            if field.get("required") and not uploaded:
+                raise ValueError(f"{field.get('label') or 'Datei'} fehlt.")
+            if not uploaded:
+                continue
+            if not uploaded.name.lower().endswith(".ics"):
+                raise ValueError("Bitte eine Datei mit der Endung .ics auswählen.")
+            content = uploaded.read()
+            values["ics_content"] = normalize_ics_upload(content)
+            values["ics_filename"] = uploaded.name[:240]
+    except ValueError as exc:
+        return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
     endpoint = values.pop("endpoint", "")
     config = {**item.get("defaults", {}), **values}
     source = IntegrationSource.objects.create(
@@ -65,7 +93,6 @@ def smart_integration_connect(request):
     try:
         count = sync_with_health(source, force=True)
     except Exception as exc:
-        # Keep the failed source so the user can see diagnostics and retry/edit it.
         source.refresh_from_db()
         return Response({"detail": str(exc), "source": IntegrationSourceSerializer(source).data}, status=status.HTTP_400_BAD_REQUEST)
     return Response({"source": IntegrationSourceSerializer(source).data, "synced": count}, status=status.HTTP_201_CREATED)
