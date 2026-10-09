@@ -14,8 +14,8 @@ test('onboarding shows open integration step and opens the existing hub',async({
   await expect(step).toContainText('Empfohlen');
   await step.click();
   await expect(page).toHaveURL(/page=integrations/);
-  await expect(page.getByRole('heading',{name:'Integrationen'})).toBeVisible();
-  await expect(page.getByRole('heading',{name:'Integration hinzufügen'})).toBeVisible();
+  await expect(page.getByRole('heading',{name:'Integrationen',exact:true})).toBeVisible();
+  await expect(page.getByRole('heading',{name:'Integration hinzufügen',exact:true})).toBeVisible();
 });
 
 test('enabled integration is completed while disabled-only state stays open',async({page})=>{
