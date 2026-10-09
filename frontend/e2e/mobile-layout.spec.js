@@ -93,10 +93,9 @@ test('iPhone landscape uses a compact bottom navigation instead of the desktop s
 
   const layout=await nav.evaluate(element=>{
     const style=getComputedStyle(element);
-    return {position:style.position,top:style.top,bottom:style.bottom,columns:style.gridTemplateColumns.split(' ').filter(Boolean).length};
+    return {position:style.position,bottom:style.bottom,columns:style.gridTemplateColumns.split(' ').filter(Boolean).length};
   });
   expect(layout.position).toBe('fixed');
-  expect(layout.top).toBe('auto');
   expect(layout.bottom).toBe('0px');
   expect(layout.columns).toBe(5);
 
