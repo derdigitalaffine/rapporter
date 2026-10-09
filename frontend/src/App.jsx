@@ -3,7 +3,8 @@ import {useTranslation} from 'react-i18next';
 import './session-i18n';
 import {api,isAuthenticated,login,logout} from './api';
 import {Icon} from './icons';
-import {SmartTasks,SmartShopping} from './SmartLists';
+import {SmartTasks} from './SmartLists';
+import OfflineShopping from './OfflineShopping';
 import IntegrationHub from './IntegrationHub';
 import FamilyMembers from './FamilyMembers';
 import AutomationHub from './AutomationHub';
@@ -58,7 +59,7 @@ export default function App(){
  const pages={
   home:<TodayHome key={`home-${familyKey}`} data={data} family={family} t={t} onTask={toggleTask} open={navigate}/>,
   tasks:<SmartTasks key={`tasks-${familyKey}`} family={family} onChanged={load}/>,
-  shopping:<SmartShopping key={`shopping-${familyKey}`} family={family} onChanged={load}/>,
+  shopping:<OfflineShopping key={`shopping-${familyKey}`} family={family} onChanged={load}/>,
   routines:<RoutinesPage key={`routines-${familyKey}`} routines={data.routines||[]} family={family} t={t} done={routineDone} onChanged={load}/>,
   more:<MorePage key={`more-${familyKey}`} family={family} data={data} t={t} i18n={i18n} open={navigate} onShowOnboarding={showOnboarding} onLogout={()=>{logout();navigate('home',{replace:true});setSessionExpired(false);setAuthed(false)}} installable={!!installPrompt} onInstall={installApp}/>,
   calendar:<CalendarHub key={`calendar-${familyKey}`} family={family} t={t} onBack={()=>backTo('more')}/>,
