@@ -9,7 +9,7 @@ const unwrap=value=>value?.results||value||[];
 const writerRoles=new Set(['owner','adult','teen']);
 
 export default function FamilyInbox({family,t,onBack,onChanged}){
-  const {role}=useFamilyPermissions(family);const [items,setItems]=useState([]);const [filter,setFilter]=useState('all');const [compose,setCompose]=useState(false);const [body,setBody]=useState('');const [important,setImportant]=useState(false);const [audience,setAudience]=useState('family');const [recipientIds,setRecipientIds]=useState([]);const [busy,setBusy]=useState(false);const canWrite=writerRoles.has(role);const members=family?.memberships||[];const focusedId=new URLSearchParams(location.search).get('item');
+  const {role}=useFamilyPermissions(family);const [items,setItems]=useState([]);const [filter,setFilter]=useState('all');const [compose,setCompose]=useState(false);const [body,setBody]=useState('');const [important,setImportant]=useState(false);const [audience,setAudience]=useState('family');const [recipientIds,setRecipientIds]=useState([]);const [busy,setBusy]=useState(false);const canWrite=writerRoles.has(role);const members=family?.memberships||[];const focusedId=new URLSearchParams(location.search).get('message');
   async function load(){const rows=unwrap(await api('/inbox/'));setItems(rows.filter(row=>String(row.family)===String(family?.id)))}
   useEffect(()=>{load().catch(error=>toast(error.message||t('saveFailed'),{type:'error'}))},[family?.id]);
   useEffect(()=>{if(!focusedId||!items.some(item=>String(item.id)===String(focusedId)))return;requestAnimationFrame(()=>document.getElementById(`family-message-${focusedId}`)?.scrollIntoView({block:'center',behavior:'smooth'}))},[focusedId,items.length]);
