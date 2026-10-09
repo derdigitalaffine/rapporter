@@ -1,66 +1,144 @@
-/* Responsive layout layer: mobile-first, then tablet/desktop/wide. */
+/*
+ * Canonical adaptive layout layer for FamilyOS.
+ *
+ * Layout modes are based on usable viewport space rather than device names:
+ * - compact: default / phones (mobile-safety.css owns the final phone guards)
+ * - medium: >=760px with enough height for a navigation rail
+ * - large: >=960px with enough height for a persistent labelled sidebar
+ *
+ * Keep shell/navigation/grid breakpoints here. Feature styles should describe
+ * their components, not invent additional app-shell breakpoints.
+ */
+:root{
+  --content-reading:680px;
+  --content-wide:1240px;
+  --content-max:1320px;
+  --shell-max:1560px;
+  --side-nav-width:148px;
+}
 
-:root{--content-reading:680px;--content-wide:1180px;--side-nav-width:132px}
 html,body,#root{max-width:100%;overflow-x:hidden}
-.content{min-width:0}
+.content,.content>*,.smart-page,.today-page,.card{min-width:0}
 .quick-sheet,.integration-sheet,.confirm-dialog{max-width:min(680px,100vw)}
 .quick-form,.automation-builder .builder-fields{min-width:0}
 .quick-form>label,.builder-fields>label,.page-intro{max-width:var(--content-reading)}
 
-@media (min-width:760px){
-  .app-shell{max-width:var(--content-wide);padding-left:calc(var(--side-nav-width) + 32px);padding-right:28px}
-  .topbar{min-height:72px}
-  .bottom-nav{left:max(20px,calc(50% - var(--content-wide)/2));top:92px;width:var(--side-nav-width);gap:10px}
-  .bottom-nav button{height:62px;display:grid;grid-template-columns:30px 1fr;justify-items:start;align-items:center;gap:10px;padding:0 14px;font-size:12px;text-align:left}
+/* Very narrow compact screens intentionally collapse card pairs. */
+@media(max-width:339px){
+  .alert-grid{grid-template-columns:minmax(0,1fr)}
+  .today-important-grid{grid-template-columns:minmax(0,1fr)}
+}
+
+/*
+ * Medium and large layouts require enough vertical room. This deliberately
+ * excludes wide phones such as 844x390; mobile-safety.css also contains a
+ * defensive reset for those viewports.
+ */
+@media (min-width:760px) and (min-height:621px){
+  .app-shell{
+    width:100%;
+    max-width:1180px;
+    margin:0 auto;
+    padding:0 28px 48px calc(var(--side-nav-width) + 32px);
+  }
+  .topbar{min-height:72px;padding-left:0;padding-right:0}
+  .content{width:100%;max-width:none;padding:20px 0 96px}
+
+  .bottom-nav{
+    position:fixed;
+    left:max(20px,calc(50vw - 590px + 20px));
+    top:92px;
+    bottom:auto;
+    transform:none;
+    width:var(--side-nav-width);
+    height:auto;
+    padding:0;
+    border:0;
+    background:transparent;
+    backdrop-filter:none;
+    display:grid;
+    grid-template-columns:1fr;
+    gap:9px;
+  }
+  .bottom-nav button{
+    min-width:0;
+    min-height:58px;
+    height:auto;
+    display:grid;
+    grid-template-columns:30px minmax(0,1fr);
+    justify-items:start;
+    align-items:center;
+    gap:9px;
+    padding:10px 12px;
+    border:1px solid var(--line);
+    border-radius:15px;
+    background:var(--surface);
+    box-shadow:var(--shadow-sm);
+    font-size:12px;
+    text-align:left;
+  }
   .bottom-nav button svg{justify-self:center}
-  .bottom-nav button span{display:block;white-space:nowrap}
+  .bottom-nav button span{display:block;min-width:0;white-space:normal;overflow-wrap:anywhere;line-height:1.1}
   .bottom-nav button.active{background:var(--green-soft);border-color:color-mix(in srgb,var(--green) 25%,var(--line));color:var(--green)}
-  .bottom-nav i{top:7px;right:8px}
-  .content{padding-top:20px}
+  .bottom-nav i{top:6px;right:7px}
+
   .smart-page,.today-page{max-width:none}
   .smart-head,.page-head{align-items:flex-start}
-  .quick-sheet{width:min(680px,calc(100vw - 48px));border-radius:24px 24px 0 0}
+  .today-main-grid{grid-template-columns:minmax(0,1.15fr) minmax(280px,.85fr);gap:16px;align-items:start}
+  .today-important-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .today-routines{grid-auto-flow:row;grid-template-columns:repeat(3,minmax(0,1fr));overflow:visible}
+  .shopping-groups{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;align-items:start}
+  .shopping-group{min-width:0}
+
   .form-grid,.builder-field-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
   .integration-group>.stack,.automation-template-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
   .integration-group>.stack .card{margin:0}
-}
-
-@media (min-width:960px){
-  :root{--side-nav-width:148px}
-  .app-shell{max-width:1320px;padding-left:calc(var(--side-nav-width) + 40px);padding-right:40px}
-  .bottom-nav{left:max(24px,calc(50% - 660px));width:var(--side-nav-width)}
-  .today-main-grid{grid-template-columns:minmax(0,1.15fr) minmax(320px,.85fr);align-items:start}
-  .today-important-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
-  .today-routines{grid-template-columns:repeat(4,minmax(0,1fr))}
-  .shopping-groups{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;align-items:start}
-  .shopping-group{min-width:0}
-  .automation-template-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
-  .automation-grid .rule-row{grid-template-columns:auto minmax(0,1fr) auto}
   .calendar-agenda,.timeline{max-width:920px}
   .members-layout,.notification-layout{max-width:900px}
+
+  /* Bottom sheets become bounded dialogs once there is enough screen space. */
+  .sheet-backdrop{align-items:center;padding:24px max(24px,env(safe-area-inset-right)) 24px max(24px,env(safe-area-inset-left))}
+  .quick-sheet,.integration-sheet,.confirm-dialog{
+    width:min(680px,calc(100vw - 48px));
+    max-height:calc(100dvh - 48px);
+    border-radius:24px;
+    overflow:auto;
+  }
 }
 
-@media (min-width:1180px){
-  .app-shell{max-width:1480px;padding-left:190px;padding-right:52px}
-  .bottom-nav{left:max(30px,calc(50% - 740px));width:154px}
-  .content{max-width:1240px}
-  .today-page{display:block}
-  .today-main-grid{grid-template-columns:minmax(0,1.2fr) minmax(360px,.8fr);gap:22px}
-  .smart-page:not(.shopping-page) .smart-card-list{max-width:980px}
-  .shopping-page .shopping-groups{grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}
-  .integration-group>.stack{grid-template-columns:repeat(2,minmax(0,1fr))}
+@media (min-width:960px) and (min-height:621px){
+  :root{--side-nav-width:154px}
+  .app-shell{max-width:1480px;padding-left:194px;padding-right:40px}
+  .content{max-width:var(--content-wide)}
+  .bottom-nav{left:max(28px,calc(50vw - 740px + 28px));width:var(--side-nav-width)}
+
+  .today-main-grid{grid-template-columns:minmax(0,1.2fr) minmax(320px,.8fr);gap:20px}
+  .today-important-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .today-routines{grid-template-columns:repeat(4,minmax(0,1fr))}
   .automation-template-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .automation-grid .rule-row{grid-template-columns:auto minmax(0,1fr) auto}
+  .smart-page:not(.shopping-page) .smart-card-list{max-width:980px}
   .guided-builder{max-width:960px}
   .builder-choice-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
-  .quick-sheet{border-radius:24px;bottom:24px;max-height:calc(100dvh - 48px)}
-  .sheet-backdrop{align-items:center;padding:24px}
 }
 
-@media (min-width:1440px){
-  .app-shell{max-width:1560px}
-  .content{max-width:1320px}
+@media (min-width:1180px) and (min-height:621px){
+  .app-shell{max-width:var(--shell-max);padding-left:206px;padding-right:52px}
+  .content{max-width:var(--content-max)}
+  .bottom-nav{left:max(30px,calc(50vw - 780px + 30px));width:158px}
+  .today-main-grid{grid-template-columns:minmax(0,1.25fr) minmax(360px,.75fr);gap:22px}
+  .shopping-page .shopping-groups{gap:18px}
+  .integration-group>.stack{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+
+@media (min-width:1440px) and (min-height:621px){
   .today-important-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
   .integration-group>.stack{grid-template-columns:repeat(3,minmax(0,1fr))}
+}
+
+/* Editors stay readable instead of stretching across a large display. */
+@media (min-width:760px) and (min-height:621px){
+  .quick-form,.editor-form,.list-editor,.routine-editor{max-width:680px}
 }
 
 @media (orientation:landscape) and (max-height:620px){
@@ -70,6 +148,13 @@ html,body,#root{max-width:100%;overflow-x:hidden}
 
 @supports(padding:max(0px)){
   .app-shell{padding-left:env(safe-area-inset-left);padding-right:env(safe-area-inset-right)}
-  @media(min-width:760px){.app-shell{padding-left:max(calc(var(--side-nav-width) + 32px),env(safe-area-inset-left));padding-right:max(28px,env(safe-area-inset-right))}}
-  @media(min-width:1180px){.app-shell{padding-left:max(190px,env(safe-area-inset-left));padding-right:max(52px,env(safe-area-inset-right))}}
+  @media(min-width:760px) and (min-height:621px){
+    .app-shell{padding-left:max(calc(var(--side-nav-width) + 32px),env(safe-area-inset-left));padding-right:max(28px,env(safe-area-inset-right))}
+  }
+  @media(min-width:960px) and (min-height:621px){
+    .app-shell{padding-left:max(194px,env(safe-area-inset-left));padding-right:max(40px,env(safe-area-inset-right))}
+  }
+  @media(min-width:1180px) and (min-height:621px){
+    .app-shell{padding-left:max(206px,env(safe-area-inset-left));padding-right:max(52px,env(safe-area-inset-right))}
+  }
 }
