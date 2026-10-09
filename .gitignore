@@ -11,3 +11,5 @@ coverage/
 postgres_data/
 caddy_data/
 caddy_config/
+backups/
+*.dump
