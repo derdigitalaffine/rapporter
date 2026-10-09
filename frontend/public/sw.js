@@ -1,5 +1,20 @@
-const CACHE='fam-uh-le-v7';
+const CACHE='fam-uh-le-v8';
 const STATIC_SHELL=['/manifest.webmanifest','/brand/icon-192.png','/brand/icon-512.png','/brand/icon.svg'];
+
+async function cacheAssetGraph(cache,asset,seen=new Set()){
+  const url=new URL(asset,self.location.origin);
+  if(url.origin!==self.location.origin||seen.has(url.pathname))return;
+  seen.add(url.pathname);
+  const response=await fetch(url.pathname,{cache:'no-store'});
+  if(!response.ok)throw new Error(`asset_${response.status}_${url.pathname}`);
+  const stored=response.clone();
+  let source='';
+  if(url.pathname.endsWith('.js'))source=await response.text();
+  await cache.put(url.pathname,stored);
+  if(!source)return;
+  const dependencies=[...source.matchAll(/["'](\.\/[^"']+\.(?:js|css))["']/g)].map(match=>new URL(match[1],url).pathname);
+  for(const dependency of new Set(dependencies))await cacheAssetGraph(cache,dependency,seen);
+}
 
 async function cacheAppShell(){
   const cache=await caches.open(CACHE);
@@ -9,7 +24,8 @@ async function cacheAppShell(){
   const html=await response.clone().text();
   await cache.put('/',response);
   const assets=[...html.matchAll(/(?:src|href)=["'](\/assets\/[^"']+)["']/g)].map(match=>match[1]);
-  await Promise.all([...new Set(assets)].map(asset=>cache.add(asset)));
+  const seen=new Set();
+  for(const asset of new Set(assets))await cacheAssetGraph(cache,asset,seen);
 }
 
 self.addEventListener('install',event=>{
@@ -42,15 +58,27 @@ async function networkFirst(request,{cacheKey=request}={}){
   }
 }
 
+async function immutableAsset(request){
+  const cached=await caches.match(request);
+  if(cached)return cached;
+  try{
+    const response=await fetch(request);
+    if(!response||!response.ok)throw new Error(`asset_network_${response?.status||0}`);
+    const copy=response.clone();
+    await caches.open(CACHE).then(cache=>cache.put(request,copy));
+    return response;
+  }catch{return Response.error()}
+}
+
 self.addEventListener('fetch',event=>{
   const request=event.request;
   if(request.method!=='GET'||isPrivateRequest(request))return;
   const url=new URL(request.url);
 
-  // Vite bundles are content-hashed. Network-first keeps deployments fresh while
-  // the matching hashed bundle remains available when the device is offline.
+  // Vite assets use content hashes; an exact cached URL is immutable and safe to
+  // serve cache-first. A new deployment gets new URLs and therefore a fresh fetch.
   if(url.pathname.startsWith('/assets/')){
-    event.respondWith(networkFirst(request));
+    event.respondWith(immutableAsset(request));
     return;
   }
 
