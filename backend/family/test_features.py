@@ -42,6 +42,20 @@ class DomainNotificationTests(TestCase):
         sender.assert_not_called()
 
     @patch("family.domain_notifications.send_user_push", return_value={"sent": 1, "errors": 0})
+    def test_disabled_shopping_preference_suppresses_push(self, sender):
+        NotificationPreference.objects.create(membership=self.bob_member, shopping=False)
+        response = self.client.post("/api/shopping-items/", {"shopping_list": str(self.shopping.id), "name": "Milch"}, format="json")
+        self.assertEqual(response.status_code, 201)
+        sender.assert_not_called()
+
+    @patch("family.domain_notifications.send_user_push", return_value={"sent": 1, "errors": 0})
+    def test_disabled_calendar_preference_suppresses_push(self, sender):
+        NotificationPreference.objects.create(membership=self.bob_member, calendar=False)
+        response = self.client.post("/api/events/", {"family": str(self.family.id), "type": "calendar.event", "title": "Elternabend"}, format="json")
+        self.assertEqual(response.status_code, 201)
+        sender.assert_not_called()
+
+    @patch("family.domain_notifications.send_user_push", return_value={"sent": 1, "errors": 0})
     def test_shopping_and_calendar_events_push(self, sender):
         response = self.client.post("/api/shopping-items/", {"shopping_list": str(self.shopping.id), "name": "Milch"}, format="json")
         self.assertEqual(response.status_code, 201)
@@ -79,10 +93,12 @@ class LoyaltyCardTests(TestCase):
         self.shared_member = Membership.objects.create(family=self.family, user=self.shared, role=Membership.Role.ADULT)
         self.private_member = Membership.objects.create(family=self.family, user=self.private, role=Membership.Role.TEEN)
         Membership.objects.create(family=self.other, user=self.outsider, role=Membership.Role.OWNER)
-        self.client = APIClient(); self.client.force_authenticate(self.owner)
+        self.client = APIClient()
+        self.client.force_authenticate(self.owner)
 
     def rows(self, response):
-        return response.data.get("results", response.data)
+        data = response.data
+        return data.get("results", data) if hasattr(data, "get") else data
 
     def test_manual_card_sharing_and_acl(self):
         response = self.client.post("/api/loyalty-cards/", {
