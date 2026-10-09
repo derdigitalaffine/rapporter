@@ -13,7 +13,7 @@ class MembershipViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         family_ids = Membership.objects.filter(user=self.request.user).values_list("family_id", flat=True)
-        return Membership.objects.filter(family_id__in=family_ids).select_related("family", "user").order_by("created_at")
+        return Membership.objects.filter(family_id__in=family_ids).select_related("family", "user", "user__familyos_profile").order_by("created_at")
 
     def _actor_membership(self, target):
         return Membership.objects.filter(family=target.family, user=self.request.user).first()
@@ -25,9 +25,11 @@ class MembershipViewSet(viewsets.ModelViewSet):
             raise PermissionDenied()
 
         requested_role = request.data.get("role", target.role)
-        display_only = set(request.data.keys()).issubset({"display_name", "avatar"})
-        if target.user_id == request.user.id and display_only:
+        self_service = set(request.data.keys()).issubset({"display_name", "birthday_visibility"})
+        if target.user_id == request.user.id and self_service:
             return super().partial_update(request, *args, **kwargs)
+        if "birthday_visibility" in request.data and target.user_id != request.user.id:
+            raise PermissionDenied("Geburtstagssichtbarkeit kann nur die Person selbst ändern.")
 
         if actor.role not in {Membership.Role.OWNER, Membership.Role.ADULT}:
             raise PermissionDenied("Nur Owner/Erwachsene können Mitglieder verwalten.")
@@ -41,7 +43,7 @@ class MembershipViewSet(viewsets.ModelViewSet):
             if owners <= 1:
                 return Response({"detail": "Die Familie braucht mindestens einen Owner."}, status=status.HTTP_400_BAD_REQUEST)
 
-        allowed = {"display_name", "avatar", "role"}
+        allowed = {"display_name", "role"}
         data = {key: value for key, value in request.data.items() if key in allowed}
         serializer = self.get_serializer(target, data=data, partial=True)
         serializer.is_valid(raise_exception=True)

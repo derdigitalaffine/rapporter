@@ -13,12 +13,52 @@ def _validate_family_access(serializer, attrs):
     return family
 
 
+def _membership_profile(obj):
+    try:
+        return obj.user.familyos_profile
+    except Exception:
+        return None
+
+
 class MembershipSerializer(serializers.ModelSerializer):
     username = serializers.CharField(source="user.username", read_only=True)
+    avatar = serializers.SerializerMethodField()
+    avatar_url = serializers.SerializerMethodField()
+    birth_month = serializers.SerializerMethodField()
+    birth_day = serializers.SerializerMethodField()
+    birth_year = serializers.SerializerMethodField()
+
+    def _birthday_visible(self, obj):
+        request = self.context.get("request")
+        if request and request.user.is_authenticated and request.user.id == obj.user_id:
+            return "full_date"
+        return obj.birthday_visibility
+
+    def get_avatar(self, obj):
+        return self.get_avatar_url(obj)
+
+    def get_avatar_url(self, obj):
+        profile = _membership_profile(obj)
+        if profile and profile.avatar_key:
+            return f"/api/profile/avatar/{obj.user_id}/128/?v={profile.avatar_version}"
+        return obj.avatar or ""
+
+    def get_birth_month(self, obj):
+        profile = _membership_profile(obj)
+        return profile.birth_month if profile and self._birthday_visible(obj) != Membership.BirthdayVisibility.HIDDEN else None
+
+    def get_birth_day(self, obj):
+        profile = _membership_profile(obj)
+        return profile.birth_day if profile and self._birthday_visible(obj) != Membership.BirthdayVisibility.HIDDEN else None
+
+    def get_birth_year(self, obj):
+        profile = _membership_profile(obj)
+        return profile.birth_year if profile and self._birthday_visible(obj) == Membership.BirthdayVisibility.FULL_DATE else None
+
     class Meta:
         model = Membership
-        fields = ["id", "family", "user", "username", "role", "display_name", "avatar"]
-        read_only_fields = ["family", "user"]
+        fields = ["id", "family", "user", "username", "role", "display_name", "avatar", "avatar_url", "birthday_visibility", "birth_month", "birth_day", "birth_year"]
+        read_only_fields = ["family", "user", "avatar", "avatar_url", "birth_month", "birth_day", "birth_year"]
 
 
 class FamilyInvitationSerializer(serializers.ModelSerializer):
