@@ -29,5 +29,5 @@ test('DE to EN also changes calendar and integration locale-sensitive copy',asyn
  await expect(page.getByText('Connection needs attention',{exact:true})).toBeVisible();
  await expect(page.getByText(/Next automatic retry/)).toBeVisible();
  await expect(page.getByText(/Nächster automatischer Versuch/)).toHaveCount(0);
- await expect(page.locator('.integration-recovery small')).toContainText(/in .*hour/);
+ await expect(page.locator('.integration-recovery small')).toContainText(/in \d+ (?:minute|minutes|hour|hours)/);
 });
