@@ -103,7 +103,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Validate shell setup tools
-        run: bash -n scripts/setup.sh scripts/tls-mode.sh scripts/export-caddy-ca.sh
+        run: bash -n scripts/setup.sh scripts/ensure-vapid.sh scripts/test-vapid-setup.sh scripts/tls-mode.sh scripts/export-caddy-ca.sh
+      - name: Verify automatic VAPID provisioning
+        run: bash scripts/test-vapid-setup.sh
       - name: Validate public Caddy config
         run: docker run --rm -e DOMAIN=familyos.example.com -v "$PWD/Caddyfile:/etc/caddy/Caddyfile:ro" caddy:2-alpine caddy validate --config /etc/caddy/Caddyfile
       - name: Validate internal TLS Caddy config
