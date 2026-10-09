@@ -22,7 +22,7 @@ export default function CreateFlowHost({action,family,data,context={},onClose,on
   return <ShoppingEditor shoppingList={shoppingList} lists={shoppingLists} onClose={onClose} onSaved={saved}/>;
  }
  if(action==='event')return <EventEditor family={family} onClose={onClose} onSaved={saved}/>;
- if(action==='expense')return <ExpenseEditor family={family} onClose={onClose} onSaved={saved}/>;
+ if(action==='expense')return <ExpenseEditor family={family} initialMode={context.mode==='receipt'?'receipt':'quick'} onClose={onClose} onSaved={saved} onUndo={onRefresh}/>;
  if(action==='taskList')return <ListEditor type="task" family={family} onClose={onClose} onSaved={saved}/>;
  if(action==='shoppingList')return <ListEditor type="shopping" family={family} onClose={onClose} onSaved={saved}/>;
  if(action==='routine')return <RoutineEditor family={family} onClose={onClose} onSaved={saved}/>;
