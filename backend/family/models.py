@@ -119,6 +119,24 @@ class ShoppingItem(TimestampedModel):
     added_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL)
 
 
+class EntryMemory(TimestampedModel):
+    class Kind(models.TextChoices):
+        TASK = "task", "Task"
+        SHOPPING = "shopping", "Shopping"
+
+    family = models.ForeignKey(Family, on_delete=models.CASCADE, related_name="entry_memories")
+    kind = models.CharField(max_length=16, choices=Kind.choices)
+    normalized_name = models.CharField(max_length=180)
+    name = models.CharField(max_length=180)
+    data = models.JSONField(default=dict, blank=True)
+    use_count = models.PositiveIntegerField(default=1)
+    last_used_at = models.DateTimeField()
+
+    class Meta:
+        unique_together = ("family", "kind", "normalized_name")
+        indexes = [models.Index(fields=["family", "kind", "last_used_at"], name="fam_mem_family_kind_idx")]
+
+
 class Routine(TimestampedModel):
     family = models.ForeignKey(Family, on_delete=models.CASCADE, related_name="routines")
     name = models.CharField(max_length=160)
