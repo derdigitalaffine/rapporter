@@ -24,7 +24,8 @@ def receipt_file(request, expense_id):
         extraction = getattr(expense, "extraction", None)
         if extraction:
             extraction.raw_text = ""
-            extraction.save(update_fields=["raw_text", "updated_at"])
+            extraction.structured_data = {}
+            extraction.save(update_fields=["raw_text", "structured_data", "updated_at"])
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     if not expense.receipt_content:

@@ -5,7 +5,7 @@ from rest_framework import serializers
 
 from family.models import Family, Membership
 from .models import Expense, ExpenseShare, ReceiptExtraction, Settlement
-from .money import build_split
+from .money import balance_summary, build_split
 
 
 class ExpenseShareSerializer(serializers.ModelSerializer):
@@ -66,6 +66,8 @@ class ExpenseSerializer(serializers.ModelSerializer):
         family = attrs.get("family") or getattr(self.instance, "family", None)
         if not family or not request or not request.user.is_authenticated:
             raise serializers.ValidationError({"family": "Eine aktive Familie ist erforderlich."})
+        if self.instance and "family" in attrs and family.id != self.instance.family_id:
+            raise serializers.ValidationError({"family": "Die Familie einer bestehenden Ausgabe kann nicht geändert werden."})
         membership = Membership.objects.filter(family=family, user=request.user, family__status=Family.Status.ACTIVE).first()
         if not membership and not request.user.is_superuser:
             raise serializers.ValidationError({"family": "Familie ist für diesen Benutzer nicht verfügbar."})
@@ -199,6 +201,18 @@ class SettlementSerializer(serializers.ModelSerializer):
         amount = attrs.get("amount", getattr(self.instance, "amount", Decimal("0")))
         if amount <= 0:
             raise serializers.ValidationError({"amount": "Betrag muss größer als 0 sein."})
+
+        currency = attrs.get("currency") or getattr(self.instance, "currency", "EUR")
+        summary = balance_summary(family, currency)
+        sender_row = summary.get(str(sender.id))
+        receiver_row = summary.get(str(receiver.id))
+        sender_balance = sender_row["balance"] if sender_row else Decimal("0.00")
+        receiver_balance = receiver_row["balance"] if receiver_row else Decimal("0.00")
+        if sender_balance >= 0 or receiver_balance <= 0:
+            raise serializers.ValidationError({"amount": "Diese Abrechnung passt nicht zum aktuellen Saldo."})
+        maximum = min(-sender_balance, receiver_balance)
+        if amount > maximum:
+            raise serializers.ValidationError({"amount": f"Höchstens {maximum:.2f} {currency} können abgerechnet werden."})
         return attrs
 
     class Meta:
