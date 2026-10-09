@@ -39,7 +39,9 @@ async function refreshAccess(){
  return refreshPromise;
 }
 async function request(path,options={}){
- return fetch(`${API_BASE}${path}`,{...options,credentials:'include',headers:{...jsonHeaders(),...(options.headers||{})}})
+ const multipart=typeof FormData!=='undefined'&&options.body instanceof FormData;
+ const headers=multipart?{...(options.headers||{})}:{...jsonHeaders(),...(options.headers||{})};
+ return fetch(`${API_BASE}${path}`,{...options,credentials:'include',headers})
 }
 export async function api(path,options={}){
  let response=await request(path,options);
