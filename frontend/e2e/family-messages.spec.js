@@ -9,31 +9,14 @@ test('owner sends targeted family message and personal unread state clears',asyn
   await page.route('**/api/inbox/**',async route=>{
     const request=route.request();const url=new URL(request.url());const method=request.method();const path=url.pathname;
     if(path==='/api/inbox/'&&method==='GET')return json(route,messages);
-    if(path==='/api/inbox/'&&method==='POST'){
-      const body=request.postDataJSON();const created={id:'message-1',family:'family-1',title:body.body,body:body.body,source:'manual_message',status:'sent',created_by:1,created_by_name:'Alex',audience:body.audience,important:body.important,withdrawn_at:null,recipients:[{id:'member-2',display_name:'Sam',username:'sam'}],unread:false,can_withdraw:true,created_at:'2026-10-09T12:05:00Z'};messages=[created,...messages];return json(route,created,201);
-    }
+    if(path==='/api/inbox/'&&method==='POST'){const body=request.postDataJSON();const created={id:'message-1',family:'family-1',title:body.body,body:body.body,source:'manual_message',status:'sent',created_by:1,created_by_name:'Alex',audience:body.audience,important:body.important,withdrawn_at:null,recipients:[{id:'member-2',display_name:'Sam',username:'sam'}],unread:false,can_withdraw:true,created_at:'2026-10-09T12:05:00Z'};messages=[created,...messages];return json(route,created,201)}
     if(path==='/api/inbox/system-1/read/'&&method==='POST'){messages=messages.map(item=>item.id==='system-1'?{...item,unread:false,status:'read'}:item);return json(route,messages.find(item=>item.id==='system-1'))}
     return json(route,{});
   });
 
-  await page.goto('/');await page.waitForLoadState('networkidle');
-  await page.locator('.bottom-nav').getByRole('button',{name:'Mehr',exact:true}).click();
-  await page.getByRole('button',{name:'Inbox',exact:true}).click();
-  await expect(page.getByRole('heading',{name:'Mitteilungen'})).toBeVisible();
-  await expect(page.getByText('Fenster schließen')).toBeVisible();
-
-  await page.getByRole('button',{name:/Mitteilung$/}).click();
-  await page.getByLabel('Mitteilung').fill('Bitte Milch mitbringen');
-  await page.getByLabel('Empfänger').selectOption('selected');
-  await page.getByText('Sam',{exact:true}).click();
-  await page.getByLabel('Wichtig / anpinnen').check();
-  await page.getByRole('button',{name:'Senden',exact:true}).click();
-  await expect(page.getByText('Bitte Milch mitbringen')).toBeVisible();
-  await expect(page.getByText('An Sam')).toBeVisible();
-  await expect(page.getByText('Wichtig',{exact:true})).toBeVisible();
-
-  await page.getByRole('button',{name:'Ungelesen'}).click();
-  await expect(page.getByText('Fenster schließen')).toBeVisible();
-  await page.getByText('Fenster schließen').click();
-  await expect(page.getByText('Fenster schließen')).toHaveCount(0);
+  await page.goto('/?page=inbox');await page.waitForLoadState('networkidle');
+  await expect(page.getByRole('heading',{name:'Mitteilungen'})).toBeVisible();await expect(page.getByText('Fenster schließen')).toBeVisible();
+  await page.getByRole('button',{name:/Mitteilung$/}).click();await page.getByLabel('Mitteilung').fill('Bitte Milch mitbringen');await page.getByLabel('Empfänger').selectOption('selected');await page.getByText('Sam',{exact:true}).click();await page.getByLabel('Wichtig / anpinnen').check();await page.getByRole('button',{name:'Senden',exact:true}).click();
+  await expect(page.getByText('Bitte Milch mitbringen')).toBeVisible();await expect(page.getByText('An Sam')).toBeVisible();await expect(page.getByText('Wichtig',{exact:true})).toBeVisible();
+  await page.getByRole('button',{name:'Ungelesen'}).click();await expect(page.getByText('Fenster schließen')).toBeVisible();await page.getByText('Fenster schließen').click();await expect(page.getByText('Fenster schließen')).toHaveCount(0);
 });
