@@ -62,15 +62,22 @@ VAPID_PUBLIC_KEY=$(env_value VAPID_PUBLIC_KEY)
 VAPID_PRIVATE_KEY=$(env_value VAPID_PRIVATE_KEY)
 VAPID_SUBJECT=$(env_value VAPID_SUBJECT)
 DJANGO_SUPERUSER_EMAIL=$(env_value DJANGO_SUPERUSER_EMAIL)
+DEFAULT_SUBJECT="mailto:${DJANGO_SUPERUSER_EMAIL:-admin@example.com}"
 
 if pair_valid "$VAPID_PUBLIC_KEY" "$VAPID_PRIVATE_KEY"; then
-  echo "Web Push: vorhandenes VAPID-Schlüsselpaar ist gültig und bleibt unverändert."
+  if [[ -z "$VAPID_SUBJECT" ]]; then
+    set_env_value VAPID_SUBJECT "$DEFAULT_SUBJECT"
+    chmod 600 "$ENV_FILE"
+    echo "Web Push: vorhandenes VAPID-Schlüsselpaar bleibt unverändert; fehlendes Subject wurde ergänzt."
+  else
+    echo "Web Push: vorhandenes VAPID-Schlüsselpaar ist gültig und bleibt unverändert."
+  fi
   exit 0
 fi
 
 generate_pair
 [[ -n "$VAPID_PUBLIC_KEY" && -n "$VAPID_PRIVATE_KEY" ]] || fail "VAPID-Schlüsselpaar konnte nicht erzeugt werden."
-VAPID_SUBJECT="${VAPID_SUBJECT:-mailto:${DJANGO_SUPERUSER_EMAIL:-admin@example.com}}"
+VAPID_SUBJECT="${VAPID_SUBJECT:-$DEFAULT_SUBJECT}"
 set_env_value VAPID_PUBLIC_KEY "$VAPID_PUBLIC_KEY"
 set_env_value VAPID_PRIVATE_KEY "$VAPID_PRIVATE_KEY"
 set_env_value VAPID_SUBJECT "$VAPID_SUBJECT"
