@@ -5,6 +5,7 @@ from rest_framework.response import Response
 
 from .models import AutomationRule, Family, FamilyEvent, InboxItem, Routine, ShoppingList, Task, TaskList
 from .serializers import FamilyEventSerializer, RoutineSerializer, ShoppingListSerializer, TaskListSerializer, TaskSerializer
+from .weather_contract import WEATHER_DATA_TYPES, build_weather_contract
 
 
 def _active_family(request):
@@ -30,14 +31,12 @@ def dashboard(request):
             "shopping_lists": [],
             "inbox_count": 0,
             "automation_count": 0,
+            "weather": None,
         })
 
     now = timezone.now()
     tasks = Task.objects.filter(family=family, completed_at__isnull=True).select_related("task_list", "assignee").order_by("due_at", "-created_at")[:12]
-    events = list(FamilyEvent.objects.filter(family=family, starts_at__gte=now).order_by("starts_at")[:12])
-    current_weather = FamilyEvent.objects.filter(family=family, type="weather.current").order_by("-starts_at", "-updated_at").first()
-    if current_weather and all(event.id != current_weather.id for event in events):
-        events = [current_weather, *events][:12]
+    events = FamilyEvent.objects.filter(family=family, starts_at__gte=now).exclude(type__in=WEATHER_DATA_TYPES).order_by("starts_at")[:12]
     routines = Routine.objects.filter(family=family, active=True).prefetch_related("logs")[:8]
     shopping = ShoppingList.objects.filter(family=family, archived=False).prefetch_related("items").order_by("sort_order", "created_at")[:8]
     task_lists = TaskList.objects.filter(family=family, archived=False).prefetch_related("tasks")[:12]
@@ -52,4 +51,5 @@ def dashboard(request):
         "shopping_lists": ShoppingListSerializer(shopping, many=True).data,
         "inbox_count": inbox_count,
         "automation_count": automation_count,
+        "weather": build_weather_contract(family),
     })
