@@ -1,4 +1,4 @@
-const CACHE='fam-uh-le-v10';
+const CACHE='fam-uh-le-v11';
 const STATIC_SHELL=['/manifest.webmanifest','/brand/icon-192.png','/brand/icon-512.png','/brand/icon.svg'];
 
 async function putStatic(cache,key,response){
@@ -42,7 +42,9 @@ async function cacheAppShell(){
 }
 
 self.addEventListener('install',event=>{
-  self.skipWaiting();
+  // Keep an existing version in control until the app explicitly asks the new
+  // worker to activate. First installs still activate normally because no client
+  // is controlled by an older worker.
   event.waitUntil(cacheAppShell());
 });
 
@@ -51,6 +53,10 @@ self.addEventListener('activate',event=>{
     caches.keys().then(keys=>Promise.all(keys.filter(key=>key!==CACHE).map(key=>caches.delete(key)))),
     self.clients.claim(),
   ]));
+});
+
+self.addEventListener('message',event=>{
+  if(event.data?.type==='SKIP_WAITING')self.skipWaiting();
 });
 
 function isPrivateRequest(request){
