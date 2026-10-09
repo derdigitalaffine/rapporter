@@ -316,6 +316,7 @@ def sync_source(source):
 
 
 EXTENDED_CATALOG = [
+    {"id": "rlp_school_holidays", "kind": "school", "name": "Schulferien Rheinland-Pfalz", "description": "Amtliche Ferien automatisch im Kalender. Bewegliche Ferientage werden von der jeweiligen Schule festgelegt und sind nicht enthalten.", "help_url": "https://bm.rlp.de/service/ferientermine", "singleton": True, "fields": [], "defaults": {"adapter": "rlp_school_holidays", "provider": "Ministerium für Bildung Rheinland-Pfalz"}},
     {"id": "google_oauth", "kind": "ics", "name": "Google Kalender · OAuth", "description": "Google Calendar schreibgeschützt per OAuth verbinden. Keine private Kalender-URL nötig.", "oauth_provider": "google", "fields": [], "defaults": {"adapter": "google_oauth"}},
     {"id": "microsoft_oauth", "kind": "ics", "name": "Microsoft Outlook · OAuth", "description": "Outlook/Microsoft 365 Kalender schreibgeschützt per OAuth verbinden.", "oauth_provider": "microsoft", "fields": [], "defaults": {"adapter": "microsoft_oauth"}},
     {"id": "google_ics", "kind": "ics", "name": "Google Kalender · iCal", "description": "Privaten iCal-Link eines Google-Kalenders abonnieren.", "help_url": "https://support.google.com/calendar/answer/37648", "secret_endpoint": True, "fields": [{"key": "endpoint", "label": "Private iCal-Adresse", "type": "password", "required": True}], "defaults": {"adapter": "google_ics", "provider": "Google Calendar", "event_type": "calendar.event", "secret_endpoint": True}},
