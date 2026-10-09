@@ -88,5 +88,6 @@ def session_view(request):
             "id": request.user.pk,
             "username": request.user.username,
             "email": request.user.email,
+            "is_superadmin": bool(request.user.is_superuser),
         },
     })
