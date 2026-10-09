@@ -25,9 +25,9 @@ cd "$ROOT"
 docker compose up -d db
 
 echo "Stoppe App-Dienste …"
-docker compose stop backend scheduler caddy >/dev/null 2>&1 || true
+docker compose stop backend scheduler notification-worker receipt-worker caddy >/dev/null 2>&1 || true
 
-cleanup(){ docker compose up -d backend scheduler caddy >/dev/null 2>&1 || true; }
+cleanup(){ docker compose up -d backend scheduler notification-worker receipt-worker caddy >/dev/null 2>&1 || true; }
 trap cleanup EXIT
 
 echo "Stelle Datenbank wieder her …"
@@ -36,7 +36,7 @@ docker compose exec -T db createdb -U "$POSTGRES_USER" "$POSTGRES_DB"
 cat "$DUMP" | docker compose exec -T db pg_restore --no-owner --no-acl -U "$POSTGRES_USER" -d "$POSTGRES_DB"
 
 echo "Starte fam-uh-le …"
-docker compose up -d backend scheduler caddy
+docker compose up -d backend scheduler notification-worker receipt-worker caddy
 trap - EXIT
 
 echo "Restore abgeschlossen. Status:"

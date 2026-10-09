@@ -50,6 +50,20 @@ services:
     entrypoint: ["/bin/sh", "-c"]
     command: ["while true; do python manage.py sync_integrations || true; sleep $${INTEGRATION_SYNC_SECONDS}; done"]
 
+  notification-worker:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      backend:
+        condition: service_healthy
+    environment:
+      POSTGRES_HOST: db
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["python manage.py flush_notifications --loop --interval 30"]
+
   receipt-worker:
     build:
       context: .

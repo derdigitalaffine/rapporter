@@ -53,7 +53,7 @@ def shopping_item_after_save(sender,instance,created,**kwargs):
     if instance.birthday_context:return
     remember_entry(instance,bump=created);actor=current_actor() or (instance.added_by if created else None)
     if not actor or _system_request() or (created and instance.added_by_id and instance.added_by_id!=actor.id):return
-    context={"item":instance.name,"item_id":instance.id,"list":instance.shopping_list.name,"list_id":instance.shopping_list_id}
+    context={"item":instance.name,"item_id":instance.id,"list":instance.shopping_list.name,"list_id":instance.shopping_list_id,"previous_checked":(getattr(instance,"_notification_previous",None) or {}).get("checked")}
     if created:notify_domain_event(instance.shopping_list.family,"shopping.item.created",actor=actor,context=context);return
     previous=getattr(instance,"_notification_previous",None) or {}
     if previous.get("checked")!=instance.checked:notify_domain_event(instance.shopping_list.family,"shopping.item.completed" if instance.checked else "shopping.item.reopened",actor=actor,context=context)

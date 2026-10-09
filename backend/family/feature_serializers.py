@@ -12,9 +12,18 @@ class NotificationPreferenceSerializer(serializers.ModelSerializer):
         model = NotificationPreference
         fields = [
             "membership", "family", "tasks", "task_assigned", "shopping", "calendar",
-            "family_updates", "messages", "routines", "birthdays", "birthday_prepare", "updated_at",
+            "family_updates", "messages", "routines", "birthdays", "birthday_prepare",
+            "detail_level", "quiet_hours_enabled", "quiet_start", "quiet_end", "updated_at",
         ]
         read_only_fields = ["membership", "family", "updated_at"]
+
+    def validate(self, attrs):
+        enabled = attrs.get("quiet_hours_enabled", getattr(self.instance, "quiet_hours_enabled", False))
+        start = attrs.get("quiet_start", getattr(self.instance, "quiet_start", None))
+        end = attrs.get("quiet_end", getattr(self.instance, "quiet_end", None))
+        if enabled and start == end:
+            raise serializers.ValidationError({"quiet_end": "Ruhezeit benötigt unterschiedliche Anfangs- und Endzeiten."})
+        return attrs
 
 
 class LoyaltyCardSerializer(serializers.ModelSerializer):
