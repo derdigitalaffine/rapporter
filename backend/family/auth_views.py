@@ -2,12 +2,10 @@ from django.conf import settings
 from rest_framework import permissions, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
-from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer, TokenRefreshSerializer
 from rest_framework_simplejwt.tokens import RefreshToken
 
-ACCESS_COOKIE = "famuhle_access"
-REFRESH_COOKIE = "famuhle_refresh"
+from .authentication import ACCESS_COOKIE, REFRESH_COOKIE
 
 
 def _cookie_secure():
@@ -46,19 +44,6 @@ def clear_token_cookies(response):
     response.delete_cookie(ACCESS_COOKIE, path="/", samesite="Lax")
     response.delete_cookie(REFRESH_COOKIE, path="/", samesite="Lax")
     return response
-
-
-class CookieJWTAuthentication(JWTAuthentication):
-    def authenticate(self, request):
-        header = self.get_header(request)
-        if header is not None:
-            raw_token = self.get_raw_token(header)
-        else:
-            raw_token = request.COOKIES.get(ACCESS_COOKIE)
-        if raw_token is None:
-            return None
-        validated_token = self.get_validated_token(raw_token)
-        return self.get_user(validated_token), validated_token
 
 
 @api_view(["POST"])
