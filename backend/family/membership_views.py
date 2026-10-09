@@ -28,6 +28,8 @@ class MembershipViewSet(viewsets.ModelViewSet):
         self_service = set(request.data.keys()).issubset({"display_name", "birthday_visibility"})
         if target.user_id == request.user.id and self_service:
             return super().partial_update(request, *args, **kwargs)
+        if "birthday_visibility" in request.data and target.user_id != request.user.id:
+            raise PermissionDenied("Geburtstagssichtbarkeit kann nur die Person selbst ändern.")
 
         if actor.role not in {Membership.Role.OWNER, Membership.Role.ADULT}:
             raise PermissionDenied("Nur Owner/Erwachsene können Mitglieder verwalten.")
