@@ -91,7 +91,7 @@ class ExpenseApiTests(TestCase):
         }
         response = self.client.post("/api/expenses/", payload, format="json")
         self.assertEqual(response.status_code, 201, response.data)
-        values = {row["member"]: Decimal(row["split_value"]) for row in response.data["shares"]}
+        values = {str(row["member"]): Decimal(row["split_value"]) for row in response.data["shares"]}
         self.assertEqual(values[str(self.alex.id)], Decimal("33.3300"))
         self.assertEqual(values[str(self.sam.id)], Decimal("66.6700"))
 
@@ -100,7 +100,7 @@ class ExpenseApiTests(TestCase):
         updated = self.client.patch(f"/api/expenses/{expense_id}/", payload, format="json")
         self.assertEqual(updated.status_code, 200, updated.data)
         self.assertEqual(sum(Decimal(row["amount"]) for row in updated.data["shares"]), Decimal("12.00"))
-        updated_values = {row["member"]: Decimal(row["split_value"]) for row in updated.data["shares"]}
+        updated_values = {str(row["member"]): Decimal(row["split_value"]) for row in updated.data["shares"]}
         self.assertEqual(updated_values, values)
 
     def test_settlement_changes_balance_without_creating_expense(self):
