@@ -6,7 +6,7 @@ function initials(person){
  const label=(person?.display_name||person?.username||'').trim();
  if(!label)return'';
  const parts=label.split(/\s+/).filter(Boolean);
- return (parts.length>1?`${parts[0][0]}${parts.at(-1)[0]}`:parts[0].slice(0,2)).toUpperCase();
+ return (parts.length>1?`${parts[0][0]}${parts.at(-1)[0]}`:parts[0][0]).toUpperCase();
 }
 
 export default function MemberAvatar({person,size=44,className='',decorative=false}){
