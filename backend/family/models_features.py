@@ -28,33 +28,41 @@ class LoyaltyCard(TimestampedModel):
         DATA_MATRIX = "datamatrix", "Data Matrix"
         PDF417 = "pdf417", "PDF417"
         AZTEC = "aztec", "Aztec"
-
     family = models.ForeignKey(Family, on_delete=models.CASCADE, related_name="loyalty_cards")
-    name = models.CharField(max_length=120)
-    logo = models.CharField(max_length=120, blank=True)
-    color = models.CharField(max_length=24, default="#6750A4")
-    holder_name = models.CharField(max_length=120, blank=True)
-    holder_membership = models.ForeignKey(
-        Membership,
-        null=True,
-        blank=True,
-        on_delete=models.SET_NULL,
-        related_name="held_loyalty_cards",
-    )
-    customer_number = models.CharField(max_length=160, blank=True)
-    barcode_value = models.TextField()
-    barcode_format = models.CharField(max_length=24, choices=BarcodeFormat.choices, default=BarcodeFormat.CODE128)
-    note = models.TextField(blank=True)
-    created_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        null=True,
-        on_delete=models.SET_NULL,
-        related_name="created_loyalty_cards",
-    )
+    name = models.CharField(max_length=120);logo = models.CharField(max_length=120, blank=True);color = models.CharField(max_length=24, default="#6750A4");holder_name = models.CharField(max_length=120, blank=True)
+    holder_membership = models.ForeignKey(Membership,null=True,blank=True,on_delete=models.SET_NULL,related_name="held_loyalty_cards")
+    customer_number = models.CharField(max_length=160, blank=True);barcode_value = models.TextField();barcode_format = models.CharField(max_length=24, choices=BarcodeFormat.choices, default=BarcodeFormat.CODE128);note = models.TextField(blank=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL,null=True,on_delete=models.SET_NULL,related_name="created_loyalty_cards")
     shared_with = models.ManyToManyField(Membership, blank=True, related_name="shared_loyalty_cards")
-    favorite = models.BooleanField(default=False)
-    sort_order = models.PositiveIntegerField(default=0)
-    archived = models.BooleanField(default=False)
+    favorite = models.BooleanField(default=False);sort_order = models.PositiveIntegerField(default=0);archived = models.BooleanField(default=False)
+    class Meta:ordering = ["-favorite", "sort_order", "name"]
 
+
+class ShoppingPurchaseEvent(TimestampedModel):
+    """Immutable local learning signal captured when a shopping row is checked."""
+    family=models.ForeignKey(Family,on_delete=models.CASCADE,related_name="shopping_purchase_events")
+    normalized_name=models.CharField(max_length=180,db_index=True)
+    name=models.CharField(max_length=180)
+    quantity=models.CharField(max_length=40,blank=True)
+    category=models.CharField(max_length=80,blank=True)
+    purchased_at=models.DateTimeField(db_index=True)
+    source_item_id=models.UUIDField(null=True,blank=True)
     class Meta:
-        ordering = ["-favorite", "sort_order", "name"]
+        ordering=["purchased_at"]
+        indexes=[models.Index(fields=["family","normalized_name","purchased_at"],name="fam_purchase_pattern_idx")]
+
+
+class PredictionFeedback(TimestampedModel):
+    class Kind(models.TextChoices):
+        SHOPPING="shopping","Shopping"
+        ROUTINE="routine","Routine"
+    family=models.ForeignKey(Family,on_delete=models.CASCADE,related_name="prediction_feedback")
+    membership=models.ForeignKey(Membership,on_delete=models.CASCADE,related_name="prediction_feedback")
+    kind=models.CharField(max_length=16,choices=Kind.choices)
+    subject_key=models.CharField(max_length=180)
+    dismissed=models.BooleanField(default=False)
+    snoozed_until=models.DateTimeField(null=True,blank=True)
+    last_action=models.CharField(max_length=24,blank=True)
+    class Meta:
+        unique_together=("membership","kind","subject_key")
+        indexes=[models.Index(fields=["family","kind"],name="fam_prediction_kind_idx")]
