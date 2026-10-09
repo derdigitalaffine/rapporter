@@ -21,7 +21,7 @@ test('city waste calendar accepts a downloaded ICS file',async({page})=>{
  await page.goto('/?page=integrations');
  await page.waitForLoadState('networkidle');
  const card=page.locator('.catalog-card').filter({hasText:'Müllkalender Stadt Kaiserslautern'});
- await card.getByRole('button',{name:'Konfigurieren'}).click();
+ await card.getByRole('button',{name:'Einrichten'}).click();
  const dialog=page.getByRole('dialog');
  const input=dialog.locator('input[type="file"]');
  await expect(input).toHaveAttribute('accept',/.ics/);
