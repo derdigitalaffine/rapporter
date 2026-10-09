@@ -4,7 +4,7 @@ import {installApiMocks} from './mock-api.js';
 const json=(route,body,status=200)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)});
 
 test('superadmin creates a separated family and owner invitation',async({page})=>{
- await installApiMocks(page);
+ await installApiMocks(page);page.on('dialog',dialog=>dialog.dismiss());
  let families=[];
  await page.route('**/api/auth/session/',route=>json(route,{authenticated:true,user:{id:99,username:'root',email:'root@example.test',is_superadmin:true}}));
  await page.route('**/api/superadmin/families/**',async route=>{
