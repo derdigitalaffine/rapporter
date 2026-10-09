@@ -285,6 +285,8 @@ class IntegrationSourceViewSet(FamilyScopedViewSet):
     def perform_destroy(self, instance):
         if not can_manage_settings(self.request.user, instance.family):
             raise PermissionDenied("Nur Erwachsene/Owner können Integrationen verwalten.")
+        if (instance.config or {}).get("adapter") == "rlp_school_holidays":
+            instance.events.filter(type="school.holiday").delete()
         instance.delete()
 
     @action(detail=False, methods=["get"])

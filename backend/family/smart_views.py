@@ -2,6 +2,7 @@ import json
 from urllib.parse import urlencode
 
 from django.shortcuts import redirect
+from django.db import transaction
 from django.utils import timezone
 from rest_framework import permissions, status
 from rest_framework.decorators import api_view, permission_classes
@@ -82,14 +83,21 @@ def smart_integration_connect(request):
         return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
     endpoint = values.pop("endpoint", "")
     config = {**item.get("defaults", {}), **values}
-    source = IntegrationSource.objects.create(
-        family=family,
-        kind=item["kind"],
-        name=item["name"],
-        endpoint=endpoint,
-        config=config,
-        enabled=True,
-    )
+    if item.get("singleton"):
+        # Lock the family so simultaneous connects cannot create duplicate subscriptions.
+        with transaction.atomic():
+            Family.objects.select_for_update().get(pk=family.pk)
+            source, _ = IntegrationSource.objects.get_or_create(
+                family=family, config__adapter=item["defaults"]["adapter"],
+                defaults={"kind": item["kind"], "name": item["name"], "config": item["defaults"]},
+            )
+            source.enabled = True
+            source.save(update_fields=["enabled", "updated_at"])
+    else:
+        source = IntegrationSource.objects.create(
+            family=family, kind=item["kind"], name=item["name"],
+            endpoint=endpoint, config=config, enabled=True,
+        )
     try:
         count = sync_with_health(source, force=True)
     except Exception as exc:
@@ -103,6 +111,8 @@ def smart_integration_sync(request, source_id):
     source = IntegrationSource.objects.filter(id=source_id, family__memberships__user=request.user).first()
     if not source:
         return Response({"detail": "Integration nicht gefunden."}, status=status.HTTP_404_NOT_FOUND)
+    if not _can_manage(request.user, source.family):
+        raise PermissionDenied("Nur Erwachsene/Owner können Integrationen synchronisieren.")
     try:
         count = sync_with_health(source, force=True)
     except Exception as exc:
@@ -115,7 +125,7 @@ def smart_integration_sync(request, source_id):
 @api_view(["POST"])
 def smart_integration_sync_all(request):
     total, errors = 0, []
-    sources = IntegrationSource.objects.filter(family__memberships__user=request.user, enabled=True).distinct()
+    sources = IntegrationSource.objects.filter(family__memberships__user=request.user, family__memberships__role__in=[Membership.Role.OWNER, Membership.Role.ADULT], enabled=True).distinct()
     for source in sources:
         try:
             total += sync_with_health(source, force=True)

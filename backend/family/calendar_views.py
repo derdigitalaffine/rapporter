@@ -1,7 +1,7 @@
 from .models import FamilyEvent
 from .views import FamilyEventViewSet as BaseFamilyEventViewSet
 from datetime import date, timedelta
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import ValidationError, PermissionDenied
 from .birthdays import calendar_projection, local_now
 from .models import Family
 
@@ -36,3 +36,17 @@ class FamilyEventViewSet(BaseFamilyEventViewSet):
         else:
             response.data.extend(virtual)
         return response
+    def perform_create(self, serializer):
+        if serializer.validated_data.get("type") == "school.holiday":
+            raise PermissionDenied("Amtliche Ferien können nur über die Integration hinzugefügt werden.")
+        super().perform_create(serializer)
+
+    def perform_update(self, serializer):
+        if serializer.instance.type == "school.holiday" or serializer.validated_data.get("type") == "school.holiday":
+            raise PermissionDenied("Amtliche Ferien sind schreibgeschützt.")
+        super().perform_update(serializer)
+
+    def perform_destroy(self, instance):
+        if instance.type == "school.holiday":
+            raise PermissionDenied("Amtliche Ferien sind schreibgeschützt. Trenne die Integration, um sie zu entfernen.")
+        super().perform_destroy(instance)

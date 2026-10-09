@@ -8,6 +8,9 @@ from .weather_integrations import sync_dwd, sync_weather
 
 def _sync_source(source):
     adapter = (source.config or {}).get("adapter")
+    if adapter == "rlp_school_holidays":
+        from .school_holidays import sync_school_holidays
+        return sync_school_holidays(source)
     if adapter == "dwd":
         return sync_dwd(source)
     if adapter == "weather":
@@ -49,7 +52,7 @@ def sync_with_health(source, *, force=False):
     source.last_sync_status = "success"
     source.last_sync_error = ""
     source.consecutive_failures = 0
-    source.next_sync_at = None
+    source.next_sync_at = timezone.now() + timedelta(days=1) if (source.config or {}).get("adapter") == "rlp_school_holidays" else None
     source.save(update_fields=[
         "last_attempt_at", "last_success_at", "last_sync_status",
         "last_sync_error", "consecutive_failures", "next_sync_at", "updated_at",

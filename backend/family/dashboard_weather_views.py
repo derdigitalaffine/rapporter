@@ -1,5 +1,6 @@
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from django.db.models import Q
 from django.utils import timezone
 from rest_framework.decorators import api_view
 from rest_framework.exceptions import PermissionDenied
@@ -56,8 +57,7 @@ def dashboard(request):
 
     upcoming = FamilyEvent.objects.filter(
         family=family,
-        starts_at__gte=now,
-    ).exclude(type__in=["weather.current", "weather.forecast"]).order_by("starts_at")
+    ).filter(Q(starts_at__gte=now) | Q(type="school.holiday", ends_at__gt=now)).exclude(type__in=["weather.current", "weather.forecast"]).order_by("starts_at")
     events = list(upcoming[:12])
 
     # Waste calendars commonly encode collection dates as all-day events at
