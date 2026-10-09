@@ -9,8 +9,12 @@ class FamilyConfig(AppConfig):
         # Feature models live in separate modules to keep the core model file merge-friendly.
         from . import models as core_models
         from .board_models import BoardImage, BoardPost
+        from .notes_models import Note, NoteRevision, NoteShare
         core_models.BoardPost = BoardPost
         core_models.BoardImage = BoardImage
+        core_models.Note = Note
+        core_models.NoteShare = NoteShare
+        core_models.NoteRevision = NoteRevision
         from . import models_features  # noqa: F401
         from . import board_notifications  # noqa: F401
         from . import prediction_signals  # noqa: F401
