@@ -5,6 +5,7 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 from rest_framework.test import APIClient
 
+from .models import Family, Membership
 from .push import public_key, push_configured
 
 
@@ -12,6 +13,8 @@ class PushConfigurationTests(TestCase):
     def setUp(self):
         User = get_user_model()
         self.user = User.objects.create_user(username="push-config-user", password="test-pass-123")
+        self.family = Family.objects.create(name="Push Config Family", slug="push-config-family")
+        Membership.objects.create(family=self.family, user=self.user, role=Membership.Role.OWNER)
         self.client = APIClient()
         self.client.force_authenticate(self.user)
 
