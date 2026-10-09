@@ -8,7 +8,8 @@ async function boot(page,path='/'){
 }
 
 test('initial dashboard shows loading instead of a false empty state',async({page})=>{
- await installApiMocks(page,{language:'de'});
+ const state=await installApiMocks(page,{language:'de'});
+ state.tasks[0].due_at=null;
  await page.route('**/api/families/',async route=>{await sleep(700);await route.fallback()});
  await boot(page);
  await expect(page.getByText('Daten werden geladen …',{exact:true})).toBeVisible();
