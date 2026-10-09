@@ -4,34 +4,51 @@ import './onboarding-i18n';
 import {Icon} from './icons';
 
 const dismissedKey=id=>`famuhle-onboarding-dismissed:${id||'family'}`;
+const achievedKey=id=>`famuhle-onboarding-achieved:${id||'family'}`;
+const readAchieved=id=>{try{return new Set(JSON.parse(localStorage.getItem(achievedKey(id))||'[]'))}catch{return new Set()}};
 
 export default function OnboardingCard({family,data,open}){
   const {t}=useTranslation();
-  const [dismissed,setDismissed]=useState(()=>localStorage.getItem(dismissedKey(family?.id))==='1');
-  useEffect(()=>setDismissed(localStorage.getItem(dismissedKey(family?.id))==='1'),[family?.id]);
+  const familyId=family?.id;
+  const [dismissed,setDismissed]=useState(()=>localStorage.getItem(dismissedKey(familyId))==='1');
+  const [achieved,setAchieved]=useState(()=>readAchieved(familyId));
+  useEffect(()=>{setDismissed(localStorage.getItem(dismissedKey(familyId))==='1');setAchieved(readAchieved(familyId))},[familyId]);
 
-  const state=useMemo(()=>{
+  const observed=useMemo(()=>{
     const tasks=data.tasks||[];
     const shoppingLists=data.shopping_lists||[];
-    const hasShopping=shoppingLists.some(list=>(list.items||[]).length>0);
     const memberships=family?.memberships||[];
-    const hasMember=memberships.length>1;
-    const hasEvent=(data.events||[]).some(event=>event.type==='calendar.event'&&(!event.source||event.payload?.provider==='fam-uh-le'));
-    return {hasTask:tasks.length>0,hasShopping,hasMember,hasEvent};
+    return {
+      task:tasks.length>0,
+      shopping:shoppingLists.some(list=>(list.items||[]).length>0),
+      member:memberships.length>1,
+      calendar:(data.events||[]).some(event=>event.type==='calendar.event'&&(!event.source||event.payload?.provider==='fam-uh-le')),
+    };
   },[data,family]);
 
-  const coreDone=[state.hasTask,state.hasShopping,state.hasMember].filter(Boolean).length;
-  const allDone=coreDone===3&&state.hasEvent;
-  if(dismissed||allDone)return null;
+  useEffect(()=>{
+    if(!familyId)return;
+    setAchieved(previous=>{
+      const next=new Set(previous);let changed=false;
+      Object.entries(observed).forEach(([key,done])=>{if(done&&!next.has(key)){next.add(key);changed=true}});
+      if(changed)localStorage.setItem(achievedKey(familyId),JSON.stringify([...next]));
+      return changed?next:previous;
+    });
+  },[familyId,observed.task,observed.shopping,observed.member,observed.calendar]);
+
+  const done=id=>achieved.has(id)||observed[id];
+  const coreDone=['task','shopping','member'].filter(done).length;
+  const allDone=coreDone===3&&done('calendar');
+  if(!familyId||dismissed||allDone)return null;
 
   const steps=[
-    {id:'task',done:state.hasTask,icon:'tasks',page:'tasks'},
-    {id:'shopping',done:state.hasShopping,icon:'shopping',page:'shopping'},
-    {id:'member',done:state.hasMember,icon:'members',page:'members'},
-    {id:'calendar',done:state.hasEvent,icon:'calendar',page:'calendar',optional:true},
+    {id:'task',done:done('task'),icon:'tasks',page:'tasks'},
+    {id:'shopping',done:done('shopping'),icon:'shopping',page:'shopping'},
+    {id:'member',done:done('member'),icon:'members',page:'members'},
+    {id:'calendar',done:done('calendar'),icon:'calendar',page:'calendar',optional:true},
   ];
 
-  function hide(){localStorage.setItem(dismissedKey(family?.id),'1');setDismissed(true)}
+  function hide(){localStorage.setItem(dismissedKey(familyId),'1');setDismissed(true)}
 
   return <section className={`onboarding-card ${coreDone===3?'ready':''}`} aria-labelledby="onboarding-title">
     <div className="onboarding-head">
@@ -47,6 +64,6 @@ export default function OnboardingCard({family,data,open}){
         {step.done?<span className="onboarding-done">{t('onboarding.done')}</span>:<Icon name="next"/>}
       </button>)}
     </div>
-    <div className="onboarding-foot"><button className="secondary compact" onClick={hide}>{t('onboarding.showLater')}</button>{coreDone===3&&<button className="primary compact" onClick={()=>open('calendar')}><Icon name="calendar"/> {t('onboarding.continue')}</button>}</div>
+    <div className="onboarding-foot"><button className="secondary compact" onClick={hide}>{t('onboarding.showLater')}</button>{coreDone===3&&!done('calendar')&&<button className="primary compact" onClick={()=>open('calendar')}><Icon name="calendar"/> {t('onboarding.continue')}</button>}</div>
   </section>;
 }
