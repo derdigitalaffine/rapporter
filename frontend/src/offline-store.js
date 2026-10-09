@@ -59,6 +59,7 @@ export async function loadFamilyShell(){const db=await openDb();try{return (awai
 export async function offlineApiFallback(path,options={}){
   const method=(options.method||'GET').toUpperCase();if(method!=='GET')return {found:false};
   if(path==='/families/'){const families=await loadFamilyShell();return families?{found:true,value:families}:{found:false}}
+  if(path==='/inbox/'||path==='/automation-rules/')return {found:true,value:[]};
   if(path.startsWith('/shopping-lists/')){
     const families=await loadFamilyShell();const familyId=families?.[0]?.id;const snapshot=await loadShoppingSnapshot(familyId);return snapshot?{found:true,value:snapshot.lists}:{found:false};
   }
