@@ -29,7 +29,6 @@ async function visual(page,name){
 }
 
 test.describe('visual regression gates',()=>{
-  test.skip(({project})=>project.name!=='mobile-chromium','Generate one canonical Linux/Chromium baseline set.');
   for(const [viewportName,viewport] of Object.entries(viewports)){
     for(const [name,target] of pages){
       test(`${viewportName} ${name}`,async({page})=>{await boot(page,target,viewport);await visual(page,`${viewportName}-${name}`)});
