@@ -153,6 +153,12 @@ class IntegrationSource(TimestampedModel):
     config = models.JSONField(default=dict, blank=True)
     enabled = models.BooleanField(default=True)
     last_synced_at = models.DateTimeField(null=True, blank=True)
+    last_attempt_at = models.DateTimeField(null=True, blank=True)
+    last_success_at = models.DateTimeField(null=True, blank=True)
+    last_sync_status = models.CharField(max_length=16, default="never")
+    last_sync_error = models.TextField(blank=True)
+    consecutive_failures = models.PositiveIntegerField(default=0)
+    next_sync_at = models.DateTimeField(null=True, blank=True)
 
 
 class FamilyEvent(TimestampedModel):
