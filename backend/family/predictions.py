@@ -11,10 +11,11 @@ from .models_features import PredictionFeedback, ShoppingPurchaseEvent
 MIN_SAMPLES=3
 MIN_CONFIDENCE=.55
 DUE_WINDOW_DAYS=2
+MAX_RECENT_OBSERVATIONS=9
 
 
 def _pattern(dates,min_samples=MIN_SAMPLES):
-    dates=sorted(dates)
+    dates=sorted(dates)[-MAX_RECENT_OBSERVATIONS:]
     if len(dates)<min_samples:return None
     intervals=[max(.25,(right-left).total_seconds()/86400) for left,right in zip(dates,dates[1:])]
     typical=float(median(intervals));spread=pstdev(intervals) if len(intervals)>1 else 0;cv=spread/max(mean(intervals),.25)
