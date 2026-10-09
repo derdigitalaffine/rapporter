@@ -34,10 +34,20 @@ def dashboard(request):
 
     now = timezone.now()
     tasks = Task.objects.filter(family=family, completed_at__isnull=True).select_related("task_list", "assignee").order_by("due_at", "-created_at")[:12]
-    events = list(FamilyEvent.objects.filter(family=family, starts_at__gte=now).order_by("starts_at")[:12])
+    upcoming = FamilyEvent.objects.filter(family=family, starts_at__gte=now).order_by("starts_at")
+    events = list(upcoming[:12])
+
+    # TodayHome always needs the next two collection dates, even if many other
+    # calendar events occur before them and would otherwise push them out of
+    # the compact dashboard event window.
+    next_waste = list(upcoming.filter(type__startswith="waste.")[:2])
+    known_ids = {event.id for event in events}
+    events.extend(event for event in next_waste if event.id not in known_ids)
+    events.sort(key=lambda event: event.starts_at or now)
+
     current_weather = FamilyEvent.objects.filter(family=family, type="weather.current").order_by("-starts_at", "-updated_at").first()
     if current_weather and all(event.id != current_weather.id for event in events):
-        events = [current_weather, *events][:12]
+        events = [current_weather, *events]
     routines = Routine.objects.filter(family=family, active=True).prefetch_related("logs")[:8]
     shopping = ShoppingList.objects.filter(family=family, archived=False).prefetch_related("items").order_by("sort_order", "created_at")[:8]
     task_lists = TaskList.objects.filter(family=family, archived=False).prefetch_related("tasks")[:12]
