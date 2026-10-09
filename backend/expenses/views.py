@@ -29,7 +29,11 @@ class ExpenseViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        queryset = Expense.objects.select_related("family", "paid_by", "paid_by__user", "created_by", "extraction").prefetch_related("shares", "shares__member", "shares__member__user")
+        queryset = (
+            Expense.objects.defer("receipt_content")
+            .select_related("family", "paid_by", "paid_by__user", "created_by", "extraction")
+            .prefetch_related("shares", "shares__member", "shares__member__user")
+        )
         if not user.is_superuser:
             queryset = queryset.filter(family__memberships__user=user, family__status=Family.Status.ACTIVE)
         family_id = self.request.query_params.get("family")
@@ -121,7 +125,7 @@ class ExpenseViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["post"], url_path="retry-receipt")
     def retry_receipt(self, request, pk=None):
         expense = self.get_object()
-        if not expense.receipt_content:
+        if not expense.receipt_mime:
             return Response({"receipt": ["Kein Beleg vorhanden."]}, status=status.HTTP_400_BAD_REQUEST)
         extraction, _ = ReceiptExtraction.objects.get_or_create(expense=expense)
         extraction.status = ReceiptExtraction.Status.QUEUED

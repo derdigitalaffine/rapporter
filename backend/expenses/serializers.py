@@ -48,7 +48,7 @@ class ExpenseSerializer(serializers.ModelSerializer):
         return obj.paid_by.display_name or obj.paid_by.user.username
 
     def get_receipt_available(self, obj):
-        return bool(obj.receipt_content)
+        return bool(obj.receipt_mime)
 
     def validate_currency(self, value):
         value = (value or "EUR").upper()

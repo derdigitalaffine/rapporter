@@ -1,4 +1,6 @@
+from django.db import transaction
 from django.http import HttpResponse
+from django.utils import timezone
 from rest_framework.decorators import api_view
 from rest_framework.exceptions import NotFound
 from rest_framework.response import Response
@@ -18,14 +20,18 @@ def receipt_file(request, expense_id):
         raise NotFound()
 
     if request.method == "DELETE":
-        expense.receipt_content = None
-        expense.receipt_mime = ""
-        expense.save(update_fields=["receipt_content", "receipt_mime", "updated_at"])
-        extraction = getattr(expense, "extraction", None)
-        if extraction:
-            extraction.raw_text = ""
-            extraction.structured_data = {}
-            extraction.save(update_fields=["raw_text", "structured_data", "updated_at"])
+        with transaction.atomic():
+            locked = Expense.objects.select_for_update().filter(id=expense.id).first()
+            if not locked:
+                raise NotFound()
+            extraction = getattr(locked, "extraction", None)
+            locked.receipt_content = None
+            locked.receipt_mime = ""
+            locked.receipt_status = Expense.ReceiptStatus.NONE
+            locked.updated_at = timezone.now()
+            locked.save(update_fields=["receipt_content", "receipt_mime", "receipt_status", "updated_at"])
+            if extraction:
+                extraction.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     if not expense.receipt_content:

@@ -180,7 +180,10 @@ def process_receipt_extraction(extraction_id):
         if not extraction:
             return None
         expense = extraction.expense
-        Expense.objects.filter(id=expense.id).update(receipt_status=Expense.ReceiptStatus.PROCESSING, updated_at=timezone.now())
+        Expense.objects.filter(id=expense.id, receipt_content__isnull=False).update(
+            receipt_status=Expense.ReceiptStatus.PROCESSING,
+            updated_at=timezone.now(),
+        )
 
         try:
             content = bytes(expense.receipt_content or b"")
@@ -218,7 +221,7 @@ def process_receipt_extraction(extraction_id):
                 expense_updates["total_amount"] = parsed["total"]
             if parsed["currency"]:
                 expense_updates["currency"] = parsed["currency"]
-            Expense.objects.filter(id=expense.id).update(**expense_updates)
+            Expense.objects.filter(id=expense.id, receipt_content__isnull=False).update(**expense_updates)
             return ReceiptExtraction.objects.filter(id=extraction_id).first()
         except Exception as exc:
             processed_at = timezone.now()
@@ -228,7 +231,7 @@ def process_receipt_extraction(extraction_id):
                 error=str(exc)[:500],
                 updated_at=processed_at,
             )
-            Expense.objects.filter(id=expense.id).update(
+            Expense.objects.filter(id=expense.id, receipt_content__isnull=False).update(
                 receipt_status=Expense.ReceiptStatus.FAILED,
                 updated_at=processed_at,
             )
