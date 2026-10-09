@@ -9,6 +9,7 @@ import './smart-extra.css';
 import './design-system.css';
 import './feedback.css';
 import './accessibility.css';
+import './today-home.css';
 import App from './App';
 import InviteFlow from './InviteFlow';
 import FeedbackHost from './feedback';
