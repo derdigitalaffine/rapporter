@@ -86,31 +86,30 @@ export async function removeQueuedMutationsForItem(familyId,itemId,types=[]){
 }
 
 async function executeMutation(row){
- if(row.type==='add'){
-  return api('/smart/shopping/quick-add/',{method:'POST',body:JSON.stringify(row.payload)});
- }
- if(['edit','checked','favorite'].includes(row.type)){
-  return api(`/shopping-items/${row.itemId}/`,{method:'PATCH',body:JSON.stringify(row.payload)});
- }
+ if(row.type==='add')return api('/smart/shopping/quick-add/',{method:'POST',body:JSON.stringify(row.payload)});
+ if(['edit','checked','favorite'].includes(row.type))return api(`/shopping-items/${row.itemId}/`,{method:'PATCH',body:JSON.stringify(row.payload)});
  throw new Error(`unsupported_shopping_mutation_${row.type}`);
 }
 
 export async function flushShoppingMutations(familyId,{onMapped}={}){
  if(!navigator.onLine)return {pending:(await listShoppingMutations(familyId)).length,failed:0};
  const rows=await listShoppingMutations(familyId);
+ const mappedIds=new Map();
  let failed=0;
- for(const row of rows){
+ for(const original of rows){
+  const row=original.itemId&&mappedIds.has(original.itemId)?{...original,itemId:mappedIds.get(original.itemId)}:original;
   try{
    const result=await executeMutation(row);
    if(row.type==='add'&&row.tempId&&result?.id){
+    mappedIds.set(row.tempId,String(result.id));
     await replaceQueuedTempId(familyId,row.tempId,result.id);
     await onMapped?.(row.tempId,result);
    }
-   await deleteMutation(row.id);
+   await deleteMutation(original.id);
   }catch(error){
    if(error?.message==='unauthorized')throw error;
    failed+=1;
-   await putMutation({...row,attempts:(row.attempts||0)+1,lastError:error?.message||'sync_failed'});
+   await putMutation({...original,attempts:(original.attempts||0)+1,lastError:error?.message||'sync_failed'});
    break;
   }
  }
