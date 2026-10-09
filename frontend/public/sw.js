@@ -1,4 +1,4 @@
-const CACHE='fam-uh-le-v8';
+const CACHE='fam-uh-le-v9';
 const STATIC_SHELL=['/manifest.webmanifest','/brand/icon-192.png','/brand/icon-512.png','/brand/icon.svg'];
 
 async function cacheAssetGraph(cache,asset,seen=new Set()){
@@ -53,13 +53,16 @@ async function networkFirst(request,{cacheKey=request}={}){
     await caches.open(CACHE).then(cache=>cache.put(cacheKey,copy));
     return response;
   }catch{
-    const cached=await caches.match(cacheKey);
+    const cached=await caches.match(cacheKey,{ignoreVary:true});
     return cached||Response.error();
   }
 }
 
 async function immutableAsset(request){
-  const cached=await caches.match(request);
+  // Vite dev/preview responses vary on Origin, while the same immutable hashed
+  // asset can be requested once by the worker (without Origin) and later by a
+  // module script (with Origin). The content hash in the URL is the identity.
+  const cached=await caches.match(request,{ignoreVary:true});
   if(cached)return cached;
   try{
     const response=await fetch(request);
