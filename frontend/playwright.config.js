@@ -17,7 +17,7 @@ export default defineConfig({
   },
   projects:[
     {name:'mobile-chromium',use:{browserName:'chromium',viewport:{width:390,height:844},isMobile:true,hasTouch:true}},
-    {name:'desktop-chromium',use:{browserName:'chromium',viewport:{width:1440,height:900}},
+    {name:'desktop-chromium',use:{browserName:'chromium',viewport:{width:1440,height:900}}},
   ],
   webServer:{
     command:'npm run dev -- --host 127.0.0.1 --port 4173',
