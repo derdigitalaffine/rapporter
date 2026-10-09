@@ -30,7 +30,7 @@ test('narrow iPhone-sized viewport does not overflow and form controls stay at 1
   await expect(familySelect).toHaveCSS('font-size','16px');
   await assertNoHorizontalOverflow(page);
 
-  await page.getByRole('button',{name:/Aufgaben|Tasks/}).click();
+  await page.getByRole('button',{name:/^(Aufgaben|Tasks)$/}).click();
   await expect(page.locator('.smart-input input')).toBeVisible();
   await expect(page.locator('.smart-input input')).toHaveCSS('font-size','16px');
   await assertNoHorizontalOverflow(page);
