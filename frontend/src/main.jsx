@@ -6,6 +6,7 @@ import './styles.css';
 import './sheets.css';
 import './smart.css';
 import './smart-extra.css';
+import './automation-guided.css';
 import './design-system.css';
 import './feedback.css';
 import './accessibility.css';
