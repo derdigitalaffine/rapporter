@@ -92,7 +92,7 @@ class Task(TimestampedModel):
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name="created_family_tasks")
     priority = models.CharField(max_length=10, choices=Priority.choices, default=Priority.NORMAL)
     recurrence = models.CharField(max_length=120, blank=True)
-    source = models.CharField(max_length=40, default="manual")
+    source = models.CharField(max_length=96, default="manual")
     estimate_minutes = models.PositiveIntegerField(null=True, blank=True)
     tags = models.JSONField(default=list, blank=True)
 
