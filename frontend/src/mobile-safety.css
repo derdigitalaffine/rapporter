@@ -1,0 +1,76 @@
+/* Mobile viewport safety, with explicit iOS Safari guards. */
+html{
+  width:100%;
+  min-width:0;
+  max-width:100%;
+  overflow-x:hidden;
+  overflow-x:clip;
+  -webkit-text-size-adjust:100%;
+  text-size-adjust:100%;
+}
+body,#root{
+  width:100%;
+  min-width:0;
+  max-width:100%;
+  overflow-x:hidden;
+  overflow-x:clip;
+}
+body{min-width:0}
+img,video,canvas{max-width:100%;height:auto}
+
+.app-shell{
+  width:100%;
+  min-width:0;
+  padding-bottom:calc(94px + env(safe-area-inset-bottom));
+}
+.content,.content>*,.topbar,.topbar-context,.page-head,.smart-page,.today-page,.card,.row,.smart-row,.integration-row,.member-row,.event-row{
+  min-width:0;
+  max-width:100%;
+}
+.card,.smart-row,.today-important-card,.today-next-event,.menu-row,.integration-row,.member-row,.event-row{
+  overflow-wrap:anywhere;
+}
+
+.topbar{
+  width:100%;
+  height:auto;
+  min-height:64px;
+  gap:8px;
+  padding-top:max(8px,env(safe-area-inset-top));
+  padding-right:max(12px,env(safe-area-inset-right));
+  padding-bottom:8px;
+  padding-left:max(12px,env(safe-area-inset-left));
+}
+.brand-mini{min-width:0;flex:0 1 auto}
+.brand-mini span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+input,select,textarea{
+  max-width:100%;
+}
+
+.bottom-nav{
+  width:min(760px,100%);
+  height:calc(76px + env(safe-area-inset-bottom));
+  padding:7px max(8px,env(safe-area-inset-right)) calc(7px + env(safe-area-inset-bottom)) max(8px,env(safe-area-inset-left));
+}
+
+.sheet-backdrop{
+  padding-right:max(12px,env(safe-area-inset-right));
+  padding-left:max(12px,env(safe-area-inset-left));
+}
+.quick-sheet,.integration-sheet,.confirm-dialog{
+  width:min(100%,680px);
+  max-width:100%;
+}
+
+@media(max-width:759px){
+  /* iOS Safari auto-zooms focused form controls below 16px. */
+  input,select,textarea{font-size:16px!important}
+  .content{padding-left:max(12px,env(safe-area-inset-left));padding-right:max(12px,env(safe-area-inset-right))}
+  .quick-form,.builder-fields,.form-grid,.builder-field-grid{min-width:0;max-width:100%}
+  .list-tabs{margin-right:0;padding-right:0;max-width:100%}
+}
+
+@media(max-width:480px){
+  .sheet-backdrop{padding-right:env(safe-area-inset-right);padding-left:env(safe-area-inset-left)}
+}
