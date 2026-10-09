@@ -1,18 +1,28 @@
 import {useEffect,useMemo,useState} from 'react';
 import {useTranslation} from 'react-i18next';
 import './onboarding-i18n';
+import {api} from './api';
 import {Icon} from './icons';
 
 const dismissedKey=id=>`famuhle-onboarding-dismissed:${id||'family'}`;
 const achievedKey=id=>`famuhle-onboarding-achieved:${id||'family'}`;
 const readAchieved=id=>{try{return new Set(JSON.parse(localStorage.getItem(achievedKey(id))||'[]'))}catch{return new Set()}};
+const unwrap=x=>x?.results||x||[];
 
 export default function OnboardingCard({family,data,open}){
   const {t}=useTranslation();
   const familyId=family?.id;
   const [dismissed,setDismissed]=useState(()=>localStorage.getItem(dismissedKey(familyId))==='1');
   const [achieved,setAchieved]=useState(()=>readAchieved(familyId));
+  const [integrationActive,setIntegrationActive]=useState(()=>Number(data.enabled_integration_count||0)>0);
   useEffect(()=>{setDismissed(localStorage.getItem(dismissedKey(familyId))==='1');setAchieved(readAchieved(familyId))},[familyId]);
+  useEffect(()=>{
+    setIntegrationActive(Number(data.enabled_integration_count||0)>0);
+    if(!familyId)return;
+    let alive=true;
+    api('/integrations/').then(result=>{if(alive)setIntegrationActive(unwrap(result).some(item=>String(item.family)===String(familyId)&&item.enabled!==false))}).catch(()=>{});
+    return()=>{alive=false};
+  },[familyId,data.enabled_integration_count]);
 
   const observed=useMemo(()=>{
     const tasks=data.tasks||[];
@@ -23,21 +33,21 @@ export default function OnboardingCard({family,data,open}){
       shopping:shoppingLists.some(list=>(list.items||[]).length>0),
       member:memberships.length>1,
       calendar:(data.events||[]).some(event=>event.type==='calendar.event'&&(!event.source||event.payload?.provider==='fam-uh-le')),
-      integration:Number(data.enabled_integration_count||0)>0,
+      integration:integrationActive,
     };
-  },[data,family]);
+  },[data,family,integrationActive]);
 
   useEffect(()=>{
     if(!familyId)return;
     setAchieved(previous=>{
       const next=new Set(previous);let changed=false;
-      Object.entries(observed).forEach(([key,done])=>{if(done&&!next.has(key)){next.add(key);changed=true}});
+      Object.entries(observed).forEach(([key,done])=>{if(key!=='integration'&&done&&!next.has(key)){next.add(key);changed=true}});
       if(changed)localStorage.setItem(achievedKey(familyId),JSON.stringify([...next]));
       return changed?next:previous;
     });
-  },[familyId,observed.task,observed.shopping,observed.member,observed.calendar,observed.integration]);
+  },[familyId,observed.task,observed.shopping,observed.member,observed.calendar]);
 
-  const done=id=>achieved.has(id)||observed[id];
+  const done=id=>id==='integration'?observed.integration:achieved.has(id)||observed[id];
   const coreDone=['task','shopping','member'].filter(done).length;
   const allDone=coreDone===3&&done('calendar')&&done('integration');
   if(!familyId||dismissed||allDone)return null;
