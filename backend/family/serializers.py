@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from rest_framework.exceptions import PermissionDenied
 from .models import Family, Membership, FamilyInvitation, TaskList, Task, ShoppingList, ShoppingItem, Routine, RoutineLog, IntegrationSource, FamilyEvent, InboxItem, AutomationRule, AutomationExecution
 
 
@@ -7,7 +8,7 @@ def _validate_family_access(serializer, attrs):
     request = serializer.context.get("request")
     if family and request and request.user.is_authenticated:
         if not Membership.objects.filter(family=family, user=request.user).exists():
-            raise serializers.ValidationError({"family": "Familie ist für diesen Benutzer nicht verfügbar."})
+            raise PermissionDenied("Familie ist für diesen Benutzer nicht verfügbar.")
     return family
 
 
@@ -78,7 +79,7 @@ class ShoppingItemSerializer(serializers.ModelSerializer):
         request = self.context.get("request")
         if shopping_list and request and request.user.is_authenticated:
             if not Membership.objects.filter(family=shopping_list.family, user=request.user).exists():
-                raise serializers.ValidationError({"shopping_list": "Einkaufsliste gehört nicht zu deiner Familie."})
+                raise PermissionDenied("Einkaufsliste gehört nicht zu deiner Familie.")
         return attrs
 
     class Meta:
