@@ -15,6 +15,8 @@ class PredictionTests(TestCase):
         User=get_user_model();self.user=User.objects.create_user('predict-owner',password='pw');self.family=Family.objects.create(name='Predict',slug='predict');self.membership=Membership.objects.create(family=self.family,user=self.user,role=Membership.Role.OWNER);self.shopping=ShoppingList.objects.create(family=self.family,name='Einkauf');self.client=APIClient();self.client.force_authenticate(self.user)
     def _purchase(self,name,days_ago):
         at=timezone.now()-timedelta(days=days_ago);ShoppingItem.objects.create(shopping_list=self.shopping,name=name,checked=True,checked_at=at,added_by=self.user)
+    def test_each_checked_transition_is_a_local_purchase_signal(self):
+        item=ShoppingItem.objects.create(shopping_list=self.shopping,name='Haferflocken',added_by=self.user);item.checked=True;item.checked_at=timezone.now();item.save();self.assertEqual(ShoppingPurchaseEvent.objects.filter(source_item_id=item.id).count(),1);item.checked=False;item.checked_at=None;item.save();item.checked=True;item.checked_at=timezone.now();item.save();self.assertEqual(ShoppingPurchaseEvent.objects.filter(source_item_id=item.id).count(),2)
     def test_repeated_shopping_and_routine_history_produce_explainable_suggestions(self):
         for days in [21,14,7]:self._purchase('Milch',days)
         routine=Routine.objects.create(family=self.family,name='Bettwäsche wechseln')
