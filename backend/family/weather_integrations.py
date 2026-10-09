@@ -7,7 +7,7 @@ from .integrations import DWD_WARNINGS, OPEN_METEO, _finish, _get
 from .models import FamilyEvent
 
 
-DWD_JSONP_PREFIX = "warnWetter.loadWarnings("
+DWD_JSONP_CALLBACK = "warnWetter.loadWarnings"
 
 
 def _dwd_payload(response):
@@ -15,12 +15,14 @@ def _dwd_payload(response):
         return response.json()
     except ValueError:
         text = (response.text or "").strip()
-        if text.startswith(DWD_JSONP_PREFIX) and text.endswith(");"):
-            text = text[len(DWD_JSONP_PREFIX):-2]
-            try:
-                return json.loads(text)
-            except json.JSONDecodeError as exc:
-                raise ValueError("DWD-Warnfeed enthält ungültige Daten.") from exc
+        if text.startswith(DWD_JSONP_CALLBACK):
+            start = text.find("(")
+            end = text.rfind(")")
+            if start >= len(DWD_JSONP_CALLBACK) and end > start:
+                try:
+                    return json.loads(text[start + 1:end])
+                except json.JSONDecodeError as exc:
+                    raise ValueError("DWD-Warnfeed enthält ungültige Daten.") from exc
         raise ValueError("DWD-Warnfeed hat ein unbekanntes Format.")
 
 
