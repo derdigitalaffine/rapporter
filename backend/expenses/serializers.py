@@ -20,6 +20,13 @@ class ExpenseShareSerializer(serializers.ModelSerializer):
 
 
 class ReceiptExtractionSerializer(serializers.ModelSerializer):
+    structured_data = serializers.SerializerMethodField()
+
+    def get_structured_data(self, obj):
+        # Candidate OCR lines stay server-side. The client only needs safe quality hints.
+        data = obj.structured_data or {}
+        return {"quality_warnings": data.get("quality_warnings", [])}
+
     class Meta:
         model = ReceiptExtraction
         fields = [
