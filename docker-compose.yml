@@ -58,10 +58,13 @@ services:
         condition: service_healthy
     environment:
       DOMAIN: ${DOMAIN:-localhost}
+      PUBLIC_SCHEME: ${PUBLIC_SCHEME:-https}
+      PUBLIC_HOST: ${PUBLIC_HOST:-localhost}
     ports:
-      - "${HTTP_PORT:-80}:80"
-      - "${HTTPS_PORT:-443}:443"
-      - "${HTTPS_PORT:-443}:443/udp"
+      # HTTPS host ports are added by docker-compose.override.yml. The
+      # reverse-proxy mode selects only this base file and therefore exposes
+      # plain HTTP only.
+      - "${HTTP_BIND:-0.0.0.0}:${HTTP_PORT:-80}:80"
     volumes:
       - ./${CADDYFILE:-Caddyfile.selfsigned}:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
