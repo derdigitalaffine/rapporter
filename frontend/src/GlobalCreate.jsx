@@ -8,7 +8,7 @@ const CAPABILITIES={loyalty:true,messages:false};
 
 export default function GlobalCreate({page,family,role,context={},onCreate,suppressed=false}){
   const {t}=useTranslation();
-  const fabRef=useRef(null);const firstActionRef=useRef(null);const pendingAction=useRef(null);const baseHistoryState=useRef(null);
+  const fabRef=useRef(null);const firstActionRef=useRef(null);const pendingAction=useRef(null);
   const [paletteOpen,setPaletteOpen]=useState(false);const [keyboardOpen,setKeyboardOpen]=useState(false);const [externalDialog,setExternalDialog]=useState(false);
   const options=useMemo(()=>({role,capabilities:CAPABILITIES}),[role]);
   const actions=useMemo(()=>availableCreateActions(options),[options]);
@@ -17,8 +17,7 @@ export default function GlobalCreate({page,family,role,context={},onCreate,suppr
   const visible=Boolean(family&&role&&CREATE_PAGES.has(page)&&!suppressed&&!keyboardOpen&&!externalDialog);
 
   useEffect(()=>{
-    const viewport=window.visualViewport;
-    if(!viewport)return;
+    const viewport=window.visualViewport;if(!viewport)return;
     const update=()=>setKeyboardOpen(window.innerHeight-viewport.height>140);
     update();viewport.addEventListener('resize',update);viewport.addEventListener('scroll',update);
     return()=>{viewport.removeEventListener('resize',update);viewport.removeEventListener('scroll',update)};
@@ -32,40 +31,23 @@ export default function GlobalCreate({page,family,role,context={},onCreate,suppr
   useEffect(()=>{
     if(!paletteOpen)return;
     const keydown=event=>{if(event.key==='Escape'){event.preventDefault();closePalette()}};
-    const pop=()=>{
-      setPaletteOpen(false);
-      requestAnimationFrame(()=>fabRef.current?.focus());
-      const action=pendingAction.current;pendingAction.current=null;
-      if(action)action.open({open:onCreate,context:{...context,origin:page}});
-    };
-    window.addEventListener('keydown',keydown);window.addEventListener('popstate',pop);
-    requestAnimationFrame(()=>firstActionRef.current?.focus());
+    const pop=()=>{setPaletteOpen(false);requestAnimationFrame(()=>fabRef.current?.focus());const pending=pendingAction.current;pendingAction.current=null;if(pending)pending.action.open({open:onCreate,context:pending.context})};
+    window.addEventListener('keydown',keydown);window.addEventListener('popstate',pop);requestAnimationFrame(()=>firstActionRef.current?.focus());
     return()=>{window.removeEventListener('keydown',keydown);window.removeEventListener('popstate',pop)};
-  },[paletteOpen,onCreate,context,page]);
+  },[paletteOpen,onCreate]);
 
-  useEffect(()=>{
-    if(!suppressed&&fabRef.current)requestAnimationFrame(()=>fabRef.current?.focus({preventScroll:true}));
-  },[suppressed]);
+  useEffect(()=>{if(!suppressed&&fabRef.current)requestAnimationFrame(()=>fabRef.current?.focus({preventScroll:true}))},[suppressed]);
 
-  function openPalette(){
-    baseHistoryState.current=history.state;
-    history.pushState({...history.state,createPalette:true},'',`${location.pathname}${location.search}${location.hash}`);
-    setPaletteOpen(true);
+  function currentContext(){
+    const next={...context,origin:page};
+    const selector=page==='tasks'?'.task-list-tabs button.active':page==='shopping'?'.shopping-list-tabs button.active':null;
+    if(selector){const label=document.querySelector(selector)?.textContent?.replace(/\s+/g,' ').trim();if(label)next.activeListLabel=label}
+    return next;
   }
-  function closePalette(){
-    pendingAction.current=null;
-    if(history.state?.createPalette)history.back();
-    else{setPaletteOpen(false);requestAnimationFrame(()=>fabRef.current?.focus())}
-  }
-  function choose(action){
-    pendingAction.current=action;
-    if(history.state?.createPalette)history.back();
-    else{setPaletteOpen(false);pendingAction.current=null;action.open({open:onCreate,context:{...context,origin:page}})}
-  }
-  function activate(){
-    if(direct){direct.open({open:onCreate,context:{...context,origin:page}});return}
-    openPalette();
-  }
+  function openPalette(){history.pushState({...history.state,createPalette:true},'',`${location.pathname}${location.search}${location.hash}`);setPaletteOpen(true)}
+  function closePalette(){pendingAction.current=null;if(history.state?.createPalette)history.back();else{setPaletteOpen(false);requestAnimationFrame(()=>fabRef.current?.focus())}}
+  function choose(action){const actionContext=currentContext();pendingAction.current={action,context:actionContext};if(history.state?.createPalette)history.back();else{setPaletteOpen(false);pendingAction.current=null;action.open({open:onCreate,context:actionContext})}}
+  function activate(){if(direct){direct.open({open:onCreate,context:currentContext()});return}openPalette()}
 
   if(!visible&&!paletteOpen)return null;
   return <>
