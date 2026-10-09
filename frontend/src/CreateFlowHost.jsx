@@ -10,8 +10,10 @@ export default function CreateFlowHost({action,family,data,context={},onClose,on
  if(!action||!family)return null;
  const taskLists=(data?.task_lists||[]).filter(list=>!list.archived);
  const shoppingLists=[...(data?.shopping_lists||[]).filter(list=>!list.archived),...(createdShoppingList?[createdShoppingList]:[])].filter((list,index,all)=>all.findIndex(row=>String(row.id)===String(list.id))===index);
- const taskListId=context.taskListId&&context.taskListId!=='all'?context.taskListId:taskLists[0]?.id||'';
- const shoppingList=context.shoppingListId&&context.shoppingListId!=='all'?shoppingLists.find(list=>String(list.id)===String(context.shoppingListId)):shoppingLists[0];
+ const selectedTaskList=taskLists.find(list=>context.activeListLabel?.includes(list.name));
+ const selectedShoppingList=shoppingLists.find(list=>context.activeListLabel?.includes(list.name));
+ const taskListId=selectedTaskList?.id||(context.taskListId&&context.taskListId!=='all'?context.taskListId:taskLists[0]?.id||'');
+ const shoppingList=selectedShoppingList||(context.shoppingListId&&context.shoppingListId!=='all'?shoppingLists.find(list=>String(list.id)===String(context.shoppingListId)):shoppingLists[0]);
  async function saved(){await onRefresh?.();onClose()}
  if(action==='task')return <TaskEditor family={family} lists={taskLists} members={family.memberships||[]} defaultListId={taskListId} onClose={onClose} onSaved={saved}/>;
  if(action==='shoppingItem'){
