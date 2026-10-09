@@ -23,6 +23,7 @@ export async function installApiMocks(page,{authenticated=true,language='de',dis
     tasks:[{id:'task-1',family:familyId,task_list:'tasks-1',title:'Wäsche aufhängen',notes:'',priority:'normal',estimate_minutes:10,assignee:1,assignee_name:'Alex',list_name:'Alltag',due_at:isoIn(3),completed_at:null}],
     shoppingLists:[{id:'shop-1',family:familyId,name:'Supermarkt',store:'Markt',icon:'cart-shopping',archived:false,sort_order:0,items:[{id:'item-1',shopping_list:'shop-1',name:'Milch',quantity:'1 l',category:'Kühlung',aisle:'Kühlregal',note:'',favorite:true,checked:false,added_by_name:'Sam'}]}],
     routines:[],
+    todayLayout:{version:1,revision:0,widgets:["weather","priority","waste","next","tasks","shopping","routines","birthdays","notes"].map(id=>({id,visible:true,size:"full"}))},
     events:[
       {id:'event-past',family:familyId,source:null,type:'calendar.event',title:'Gestern erledigt',starts_at:isoIn(-30),ends_at:isoIn(-29),actionable:false,payload:{provider:'fam-uh-le',location:'Alt',description:'',recurrence:''}},
       {id:'event-1',family:familyId,source:null,type:'calendar.event',title:'Kinderarzt',starts_at:isoIn(5),ends_at:isoIn(6),actionable:false,payload:{provider:'fam-uh-le',location:'Praxis',description:'U-Heft mitnehmen',recurrence:''}},
@@ -43,6 +44,7 @@ export async function installApiMocks(page,{authenticated=true,language='de',dis
     const url=new URL(request.url());
     const path=url.pathname.replace(/^\/api/,'');
     let body={};try{body=request.postDataJSON()||{}}catch{}
+    if(path==='/today-layout/'){if(method==='PUT')state.todayLayout={...body,revision:state.todayLayout.revision+1};return json(route,state.todayLayout)}
 
     if(path==='/auth/login/'&&method==='POST')return json(route,{authenticated:true});
     if(path==='/auth/refresh/'&&method==='POST')return json(route,{authenticated:true});
@@ -141,7 +143,6 @@ export async function installApiMocks(page,{authenticated=true,language='de',dis
     }
     if(path==='/integration-hub/sync-all/'&&method==='POST')return json(route,{synced:3,errors:[]});
 
-    if(path==='/routines/'&&method==='GET')return json(route,state.routines);
     if(path==='/inbox/'&&method==='GET')return json(route,[]);
     if(path==='/push/config/'&&method==='GET')return json(route,{configured:false,subscriptions:0});
     if(method==='GET')return json(route,[]);
