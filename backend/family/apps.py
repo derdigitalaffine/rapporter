@@ -6,7 +6,13 @@ class FamilyConfig(AppConfig):
     name = "family"
 
     def ready(self):
+        # Feature models live in separate modules to keep the core model file merge-friendly.
+        from . import models as core_models
+        from .board_models import BoardImage, BoardPost
+        core_models.BoardPost = BoardPost
+        core_models.BoardImage = BoardImage
         from . import models_features  # noqa: F401
+        from . import board_notifications  # noqa: F401
         from . import prediction_signals  # noqa: F401
         from . import signals  # noqa: F401
         from . import waste_calendar  # noqa: F401
