@@ -68,6 +68,7 @@ input,select,textarea{
   input,select,textarea{font-size:16px!important}
   .content{padding-left:max(12px,env(safe-area-inset-left));padding-right:max(12px,env(safe-area-inset-right))}
   .quick-form,.builder-fields,.form-grid,.builder-field-grid{min-width:0;max-width:100%}
+  .list-tabs{margin-right:0;padding-right:0;max-width:100%}
 }
 
 @media(max-width:480px){
