@@ -29,7 +29,7 @@ class FamilyMessageViewSet(viewsets.ModelViewSet):
             requested={str(value) for value in recipient_ids if str(value)!=str(membership.id)};recipients=recipients.filter(id__in=requested)
             if not requested or recipients.count()!=len(requested): raise ValidationError({"recipient_ids":"Mindestens ein Empfänger ist ungültig."})
         item=serializer.save(created_by=self.request.user,source="manual_message",status="new");recipient_rows=list(recipients.select_related("user"));InboxReceipt.objects.bulk_create([InboxReceipt(item=item,membership=row) for row in recipient_rows],ignore_conflicts=True)
-        notify_domain_event(family,"inbox.created",actor=self.request.user,target_users=[row.user_id for row in recipient_rows],context={"item":item.title,"inbox_id":item.id})
+        notify_domain_event(family,"inbox.created",actor=self.request.user,target_users=[row.user_id for row in recipient_rows],context={"item":item.title,"inbox_id":item.id},url=f"/?page=inbox&message={item.id}")
     def perform_update(self,serializer):
         item=self.get_object();membership=Membership.objects.filter(family=item.family,user=self.request.user).first()
         if item.created_by_id!=self.request.user.id and (not membership or membership.role!=Membership.Role.OWNER): raise PermissionDenied("Nur Absender oder Owner dürfen Mitteilungen ändern.")
