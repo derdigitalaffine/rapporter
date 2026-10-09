@@ -16,7 +16,7 @@ function expenseFrom(body,id='expense-1',source='manual'){
 }
 
 async function installExpenseMocks(page){
-  const store={expenses:[],settlements:[],receiptDraft:null};
+  const store={expenses:[],settlements:[],receiptDraft:null,requestIds:new Map()};
   const handler=async route=>{
     const request=route.request();const method=request.method();const url=new URL(request.url());const path=url.pathname;
     let body={};try{body=request.postDataJSON()||{}}catch{}
@@ -56,7 +56,8 @@ async function installExpenseMocks(page){
     }
     if(path==='/api/expenses/'&&method==='GET')return json(route,store.expenses);
     if(path==='/api/expenses/'&&method==='POST'){
-      const saved=expenseFrom(body,`expense-${store.expenses.length+1}`);store.expenses.unshift(saved);return json(route,saved,201);
+      if(body.client_request_id&&store.requestIds.has(body.client_request_id))return json(route,store.requestIds.get(body.client_request_id),201);
+      const saved=expenseFrom(body,`expense-${store.expenses.length+1}`);store.expenses.unshift(saved);if(body.client_request_id)store.requestIds.set(body.client_request_id,saved);return json(route,saved,201);
     }
     return route.fallback();
   };
@@ -71,35 +72,67 @@ async function boot(page,path='/'){
   return store;
 }
 
-test('expenses · reachable from More, manual split and one-click settlement',async({page})=>{
-  await boot(page);
+test('expenses · two-tap quick add uses visible safe defaults and updates balance',async({page})=>{
+  const store=await boot(page);
   await page.locator('.bottom-nav').getByRole('button',{name:'Mehr'}).click();
   await page.getByRole('button',{name:'Ausgabe',exact:true}).click();
   await expect(page.getByRole('heading',{name:'Ausgaben',exact:true})).toBeVisible();
   await expect(page.locator('.bottom-nav')).toHaveCount(0);
 
-  await page.locator('.global-create-fab').click();
+  await page.locator('.expenses-toolbar').getByRole('button',{name:'Ausgabe',exact:true}).click();
   const dialog=page.getByRole('dialog');
-  await expect(dialog.getByRole('heading',{name:'Ausgabe hinzufügen'})).toBeVisible();
-  await dialog.getByRole('button',{name:'Ohne Beleg eingeben'}).click();
-  await dialog.getByLabel('Händler / Titel').fill('Supermarkt');
-  await dialog.getByLabel('Betrag').fill('12.34');
-  await dialog.getByLabel('Bezahlt von').selectOption('member-1');
-  await expect(dialog.getByRole('button',{name:/Alex/})).toHaveAttribute('aria-pressed','true');
-  await expect(dialog.getByRole('button',{name:/Sam/})).toHaveAttribute('aria-pressed','true');
-  await dialog.getByRole('button',{name:'Ausgabe speichern'}).click();
+  await expect(dialog.getByRole('heading',{name:'Neue Ausgabe'})).toBeVisible();
+  const amount=dialog.getByLabel('Betrag');
+  await expect(amount).toBeFocused();
+  await expect(dialog.getByText(/Du hast bezahlt · gleichmäßig für/)).toBeVisible();
+  await expect(dialog.getByText(/Alex/)).toBeVisible();
+  await expect(dialog.getByText(/Sam/)).toBeVisible();
+  await amount.fill('12,50');
+  await dialog.getByRole('button',{name:'Speichern',exact:true}).click();
 
-  await expect(page.getByText('Supermarkt',{exact:true})).toBeVisible();
+  await expect(page.locator('.expense-row-main strong').first()).toHaveText('Ausgabe');
+  expect(store.expenses).toHaveLength(1);
+  expect(store.expenses[0].source).toBe('manual');
+  expect(store.expenses[0].paid_by).toBe('member-1');
+  expect(store.expenses[0].shares).toHaveLength(2);
   await expect(page.getByText('Sam → Alex',{exact:true})).toBeVisible();
   await page.getByRole('button',{name:'Als abgerechnet markieren'}).click();
   await expect(page.locator('.balance-total')).toContainText('Alles ausgeglichen');
   await expect(page.getByText('Rapporter dokumentiert die Abrechnung nur. Es wird kein Geld übertragen.')).toBeVisible();
 });
 
-test('expenses · receipt upload becomes OCR review with editable confidences',async({page})=>{
+test('expenses · quick add opens advanced #114 split options without losing input',async({page})=>{
+  await boot(page,'/?page=expenses');
+  await page.locator('.expenses-toolbar').getByRole('button',{name:'Ausgabe',exact:true}).click();
+  const dialog=page.getByRole('dialog');
+  await dialog.getByLabel('Betrag').fill('10.00');
+  await dialog.getByLabel(/Du hast bezahlt/).click();
+  await expect(dialog.getByLabel('Bezahlt von')).toBeVisible();
+  await expect(dialog.getByLabel('Betrag')).toHaveValue('10.00');
+  await expect(dialog.getByRole('button',{name:'Gleichmäßig'})).toBeVisible();
+  await expect(dialog.getByRole('button',{name:'Exakte Beträge'})).toBeVisible();
+  await expect(dialog.getByRole('button',{name:'Prozent'})).toBeVisible();
+  await expect(dialog.getByRole('button',{name:'Anteile'})).toBeVisible();
+});
+
+test('expenses · quick add undo deletes exactly the created expense',async({page})=>{
+  const store=await boot(page,'/?page=expenses');
+  await page.locator('.expenses-toolbar').getByRole('button',{name:'Ausgabe',exact:true}).click();
+  const dialog=page.getByRole('dialog');
+  await dialog.getByLabel('Betrag').fill('8,00');
+  await dialog.getByLabel('Wofür? (optional)').fill('Parken');
+  await dialog.getByRole('button',{name:'Speichern',exact:true}).click();
+  await expect(page.locator('.expense-row-main strong').first()).toHaveText('Parken');
+  await page.getByRole('button',{name:'Rückgängig'}).click();
+  await expect.poll(()=>store.expenses.length).toBe(0);
+  await expect(page.locator('.expense-row-main strong')).toHaveCount(0);
+});
+
+test('expenses · receipt upload remains available from quick add and becomes OCR review',async({page})=>{
   await boot(page,'/?page=expenses');
   await page.locator('.global-create-fab').click();
   const dialog=page.getByRole('dialog');
+  await dialog.getByRole('button',{name:'Beleg scannen'}).click();
   await dialog.locator('input[capture="environment"]').setInputFiles({name:'receipt.png',mimeType:'image/png',buffer:Buffer.from('mock-receipt')});
   await expect(dialog.getByText('Kurz prüfen',{exact:true})).toBeVisible({timeout:8000});
   await expect(dialog.getByLabel('Händler / Titel')).toHaveValue('REWE MARKT');
@@ -118,4 +151,9 @@ test('expenses · no horizontal overflow on phone, tablet landscape and desktop'
     const dimensions=await page.evaluate(()=>({scrollWidth:document.documentElement.scrollWidth,innerWidth:window.innerWidth}));
     expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.innerWidth+1);
   }
+  await page.setViewportSize({width:390,height:844});
+  await page.locator('.expenses-toolbar').getByRole('button',{name:'Ausgabe',exact:true}).click();
+  await expect(page.getByRole('dialog').getByLabel('Betrag')).toBeFocused();
+  const dialogDimensions=await page.evaluate(()=>({scrollWidth:document.documentElement.scrollWidth,innerWidth:window.innerWidth}));
+  expect(dialogDimensions.scrollWidth).toBeLessThanOrEqual(dialogDimensions.innerWidth+1);
 });

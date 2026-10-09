@@ -1,5 +1,6 @@
 from django.core.management.base import BaseCommand
 from family.birthdays import run_birthday_reminders
+from family.routine_reminders import run_routine_reminders
 from family.automation import run_all_rules
 from family.integration_health import sync_with_health
 from family.models import Family, IntegrationSource
@@ -20,4 +21,5 @@ class Command(BaseCommand):
         executed = run_all_rules()
         birthdays = run_birthday_reminders()
         self.stdout.write(f"Birthday reminders: {birthdays}")
+        self.stdout.write(f"Routine reminders: {run_routine_reminders()}")
         self.stdout.write(self.style.SUCCESS(f"Synchronized {total} events; executed {executed} automation actions"))

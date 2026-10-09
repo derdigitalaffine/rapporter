@@ -23,7 +23,7 @@ function targetFromLocation(){
   }
   if(page==='calendar'&&params.get('event'))return {page,key:'event',endpoint:`/events/${encodeURIComponent(params.get('event'))}/`};
   if(page==='inbox'&&params.get('item'))return {page,key:'item',endpoint:`/inbox/${encodeURIComponent(params.get('item'))}/`};
-  if(page==='routines'&&params.get('routine'))return {page,key:'routine',endpoint:`/routines/${encodeURIComponent(params.get('routine'))}/`};
+  // The routines hub owns its editable, reload-safe detail view.
   return null;
 }
 

@@ -30,6 +30,7 @@ class Expense(TimestampedModel):
     currency = models.CharField(max_length=3, default="EUR")
     paid_by = models.ForeignKey(Membership, on_delete=models.PROTECT, related_name="expenses_paid")
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name="family_expenses_created")
+    client_request_id = models.UUIDField(null=True, blank=True)
     receipt_content = models.BinaryField(null=True, blank=True, editable=False)
     receipt_mime = models.CharField(max_length=64, blank=True)
     receipt_status = models.CharField(max_length=16, choices=ReceiptStatus.choices, default=ReceiptStatus.NONE)
@@ -42,6 +43,13 @@ class Expense(TimestampedModel):
         indexes = [
             models.Index(fields=["family", "currency", "status"], name="exp_family_currency_idx"),
             models.Index(fields=["family", "occurred_at"], name="exp_family_date_idx"),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["family", "created_by", "client_request_id"],
+                condition=models.Q(client_request_id__isnull=False),
+                name="expense_client_request_uniq",
+            ),
         ]
 
 

@@ -121,6 +121,9 @@ class Task(TimestampedModel):
     birthday_context = models.UUIDField(null=True, blank=True, editable=False)
     hidden_from_user = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="hidden_gift_tasks", editable=False)
 
+    class Meta:
+        indexes = [models.Index(fields=["task_list", "workflow_column", "workflow_position"], name="task_workflow_order_idx")]
+
     def save(self, *args, **kwargs):
         # Every writer (API, quick-add, toggle and automation) uses the same invariant.
         from django.db import transaction
@@ -292,6 +295,12 @@ class Routine(TimestampedModel):
     suggested_interval_days = models.PositiveIntegerField(null=True, blank=True)
     icon = models.CharField(max_length=40, default="sparkles")
     active = models.BooleanField(default=True)
+    target_count = models.PositiveSmallIntegerField(null=True, blank=True)
+    target_period_days = models.PositiveSmallIntegerField(default=7)
+    reminder_enabled = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["name", "id"]
 
 
 class RoutineLog(TimestampedModel):
@@ -299,6 +308,23 @@ class RoutineLog(TimestampedModel):
     done_at = models.DateTimeField()
     done_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL)
     note = models.CharField(max_length=240, blank=True)
+    request_id = models.UUIDField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-done_at", "-id"]
+        constraints = [models.UniqueConstraint(fields=["routine", "request_id"], name="routine_log_request_unique")]
+        indexes = [models.Index(fields=["routine", "done_at"], name="routine_log_time_idx")]
+
+
+class RoutineReminderState(TimestampedModel):
+    routine = models.ForeignKey(Routine, on_delete=models.CASCADE, related_name="reminder_states")
+    membership = models.ForeignKey(Membership, on_delete=models.CASCADE, related_name="routine_reminder_states")
+    snoozed_until = models.DateTimeField(null=True, blank=True)
+    last_sent_at = models.DateTimeField(null=True, blank=True)
+    last_cycle_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["routine", "membership"], name="routine_member_reminder_unique")]
 
 
 class IntegrationSource(TimestampedModel):

@@ -191,13 +191,39 @@ class RoutineLogSerializer(serializers.ModelSerializer):
 
 
 class RoutineSerializer(serializers.ModelSerializer):
-    logs = RoutineLogSerializer(many=True, read_only=True)
+    logs = serializers.SerializerMethodField()
     last_done_at = serializers.SerializerMethodField()
     prediction = serializers.SerializerMethodField()
+    log_count = serializers.SerializerMethodField()
+    period_count = serializers.SerializerMethodField()
+    snoozed_until = serializers.SerializerMethodField()
+
+    def _logs(self, obj):
+        cache = getattr(obj, "_prefetched_objects_cache", {})
+        return list(cache["logs"] if "logs" in cache else obj.logs.all())
+
+    def get_logs(self, obj):
+        return RoutineLogSerializer(sorted(self._logs(obj), key=lambda x:x.done_at, reverse=True)[:10], many=True).data
+
+    def get_log_count(self, obj):
+        return len(self._logs(obj))
+
+    def get_period_count(self, obj):
+        from datetime import timedelta
+        from django.utils import timezone
+        start = timezone.now()-timedelta(days=obj.target_period_days)
+        return sum(log.done_at>=start for log in self._logs(obj))
+
+    def get_snoozed_until(self, obj):
+        request = self.context.get("request")
+        if not request:
+            return None
+        state = next((x for x in obj.reminder_states.all() if x.membership.user_id==request.user.id), None)
+        from django.utils import timezone
+        return state.snoozed_until if state and state.snoozed_until and state.snoozed_until>timezone.now() else None
 
     def get_last_done_at(self, obj):
-        cache = getattr(obj, "_prefetched_objects_cache", {})
-        logs = list(cache.get("logs") or obj.logs.all())
+        logs = self._logs(obj)
         return max((log.done_at for log in logs if log.done_at), default=None)
 
     def get_prediction(self, obj):
@@ -205,11 +231,17 @@ class RoutineSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         _validate_family_access(self, attrs)
+        count = attrs.get("target_count", self.instance.target_count if self.instance else None)
+        period = attrs.get("target_period_days", self.instance.target_period_days if self.instance else 7)
+        if count is not None and (count<1 or count>100 or period/count<1/24):
+            raise serializers.ValidationError({"target_count": "Choose 1–100 times, at most once per hour."})
+        if not 1<=period<=365:
+            raise serializers.ValidationError({"target_period_days": "Choose 1–365 days."})
         return attrs
 
     class Meta:
         model = Routine
-        fields = ["id", "family", "name", "icon", "active", "last_done_at", "prediction", "logs"]
+        fields = ["id", "family", "name", "icon", "active", "target_count", "target_period_days", "reminder_enabled", "last_done_at", "prediction", "logs", "log_count", "period_count", "snoozed_until"]
 
 
 class IntegrationSourceSerializer(serializers.ModelSerializer):
