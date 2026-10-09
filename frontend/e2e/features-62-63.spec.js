@@ -47,7 +47,7 @@ test('manual loyalty card creation, sharing and offline revocation sync',async({
  await page.getByRole('button',{name:'Karte speichern'}).click();
  await expect(page.getByRole('button',{name:/PAYBACK/})).toBeVisible();
  await page.getByRole('button',{name:/PAYBACK/}).click();
- await expect(page.getByText('47110815')).toBeVisible();
+ await expect(page.locator('.loyalty-readable',{hasText:'47110815'})).toBeVisible();
  await expect(page.locator('.barcode-stage canvas')).toBeVisible();
  await page.getByRole('button',{name:'Zurück'}).click();
 
