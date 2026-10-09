@@ -7,6 +7,7 @@ from .invitation_views import FamilyInvitationViewSet, invitation_info, invitati
 from .membership_views import MembershipViewSet
 from .memory_views import shopping_memory_suggestions, task_memory_suggestions
 from .push_views import push_config, push_subscribe, push_test, push_unsubscribe
+from .superadmin_views import superadmin_families, superadmin_family_detail, superadmin_owner_invite
 from .smart_views import (
     integration_oauth_callback,
     integration_oauth_start,
@@ -41,6 +42,9 @@ urlpatterns = [
     path("invite/<str:token>/", invitation_info),
     path("invite/<str:token>/register/", invitation_register),
     path("invite/<str:token>/accept/", invitation_accept),
+    path("superadmin/families/", superadmin_families),
+    path("superadmin/families/<uuid:family_id>/", superadmin_family_detail),
+    path("superadmin/families/<uuid:family_id>/owner-invite/", superadmin_owner_invite),
     path("push/config/", push_config),
     path("push/preferences/", notification_preferences),
     path("push/subscribe/", push_subscribe),
