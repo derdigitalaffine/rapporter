@@ -102,13 +102,24 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Seed official images from public mirror
+      - name: Seed official images from public mirrors
         run: |
-          for spec in "python:3.13-slim" "node:22-alpine" "caddy:2-alpine"; do
-            mirror="public.ecr.aws/docker/library/${spec}"
-            docker pull "$mirror"
-            docker tag "$mirror" "$spec"
-          done
+          pull_official() {
+            local spec="$1" source
+            for source in \
+              "public.ecr.aws/docker/library/${spec}" \
+              "mirror.gcr.io/library/${spec}"; do
+              if docker pull "$source"; then
+                docker tag "$source" "$spec"
+                return 0
+              fi
+            done
+            echo "Could not pull official image ${spec} from any public mirror" >&2
+            return 1
+          }
+          pull_official "python:3.13-slim"
+          pull_official "node:22-alpine"
+          pull_official "caddy:2-alpine"
       - name: Validate shell setup tools
         run: bash -n scripts/setup.sh scripts/ensure-vapid.sh scripts/test-vapid-setup.sh scripts/tls-mode.sh scripts/export-caddy-ca.sh
       - name: Verify automatic VAPID provisioning
