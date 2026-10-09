@@ -124,6 +124,49 @@ class ShoppingItem(TimestampedModel):
     added_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL)
 
 
+class ShoppingPurchaseEvent(TimestampedModel):
+    """Immutable purchase signal retained independently from active shopping rows."""
+
+    family = models.ForeignKey(Family, on_delete=models.CASCADE, related_name="shopping_purchase_events")
+    shopping_list = models.ForeignKey(ShoppingList, null=True, blank=True, on_delete=models.SET_NULL, related_name="purchase_events")
+    source_item_id = models.UUIDField(null=True, blank=True)
+    normalized_name = models.CharField(max_length=180)
+    display_name = models.CharField(max_length=160)
+    quantity = models.CharField(max_length=40, blank=True)
+    category = models.CharField(max_length=80, blank=True)
+    aisle = models.CharField(max_length=80, blank=True)
+    store = models.CharField(max_length=120, blank=True)
+    purchased_at = models.DateTimeField(db_index=True)
+    purchased_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="shopping_purchase_events")
+
+    class Meta:
+        ordering = ["purchased_at"]
+        indexes = [
+            models.Index(fields=["family", "normalized_name", "purchased_at"], name="fam_purchase_name_time_idx"),
+            models.Index(fields=["family", "purchased_at"], name="fam_purchase_time_idx"),
+        ]
+        constraints = [
+            models.UniqueConstraint(fields=["source_item_id", "purchased_at"], name="fam_purchase_item_time_uniq"),
+        ]
+
+
+class ShoppingPredictionFeedback(TimestampedModel):
+    class Action(models.TextChoices):
+        ACCEPTED = "accepted", "Accepted"
+        SNOOZED = "snoozed", "Snoozed"
+        DISMISSED = "dismissed", "Dismissed"
+
+    family = models.ForeignKey(Family, on_delete=models.CASCADE, related_name="shopping_prediction_feedback")
+    normalized_name = models.CharField(max_length=180)
+    action = models.CharField(max_length=16, choices=Action.choices, default=Action.ACCEPTED)
+    suppress_until = models.DateTimeField(null=True, blank=True)
+    dismiss_count = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["family", "normalized_name"], name="fam_prediction_feedback_uniq")]
+        indexes = [models.Index(fields=["family", "suppress_until"], name="fam_prediction_suppress_idx")]
+
+
 class EntryMemory(TimestampedModel):
     class Kind(models.TextChoices):
         TASK = "task", "Task"
