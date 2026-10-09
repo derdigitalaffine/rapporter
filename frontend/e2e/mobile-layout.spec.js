@@ -1,6 +1,7 @@
 import {test,expect} from '@playwright/test';
 import {installApiMocks} from './mock-api.js';
 
+const primaryFamily={id:'family-1',name:'Musterfamilie',slug:'musterfamilie',locale:'de',timezone:'Europe/Berlin',memberships:[]};
 const secondFamily={id:'family-2',name:'Sehr lange Nebenfamilie mit langem Namen',slug:'nebenfamilie',locale:'de',timezone:'Europe/Berlin',memberships:[]};
 
 async function assertNoHorizontalOverflow(page){
@@ -19,11 +20,7 @@ test('narrow iPhone-sized viewport does not overflow and form controls stay at 1
   await page.setViewportSize({width:320,height:568});
   await installApiMocks(page,{dismissOnboarding:true});
 
-  await page.route('**/api/families/**',async route=>{
-    const response=await route.fetch();
-    const families=await response.json();
-    return route.fulfill({response,body:JSON.stringify([...families,secondFamily])});
-  });
+  await page.route('**/api/families/**',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify([primaryFamily,secondFamily])}));
 
   await page.goto('/');
   await page.waitForLoadState('networkidle');
