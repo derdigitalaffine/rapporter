@@ -21,7 +21,7 @@ class Command(BaseCommand):
             ReceiptExtraction.objects.filter(
                 status=ReceiptExtraction.Status.PROCESSING,
                 updated_at__lt=now - timedelta(minutes=10),
-            ).update(status=ReceiptExtraction.Status.QUEUED, error="")
+            ).update(status=ReceiptExtraction.Status.QUEUED, error="", updated_at=now)
             Expense.objects.filter(
                 status=Expense.Status.DRAFT,
                 created_at__lt=now - timedelta(hours=24),
@@ -32,7 +32,10 @@ class Command(BaseCommand):
                 .values_list("id", flat=True)[:10]
             )
             for extraction_id in ids:
-                process_receipt_extraction(extraction_id)
+                try:
+                    process_receipt_extraction(extraction_id)
+                except Exception:
+                    self.stderr.write("Receipt OCR job failed unexpectedly; continuing worker loop.")
             if not options["loop"]:
                 break
             if not ids:

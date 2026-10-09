@@ -13,10 +13,12 @@ from .models import Expense, ReceiptExtraction
 
 MAX_RECEIPT_BYTES = 10 * 1024 * 1024
 MAX_RECEIPT_PIXELS = 25_000_000
+MAX_OCR_TEXT_CHARS = 50_000
+OCR_TIMEOUT_SECONDS = 20
 ALLOWED_FORMATS = {"JPEG": "image/jpeg", "PNG": "image/png", "WEBP": "image/webp"}
 TOTAL_KEYWORDS = ("summe", "gesamt", "total", "zu zahlen", "endbetrag", "betrag")
 NEGATIVE_KEYWORDS = ("rückgeld", "ruckgeld", "gegeben", "mwst", "steuer", "tax", "telefon", "tel.")
-AMOUNT_RE = re.compile(r"(?<!\d)(\d{1,6}(?:[.,]\d{2}))(?!\d)")
+AMOUNT_RE = re.compile(r"(?<!\d)(\d{1,3}(?:[.,\s]\d{3})*[.,]\d{2}|\d{1,6}[.,]\d{2})(?!\d)")
 DATE_PATTERNS = (
     (re.compile(r"\b(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})\b"), "dmy"),
     (re.compile(r"\b(20\d{2})-(\d{1,2})-(\d{1,2})\b"), "ymd"),
@@ -59,7 +61,13 @@ def normalize_receipt_upload(upload):
 
 def _decimal(value):
     try:
-        normalized = value.replace(".", "").replace(",", ".") if "," in value else value
+        normalized = value.replace(" ", "")
+        if "," in normalized and "." in normalized:
+            decimal_separator = "," if normalized.rfind(",") > normalized.rfind(".") else "."
+            thousands_separator = "." if decimal_separator == "," else ","
+            normalized = normalized.replace(thousands_separator, "").replace(decimal_separator, ".")
+        else:
+            normalized = normalized.replace(",", ".")
         return Decimal(normalized)
     except (InvalidOperation, AttributeError):
         return None
@@ -153,55 +161,78 @@ def _ocr_image(content):
     image = Image.open(io.BytesIO(content))
     image = ImageOps.autocontrast(ImageOps.grayscale(image))
     try:
-        return pytesseract.image_to_string(image, lang="deu+eng", config="--psm 6")
+        return pytesseract.image_to_string(image, lang="deu+eng", config="--psm 6", timeout=OCR_TIMEOUT_SECONDS)
     except pytesseract.TesseractError:
-        return pytesseract.image_to_string(image, config="--psm 6")
+        return pytesseract.image_to_string(image, config="--psm 6", timeout=OCR_TIMEOUT_SECONDS)
 
 
 def process_receipt_extraction(extraction_id):
     close_old_connections()
     try:
-        claimed = ReceiptExtraction.objects.filter(id=extraction_id, status=ReceiptExtraction.Status.QUEUED).update(status=ReceiptExtraction.Status.PROCESSING, error="")
+        claimed = ReceiptExtraction.objects.filter(
+            id=extraction_id,
+            status=ReceiptExtraction.Status.QUEUED,
+        ).update(status=ReceiptExtraction.Status.PROCESSING, error="", updated_at=timezone.now())
         if not claimed:
             return ReceiptExtraction.objects.filter(id=extraction_id).first()
-        extraction = ReceiptExtraction.objects.select_related("expense").get(id=extraction_id)
+
+        extraction = ReceiptExtraction.objects.select_related("expense").filter(id=extraction_id).first()
+        if not extraction:
+            return None
         expense = extraction.expense
-        expense.receipt_status = Expense.ReceiptStatus.PROCESSING
-        expense.save(update_fields=["receipt_status", "updated_at"])
+        Expense.objects.filter(id=expense.id).update(receipt_status=Expense.ReceiptStatus.PROCESSING, updated_at=timezone.now())
+
         try:
-            text = _ocr_image(bytes(expense.receipt_content or b""))
+            content = bytes(expense.receipt_content or b"")
+            if not content:
+                raise ValueError("Receipt image is no longer available.")
+            text = _ocr_image(content)[:MAX_OCR_TEXT_CHARS]
             parsed = parse_receipt_text(text)
-            extraction.raw_text = text
-            extraction.merchant = parsed["merchant"]
-            extraction.date = parsed["date"]
-            extraction.total = parsed["total"]
-            extraction.currency = parsed["currency"]
-            extraction.field_confidences = parsed["field_confidences"]
-            extraction.structured_data = {**(extraction.structured_data or {}), **parsed["structured_data"]}
-            extraction.status = ReceiptExtraction.Status.REVIEW
-            extraction.processed_at = timezone.now()
-            extraction.error = ""
-            extraction.save()
-            expense.receipt_status = Expense.ReceiptStatus.REVIEW
+            processed_at = timezone.now()
+            updated = ReceiptExtraction.objects.filter(id=extraction_id, expense_id=expense.id).update(
+                raw_text=text,
+                merchant=parsed["merchant"],
+                date=parsed["date"],
+                total=parsed["total"],
+                currency=parsed["currency"],
+                field_confidences=parsed["field_confidences"],
+                structured_data={**(extraction.structured_data or {}), **parsed["structured_data"]},
+                status=ReceiptExtraction.Status.REVIEW,
+                processed_at=processed_at,
+                error="",
+                updated_at=processed_at,
+            )
+            if not updated:
+                return None
+
+            expense_updates = {
+                "receipt_status": Expense.ReceiptStatus.REVIEW,
+                "updated_at": processed_at,
+            }
             if parsed["merchant"] and not expense.merchant:
-                expense.merchant = parsed["merchant"]
-                expense.title = parsed["merchant"]
+                expense_updates["merchant"] = parsed["merchant"]
+                expense_updates["title"] = parsed["merchant"]
             if parsed["date"]:
-                expense.occurred_at = timezone.make_aware(datetime.combine(parsed["date"], datetime.min.time()))
+                expense_updates["occurred_at"] = timezone.make_aware(datetime.combine(parsed["date"], datetime.min.time()))
             if parsed["total"] is not None:
-                expense.total_amount = parsed["total"]
+                expense_updates["total_amount"] = parsed["total"]
             if parsed["currency"]:
-                expense.currency = parsed["currency"]
-            expense.save(update_fields=["receipt_status", "merchant", "title", "occurred_at", "total_amount", "currency", "updated_at"])
-            return extraction
+                expense_updates["currency"] = parsed["currency"]
+            Expense.objects.filter(id=expense.id).update(**expense_updates)
+            return ReceiptExtraction.objects.filter(id=extraction_id).first()
         except Exception as exc:
-            extraction.status = ReceiptExtraction.Status.FAILED
-            extraction.processed_at = timezone.now()
-            extraction.error = str(exc)[:500]
-            extraction.save(update_fields=["status", "processed_at", "error", "updated_at"])
-            expense.receipt_status = Expense.ReceiptStatus.FAILED
-            expense.save(update_fields=["receipt_status", "updated_at"])
-            return extraction
+            processed_at = timezone.now()
+            ReceiptExtraction.objects.filter(id=extraction_id).update(
+                status=ReceiptExtraction.Status.FAILED,
+                processed_at=processed_at,
+                error=str(exc)[:500],
+                updated_at=processed_at,
+            )
+            Expense.objects.filter(id=expense.id).update(
+                receipt_status=Expense.ReceiptStatus.FAILED,
+                updated_at=processed_at,
+            )
+            return ReceiptExtraction.objects.filter(id=extraction_id).first()
     finally:
         close_old_connections()
 
