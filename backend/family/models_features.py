@@ -6,6 +6,10 @@ from .models import Family, Membership, TimestampedModel
 
 class NotificationPreference(TimestampedModel):
     membership = models.OneToOneField(Membership, on_delete=models.CASCADE, related_name="notification_preference")
+    detail_level = models.CharField(max_length=16, choices=[("important", "Important only"), ("summary", "Summaries"), ("all", "All details")], default="summary")
+    quiet_hours_enabled = models.BooleanField(default=False)
+    quiet_start = models.TimeField(default="22:00")
+    quiet_end = models.TimeField(default="07:00")
     tasks = models.BooleanField(default=True)
     task_assigned = models.BooleanField(default=True)
     shopping = models.BooleanField(default=True)
@@ -60,3 +64,16 @@ class LoyaltyCard(TimestampedModel):
 
     class Meta:
         ordering = ["-favorite", "sort_order", "name"]
+
+
+class NotificationBatch(TimestampedModel):
+    """Bounded, durable outbox; one independent stream per member and resource."""
+    membership = models.ForeignKey(Membership, on_delete=models.CASCADE, related_name="notification_batches")
+    bucket = models.CharField(max_length=180)
+    events = models.JSONField(default=dict)
+    due_at = models.DateTimeField(db_index=True)
+    attempts = models.PositiveSmallIntegerField(default=0)
+    delivered_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["membership", "bucket"], name="notification_member_bucket_unique")]

@@ -57,6 +57,7 @@ class DomainNotificationTests(TestCase):
 
     @patch("family.domain_notifications.send_user_push", return_value={"sent": 1, "errors": 0})
     def test_shopping_and_calendar_events_push(self, sender):
+        NotificationPreference.objects.create(membership=self.bob_member, detail_level="all")
         response = self.client.post("/api/shopping-items/", {"shopping_list": str(self.shopping.id), "name": "Milch"}, format="json")
         self.assertEqual(response.status_code, 201)
         self.assertTrue(any("shopping" in call.args[3] for call in sender.call_args_list))
@@ -74,6 +75,7 @@ class DomainNotificationTests(TestCase):
 
     @patch("family.domain_notifications.send_user_push", return_value={"sent": 1, "errors": 0})
     def test_clear_checked_sends_one_deduplicated_family_event(self, sender):
+        NotificationPreference.objects.create(membership=self.bob_member, detail_level="all")
         ShoppingItem.objects.create(shopping_list=self.shopping, name="Milch", checked=True)
         ShoppingItem.objects.create(shopping_list=self.shopping, name="Brot", checked=True)
         sender.reset_mock()

@@ -127,8 +127,15 @@ def notify_domain_event(
             continue
         if not _preference_enabled(membership, spec, pref_cache):
             continue
+        from .notification_digests import delivery_policy, enqueue_notification
+        policy = delivery_policy(pref_cache.get(membership.id), family, event_type)
+        if policy == "drop":
+            continue
         recipients += 1
         try:
+            if policy == "queue":
+                enqueue_notification(membership, event_type, context, url=url)
+                continue
             result = send_user_push(
                 membership.user,
                 title,
