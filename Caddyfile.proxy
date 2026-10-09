@@ -1,0 +1,38 @@
+:80 {
+    encode zstd gzip
+
+    @api path /api/* /admin/* /static/*
+    handle @api {
+        reverse_proxy backend:8000 {
+            # Caddy receives plain HTTP from the user's reverse proxy. Tell
+            # Django which public origin the browser actually uses so secure
+            # cookies, CSRF checks and OAuth callback URLs stay correct.
+            header_up Host {$PUBLIC_HOST:localhost}
+            header_up X-Forwarded-Host {$PUBLIC_HOST:localhost}
+            header_up X-Forwarded-Proto {$PUBLIC_SCHEME:https}
+        }
+    }
+
+    @assets path /assets/*
+    handle @assets {
+        root * /srv
+        header Cache-Control "public, max-age=31536000, immutable"
+        file_server
+    }
+
+    handle {
+        root * /srv
+        header Cache-Control "no-cache, no-store, must-revalidate"
+        try_files {path} /index.html
+        file_server
+    }
+
+    header {
+        -Server
+        X-Content-Type-Options nosniff
+        X-Frame-Options DENY
+        Referrer-Policy same-origin
+        Permissions-Policy "camera=(), microphone=(), geolocation=()"
+        Content-Security-Policy "default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; object-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; manifest-src 'self'; worker-src 'self';"
+    }
+}

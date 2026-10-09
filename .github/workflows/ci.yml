@@ -96,6 +96,26 @@ jobs:
         run: docker run --rm -e DOMAIN=fam-uh-le.example.com -v "$PWD/Caddyfile:/etc/caddy/Caddyfile:ro" caddy:2-alpine caddy validate --config /etc/caddy/Caddyfile
       - name: Validate internal TLS Caddy config
         run: docker run --rm -e DOMAIN=fam-uh-le.local -v "$PWD/Caddyfile.selfsigned:/etc/caddy/Caddyfile:ro" caddy:2-alpine caddy validate --config /etc/caddy/Caddyfile
+      - name: Validate reverse-proxy Caddy config
+        run: docker run --rm -e PUBLIC_HOST=fam-uh-le.example.com -e PUBLIC_SCHEME=https -v "$PWD/Caddyfile.proxy:/etc/caddy/Caddyfile:ro" caddy:2-alpine caddy validate --config /etc/caddy/Caddyfile
       - run: cp .env.example .env
-      - run: docker compose config
+      - name: Validate default TLS compose config
+        run: |
+          docker compose config > /tmp/compose-tls.yml
+          grep -q 'target: 443' /tmp/compose-tls.yml
+      - name: Validate plain-HTTP reverse-proxy compose config
+        env:
+          COMPOSE_FILE: docker-compose.yml
+          CADDYFILE: Caddyfile.proxy
+          HTTP_BIND: 127.0.0.1
+          HTTP_PORT: "8080"
+          PUBLIC_SCHEME: https
+          PUBLIC_HOST: fam-uh-le.example.com
+        run: |
+          docker compose config > /tmp/compose-proxy.yml
+          grep -q 'published: "8080"' /tmp/compose-proxy.yml
+          if grep -q 'target: 443' /tmp/compose-proxy.yml; then
+            echo "proxy mode must not publish container port 443" >&2
+            exit 1
+          fi
       - run: docker compose build

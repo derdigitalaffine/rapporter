@@ -1,0 +1,5 @@
+services:
+  caddy:
+    ports:
+      - "${HTTPS_BIND:-0.0.0.0}:${HTTPS_PORT:-443}:443"
+      - "${HTTPS_BIND:-0.0.0.0}:${HTTPS_PORT:-443}:443/udp"

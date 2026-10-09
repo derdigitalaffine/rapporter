@@ -21,7 +21,7 @@ box(){ "$ui" --title "$TITLE" --msgbox "$1" 14 76; }
 input(){ local label="$1" default="${2:-}" out; out=$("$ui" --title "$TITLE" --inputbox "$label" 11 76 "$default" 3>&1 1>&2 2>&3) || exit 1; printf '%s' "$out"; }
 password(){ local label="$1" out; out=$("$ui" --title "$TITLE" --passwordbox "$label" 10 72 3>&1 1>&2 2>&3) || exit 1; printf '%s' "$out"; }
 yesno(){ "$ui" --title "$TITLE" --yesno "$1" 12 76; }
-menu(){ local label="$1"; shift; "$ui" --title "$TITLE" --menu "$label" 17 78 9 "$@" 3>&1 1>&2 2>&3; }
+menu(){ local label="$1"; shift; "$ui" --title "$TITLE" --menu "$label" 18 82 10 "$@" 3>&1 1>&2 2>&3; }
 
 random_secret(){
   if command -v openssl >/dev/null 2>&1; then openssl rand -base64 48 | tr -d '\n' | tr '/+' '_-'
@@ -44,6 +44,7 @@ generate_vapid(){
 
 local_ip(){ command -v hostname >/dev/null 2>&1 && hostname -I 2>/dev/null | awk '{print $1}' || true; }
 valid_port(){ [[ "$1" =~ ^[0-9]+$ ]] && (( $1 >= 1 && $1 <= 65535 )); }
+valid_bind(){ [[ "$1" == "0.0.0.0" || "$1" == "127.0.0.1" || "$1" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; }
 need(){ command -v "$1" >/dev/null 2>&1 || { box "'$1' fehlt. Bitte installieren und den Wizard erneut starten."; exit 1; }; }
 
 need docker
@@ -54,28 +55,61 @@ if [[ -f "$ENV_FILE" ]]; then
   cp "$ENV_FILE" "$ENV_FILE.backup.$(date +%Y%m%d-%H%M%S)"
 fi
 
-box "Willkommen bei fam-uh-le.\n\nDieser Assistent erzeugt die vollständige .env, richtet TLS ein und kann den Stack direkt starten.\n\nStandardmäßig wird internes HTTPS mit Caddys lokaler CA verwendet."
+box "Willkommen bei fam-uh-le.\n\nDieser Assistent erzeugt die vollständige .env, richtet den gewünschten HTTPS-/Reverse-Proxy-Modus ein und kann den Stack direkt starten.\n\nStandardmäßig wird internes HTTPS mit Caddys lokaler CA verwendet."
 
-TLS_MODE=$(menu "TLS-Modus wählen" internal "Self-Signed / Caddy Internal CA (empfohlen für ersten Start/LAN)" public "Öffentliches HTTPS via ACME / Let's Encrypt")
+TLS_MODE=$(menu "Betriebsmodus wählen" \
+  internal "Self-Signed / Caddy Internal CA (LAN/erster Start)" \
+  public "Öffentliches HTTPS via ACME / Let's Encrypt" \
+  proxy "Plain HTTP hinter eigenem Reverse Proxy (TLS dort)")
+
+COMPOSE_FILE="docker-compose.yml:docker-compose.override.yml"
+PUBLIC_SCHEME="https"
+PUBLIC_PORT=443
+HTTP_BIND="0.0.0.0"
+HTTPS_BIND="0.0.0.0"
+HTTP_PORT=80
+HTTPS_PORT=443
+
 if [[ "$TLS_MODE" == "internal" ]]; then
   DEFAULT_HOST="$(local_ip)"; DEFAULT_HOST="${DEFAULT_HOST:-localhost}"
   DOMAIN=$(input "Hostname oder IP für den lokalen Zugriff.\nDie automatisch erkannte LAN-IP ist meist am bequemsten." "$DEFAULT_HOST")
   CADDYFILE="Caddyfile.selfsigned"
-else
+elif [[ "$TLS_MODE" == "public" ]]; then
   DOMAIN=$(input "Öffentliche Domain. DNS A/AAAA muss auf diesen Server zeigen." "fam-uh-le.example.com")
   CADDYFILE="Caddyfile"
+else
+  DOMAIN=$(input "Öffentliche Domain, unter der dein vorhandener Reverse Proxy fam-uh-le bereitstellt.\nDer Reverse Proxy muss HTTPS/TLS terminieren." "fam-uh-le.example.com")
+  CADDYFILE="Caddyfile.proxy"
+  COMPOSE_FILE="docker-compose.yml"
+  HTTP_BIND="127.0.0.1"
+  HTTP_PORT=8080
 fi
 
-HTTP_PORT=80
-HTTPS_PORT=443
-if yesno "Erweiterte Netzwerkeinstellungen öffnen?\n\nHier kannst du die veröffentlichten HTTP-/HTTPS-Ports ändern. Intern bleibt Caddy auf 80/443."; then
-  while :; do HTTP_PORT=$(input "Veröffentlichter HTTP-Port" "$HTTP_PORT"); valid_port "$HTTP_PORT" && break; box "Ungültiger Port. Erlaubt: 1–65535."; done
-  while :; do HTTPS_PORT=$(input "Veröffentlichter HTTPS-Port" "$HTTPS_PORT"); valid_port "$HTTPS_PORT" && break; box "Ungültiger Port. Erlaubt: 1–65535."; done
-  if [[ "$HTTP_PORT" == "$HTTPS_PORT" ]]; then box "HTTP- und HTTPS-Port dürfen nicht identisch sein."; exit 1; fi
-  if [[ "$TLS_MODE" == "public" && ( "$HTTP_PORT" != "80" || "$HTTPS_PORT" != "443" ) ]]; then
-    box "Hinweis zu Let's Encrypt:\n\nFür Caddys automatische ACME-Challenges müssen von außen normalerweise Port 80 und/oder 443 erreichbar sein. Abweichende Host-Ports funktionieren nur, wenn ein vorgeschalteter Router/Reverse-Proxy die öffentlichen Standardports passend weiterleitet."
+if [[ "$TLS_MODE" == "proxy" ]]; then
+  if yesno "Erweiterte Reverse-Proxy-Einstellungen öffnen?\n\nStandardmäßig lauscht fam-uh-le nur auf 127.0.0.1:8080 und belegt keinen HTTPS-Port.\nBei einem Reverse Proxy auf einem anderen Host/Container muss die Bind-Adresse erreichbar sein."; then
+    while :; do
+      HTTP_BIND=$(input "Bind-Adresse für den internen HTTP-Upstream.\n127.0.0.1 = nur gleicher Host, 0.0.0.0 = alle Interfaces." "$HTTP_BIND")
+      valid_bind "$HTTP_BIND" && break
+      box "Ungültige Bind-Adresse. Bitte IPv4-Adresse, 127.0.0.1 oder 0.0.0.0 verwenden."
+    done
+    while :; do HTTP_PORT=$(input "Interner HTTP-Port für deinen Reverse Proxy" "$HTTP_PORT"); valid_port "$HTTP_PORT" && break; box "Ungültiger Port. Erlaubt: 1–65535."; done
+    while :; do PUBLIC_PORT=$(input "Öffentlicher HTTPS-Port am vorgeschalteten Reverse Proxy" "$PUBLIC_PORT"); valid_port "$PUBLIC_PORT" && break; box "Ungültiger Port. Erlaubt: 1–65535."; done
   fi
+else
+  if yesno "Erweiterte Netzwerkeinstellungen öffnen?\n\nHier kannst du die veröffentlichten HTTP-/HTTPS-Ports ändern. Intern bleibt Caddy auf 80/443."; then
+    while :; do HTTP_PORT=$(input "Veröffentlichter HTTP-Port" "$HTTP_PORT"); valid_port "$HTTP_PORT" && break; box "Ungültiger Port. Erlaubt: 1–65535."; done
+    while :; do HTTPS_PORT=$(input "Veröffentlichter HTTPS-Port" "$HTTPS_PORT"); valid_port "$HTTPS_PORT" && break; box "Ungültiger Port. Erlaubt: 1–65535."; done
+    if [[ "$HTTP_PORT" == "$HTTPS_PORT" ]]; then box "HTTP- und HTTPS-Port dürfen nicht identisch sein."; exit 1; fi
+    if [[ "$TLS_MODE" == "public" && ( "$HTTP_PORT" != "80" || "$HTTPS_PORT" != "443" ) ]]; then
+      box "Hinweis zu Let's Encrypt:\n\nFür Caddys automatische ACME-Challenges müssen von außen normalerweise Port 80 und/oder 443 erreichbar sein. Abweichende Host-Ports funktionieren nur, wenn ein vorgeschalteter Router die öffentlichen Standardports passend weiterleitet."
+    fi
+  fi
+  PUBLIC_PORT="$HTTPS_PORT"
 fi
+
+if [[ "$PUBLIC_PORT" == "443" ]]; then PUBLIC_HOST="$DOMAIN"; else PUBLIC_HOST="$DOMAIN:$PUBLIC_PORT"; fi
+ORIGIN="$PUBLIC_SCHEME://$PUBLIC_HOST"
+APP_URL="$ORIGIN"
 
 TIME_ZONE=$(input "Zeitzone" "Europe/Berlin")
 INITIAL_LOCALE=$(menu "Standardsprache der ersten Familie" de "Deutsch" en "English")
@@ -105,7 +139,6 @@ while :; do
   box "Bitte mindestens 60 Sekunden als ganze Zahl angeben."
 done
 
-if [[ "$HTTPS_PORT" == "443" ]]; then ORIGIN="https://$DOMAIN"; APP_URL="$ORIGIN"; else ORIGIN="https://$DOMAIN:$HTTPS_PORT"; APP_URL="$ORIGIN"; fi
 OAUTH_CALLBACK="$ORIGIN/api/integration-oauth/callback/"
 GOOGLE_OAUTH_CLIENT_ID=""
 GOOGLE_OAUTH_CLIENT_SECRET=""
@@ -141,15 +174,27 @@ MICROSOFT_STATUS="aus"
 [[ -n "$GOOGLE_OAUTH_CLIENT_ID" ]] && GOOGLE_STATUS="konfiguriert"
 [[ -n "$MICROSOFT_OAUTH_CLIENT_ID" ]] && MICROSOFT_STATUS="konfiguriert"
 
-SUMMARY="TLS: $TLS_MODE\nHost: $DOMAIN\nHTTP-Port: $HTTP_PORT\nHTTPS-Port: $HTTPS_PORT\nApp-URL: $APP_URL\nZeitzone: $TIME_ZONE\nSprache: $INITIAL_LOCALE\nFamilie: $INITIAL_FAMILY_NAME\nAdmin: $DJANGO_SUPERUSER_USERNAME ($DJANGO_SUPERUSER_EMAIL)\nDatenbank: $POSTGRES_DB / $POSTGRES_USER\nWorker: $GUNICORN_WORKERS\nIntegrations-Sync: alle $INTEGRATION_SYNC_SECONDS Sekunden\nGoogle OAuth: $GOOGLE_STATUS\nMicrosoft OAuth: $MICROSOFT_STATUS\nWeb Push: $PUSH_STATUS\n\nSecrets werden in .env geschrieben und hier absichtlich nicht angezeigt."
+if [[ "$TLS_MODE" == "proxy" ]]; then
+  NETWORK_SUMMARY="Lokaler TLS/SSL-Listener: aus\nReverse-Proxy-Upstream: http://$HTTP_BIND:$HTTP_PORT\nÖffentliche App-URL: $APP_URL"
+else
+  NETWORK_SUMMARY="HTTP-Port: $HTTP_PORT\nHTTPS-Port: $HTTPS_PORT\nApp-URL: $APP_URL"
+fi
+SUMMARY="Modus: $TLS_MODE\nHost: $DOMAIN\n$NETWORK_SUMMARY\nZeitzone: $TIME_ZONE\nSprache: $INITIAL_LOCALE\nFamilie: $INITIAL_FAMILY_NAME\nAdmin: $DJANGO_SUPERUSER_USERNAME ($DJANGO_SUPERUSER_EMAIL)\nDatenbank: $POSTGRES_DB / $POSTGRES_USER\nWorker: $GUNICORN_WORKERS\nIntegrations-Sync: alle $INTEGRATION_SYNC_SECONDS Sekunden\nGoogle OAuth: $GOOGLE_STATUS\nMicrosoft OAuth: $MICROSOFT_STATUS\nWeb Push: $PUSH_STATUS\n\nSecrets werden in .env geschrieben und hier absichtlich nicht angezeigt."
 if ! yesno "$SUMMARY\n\nKonfiguration schreiben?"; then exit 0; fi
 
 cat > "$ENV_FILE" <<EOF
 # Generated by scripts/setup.sh on $(date -Iseconds)
 TLS_MODE=$TLS_MODE
+COMPOSE_FILE=$COMPOSE_FILE
 CADDYFILE=$CADDYFILE
 DOMAIN=$DOMAIN
+PUBLIC_SCHEME=$PUBLIC_SCHEME
+PUBLIC_HOST=$PUBLIC_HOST
+PUBLIC_PORT=$PUBLIC_PORT
+APP_URL=$APP_URL
+HTTP_BIND=$HTTP_BIND
 HTTP_PORT=$HTTP_PORT
+HTTPS_BIND=$HTTPS_BIND
 HTTPS_PORT=$HTTPS_PORT
 DJANGO_SECRET_KEY=$DJANGO_SECRET_KEY
 DJANGO_DEBUG=false
@@ -192,7 +237,7 @@ if yesno "Konfiguration gespeichert.\n\nDocker-Images jetzt bauen und fam-uh-le 
   cd "$ROOT"
   docker compose up -d --build
   echo
-  echo "fam-uh-le läuft unter: $APP_URL"
+  echo "fam-uh-le öffentlich: $APP_URL"
   echo "Status: docker compose ps"
   echo "Logs:   docker compose logs -f"
   echo "Backup: bash scripts/backup.sh"
@@ -204,7 +249,22 @@ if yesno "Konfiguration gespeichert.\n\nDocker-Images jetzt bauen und fam-uh-le 
     echo "Internal-CA aktiv. Browser zeigen zunächst eine Vertrauenswarnung, bis die lokale CA installiert ist."
     echo "CA exportieren: bash scripts/export-caddy-ca.sh"
     echo "Später öffentliches TLS: bash scripts/tls-mode.sh public"
+    echo "Hinter eigenen Reverse Proxy wechseln: bash scripts/tls-mode.sh proxy"
+  elif [[ "$TLS_MODE" == "proxy" ]]; then
+    echo
+    echo "fam-uh-le terminiert selbst kein TLS/SSL und veröffentlicht keinen Port 443."
+    echo "Reverse-Proxy-Upstream: http://$HTTP_BIND:$HTTP_PORT"
+    echo "Der vorgeschaltete Reverse Proxy muss HTTPS für $PUBLIC_HOST terminieren."
+    if [[ "$HTTP_BIND" == "127.0.0.1" ]]; then
+      echo "Hinweis: 127.0.0.1 ist nur von einem Reverse Proxy auf demselben Host erreichbar."
+    else
+      echo "Hinweis: Schütze den HTTP-Upstream per Firewall/Netzsegment vor direktem Internetzugriff."
+    fi
   fi
 else
-  box "Konfiguration gespeichert.\n\nStart später mit:\n  docker compose up -d --build\n\nDanach: $APP_URL"
+  if [[ "$TLS_MODE" == "proxy" ]]; then
+    box "Konfiguration gespeichert.\n\nStart später mit:\n  docker compose up -d --build\n\nReverse-Proxy-Upstream: http://$HTTP_BIND:$HTTP_PORT\nÖffentlich: $APP_URL"
+  else
+    box "Konfiguration gespeichert.\n\nStart später mit:\n  docker compose up -d --build\n\nDanach: $APP_URL"
+  fi
 fi
