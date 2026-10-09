@@ -1,11 +1,26 @@
 from decimal import Decimal
 
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from rest_framework import serializers
 
 from family.models import Family, Membership
 from .models import Expense, ExpenseShare, ReceiptExtraction, Settlement
 from .money import balance_summary, build_split
+
+
+class LocalizedDecimalField(serializers.DecimalField):
+    def to_internal_value(self, data):
+        if isinstance(data, str):
+            text = data.strip().replace(" ", "")
+            if "," in text and "." in text:
+                if text.rfind(",") > text.rfind("."):
+                    text = text.replace(".", "").replace(",", ".")
+                else:
+                    text = text.replace(",", "")
+            else:
+                text = text.replace(",", ".")
+            data = text
+        return super().to_internal_value(data)
 
 
 class ExpenseShareSerializer(serializers.ModelSerializer):
@@ -39,9 +54,11 @@ class ExpenseSerializer(serializers.ModelSerializer):
     extraction = ReceiptExtractionSerializer(read_only=True)
     paid_by_name = serializers.SerializerMethodField()
     receipt_available = serializers.SerializerMethodField()
+    total_amount = LocalizedDecimalField(max_digits=12, decimal_places=2, allow_null=True, required=False)
     participants = serializers.ListField(child=serializers.UUIDField(), write_only=True, required=False)
     split_type = serializers.ChoiceField(choices=ExpenseShare.SplitType.choices, write_only=True, required=False, default=ExpenseShare.SplitType.EQUAL)
-    split_values = serializers.DictField(child=serializers.DecimalField(max_digits=12, decimal_places=4), write_only=True, required=False)
+    split_values = serializers.DictField(child=LocalizedDecimalField(max_digits=12, decimal_places=4), write_only=True, required=False)
+    client_request_id = serializers.UUIDField(write_only=True, required=False, allow_null=True)
     finalize = serializers.BooleanField(write_only=True, required=False, default=False)
 
     def get_paid_by_name(self, obj):
@@ -127,10 +144,36 @@ class ExpenseSerializer(serializers.ModelSerializer):
         split_type = validated_data.pop("split_type", ExpenseShare.SplitType.EQUAL)
         split_values = validated_data.pop("split_values", None)
         validated_data.pop("finalize", None)
-        validated_data["created_by"] = self.context["request"].user
+        request_user = self.context["request"].user
+        validated_data["created_by"] = request_user
         validated_data["status"] = Expense.Status.POSTED
         validated_data.setdefault("source", Expense.Source.MANUAL)
-        expense = Expense.objects.create(**validated_data)
+        validated_data["title"] = (validated_data.get("title") or "").strip() or "Ausgabe"
+
+        request_id = validated_data.get("client_request_id")
+        if request_id:
+            existing = Expense.objects.filter(
+                family=validated_data["family"],
+                created_by=request_user,
+                client_request_id=request_id,
+            ).first()
+            if existing:
+                return existing
+
+        try:
+            with transaction.atomic():
+                expense = Expense.objects.create(**validated_data)
+        except IntegrityError:
+            if request_id:
+                existing = Expense.objects.filter(
+                    family=validated_data["family"],
+                    created_by=request_user,
+                    client_request_id=request_id,
+                ).first()
+                if existing:
+                    return existing
+            raise
+
         self._write_shares(expense, participants, split_type, split_values)
         return expense
 
@@ -139,6 +182,7 @@ class ExpenseSerializer(serializers.ModelSerializer):
         participants = validated_data.pop("participants", None)
         split_type = validated_data.pop("split_type", None)
         split_values = validated_data.pop("split_values", None)
+        validated_data.pop("client_request_id", None)
         finalize = validated_data.pop("finalize", False)
         for key, value in validated_data.items():
             setattr(instance, key, value)
@@ -162,12 +206,13 @@ class ExpenseSerializer(serializers.ModelSerializer):
         model = Expense
         fields = [
             "id", "family", "title", "merchant", "occurred_at", "total_amount", "currency",
-            "paid_by", "paid_by_name", "created_by", "receipt_status", "receipt_available", "source",
+            "paid_by", "paid_by_name", "created_by", "client_request_id", "receipt_status", "receipt_available", "source",
             "status", "notes", "shares", "extraction", "participants", "split_type", "split_values",
             "finalize", "created_at", "updated_at",
         ]
         read_only_fields = ["created_by", "receipt_status", "source", "status"]
         extra_kwargs = {"paid_by": {"required": False}}
+        validators = []
 
 
 class SettlementSerializer(serializers.ModelSerializer):
