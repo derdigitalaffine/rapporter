@@ -75,7 +75,7 @@ class WasteCalendarDashboardTests(TestCase):
 
         response = self.client.get(f"/api/dashboard/?family={self.family.id}")
         self.assertEqual(response.status_code, 200, response.data)
-        ids = {row["id"] for row in response.data["events"]}
+        ids = {str(row["id"]) for row in response.data["events"]}
         self.assertIn(str(waste[0].id), ids)
         self.assertIn(str(waste[1].id), ids)
         self.assertNotIn(str(waste[2].id), ids)
