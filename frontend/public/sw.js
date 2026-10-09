@@ -1,9 +1,20 @@
-const CACHE='fam-uh-le-v5';
-const APP_SHELL=['/','/manifest.webmanifest','/brand/icon-192.png','/brand/icon-512.png'];
+const CACHE='fam-uh-le-v6';
+const STATIC_SHELL=['/manifest.webmanifest','/brand/icon-192.png','/brand/icon-512.png'];
+
+async function cacheAppShell(){
+  const cache=await caches.open(CACHE);
+  await cache.addAll(STATIC_SHELL);
+  const response=await fetch('/',{cache:'no-store'});
+  if(!response.ok)throw new Error(`shell_${response.status}`);
+  const html=await response.clone().text();
+  await cache.put('/',response);
+  const assets=[...html.matchAll(/(?:src|href)=["'](\/assets\/[^"']+)["']/g)].map(match=>match[1]);
+  await Promise.all([...new Set(assets)].map(asset=>cache.add(asset)));
+}
 
 self.addEventListener('install',event=>{
   self.skipWaiting();
-  event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(APP_SHELL)));
+  event.waitUntil(cacheAppShell());
 });
 
 self.addEventListener('activate',event=>{
@@ -23,15 +34,21 @@ self.addEventListener('fetch',event=>{
   if(request.method!=='GET'||isPrivateRequest(request))return;
   const url=new URL(request.url);
 
-  // Vite bundles are content-hashed and should never be pinned by the service worker.
-  // Let the browser HTTP cache handle them so a deployment cannot mix old HTML with old JS.
-  if(url.pathname.startsWith('/assets/'))return;
+  // Vite bundles are content-hashed. Network-first keeps deployments fresh while
+  // the matching hashed bundle remains available when the device is offline.
+  if(url.pathname.startsWith('/assets/')){
+    event.respondWith(fetch(request).then(response=>{
+      if(response.ok){const copy=response.clone();event.waitUntil(caches.open(CACHE).then(cache=>cache.put(request,copy)))}
+      return response;
+    }).catch(()=>caches.match(request).then(cached=>cached||Response.error())));
+    return;
+  }
 
   if(request.mode==='navigate'){
     event.respondWith(fetch(request).then(response=>{
       if(response.ok){
         const copy=response.clone();
-        caches.open(CACHE).then(cache=>cache.put('/',copy));
+        event.waitUntil(caches.open(CACHE).then(cache=>cache.put('/',copy)));
       }
       return response;
     }).catch(()=>caches.match('/')));
