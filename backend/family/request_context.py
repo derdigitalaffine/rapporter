@@ -3,6 +3,7 @@ from contextvars import ContextVar
 
 _actor = ContextVar("famuhle_notification_actor", default=None)
 _path = ContextVar("famuhle_notification_path", default="")
+_seen = ContextVar("famuhle_notification_seen", default=frozenset())
 
 
 def set_current_actor(user, path=""):
@@ -19,9 +20,19 @@ def current_path():
     return _path.get()
 
 
+def mark_notification_once(key):
+    seen = set(_seen.get())
+    if key in seen:
+        return False
+    seen.add(key)
+    _seen.set(frozenset(seen))
+    return True
+
+
 def clear_current_actor():
     _actor.set(None)
     _path.set("")
+    _seen.set(frozenset())
 
 
 class ActorContextMiddleware:

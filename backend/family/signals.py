@@ -1,10 +1,10 @@
-from django.db.models.signals import post_save, pre_delete, pre_save
+from django.db.models.signals import post_delete, post_save, pre_delete, pre_save
 from django.dispatch import receiver
 
 from .domain_notifications import notify_domain_event
 from .memory import remember_entry
 from .models import FamilyEvent, InboxItem, Membership, RoutineLog, ShoppingItem, ShoppingList, Task, TaskList
-from .request_context import current_actor, current_path
+from .request_context import current_actor, current_path, mark_notification_once
 
 
 def _previous(instance, model, fields):
@@ -94,6 +94,25 @@ def shopping_item_after_save(sender, instance, created, **kwargs):
         notify_domain_event(instance.shopping_list.family, "shopping.item.completed" if instance.checked else "shopping.item.reopened", actor=actor, context=context)
     elif any(previous.get(field) != getattr(instance, field) for field in ["name", "quantity", "category", "note", "aisle", "shopping_list_id"]):
         notify_domain_event(instance.shopping_list.family, "shopping.item.updated", actor=actor, context=context)
+
+
+@receiver(post_delete, sender=ShoppingItem)
+def shopping_item_after_delete(sender, instance, **kwargs):
+    actor = current_actor()
+    path = current_path()
+    if not actor or "/smart/shopping-lists/" not in path:
+        return
+    key = f"shopping.items.cleared:{instance.shopping_list_id}"
+    if not mark_notification_once(key):
+        return
+    shopping = ShoppingList.objects.filter(id=instance.shopping_list_id).select_related("family").first()
+    if shopping:
+        notify_domain_event(
+            shopping.family,
+            "shopping.items.cleared",
+            actor=actor,
+            context={"list": shopping.name, "list_id": shopping.id},
+        )
 
 
 @receiver(pre_save, sender=FamilyEvent)

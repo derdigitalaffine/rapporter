@@ -4,7 +4,7 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 from rest_framework.test import APIClient
 
-from .models import Family, Membership, ShoppingList, TaskList
+from .models import Family, Membership, ShoppingItem, ShoppingList, TaskList
 from .models_features import LoyaltyCard, NotificationPreference
 
 
@@ -71,6 +71,17 @@ class DomainNotificationTests(TestCase):
         self.assertEqual(response.status_code, 201)
         self.assertTrue(any(call.args[0] == self.bob and "assigned" in call.kwargs.get("tag", "") for call in sender.call_args_list))
         self.assertFalse(any(call.args[0] == self.outsider for call in sender.call_args_list))
+
+    @patch("family.domain_notifications.send_user_push", return_value={"sent": 1, "errors": 0})
+    def test_clear_checked_sends_one_deduplicated_family_event(self, sender):
+        ShoppingItem.objects.create(shopping_list=self.shopping, name="Milch", checked=True)
+        ShoppingItem.objects.create(shopping_list=self.shopping, name="Brot", checked=True)
+        sender.reset_mock()
+        response = self.client.post(f"/api/smart/shopping-lists/{self.shopping.id}/clear-checked/", {}, format="json")
+        self.assertEqual(response.status_code, 200)
+        matching = [call for call in sender.call_args_list if "shopping.items.cleared" in call.kwargs.get("tag", "")]
+        self.assertEqual(len(matching), 1)
+        self.assertEqual(matching[0].args[0], self.bob)
 
     def test_preferences_are_per_family_membership(self):
         response = self.client.patch(f"/api/push/preferences/?family={self.family.id}", {"shopping": False, "task_assigned": False}, format="json")
