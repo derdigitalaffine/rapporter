@@ -1,3 +1,4 @@
+import unicodedata
 import uuid
 from django.db import migrations, models
 import django.db.models.deletion
@@ -6,7 +7,7 @@ import django.db.models.deletion
 def backfill_purchases(apps,schema_editor):
     ShoppingItem=apps.get_model('family','ShoppingItem');ShoppingPurchaseEvent=apps.get_model('family','ShoppingPurchaseEvent')
     for item in ShoppingItem.objects.filter(checked=True,checked_at__isnull=False).select_related('shopping_list'):
-        name=(item.name or '').strip();normalized=name.casefold()
+        name=(item.name or '').strip();normalized=unicodedata.normalize('NFKC',name).casefold()
         if normalized:ShoppingPurchaseEvent.objects.create(family_id=item.shopping_list.family_id,normalized_name=normalized,name=name,quantity=item.quantity,category=item.category,purchased_at=item.checked_at,source_item_id=item.id)
 
 
