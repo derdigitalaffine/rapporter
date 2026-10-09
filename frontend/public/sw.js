@@ -1,5 +1,19 @@
-const CACHE='fam-uh-le-v9';
+const CACHE='fam-uh-le-v10';
 const STATIC_SHELL=['/manifest.webmanifest','/brand/icon-192.png','/brand/icon-512.png','/brand/icon.svg'];
+
+async function putStatic(cache,key,response){
+  const headers=new Headers(response.headers);
+  // Preview/deployment servers may emit `Vary: Origin`. Hashed same-origin assets
+  // are immutable by URL, so keeping that header would make Cache API lookups
+  // depend on whether the original request happened in the worker or the page.
+  headers.delete('vary');
+  const body=await response.arrayBuffer();
+  await cache.put(key,new Response(body,{
+    status:response.status,
+    statusText:response.statusText,
+    headers,
+  }));
+}
 
 async function cacheAssetGraph(cache,asset,seen=new Set()){
   const url=new URL(asset,self.location.origin);
@@ -7,10 +21,9 @@ async function cacheAssetGraph(cache,asset,seen=new Set()){
   seen.add(url.pathname);
   const response=await fetch(url.pathname,{cache:'no-store'});
   if(!response.ok)throw new Error(`asset_${response.status}_${url.pathname}`);
-  const stored=response.clone();
   let source='';
-  if(url.pathname.endsWith('.js'))source=await response.text();
-  await cache.put(url.pathname,stored);
+  if(url.pathname.endsWith('.js'))source=await response.clone().text();
+  await putStatic(cache,url.pathname,response);
   if(!source)return;
   const dependencies=[...source.matchAll(/["'](\.\/[^"']+\.(?:js|css))["']/g)].map(match=>new URL(match[1],url).pathname);
   for(const dependency of new Set(dependencies))await cacheAssetGraph(cache,dependency,seen);
@@ -59,16 +72,15 @@ async function networkFirst(request,{cacheKey=request}={}){
 }
 
 async function immutableAsset(request){
-  // Vite dev/preview responses vary on Origin, while the same immutable hashed
-  // asset can be requested once by the worker (without Origin) and later by a
-  // module script (with Origin). The content hash in the URL is the identity.
-  const cached=await caches.match(request,{ignoreVary:true});
+  const url=new URL(request.url);
+  const key=url.pathname;
+  const cache=await caches.open(CACHE);
+  const cached=await cache.match(key,{ignoreVary:true});
   if(cached)return cached;
   try{
     const response=await fetch(request);
     if(!response||!response.ok)throw new Error(`asset_network_${response?.status||0}`);
-    const copy=response.clone();
-    await caches.open(CACHE).then(cache=>cache.put(request,copy));
+    await putStatic(cache,key,response.clone());
     return response;
   }catch{return Response.error()}
 }
@@ -78,8 +90,8 @@ self.addEventListener('fetch',event=>{
   if(request.method!=='GET'||isPrivateRequest(request))return;
   const url=new URL(request.url);
 
-  // Vite assets use content hashes; an exact cached URL is immutable and safe to
-  // serve cache-first. A new deployment gets new URLs and therefore a fresh fetch.
+  // Vite assets use content hashes; an exact cached path is immutable and safe to
+  // serve cache-first. New deployments use new paths and therefore fetch afresh.
   if(url.pathname.startsWith('/assets/')){
     event.respondWith(immutableAsset(request));
     return;
