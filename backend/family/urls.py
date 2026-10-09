@@ -2,6 +2,7 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 from .views import FamilyViewSet, TaskListViewSet, TaskViewSet, ShoppingListViewSet, ShoppingItemViewSet, RoutineViewSet, IntegrationSourceViewSet, AutomationRuleViewSet, FamilyEventViewSet, InboxItemViewSet, health
 from .dashboard_views import dashboard
+from .feature_views import LoyaltyCardViewSet, notification_preferences
 from .invitation_views import FamilyInvitationViewSet, invitation_info, invitation_register, invitation_accept
 from .membership_views import MembershipViewSet
 from .memory_views import shopping_memory_suggestions, task_memory_suggestions
@@ -32,6 +33,7 @@ router.register("automation-rules", AutomationRuleViewSet, basename="automation-
 router.register("events", FamilyEventViewSet, basename="event")
 router.register("inbox", InboxItemViewSet, basename="inbox")
 router.register("invitations", FamilyInvitationViewSet, basename="invitation")
+router.register("loyalty-cards", LoyaltyCardViewSet, basename="loyalty-card")
 
 urlpatterns = [
     path("health/", health),
@@ -40,6 +42,7 @@ urlpatterns = [
     path("invite/<str:token>/register/", invitation_register),
     path("invite/<str:token>/accept/", invitation_accept),
     path("push/config/", push_config),
+    path("push/preferences/", notification_preferences),
     path("push/subscribe/", push_subscribe),
     path("push/unsubscribe/", push_unsubscribe),
     path("push/test/", push_test),
