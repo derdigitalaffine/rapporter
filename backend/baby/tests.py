@@ -1,5 +1,5 @@
 import uuid
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone as dt_timezone
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -119,13 +119,15 @@ class BabyDomainTests(TestCase):
         self.assertEqual(BabyCareLog.objects.filter(baby=baby).count(), 1)
 
     def test_corrected_age_and_growth_reference_are_explicit_and_non_diagnostic(self):
+        # 22:30 UTC is already the next calendar day in Europe/Berlin. Age is
+        # a family-local calendar concept, not the raw UTC date of measured_at.
+        measured = datetime(2026, 10, 10, 22, 30, tzinfo=dt_timezone.utc)
         baby = self.create_baby(
-            birth_date=date.today() - timedelta(days=70),
+            birth_date=date(2026, 8, 2),
             gestational_age_weeks=32,
             gestational_age_days=0,
             growth_reference_sex="unspecified",
         )
-        measured = timezone.now()
         self.assertEqual(corrected_age_days(baby, measured), 14)
         payload = growth_payload(self.owner, baby.id)
         self.assertEqual(payload["reference"]["key"], "who_2006_corrected")
