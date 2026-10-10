@@ -54,13 +54,21 @@ jobs:
               .filter(Boolean)
               .map((label) => label.toLowerCase());
 
-            const closingRefs = (body) => {
-              const refs = new Set();
-              const pattern = /(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#(\d+)/gi;
-              for (const match of (body || '').matchAll(pattern)) {
-                refs.add(Number(match[1]));
+            const issueReferences = (body) => {
+              const linked = new Set();
+              const closing = new Set();
+              const text = body || '';
+              const closingPattern = /(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#(\d+)/gi;
+              const linkedPattern = /(?:ref(?:s|erences?)?|part\s+of)\s+#(\d+)/gi;
+              for (const match of text.matchAll(closingPattern)) {
+                const issueNumber = Number(match[1]);
+                closing.add(issueNumber);
+                linked.add(issueNumber);
               }
-              return refs;
+              for (const match of text.matchAll(linkedPattern)) {
+                linked.add(Number(match[1]));
+              }
+              return { linked, closing };
             };
 
             const coordinationKeys = (body) => {
@@ -96,12 +104,14 @@ jobs:
                 pull_number: pr.number,
                 per_page: 100,
               });
+              const refs = issueReferences(pr.body);
               prData.push({
                 number: pr.number,
                 title: pr.title,
                 url: pr.html_url,
                 updatedAt: pr.updated_at,
-                refs: closingRefs(pr.body),
+                linkedRefs: refs.linked,
+                closingRefs: refs.closing,
                 files: new Set(files.map((file) => file.filename)),
               });
             }
@@ -118,7 +128,7 @@ jobs:
               const claimComments = comments.filter((comment) => (comment.body || '').includes(claimMarker));
               const latestClaim = claimComments.at(-1);
               const keys = latestClaim ? coordinationKeys(latestClaim.body) : [];
-              const linkedPrs = prData.filter((pr) => pr.refs.has(issue.number));
+              const linkedPrs = prData.filter((pr) => pr.linkedRefs.has(issue.number));
               const latestVisibleActivity = Math.max(
                 Date.parse(issue.updated_at || 0),
                 ...linkedPrs.map((pr) => Date.parse(pr.updatedAt || 0)),
@@ -139,14 +149,14 @@ jobs:
               .filter(([, owners]) => owners.length > 1)
               .map(([key, owners]) => ({ key, owners }));
 
-            const issueToPrs = new Map();
+            const issueToClosingPrs = new Map();
             for (const pr of prData) {
-              for (const issueNumber of pr.refs) {
-                if (!issueToPrs.has(issueNumber)) issueToPrs.set(issueNumber, []);
-                issueToPrs.get(issueNumber).push(pr);
+              for (const issueNumber of pr.closingRefs) {
+                if (!issueToClosingPrs.has(issueNumber)) issueToClosingPrs.set(issueNumber, []);
+                issueToClosingPrs.get(issueNumber).push(pr);
               }
             }
-            const sameIssueCollisions = [...issueToPrs.entries()]
+            const sameIssueCollisions = [...issueToClosingPrs.entries()]
               .filter(([, list]) => list.length > 1)
               .map(([issueNumber, list]) => ({ issueNumber, list }));
 
@@ -197,7 +207,7 @@ jobs:
               for (const row of activeRows.slice(0, 50)) {
                 const prs = row.linkedPrs.length
                   ? row.linkedPrs.map((pr) => `#${pr.number}`).join(', ')
-                  : 'noch kein schließender PR';
+                  : 'noch kein referenzierender offener PR';
                 const keys = row.keys.length ? row.keys.map((key) => `\`${key}\``).join(', ') : 'keine';
                 lines.push(`- #${row.issue.number} ${row.issue.title} · Claim: ${row.hasClaim ? '✅' : '⚠️ fehlt'} · Keys: ${keys} · PR: ${prs}`);
               }
@@ -205,7 +215,7 @@ jobs:
 
             lines.push('', '### Kollisionssignale');
             if (semanticCollisions.length === 0 && sameIssueCollisions.length === 0 && fileOverlaps.length === 0) {
-              lines.push('- ✅ Keine semantischen Claim-, parallelen PR-Ziel- oder exakten Dateikollisionen erkannt.');
+              lines.push('- ✅ Keine semantischen Claim-, parallelen Closing-PR- oder exakten Dateikollisionen erkannt.');
             }
             for (const collision of semanticCollisions.slice(0, 40)) {
               lines.push(`- ⚠️ Coordination Key \`${collision.key}\` wird parallel von ${collision.owners.map((issue) => `#${issue.number}`).join(', ')} beansprucht. Vertrag/Split im Thread klären.`);
@@ -224,7 +234,7 @@ jobs:
               lines.push('- ✅ Keine verwaisten oder >72h stillen aktiven Claims erkannt.');
             } else {
               for (const issue of claimsWithoutPr.slice(0, 30)) {
-                lines.push(`- ℹ️ #${issue.number}: aktiv, aber noch kein schließender offener PR sichtbar.`);
+                lines.push(`- ℹ️ #${issue.number}: aktiv, aber noch kein referenzierender offener PR sichtbar.`);
               }
               for (const issue of staleClaims.slice(0, 30)) {
                 lines.push(`- 🕒 #${issue.number}: seit >72h keine sichtbare Issue-/verlinkte-PR-Aktivität; Claim prüfen oder Handoff dokumentieren.`);
