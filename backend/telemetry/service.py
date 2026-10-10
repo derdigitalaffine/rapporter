@@ -8,7 +8,13 @@ from django.utils import timezone
 
 from family.models import Family, Membership
 
-from .catalog import TelemetrySchemaError, validate_audit_event, validate_usage_event
+from .catalog import (
+    AUDIT_EVENT_SPECS,
+    USAGE_EVENT_KEYS,
+    TelemetrySchemaError,
+    validate_audit_event,
+    validate_usage_event,
+)
 from .models import AuditEvent, DailyRollup, UsageEvent
 
 logger = logging.getLogger("telemetry")
@@ -29,6 +35,11 @@ def _aware_utc(value):
 def _hour_bucket(value):
     value = _aware_utc(value)
     return value.replace(minute=0, second=0, microsecond=0)
+
+
+def _log_event_key(event_key, allowed):
+    value = str(event_key or "")
+    return value if value in allowed else "<unknown>"
 
 
 def record_audit_event(
@@ -74,7 +85,7 @@ def try_record_audit_event(event_key, **kwargs):
     except Exception as exc:
         logger.error(
             "audit_event_write_failed event_key=%s error_class=%s",
-            event_key,
+            _log_event_key(event_key, AUDIT_EVENT_SPECS),
             exc.__class__.__name__,
         )
         return None
@@ -110,7 +121,7 @@ def try_record_usage_event(event_key, **kwargs):
     except Exception as exc:
         logger.error(
             "usage_event_write_failed event_key=%s error_class=%s",
-            event_key,
+            _log_event_key(event_key, USAGE_EVENT_KEYS),
             exc.__class__.__name__,
         )
         return None
