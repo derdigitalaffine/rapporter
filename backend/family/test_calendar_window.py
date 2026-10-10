@@ -94,11 +94,14 @@ class CalendarWindowTests(TestCase):
         self.assertEqual([row["title"] for row in rows], ["Undated"])
         self.assertEqual(str(rows[0]["id"]), str(undated.id))
 
-    def test_range_requires_both_bounds_and_caps_two_years(self):
-        missing_end = self.client.get("/api/events/", {"family": str(self.family.id), "start": "2026-10-11"})
+    def test_range_caps_two_years_and_single_bound_keeps_legacy_read(self):
+        single_bound = self.client.get(
+            "/api/events/",
+            {"family": str(self.family.id), "start": "2026-10-11", "birthdays": "0"},
+        )
         too_large = self.client.get(
             "/api/events/",
             {"family": str(self.family.id), "start": "2024-01-01", "end": "2027-01-03"},
         )
-        self.assertEqual(missing_end.status_code, 400)
+        self.assertEqual(single_bound.status_code, 200)
         self.assertEqual(too_large.status_code, 400)
