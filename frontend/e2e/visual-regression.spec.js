@@ -18,7 +18,7 @@ async function snapshot(page,name){
 }
 async function bottom(page,label){await page.locator('.bottom-nav').getByRole('button',{name:new RegExp(`^${label}$`)}).click()}
 
-test('visual · Today',async({page})=>{await bootVisual(page);await expect(page.getByRole('heading',{name:'Hallo Familie'})).toBeVisible();await snapshot(page,'today')});
+test('visual · Today',async({page})=>{await bootVisual(page);await expect(page.getByRole('heading',{name:'Hey Alex, heute jonglieren wir mit Stil.'})).toBeVisible();await snapshot(page,'today')});
 test('visual · Tasks',async({page})=>{await bootVisual(page);await bottom(page,'Aufgaben');await expect(page.getByRole('heading',{name:'Aufgaben',exact:true})).toBeVisible();await snapshot(page,'tasks')});
 test('visual · Shopping planning',async({page})=>{await bootVisual(page);await bottom(page,'Einkauf');await expect(page.getByText('Milch',{exact:true})).toBeVisible();await snapshot(page,'shopping-planning')});
 test('visual · Shopping store mode',async({page})=>{await bootVisual(page);await bottom(page,'Einkauf');await page.getByRole('button',{name:/Im Laden/i}).click();await expect(page.locator('.store-focus')).toBeVisible();await snapshot(page,'shopping-store')});
