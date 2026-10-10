@@ -9,6 +9,14 @@ from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 
 from auth_abuse.service import enforce
+from auth_identity.service import (
+    EmailConflictError,
+    EmailIdentityError,
+    create_primary_identity,
+    generate_internal_username,
+    normalize_email,
+    queue_verification,
+)
 
 from .auth_views import set_user_cookies
 from .models import Family, FamilyInvitation, Membership
@@ -52,9 +60,12 @@ def public_invite(invite):
 
 
 def validate_invite_email(invite, email):
-    if invite.email and invite.email.lower() != (email or "").strip().lower():
+    if not invite.email:
+        return True
+    try:
+        return normalize_email(invite.email) == normalize_email(email)
+    except EmailIdentityError:
         return False
-    return True
 
 
 def accept_for_user(invite, user, display_name=""):
@@ -62,10 +73,11 @@ def accept_for_user(invite, user, display_name=""):
         raise ValueError("Diese Einladung ist abgelaufen, widerrufen oder bereits verwendet.")
     if not validate_invite_email(invite, user.email):
         raise ValueError("Diese Einladung ist für eine andere E-Mail-Adresse bestimmt.")
+    fallback_name = (user.email or "").split("@", 1)[0] or "Mitglied"
     membership, created = Membership.objects.get_or_create(
         family=invite.family,
         user=user,
-        defaults={"role": invite.role, "display_name": display_name or invite.display_name or user.get_short_name() or user.username},
+        defaults={"role": invite.role, "display_name": display_name or invite.display_name or user.get_short_name() or fallback_name},
     )
     if not created:
         membership.role = invite.role if membership.role == Membership.Role.GUEST else membership.role
@@ -169,22 +181,32 @@ def invitation_register(request, token):
         invite = FamilyInvitation.objects.select_for_update().select_related("family").filter(token=token).first()
         if not invite or not invite.is_active:
             return Response({"detail": "Diese Einladung ist nicht mehr gültig."}, status=status.HTTP_400_BAD_REQUEST)
-        username = (request.data.get("username") or "").strip()
-        email = (request.data.get("email") or "").strip().lower()
         password = request.data.get("password") or ""
-        display_name = (request.data.get("display_name") or "").strip()
-        if len(username) < 3 or len(password) < 10:
-            return Response({"detail": "Benutzername mindestens 3, Passwort mindestens 10 Zeichen."}, status=status.HTTP_400_BAD_REQUEST)
-        if User.objects.filter(username__iexact=username).exists():
-            return Response({"detail": "Benutzername ist bereits vergeben. Bitte anmelden."}, status=status.HTTP_409_CONFLICT)
-        if email and User.objects.filter(email__iexact=email).exists():
-            return Response({"detail": "E-Mail ist bereits registriert. Bitte anmelden."}, status=status.HTTP_409_CONFLICT)
+        display_name = (request.data.get("display_name") or invite.display_name or "").strip()
+        try:
+            email = normalize_email(request.data.get("email") or "")
+        except EmailIdentityError:
+            return Response({"detail": "Bitte eine gültige E-Mail-Adresse angeben."}, status=status.HTTP_400_BAD_REQUEST)
+        if len(password) < 10:
+            return Response({"detail": "Passwort mindestens 10 Zeichen."}, status=status.HTTP_400_BAD_REQUEST)
         if not validate_invite_email(invite, email):
             return Response({"detail": "Diese Einladung ist für eine andere E-Mail-Adresse bestimmt."}, status=status.HTTP_403_FORBIDDEN)
-        user = User.objects.create_user(username=username, email=email, password=password, first_name=display_name)
-        membership = accept_for_user(invite, user, display_name)
+        visible_name = display_name or email.split("@", 1)[0]
+        try:
+            user = User.objects.create_user(
+                username=generate_internal_username(),
+                email=email,
+                password=password,
+                first_name=visible_name,
+            )
+            identity = create_primary_identity(user, email)
+        except (EmailConflictError, EmailIdentityError):
+            return Response({"detail": "E-Mail-Adresse kann nicht verwendet werden."}, status=status.HTTP_409_CONFLICT)
+        membership = accept_for_user(invite, user, visible_name)
+        queue_verification(identity, locale=invite.family.locale)
         response = Response({
             "authenticated": True,
+            "email_verification_required": True,
             "membership": MembershipSerializer(membership).data,
             "family": {"id": str(invite.family_id), "name": invite.family.name},
         }, status=status.HTTP_201_CREATED)
