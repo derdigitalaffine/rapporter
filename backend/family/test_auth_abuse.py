@@ -102,6 +102,56 @@ class AuthAbuseIntegrationTests(TestCase):
         self.assertEqual(responses[5].status_code, 429)
         self.assertEqual(responses[5].data["code"], "rate_limited")
 
+    def test_foreign_family_cannot_consume_invite_budget(self):
+        User = get_user_model()
+        foreign_owner = User.objects.create_user(
+            username="bob",
+            email="bob@example.com",
+            password="test-pass-123",
+        )
+        foreign_family = Family.objects.create(name="Bob Family", slug="abuse-bob-family")
+        Membership.objects.create(
+            family=foreign_family,
+            user=foreign_owner,
+            role=Membership.Role.OWNER,
+            display_name="Bob",
+        )
+        expires_at = (timezone.now() + timedelta(days=7)).isoformat()
+
+        attacker = APIClient()
+        attacker.force_authenticate(self.user)
+        responses = [
+            attacker.post(
+                "/api/invitations/",
+                {
+                    "family": str(foreign_family.id),
+                    "role": "adult",
+                    "email": f"poison-{index}@example.com",
+                    "expires_at": expires_at,
+                },
+                format="json",
+                REMOTE_ADDR="198.51.100.56",
+            )
+            for index in range(6)
+        ]
+        self.assertEqual([response.status_code for response in responses], [403] * 6)
+        self.assertFalse(AuthAbuseBucket.objects.filter(scope="invite.create").exists())
+
+        owner = APIClient()
+        owner.force_authenticate(foreign_owner)
+        response = owner.post(
+            "/api/invitations/",
+            {
+                "family": str(foreign_family.id),
+                "role": "adult",
+                "email": "legitimate@example.com",
+                "expires_at": expires_at,
+            },
+            format="json",
+            REMOTE_ADDR="198.51.100.57",
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+
     def test_superadmin_sensitive_mutations_are_rate_limited(self):
         User = get_user_model()
         admin = User.objects.create_superuser(

@@ -25,6 +25,13 @@ services:
         condition: service_healthy
     environment:
       POSTGRES_HOST: db
+      # In the standard topology every public request reaches Django through
+      # exactly this pinned Caddy peer. This keeps X-Forwarded-For useful for
+      # abuse keys without trusting an entire private Docker address range.
+      AUTH_TRUSTED_PROXY_CIDRS: ${AUTH_TRUSTED_PROXY_CIDRS:-172.31.254.2/32}
+    networks:
+      - default
+      - familyos_proxy
     volumes:
       - avatar_media:/app/media
     healthcheck:
@@ -90,12 +97,21 @@ services:
       DOMAIN: ${DOMAIN:-localhost}
       PUBLIC_SCHEME: ${PUBLIC_SCHEME:-https}
       PUBLIC_HOST: ${PUBLIC_HOST:-localhost}
+    networks:
+      familyos_proxy:
+        ipv4_address: ${FAMILYOS_CADDY_IP:-172.31.254.2}
     ports:
       - "${HTTP_BIND:-0.0.0.0}:${HTTP_PORT:-80}:80"
     volumes:
       - ./${CADDYFILE:-Caddyfile.selfsigned}:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
+
+networks:
+  familyos_proxy:
+    ipam:
+      config:
+        - subnet: ${FAMILYOS_PROXY_SUBNET:-172.31.254.0/28}
 
 volumes:
   postgres_data:
