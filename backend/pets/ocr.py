@@ -6,7 +6,8 @@ from datetime import datetime
 from django.utils import timezone
 from pypdf import PdfReader
 
-from expenses.ocr import _ocr_image, normalize_receipt_upload, parse_receipt_text
+from documents.legacy_image_ocr import normalize_image_upload, ocr_image_content
+from expenses.ocr import parse_receipt_text
 
 from .models import PetDocument
 
@@ -177,7 +178,7 @@ def prepare_pet_upload(upload):
             raise ValueError("Das PDF konnte nicht gelesen werden.") from exc
         stored, stored_type, warnings = raw, "application/pdf", []
     else:
-        stored, stored_type, warnings = normalize_receipt_upload(upload=UploadAdapter(raw, filename, content_type))
+        stored, stored_type, warnings = normalize_image_upload(UploadAdapter(raw, filename, content_type))
     return {
         "content": stored,
         "content_type": stored_type,
@@ -200,7 +201,7 @@ def _extract_text(document):
             warnings.append("no_embedded_text")
         return text, warnings
     try:
-        return _ocr_image(raw)[:MAX_DOCUMENT_TEXT], warnings
+        return ocr_image_content(raw)[:MAX_DOCUMENT_TEXT], warnings
     except Exception:
         warnings.append("ocr_failed")
         return "", warnings
