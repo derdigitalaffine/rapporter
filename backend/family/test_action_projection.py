@@ -23,14 +23,11 @@ class ActionProjectionTests(TestCase):
         self.other = Family.objects.create(name="Other Actions", slug="other-actions", timezone="Europe/Berlin")
         Membership.objects.create(family=self.family, user=self.alice, role=Membership.Role.OWNER)
         Membership.objects.create(family=self.other, user=self.bob, role=Membership.Role.OWNER)
-        self.task_list = TaskList.objects.create(family=self.family, name="Allgemein", workflow_enabled=True)
-        self.active_column = TaskWorkflowColumn.objects.create(
-            task_list=self.task_list,
-            name="In Arbeit",
-            key="active",
-            position=10,
-            kind="active",
-        )
+        self.task_list = TaskList.objects.create(family=self.family, name="Allgemein")
+        self.workflow_list = TaskList.objects.create(family=self.family, name="Workflow", workflow_enabled=True)
+        self.open_column = TaskWorkflowColumn.objects.create(task_list=self.workflow_list, name="Offen", key="open", position=0, kind="open")
+        self.active_column = TaskWorkflowColumn.objects.create(task_list=self.workflow_list, name="In Arbeit", key="active", position=10, kind="active")
+        self.done_column = TaskWorkflowColumn.objects.create(task_list=self.workflow_list, name="Erledigt", key="done", position=20, kind="done", is_terminal=True)
         self.other_list = TaskList.objects.create(family=self.other, name="Privat")
         self.client = APIClient()
         self.client.force_authenticate(self.alice)
@@ -71,12 +68,13 @@ class ActionProjectionTests(TestCase):
     def test_task_projection_preserves_workflow_assignee_priority_and_recurrence(self):
         task = self.task(
             "Wiederkehrend",
+            task_list=self.workflow_list,
+            workflow_column=self.active_column,
             assignee=self.alice,
             priority=Task.Priority.HIGH,
             recurrence="weekly",
             due_at=self.now + timedelta(days=2),
         )
-        Task.objects.filter(pk=task.pk).update(workflow_column=self.active_column)
 
         rows = project_actions(user=self.alice, family=self.family, scope="all", kind="tasks", now=self.now)
         row = next(item for item in rows if item["id"] == f"task:{task.id}")
@@ -86,7 +84,7 @@ class ActionProjectionTests(TestCase):
         self.assertEqual(row["assignee"]["id"], self.alice.id)
         self.assertEqual(row["priority"], "high")
         self.assertEqual(row["repeat"], {"recurrence": "weekly"})
-        self.assertEqual(row["context"]["list"]["id"], str(self.task_list.id))
+        self.assertEqual(row["context"]["list"]["id"], str(self.workflow_list.id))
         self.assertEqual(row["context"]["workflow"]["kind"], "active")
         self.assertEqual(row["primary_action"]["href"], f"/api/tasks/{task.id}/toggle/")
 
@@ -130,8 +128,7 @@ class ActionProjectionTests(TestCase):
     def test_ranking_is_deterministic_and_purely_presentational(self):
         overdue = self.task("Overdue", due_at=self.now - timedelta(days=1))
         due = self.task("Due", due_at=self.now)
-        active = self.task("Active", due_at=None)
-        Task.objects.filter(pk=active.pk).update(workflow_column=self.active_column)
+        active = self.task("Active", task_list=self.workflow_list, workflow_column=self.active_column, due_at=None)
 
         first = project_actions(user=self.alice, family=self.family, scope="today", kind="tasks", now=self.now)
         second = project_actions(user=self.alice, family=self.family, scope="today", kind="tasks", now=self.now)
