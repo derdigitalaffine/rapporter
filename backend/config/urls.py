@@ -11,6 +11,7 @@ urlpatterns = [
     path("api/auth/logout/", logout_view, name="auth_logout"),
     path("api/auth/session/", session_view, name="auth_session"),
     path("api/superadmin/mail-health/", superadmin_mail_health, name="superadmin_mail_health"),
+    path("api/", include("entitlements.urls")),
     path("api/", include("family.urls")),
     path("api/", include("expenses.urls")),
     path("api/", include("baby.urls")),
