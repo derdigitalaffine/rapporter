@@ -1,3 +1,4 @@
+from .consumers import dispatch_document_consumers
 from .extraction import ProcessingError, extract_document
 from .processing import ClaimLost, fail_run, finish_run, renew_lease
 
@@ -16,25 +17,33 @@ def process_claimed_run(run):
         if not renew_lease(run):
             raise ClaimLost()
 
+    # Domain consumers only receive state/results; they never own OCR execution.
+    dispatch_document_consumers(run)
     try:
         result = extract_document(run.document, heartbeat=heartbeat)
         heartbeat()
     except ClaimLost:
         return run.__class__.objects.get(pk=run.pk)
     except ProcessingError as exc:
-        return fail_run(
+        final = fail_run(
             run,
             error_code=exc.code,
             safe_error=exc.safe_message,
             retryable=exc.retryable,
         )
+        dispatch_document_consumers(final)
+        return final
     except Exception:
         # Raw exception strings can contain file contents, paths or library
         # details. Persist only a stable redacted category for operators.
-        return fail_run(
+        final = fail_run(
             run,
             error_code="processing_failed",
             safe_error="Dokumentverarbeitung ist unerwartet fehlgeschlagen.",
             retryable=True,
         )
-    return finish_run(run, result, needs_review=result.needs_review)
+        dispatch_document_consumers(final)
+        return final
+    final = finish_run(run, result, needs_review=result.needs_review)
+    dispatch_document_consumers(final)
+    return final
