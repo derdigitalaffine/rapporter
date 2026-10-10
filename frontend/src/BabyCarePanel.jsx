@@ -1,4 +1,4 @@
-import {useEffect,useMemo,useState} from 'react';
+import {useEffect,useMemo,useRef,useState} from 'react';
 import {api} from './api';
 import {Icon} from './icons';
 import {toast} from './feedback';
@@ -28,6 +28,7 @@ function setTimer(babyId,kind,value){const next={...timersFor(babyId)};if(value)
 function clock(value){if(!value)return'–';return new Date(value).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}
 
 export default function BabyCarePanel({baby,t}){
+ const activeBabyId=useRef(String(baby.id));activeBabyId.current=String(baby.id);
  const [data,setData]=useState(null);const [pending,setPending]=useState(()=>pendingFor(baby.id));const [timers,setTimers]=useState(()=>timersFor(baby.id));const [busy,setBusy]=useState(false);const [feedSide,setFeedSide]=useState('unknown');const [bottle,setBottle]=useState('');const [pumpAmount,setPumpAmount]=useState('');const [temperature,setTemperature]=useState('');const [medication,setMedication]=useState({name:'',dose:'',unit:''});const [note,setNote]=useState('');
  const summary=data?.summary||{};
  const activeSleep=timers.sleep;
@@ -38,8 +39,9 @@ export default function BabyCarePanel({baby,t}){
   [t('babyUi.medication'),`${summary.counts?.medication||0}×`],
  ],[summary,t]);
 
- function syncActiveTimers(events=[]){
-  const local={...timersFor(baby.id)};
+ function commitTimer(targetBabyId,kind,value){const next=setTimer(targetBabyId,kind,value);if(activeBabyId.current===String(targetBabyId))setTimers(next);return next}
+ function syncActiveTimers(events=[],targetBabyId=String(baby.id)){
+  const local={...timersFor(targetBabyId)};
   const serverActive={};
   for(const row of events){if(TIMER_KINDS.has(row.kind)&&!row.ended_at&&!serverActive[row.kind])serverActive[row.kind]={started_at:row.started_at,value:row.value||{},server_id:row.id,version:row.version}}
   for(const kind of TIMER_KINDS){
@@ -47,18 +49,19 @@ export default function BabyCarePanel({baby,t}){
    if(serverActive[kind])local[kind]=serverActive[kind];
    else if(current?.server_id&&events.some(row=>row.id===current.server_id&&row.ended_at))delete local[kind];
   }
-  setTimers(replaceTimers(baby.id,local));
+  const next=replaceTimers(targetBabyId,local);
+  if(activeBabyId.current===String(targetBabyId))setTimers(next);
  }
- async function load({mark=true}={}){const next=await api(`/baby/profiles/${baby.id}/care/?hours=24`);setData(next);syncActiveTimers(next.events||[]);if(mark)await api(`/baby/profiles/${baby.id}/viewed/`,{method:'POST',body:'{}'})}
- async function replay(){if(!navigator.onLine)return;const left=await flushCare(baby.id);setPending(left);if(left===0)await load()}
- useEffect(()=>{setTimers(timersFor(baby.id));setPending(pendingFor(baby.id));load().catch(()=>{});replay().catch(()=>{});const online=()=>replay().catch(()=>{});window.addEventListener('online',online);const poll=setInterval(()=>{if(navigator.onLine)load({mark:false}).catch(()=>{})},15000);return()=>{window.removeEventListener('online',online);clearInterval(poll)}},[baby.id]);
+ async function load({mark=true}={}){const targetBabyId=String(baby.id);const next=await api(`/baby/profiles/${targetBabyId}/care/?hours=24`);if(activeBabyId.current===targetBabyId)setData(next);syncActiveTimers(next.events||[],targetBabyId);if(mark)await api(`/baby/profiles/${targetBabyId}/viewed/`,{method:'POST',body:'{}'})}
+ async function replay(){const targetBabyId=String(baby.id);if(!navigator.onLine)return;const left=await flushCare(targetBabyId);if(activeBabyId.current===targetBabyId)setPending(left);if(left===0)await load()}
+ useEffect(()=>{const targetBabyId=String(baby.id);setData(null);setTimers(timersFor(targetBabyId));setPending(pendingFor(targetBabyId));load().catch(()=>{});replay().catch(()=>{});const online=()=>replay().catch(()=>{});window.addEventListener('online',online);const poll=setInterval(()=>{if(navigator.onLine)load({mark:false}).catch(()=>{})},15000);return()=>{window.removeEventListener('online',online);clearInterval(poll)}},[baby.id]);
 
  async function record(kind,value={},timing={}){
   const payload={kind,started_at:timing.started_at||isoNow(),ended_at:timing.ended_at||null,value,client_event_id:timing.client_event_id||uid()};
-  if(!navigator.onLine){setPending(queueCare(baby.id,payload));toast(`${baby.display_name}: ${t('babyUi.offlineQueued')}`,{type:'info'});return null}
+  if(!navigator.onLine){const left=queueCare(baby.id,payload);if(activeBabyId.current===String(baby.id))setPending(left);toast(`${baby.display_name}: ${t('babyUi.offlineQueued')}`,{type:'info'});return null}
   setBusy(true);
   try{const row=await api(`/baby/profiles/${baby.id}/care/`,{method:'POST',body:JSON.stringify(payload)});toast(`${baby.display_name}: ${t('babyUi.saved')}`,{type:'success'});await load({mark:false});return row}
-  catch(error){if(!navigator.onLine){setPending(queueCare(baby.id,payload));toast(`${baby.display_name}: ${t('babyUi.offlineQueued')}`,{type:'info'});return null}toast(error.message||t('babyUi.error'),{type:'error'});throw error}
+  catch(error){if(!navigator.onLine){const left=queueCare(baby.id,payload);if(activeBabyId.current===String(baby.id))setPending(left);toast(`${baby.display_name}: ${t('babyUi.offlineQueued')}`,{type:'info'});return null}toast(error.message||t('babyUi.error'),{type:'error'});throw error}
   finally{setBusy(false)}
  }
 
@@ -66,11 +69,11 @@ export default function BabyCarePanel({baby,t}){
   const current=timersFor(baby.id)[kind];
   if(!current){
    const next={started_at:isoNow(),client_event_id:uid(),value};
-   if(!navigator.onLine){setTimers(setTimer(baby.id,kind,next));return}
+   if(!navigator.onLine){commitTimer(baby.id,kind,next);return}
    setBusy(true);
    try{
     const row=await api(`/baby/profiles/${baby.id}/care/`,{method:'POST',body:JSON.stringify({kind,started_at:next.started_at,ended_at:null,value,client_event_id:next.client_event_id})});
-    setTimers(setTimer(baby.id,kind,{...next,server_id:row.id,version:row.version}));
+    commitTimer(baby.id,kind,{...next,server_id:row.id,version:row.version});
     await load({mark:false});
    }catch(error){toast(error.message||t('babyUi.error'),{type:'error'})}finally{setBusy(false)}
    return;
@@ -78,15 +81,15 @@ export default function BabyCarePanel({baby,t}){
   const endedAt=isoNow();
   if(current.server_id){
    const payload={expected_version:current.version||1,ended_at:endedAt,value:current.value||{}};
-   if(!navigator.onLine){setPending(queueRequest(baby.id,{method:'PATCH',path:`/baby/care/${current.server_id}/`,payload}));setTimers(setTimer(baby.id,kind,null));toast(`${baby.display_name}: ${t('babyUi.offlineQueued')}`,{type:'info'});return}
+   if(!navigator.onLine){const left=queueRequest(baby.id,{method:'PATCH',path:`/baby/care/${current.server_id}/`,payload});if(activeBabyId.current===String(baby.id))setPending(left);commitTimer(baby.id,kind,null);toast(`${baby.display_name}: ${t('babyUi.offlineQueued')}`,{type:'info'});return}
    setBusy(true);
-   try{await api(`/baby/care/${current.server_id}/`,{method:'PATCH',body:JSON.stringify(payload)});setTimers(setTimer(baby.id,kind,null));await load({mark:false});toast(`${baby.display_name}: ${t('babyUi.saved')}`,{type:'success'})}catch(error){toast(error.message||t('babyUi.error'),{type:'error'})}finally{setBusy(false)}
+   try{await api(`/baby/care/${current.server_id}/`,{method:'PATCH',body:JSON.stringify(payload)});commitTimer(baby.id,kind,null);await load({mark:false});toast(`${baby.display_name}: ${t('babyUi.saved')}`,{type:'success'})}catch(error){toast(error.message||t('babyUi.error'),{type:'error'})}finally{setBusy(false)}
    return;
   }
   await record(kind,current.value||{}, {started_at:current.started_at,ended_at:endedAt,client_event_id:current.client_event_id});
-  setTimers(setTimer(baby.id,kind,null));
+  commitTimer(baby.id,kind,null);
  }
- function updateFeedSide(side){setFeedSide(side);const current=timersFor(baby.id).breastfeed;if(current)setTimers(setTimer(baby.id,'breastfeed',{...current,value:{...(current.value||{}),side}}))}
+ function updateFeedSide(side){setFeedSide(side);const current=timersFor(baby.id).breastfeed;if(current)commitTimer(baby.id,'breastfeed',{...current,value:{...(current.value||{}),side}})}
  async function quickBottle(ml){await record('bottle',{ml});setBottle(String(ml))}
  async function editStart(row){const initial=new Date(row.started_at).toISOString().slice(0,16);const value=window.prompt(t('babyUi.correctStart'),initial);if(!value)return;const parsed=new Date(value);if(Number.isNaN(parsed.getTime()))return;setBusy(true);try{await api(`/baby/care/${row.id}/`,{method:'PATCH',body:JSON.stringify({expected_version:row.version,started_at:parsed.toISOString()})});await load({mark:false});toast(t('babyUi.saved'),{type:'success'})}catch(error){toast(error.message||t('babyUi.error'),{type:'error'})}finally{setBusy(false)}}
 
