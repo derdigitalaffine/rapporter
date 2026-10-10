@@ -23,10 +23,14 @@ class Command(BaseCommand):
         migrated = 0
         skipped = 0
         failed = 0
-        for expense in queryset.iterator() if not limit else queryset:
+        rows = queryset if limit else queryset.iterator()
+        for expense in rows:
             try:
                 document, _ = migrate_legacy_receipt(expense)
-            except (ValueError, RuntimeError):
+            except (ValueError, RuntimeError, OSError):
+                # Per-row migration failures must not abort the remaining
+                # rollback-safe backfill. The command intentionally emits counts
+                # only, never raw paths/content or OCR text.
                 failed += 1
                 continue
             if document:
