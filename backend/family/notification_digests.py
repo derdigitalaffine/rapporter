@@ -61,9 +61,9 @@ def enqueue_notification(membership, event_type, context, *, url=None):
             if prior and prior["event_type"] == "shopping.item.created":
                 event_type = "shopping.item.created"
             if key in events or len(events) < MAX_EVENTS:
-                events[key] = {"event_type": event_type, "context": context, "url": url}
+                events[key] = {"event_type": event_type, "context": context, "url": url, "queued_at": prior.get("queued_at") if prior else now.isoformat()}
             else:
-                events["overflow"] = {"event_type": "shopping.item.updated" if shopping else event_type, "context": {"list_id": context.get("list_id"), "list": context.get("list"), "overflow": True}, "url": url}
+                events["overflow"] = {"event_type": "shopping.item.updated" if shopping else event_type, "context": {"list_id": context.get("list_id"), "list": context.get("list"), "overflow": True}, "url": url, "queued_at": now.isoformat()}
         batch.events = events
         batch.delivered_at = None
         batch.save(update_fields=["events", "due_at", "attempts", "delivered_at", "updated_at"])
@@ -108,12 +108,10 @@ def _visible_events(batch, pref):
 
 
 def _shopping_event_order(event):
-    """JSONB object keys are unordered; item ids restore a stable creation order."""
+    """PostgreSQL JSONB does not preserve object-key insertion order."""
+    queued_at = event.get("queued_at")
     item_id = event.get("context", {}).get("item_id")
-    try:
-        return (0, int(item_id))
-    except (TypeError, ValueError):
-        return (1, str(item_id or ""))
+    return (queued_at is None, queued_at or "", str(item_id or ""))
 
 
 def _render(batch, events):
