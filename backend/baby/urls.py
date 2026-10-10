@@ -21,7 +21,7 @@ urlpatterns = [
     path("baby/profiles/<uuid:baby_id>/viewed/", views.baby_mark_viewed),
     path("baby/profiles/<uuid:baby_id>/growth/", views.baby_growth),
     path("baby/profiles/<uuid:baby_id>/growth-reference/", views.baby_growth_reference),
-    path("baby/profiles/<uuid:baby_id>/development/", views.baby_development),
+    path("baby/profiles/<uuid:baby_id>/development/", secure_views.baby_development),
     path("baby/profiles/<uuid:baby_id>/preventive-events/", views.baby_preventive_events),
     path("baby/profiles/<uuid:baby_id>/appointment-questions/", views.baby_appointment_question),
     path("baby/profiles/<uuid:baby_id>/handover/", views.baby_handover),
