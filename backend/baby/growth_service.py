@@ -1,5 +1,5 @@
 import math
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from django.utils import timezone
 from rest_framework.exceptions import PermissionDenied, ValidationError
@@ -76,7 +76,7 @@ def add_measurement(user, baby_id, *, measured_at, weight_g=None, length_cm=None
     if weight_g is None and length_cm is None and head_circumference_cm is None:
         raise ValidationError("Enter at least one growth measurement.")
     now = timezone.now()
-    if measured_at > now + timezone.timedelta(minutes=5):
+    if measured_at > now + timedelta(minutes=5):
         raise ValidationError({"measured_at": "Measurement cannot be in the future."})
     if weight_g is not None and not 300 <= int(weight_g) <= 60000:
         raise ValidationError({"weight_g": "Weight must be between 300 g and 60,000 g."})
