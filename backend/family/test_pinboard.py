@@ -1,4 +1,5 @@
 import uuid
+from datetime import date, timedelta
 
 from django.contrib.auth import get_user_model
 from django.db import connection
@@ -17,6 +18,7 @@ from .models import (
     ShoppingList,
     Task,
 )
+from .travel_models import Trip
 
 
 class PinboardReferenceTests(TestCase):
@@ -65,6 +67,105 @@ class PinboardReferenceTests(TestCase):
         self.assertEqual(targets[str(pins[1].id)]['title'], 'Privat')
         self.assertEqual(targets[str(pins[2].id)]['title'], 'Zahnpasta')
         self.assertEqual(targets[str(pins[2].id)]['subtitle'], 'Drogerie')
+
+    def test_trip_pin_uses_context_visibility_preview_and_lifecycle(self):
+        trip = Trip.objects.create(
+            family=self.family,
+            title='Japan',
+            destination='Tokyo',
+            starts_on=date(2027, 3, 4),
+            ends_on=date(2027, 3, 18),
+            notes='Private itinerary details must not leak into the pin preview.',
+            created_by=self.owner,
+        )
+        created = self.client.post('/api/board/', {
+            'family': str(self.family.id), 'kind': 'trip', 'target_id': str(trip.id), 'text': ''
+        }, format='json')
+        self.assertEqual(created.status_code, 201, created.data)
+        self.assertEqual(created.data['target'], {
+            'id': str(trip.id),
+            'kind': 'trip',
+            'title': 'Japan',
+            'subtitle': 'Tokyo',
+            'starts_on': '2027-03-04',
+            'ends_on': '2027-03-18',
+            'lifecycle': 'available',
+            'url': '/?page=trips',
+        })
+        self.assertNotIn('Private itinerary details', str(created.data['target']))
+
+        trip.archived = True
+        trip.save(update_fields=['archived'])
+        row = self.client.get(f'/api/board/?family={self.family.id}').data['results'][0]
+        self.assertEqual(row['target']['lifecycle'], 'archived')
+        self.assertEqual(row['target']['title'], 'Japan')
+
+    def test_trip_reference_is_family_scoped_and_neutral_for_guessed_ids(self):
+        foreign_trip = Trip.objects.create(
+            family=self.foreign,
+            title='Foreign itinerary',
+            destination='Secret',
+            starts_on=date(2027, 4, 1),
+            ends_on=date(2027, 4, 2),
+            created_by=self.foreign_user,
+        )
+        existing = self.client.post('/api/board/', {
+            'family': str(self.family.id), 'kind': 'trip', 'target_id': str(foreign_trip.id)
+        }, format='json')
+        missing = self.client.post('/api/board/', {
+            'family': str(self.family.id), 'kind': 'trip', 'target_id': str(uuid.uuid4())
+        }, format='json')
+        self.assertEqual(existing.status_code, 400)
+        self.assertEqual(missing.status_code, 400)
+        self.assertEqual(existing.data, missing.data)
+        self.assertFalse(BoardPost.objects.filter(kind='trip', target_id=foreign_trip.id).exists())
+        self.assertNotIn('Foreign itinerary', str(existing.data))
+
+    def test_deleted_trip_target_is_neutral_and_does_not_leak_snapshot_data(self):
+        trip = Trip.objects.create(
+            family=self.family,
+            title='Delete me',
+            destination='Hidden destination',
+            starts_on=date(2027, 5, 1),
+            ends_on=date(2027, 5, 3),
+            created_by=self.owner,
+        )
+        pin = BoardPost.objects.create(family=self.family, author=self.owner, kind='trip', target_id=trip.id)
+        target_id = trip.id
+        trip.delete()
+        row = self.client.get(f'/api/board/?family={self.family.id}').data['results'][0]
+        self.assertEqual(row['id'], str(pin.id))
+        self.assertEqual(row['target'], {'id': str(target_id), 'kind': 'trip', 'available': False})
+        self.assertNotIn('Delete me', str(row))
+        self.assertNotIn('Hidden destination', str(row))
+
+    def test_trip_board_page_batches_context_backed_resolution(self):
+        start = date(2027, 6, 1)
+        trips = [
+            Trip.objects.create(
+                family=self.family,
+                title=f'Trip {index}',
+                destination=f'Place {index}',
+                starts_on=start + timedelta(days=index),
+                ends_on=start + timedelta(days=index + 1),
+                created_by=self.owner,
+            )
+            for index in range(8)
+        ]
+        BoardPost.objects.bulk_create([
+            BoardPost(family=self.family, author=self.owner, kind='trip', target_id=trip.id, position=index)
+            for index, trip in enumerate(trips)
+        ])
+        with CaptureQueriesContext(connection) as captured:
+            response = self.client.get(f'/api/board/?family={self.family.id}')
+        self.assertEqual(response.status_code, 200, response.data)
+        trip_queries = [query['sql'] for query in captured if 'family_trip' in query['sql'].lower()]
+        self.assertEqual(len(trip_queries), 1, trip_queries)
+        self.assertEqual(
+            {row['target']['title'] for row in response.data['results']},
+            {trip.title for trip in trips},
+        )
+        self.assertEqual({row['target']['lifecycle'] for row in response.data['results']}, {'available'})
 
     def test_foreign_reference_is_rejected(self):
         response = self.client.post('/api/board/', {

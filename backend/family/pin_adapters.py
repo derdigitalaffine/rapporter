@@ -4,6 +4,7 @@ from collections import defaultdict
 from django.db.models import Q
 from rest_framework.exceptions import ValidationError
 
+from .context_links import ContextRef, default_context_registry
 from .models import BoardPost, FamilyEvent, Note, Routine, ShoppingItem, ShoppingList, Task
 
 
@@ -49,6 +50,54 @@ class PinAdapter:
             id__in=target_ids,
             **{f'{self.family_lookup}__in': family_ids},
         )
+        by_key = {(self.target_family_id(row), row.id): row for row in rows}
+        return {
+            post.id: self.preview(by_key[(post.family_id, post.target_id)])
+            for post in posts
+            if (post.family_id, post.target_id) in by_key
+        }
+
+
+class ContextBackedPinAdapter(PinAdapter):
+    """Board projection backed by the canonical ContextRef visibility contract."""
+
+    context_type = None
+
+    @property
+    def context_adapter(self):
+        return default_context_registry().type_adapter(self.context_type)
+
+    def queryset(self, user):
+        raise RuntimeError('Context-backed pin adapters require a family scope.')
+
+    def can_view(self, user, family_id, target_id):
+        ref = ContextRef.parse(self.context_type, target_id)
+        return self.context_adapter.visible_queryset(user, family_id).filter(pk=ref.id).exists()
+
+    def target_family_id(self, target):
+        return self.context_adapter.family_id(target)
+
+    def lifecycle_state(self, target):
+        return self.context_adapter.lifecycle(target)
+
+    def deep_link(self, target):
+        return self.context_adapter.deep_link(target)
+
+    def resolve_many(self, posts, user):
+        posts = [post for post in posts if post.target_id]
+        if not posts:
+            return {}
+
+        target_ids_by_family = defaultdict(set)
+        for post in posts:
+            ref = ContextRef.parse(self.context_type, post.target_id)
+            target_ids_by_family[post.family_id].add(ref.id)
+
+        rows = None
+        for family_id, target_ids in target_ids_by_family.items():
+            scoped = self.context_adapter.visible_queryset(user, family_id).filter(pk__in=target_ids)
+            rows = scoped if rows is None else rows | scoped
+        rows = rows.distinct()
         by_key = {(self.target_family_id(row), row.id): row for row in rows}
         return {
             post.id: self.preview(by_key[(post.family_id, post.target_id)])
@@ -179,6 +228,23 @@ class ShoppingListPinAdapter(PinAdapter):
         }
 
 
+class TripPinAdapter(ContextBackedPinAdapter):
+    key = BoardPost.Kind.TRIP
+    context_type = 'trip'
+
+    def preview(self, row):
+        return {
+            'id': str(row.id),
+            'kind': 'trip',
+            'title': row.title,
+            'subtitle': row.destination,
+            'starts_on': row.starts_on.isoformat(),
+            'ends_on': row.ends_on.isoformat(),
+            'lifecycle': self.lifecycle_state(row),
+            'url': self.deep_link(row),
+        }
+
+
 PIN_ADAPTERS = {}
 
 
@@ -196,6 +262,7 @@ for adapter in (
     NotePinAdapter(),
     ShoppingItemPinAdapter(),
     ShoppingListPinAdapter(),
+    TripPinAdapter(),
 ):
     register_pin_adapter(adapter)
 
