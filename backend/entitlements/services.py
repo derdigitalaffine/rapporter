@@ -7,6 +7,7 @@ from django.db.models import Q
 from django.utils import timezone
 
 from family.models import Family, Membership
+from telemetry.service import try_record_audit_event
 
 from .catalog import COMMERCIAL_CUTOVER_KEY, FULL_ACCESS_PLAN_KEYS, LEGACY_SOURCE_REF, VALID_PLAN_KEYS
 from .models import CapabilityDefinition, EntitlementCutover, EntitlementGrant, EntitlementGrantAudit
@@ -154,6 +155,21 @@ def _audit_snapshot(grant):
     }
 
 
+def _record_entitlement_audit_event(event_key, *, grant, family, actor=None):
+    is_admin_action = actor is not None
+    try_record_audit_event(
+        event_key,
+        actor=actor,
+        actor_class="superadmin" if is_admin_action else "system",
+        family=family,
+        outcome="success",
+        reason="admin_action" if is_admin_action else "system",
+        target_type="entitlement",
+        target_id=str(grant.pk),
+        metadata={"origin": grant.origin},
+    )
+
+
 @transaction.atomic
 def apply_commercial_cutover(*, cutover_at):
     """Grandfather every family that existed at an explicit commercial cutover instant."""
@@ -174,13 +190,13 @@ def apply_commercial_cutover(*, cutover_at):
             eligible_family_count=0,
         )
 
-    eligible = Family.objects.filter(created_at__lte=cutover_at).order_by("id").values_list("id", flat=True)
+    eligible = Family.objects.filter(created_at__lte=cutover_at).order_by("id").only("id")
     eligible_count = eligible.count()
     created_count = 0
     reason = "Bestandsfamilie beim Commercial-Cutover"
-    for family_id in eligible.iterator(chunk_size=500):
+    for family in eligible.iterator(chunk_size=500):
         grant, created = EntitlementGrant.objects.get_or_create(
-            family_id=family_id,
+            family=family,
             origin=EntitlementGrant.Origin.LEGACY_GRANDFATHERED,
             source_ref=LEGACY_SOURCE_REF,
             defaults={
@@ -199,11 +215,16 @@ def apply_commercial_cutover(*, cutover_at):
             created_count += 1
             EntitlementGrantAudit.objects.create(
                 grant=grant,
-                family_id=family_id,
+                family=family,
                 action=EntitlementGrantAudit.Action.GRANTED,
                 actor=None,
                 reason=reason,
                 snapshot=_audit_snapshot(grant),
+            )
+            _record_entitlement_audit_event(
+                "entitlement.granted",
+                grant=grant,
+                family=family,
             )
 
     if marker.eligible_family_count != eligible_count:
@@ -257,6 +278,12 @@ def create_admin_grant(
         reason=reason[:500],
         snapshot=_audit_snapshot(grant),
     )
+    _record_entitlement_audit_event(
+        "entitlement.granted",
+        grant=grant,
+        family=family,
+        actor=actor,
+    )
     return grant
 
 
@@ -283,5 +310,11 @@ def revoke_admin_grant(*, actor, grant, reason):
         actor=actor,
         reason=reason[:500],
         snapshot=_audit_snapshot(grant),
+    )
+    _record_entitlement_audit_event(
+        "entitlement.revoked",
+        grant=grant,
+        family=grant.family,
+        actor=actor,
     )
     return grant
