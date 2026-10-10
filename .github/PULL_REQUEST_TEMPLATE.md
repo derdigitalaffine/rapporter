@@ -1,6 +1,8 @@
 ## Linked work
 
-Closes #
+<!-- Use exactly the relationship that is true. Do not close a roadmap issue with a partial slice. -->
+- Closes # <!-- only when this PR completes the issue -->
+- Refs # <!-- use for partial/dependent work; `Part of #...` is also supported -->
 
 ## Scope
 
@@ -12,6 +14,7 @@ Closes #
 - [ ] Checked #223, open `in progress` issues, and open PRs before implementing.
 - [ ] Linked issue has an up-to-date `coordination:claim:v1` comment, unless this is a trivial standalone change.
 - [ ] Any material overlap with active work has an explicit comment/handshake.
+- [ ] Closing keywords are only used for issues this PR actually completes; partial slices use `Refs` / `Part of`.
 
 Known overlap / dependency / merge order: none
 
