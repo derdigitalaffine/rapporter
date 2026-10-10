@@ -10,17 +10,24 @@ from rest_framework.response import Response
 from .models import Family, Membership, TodayLayout
 
 LEGACY_WIDGET_IDS = ('weather', 'priority', 'waste', 'next', 'tasks', 'shopping', 'routines', 'birthdays', 'notes')
-WIDGET_IDS = LEGACY_WIDGET_IDS + ('loyalty', 'inbox')
+WIDGET_IDS = LEGACY_WIDGET_IDS + ('loyalty', 'inbox', 'trip')
+SQUARE_WIDGET_IDS = frozenset(('trip', 'next', 'weather', 'routines', 'waste', 'inbox', 'birthdays', 'notes', 'loyalty'))
 # New users get the reference-oriented information hierarchy while saved personal
-# layouts keep their exact order through _expanded_widgets().
-DEFAULT_WIDGET_ORDER = ('priority', 'next', 'weather', 'tasks', 'shopping', 'routines', 'waste', 'inbox', 'birthdays', 'notes', 'loyalty')
+# layouts keep their relative order. Travel is intentionally restored visibly for
+# existing layouts because it replaces the previously global Today trip countdown.
+DEFAULT_WIDGET_ORDER = ('priority', 'trip', 'next', 'weather', 'tasks', 'shopping', 'routines', 'waste', 'inbox', 'birthdays', 'notes', 'loyalty')
 DEFAULT_WIDGETS = [{'id': key, 'visible': True, 'size': 'full'} for key in DEFAULT_WIDGET_ORDER]
 
 
 def _expanded_widgets(widgets):
-    """Keep a user's saved order/settings and append newly introduced widgets hidden."""
+    """Preserve saved settings while adding newly introduced widgets safely."""
     rows = deepcopy(widgets)
     seen = {row.get('id') for row in rows if isinstance(row, dict)}
+    if 'trip' not in seen:
+        trip_row = {'id': 'trip', 'visible': True, 'size': 'full'}
+        priority_index = next((index for index, row in enumerate(rows) if row.get('id') == 'priority'), None)
+        rows.insert(priority_index + 1 if priority_index is not None else 0, trip_row)
+        seen.add('trip')
     for key in WIDGET_IDS:
         if key not in seen:
             rows.append({'id': key, 'visible': False, 'size': 'full'})
@@ -56,7 +63,8 @@ def today_layout(request):
     for widget in widgets:
         if (not isinstance(widget, dict) or set(widget) != {'id', 'visible', 'size'} or
                 not isinstance(widget['id'], str) or widget['id'] not in WIDGET_IDS or widget['id'] in seen or
-                type(widget['visible']) is not bool or widget['size'] not in ('full', 'compact')):
+                type(widget['visible']) is not bool or widget['size'] not in ('full', 'compact', 'square') or
+                (widget['size'] == 'square' and widget['id'] not in SQUARE_WIDGET_IDS)):
             return Response({'detail': 'Invalid widget configuration.'}, status=400)
         seen.add(widget['id'])
     with transaction.atomic():
