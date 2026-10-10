@@ -30,15 +30,21 @@ class TransactionalMailTests(TestCase):
             **kwargs,
         )
 
-    def test_enqueue_is_idempotent_and_recipient_is_normalized(self):
+    def test_enqueue_is_idempotent_and_recipient_domain_is_normalized(self):
         first = self.enqueue()
-        second = self.enqueue(recipient="person@example.com")
+        second = self.enqueue(recipient="Person@example.COM")
         self.assertEqual(first.pk, second.pk)
         self.assertEqual(TransactionalEmail.objects.count(), 1)
         first.refresh_from_db()
-        self.assertEqual(first.recipient, "person@example.com")
+        self.assertEqual(first.recipient, "Person@example.com")
         self.assertEqual(len(first.recipient_hash), 64)
-        self.assertNotIn("person@example.com", first.recipient_hash)
+        self.assertNotIn("Person@example.com", first.recipient_hash)
+
+    def test_local_part_case_is_part_of_delivery_semantics(self):
+        key = "local-case"
+        self.enqueue(key=key, recipient="Person@example.com")
+        with self.assertRaises(service.IdempotencyConflictError):
+            self.enqueue(key=key, recipient="person@example.com")
 
     def test_message_key_conflict_rejects_different_delivery_semantics(self):
         cases = (
@@ -60,7 +66,7 @@ class TransactionalMailTests(TestCase):
         self.assertTrue(service.process_one_transactional_email())
         row.refresh_from_db()
         self.assertEqual(row.recipient, "")
-        again = self.enqueue(key="sent-idempotent", recipient="person@example.com")
+        again = self.enqueue(key="sent-idempotent", recipient="Person@example.com")
         self.assertEqual(again.pk, row.pk)
         self.assertEqual(TransactionalEmail.objects.count(), 1)
 
@@ -100,7 +106,7 @@ class TransactionalMailTests(TestCase):
         self.assertIsNotNone(row.payload_cleared_at)
         self.assertIsNotNone(row.sent_at)
         self.assertEqual(len(mail.outbox), 1)
-        self.assertEqual(mail.outbox[0].to, ["person@example.com"])
+        self.assertEqual(mail.outbox[0].to, ["Person@example.com"])
         self.assertTrue(mail.outbox[0].extra_headers["Message-ID"].startswith("<"))
 
     def test_transport_failure_retries_with_redacted_error_class_and_keeps_payload(self):
@@ -112,13 +118,13 @@ class TransactionalMailTests(TestCase):
         self.assertEqual(row.last_error_code, "transport")
         self.assertNotIn("secret", row.last_error_code)
         self.assertGreater(row.next_attempt_at, timezone.now())
-        self.assertEqual(row.recipient, "person@example.com")
+        self.assertEqual(row.recipient, "Person@example.com")
         self.assertEqual(row.context, {"details": "Sicherer Hinweis"})
         self.assertIsNone(row.payload_cleared_at)
 
     def test_recipient_rejection_is_permanent_and_clears_delivery_payload(self):
         row = self.enqueue()
-        error = smtplib.SMTPRecipientsRefused({"person@example.com": (550, b"private provider text")})
+        error = smtplib.SMTPRecipientsRefused({"Person@example.com": (550, b"private provider text")})
         with patch("mailing.service.EmailMultiAlternatives.send", side_effect=error):
             service.process_one_transactional_email()
         row.refresh_from_db()
@@ -175,7 +181,7 @@ class TransactionalMailTests(TestCase):
         self.assertEqual(summary["counts"][TransactionalEmail.Status.SENT], 1)
         self.assertIsNotNone(summary["last_success_at"])
         serialized = str(summary)
-        self.assertNotIn("person@example.com", serialized)
+        self.assertNotIn("Person@example.com", serialized)
         self.assertNotIn("Sicherer Hinweis", serialized)
 
 

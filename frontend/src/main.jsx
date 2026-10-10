@@ -16,10 +16,11 @@ import './responsive.css';
 import './mobile-safety.css';
 import App from './App';
 import InviteFlow from './InviteFlow';
+import EmailVerificationFlow from './EmailVerificationFlow';
 import FeedbackHost from './feedback';
 import AccessibilityManager from './AccessibilityManager';
 import DeepLinkTarget from './DeepLinkTarget';
 import PwaBadgeManager from './PwaBadgeManager';
 import PwaUpdateManager from './PwaUpdateManager';
 class BootErrorBoundary extends React.Component{constructor(props){super(props);this.state={error:null}}static getDerivedStateFromError(error){return{error}}componentDidCatch(error,info){console.error('FamilyOS frontend crash',error,info)}render(){if(!this.state.error)return this.props.children;return <main className="login-shell"><section className="card login-card"><img className="brand-wide" src="/brand/logo-primary.svg" alt="FamilyOS"/><h1>Die App konnte nicht gestartet werden.</h1><p>Bitte lade die Seite vollständig neu. Falls das Problem bleibt, lösche einmal die Website-Daten bzw. den PWA-Cache.</p><details><summary>Technische Details</summary><pre style={{whiteSpace:'pre-wrap',wordBreak:'break-word'}}>{String(this.state.error?.message||this.state.error)}</pre></details><button className="primary" onClick={()=>window.location.reload()}>Neu laden</button></section></main>}}
-const inviteMatch=window.location.pathname.match(/^\/invite\/([^/]+)\/?$/);const root=document.getElementById('root');ReactDOM.createRoot(root).render(<React.StrictMode><BootErrorBoundary><AccessibilityManager/><FeedbackHost/><PwaUpdateManager/><PwaBadgeManager/>{inviteMatch?<InviteFlow token={inviteMatch[1]}/>:<><App/><DeepLinkTarget/></>}</BootErrorBoundary></React.StrictMode>);
+const inviteMatch=window.location.pathname.match(/^\/invite\/([^/]+)\/?$/);const verifyMatch=window.location.pathname.match(/^\/verify-email\/([^/]+)\/?$/);const root=document.getElementById('root');ReactDOM.createRoot(root).render(<React.StrictMode><BootErrorBoundary><AccessibilityManager/><FeedbackHost/><PwaUpdateManager/><PwaBadgeManager/>{verifyMatch?<EmailVerificationFlow token={decodeURIComponent(verifyMatch[1])}/>:inviteMatch?<InviteFlow token={inviteMatch[1]}/>:<><App/><DeepLinkTarget/></>}</BootErrorBoundary></React.StrictMode>);
