@@ -39,6 +39,7 @@ Use this format:
 - Worker: @<login> (agent|human)
 - Scope: <precise deliverable>
 - Touches: <domains, APIs, migrations, UI surfaces, likely paths>
+- Coordination keys: domain:<name>, model:<name>, api:<stable-contract>, ui:<surface>, migration:<app-or-table>
 - Contracts changed: <none or explicit contracts>
 - Depends on: #...
 - Parallel-safe with: #...
@@ -46,6 +47,22 @@ Use this format:
 - Branch/PR: <branch or #PR>
 - Collision scan: #223 + open `in progress` issues + open PRs checked
 ```
+
+### Coordination keys
+
+`Coordination keys` are short, machine-readable collision identifiers. Add only keys that this work can materially change. Reuse the same spelling when the same contract is involved.
+
+Recommended namespaces:
+
+- `domain:<canonical-domain>` — e.g. `domain:calendar`, `domain:documents`
+- `model:<stable-model-or-aggregate>` — e.g. `model:FamilyEvent`
+- `api:<contract>` — e.g. `api:calendar-events`, `api:auth-session`
+- `ui:<surface>` — e.g. `ui:calendar-hub`, `ui:today`
+- `migration:<area>` — e.g. `migration:family`, `migration:documents`
+- `worker:<queue-or-processor>` — e.g. `worker:document-processing`
+- `policy:<cross-cutting-policy>` — e.g. `policy:permissions`, `policy:entitlements`
+
+Do not use broad keys such as `domain:backend` or `ui:frontend`. The dashboard in #223 flags identical active keys even when the PRs do not yet touch the same files.
 
 A claim is a coordination reservation, not ownership of a whole domain. Keep scope narrow enough that another worker can safely take adjacent work.
 
@@ -133,4 +150,4 @@ Before requesting merge:
 - include tests, migration/rollback notes, permission regressions, and user docs required by #223;
 - for external feature issues, link the required `external-research:v1` comment.
 
-The automated coordination dashboard in #223 is advisory but should be treated as the default shared situational picture. Exact file-overlap warnings require an explicit handshake; they are not automatic proof that one PR is wrong.
+The automated coordination dashboard in #223 is advisory but should be treated as the default shared situational picture. Semantic key/file-overlap warnings require an explicit handshake; they are not automatic proof that one PR is wrong.
