@@ -51,3 +51,24 @@ test('core FamilyOS screens keep the shared responsive shell without horizontal 
     await expectNoOverflow(page);
   }
 });
+
+test('responsive shell keeps bottom navigation on phones and sidebar navigation on desktop',async({page})=>{
+  await page.setViewportSize({width:390,height:844});
+  await boot(page,'/?page=tasks');
+  const phoneNav=await page.locator('.bottom-nav').boundingBox();
+  expect(phoneNav).not.toBeNull();
+  expect(phoneNav.y).toBeGreaterThan(740);
+  expect(phoneNav.width).toBeGreaterThan(360);
+
+  await page.setViewportSize({width:1440,height:900});
+  await page.waitForTimeout(50);
+  const nav=page.locator('.bottom-nav');
+  const content=page.locator('.content');
+  const desktopNav=await nav.boundingBox();
+  const desktopContent=await content.boundingBox();
+  expect(desktopNav).not.toBeNull();
+  expect(desktopContent).not.toBeNull();
+  expect(desktopNav.y).toBeLessThan(160);
+  expect(desktopNav.width).toBeLessThanOrEqual(100);
+  expect(desktopNav.x+desktopNav.width).toBeLessThan(desktopContent.x);
+});
