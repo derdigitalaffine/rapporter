@@ -27,10 +27,21 @@ def _range(start=None, end=None):
     return start, end
 
 
+def _default_sections(access):
+    # Privacy-by-default: clinical-context summaries (growth/development) are the
+    # default when available. Raw care logs and handover notes require an
+    # explicit user selection because they can contain much more intimate data.
+    if access.can_view_growth_development:
+        return {"growth", "development"}
+    if access.can_log_care:
+        return {"care"}
+    return set()
+
+
 def report_payload(user, baby_id, *, start=None, end=None, sections=None, language="de"):
     baby, membership, access = care_baby_for_user(user, baby_id, "report")
     start, end = _range(start, end)
-    selected = set(sections or ALLOWED_SECTIONS)
+    selected = set(sections) if sections is not None else _default_sections(access)
     unknown = selected - ALLOWED_SECTIONS
     if unknown:
         raise ValidationError({"sections": f"Unknown report sections: {', '.join(sorted(unknown))}"})
@@ -42,7 +53,8 @@ def report_payload(user, baby_id, *, start=None, end=None, sections=None, langua
         "baby": {"id": str(baby.id), "display_name": baby.display_name, "birth_date": baby.birth_date.isoformat()},
         "range": {"start": start.isoformat(), "end": end.isoformat()},
         "sections": sorted(selected),
-        "notice": "This report summarizes recorded observations and care events. It does not provide a diagnosis.",
+        "privacy": {"journal_included": False, "media_included": False, "explicit_sections": sections is not None},
+        "notice": "This report summarizes selected recorded observations and care events. It does not provide a diagnosis.",
     }
     if "care" in selected:
         rows = list(BabyCareLog.objects.filter(baby=baby, started_at__gte=start, started_at__lte=end).order_by("started_at"))
