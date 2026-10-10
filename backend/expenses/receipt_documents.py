@@ -43,6 +43,7 @@ def build_receipt_document(expense, canonical, *, owner_membership, created_by):
         kind="receipt",
         title=(expense.title or expense.merchant or "Beleg")[:240],
         visibility=Document.Visibility.PRIVATE,
+        library_visible=False,
         owner_membership=owner_membership,
         mime_type=canonical.mime_type,
         size=len(canonical.content),
