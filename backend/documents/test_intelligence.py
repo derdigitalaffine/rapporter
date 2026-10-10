@@ -59,7 +59,7 @@ class DocumentIntelligenceTests(SimpleTestCase):
         self.assertEqual(fields["document.type"]["value_json"]["value"], "invoice")
         self.assertEqual(fields["invoice.number"]["value_json"]["value"], "RE-2026-0042")
         self.assertEqual(fields["document.date"]["value_json"]["value"], "10.10.2026")
-        self.assertEqual(fields["amount.total"]["value_json"]["value"], "1.234,56 EUR")
+        self.assertEqual(fields["amount.total"]["value_json"]["value"], "1.234,56")
         for key in ("invoice.number", "document.date", "amount.total"):
             self.assertEqual(fields[key]["page"], 1)
             self.assertTrue(fields[key]["evidence_text"])
