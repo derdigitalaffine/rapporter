@@ -21,6 +21,12 @@ class TravelParticipantTests(TestCase):
             role=Membership.Role.OWNER,
             display_name="Owner",
         )
+        Membership.objects.create(
+            family=self.other_family,
+            user=self.owner,
+            role=Membership.Role.OWNER,
+            display_name="Owner in other family",
+        )
         self.adult_membership = Membership.objects.create(
             family=self.family,
             user=self.adult,
@@ -36,7 +42,7 @@ class TravelParticipantTests(TestCase):
         self.outsider_membership = Membership.objects.create(
             family=self.other_family,
             user=self.outsider,
-            role=Membership.Role.OWNER,
+            role=Membership.Role.ADULT,
             display_name="Outsider",
         )
         self.client = APIClient()
@@ -53,6 +59,10 @@ class TravelParticipantTests(TestCase):
         data.update(extra)
         return data
 
+    @staticmethod
+    def ids(values):
+        return [str(value) for value in values]
+
     def test_create_and_update_trip_participants_with_family_memberships(self):
         created = self.client.post(
             "/api/trips/",
@@ -61,7 +71,7 @@ class TravelParticipantTests(TestCase):
         )
         self.assertEqual(created.status_code, 201, created.data)
         self.assertCountEqual(
-            created.data["participants"],
+            self.ids(created.data["participants"]),
             [str(self.owner_membership.id), str(self.child_membership.id)],
         )
 
@@ -77,10 +87,10 @@ class TravelParticipantTests(TestCase):
             format="json",
         )
         self.assertEqual(updated.status_code, 200, updated.data)
-        self.assertEqual(updated.data["participants"], [str(self.adult_membership.id)])
+        self.assertEqual(self.ids(updated.data["participants"]), [str(self.adult_membership.id)])
         self.assertEqual(list(trip.participants.values_list("id", flat=True)), [self.adult_membership.id])
 
-    def test_participants_reject_cross_family_memberships_without_mutating_trip(self):
+    def test_participants_reject_visible_cross_family_memberships_without_mutating_trip(self):
         created = self.client.post(
             "/api/trips/",
             self.payload(participants=[str(self.child_membership.id)]),
