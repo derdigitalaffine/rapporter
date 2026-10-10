@@ -35,6 +35,9 @@ class Document(models.Model):
     sha256 = models.CharField(max_length=64, db_index=True, editable=False)
     page_count = models.PositiveIntegerField(default=1, editable=False)
     processing_status = models.CharField(max_length=16, choices=ProcessingStatus.choices, default=ProcessingStatus.STORED, db_index=True)
+    # Domain-owned supporting files (for example a receipt behind an Expense)
+    # remain normal ACL-protected Documents but need not clutter the library UI.
+    library_visible = models.BooleanField(default=True, db_index=True)
     pinned = models.BooleanField(default=False)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name="documents_created")
     archived_at = models.DateTimeField(null=True, blank=True, db_index=True)
