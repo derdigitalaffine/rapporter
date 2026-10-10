@@ -15,6 +15,7 @@ async function expectNoOverflow(page){
 }
 
 async function expectTouchTarget(locator){
+  await expect(locator).toBeVisible();
   const box=await locator.boundingBox();
   expect(box).not.toBeNull();
   expect(box.width).toBeGreaterThanOrEqual(44);
@@ -37,7 +38,7 @@ test('core task shopping and calendar controls share comfortable touch targets',
   await page.goto('/?page=shopping');await page.waitForLoadState('networkidle');
   await expectTouchTarget(page.locator('.smart-input button').first());
   await page.goto('/?page=calendar');await page.waitForLoadState('networkidle');
-  await expectTouchTarget(page.locator('.calendar-filters button').first());
+  await expectTouchTarget(page.locator('.agenda-event').first());
 });
 
 test('core FamilyOS screens keep the shared responsive shell without horizontal overflow',async({page})=>{
