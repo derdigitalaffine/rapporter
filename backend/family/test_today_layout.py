@@ -5,7 +5,7 @@ from django.test import TestCase
 from rest_framework.test import APIClient
 
 from .models import Family, Membership, TodayLayout
-from .today_layout_views import DEFAULT_WIDGET_ORDER, DEFAULT_WIDGETS, LEGACY_WIDGET_IDS
+from .today_layout_views import DEFAULT_WIDGET_ORDER, DEFAULT_WIDGETS, DEFAULT_WEEK_SETTINGS, LEGACY_WIDGET_IDS
 
 
 class TodayLayoutTests(TestCase):
@@ -26,6 +26,7 @@ class TodayLayoutTests(TestCase):
         self.assertEqual(initial.data['revision'], 0)
         self.assertEqual([row['id'] for row in initial.data['widgets']], list(DEFAULT_WIDGET_ORDER))
         self.assertTrue(all(row['visible'] for row in initial.data['widgets']))
+        self.assertEqual(initial.data['widgets'][0]['settings'], DEFAULT_WEEK_SETTINGS)
         self.assertFalse(TodayLayout.objects.exists())
         config = deepcopy(initial.data); config['widgets'].reverse(); config['widgets'][0].update(visible=False, size='compact')
         saved = self.client.put(self.url, config, format='json')
@@ -45,16 +46,28 @@ class TodayLayoutTests(TestCase):
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data['revision'], 3)
-        self.assertEqual(response.data['widgets'][:len(legacy)], legacy)
-        self.assertEqual(
-            response.data['widgets'][len(legacy):],
-            [
-                {'id': 'loyalty', 'visible': False, 'size': 'full'},
-                {'id': 'inbox', 'visible': False, 'size': 'full'},
-            ],
-        )
+        rows = response.data['widgets']
+        self.assertEqual(rows[0], {'id': 'week', 'visible': True, 'size': 'full', 'settings': DEFAULT_WEEK_SETTINGS})
+        self.assertEqual(next(row for row in rows if row['id'] == 'pinboard'), {'id': 'pinboard', 'visible': True, 'size': 'full'})
+        for expected in legacy:
+            self.assertEqual(next(row for row in rows if row['id'] == expected['id']), expected)
+        self.assertEqual(next(row for row in rows if row['id'] == 'loyalty'), {'id': 'loyalty', 'visible': False, 'size': 'full'})
+        self.assertEqual(next(row for row in rows if row['id'] == 'inbox'), {'id': 'inbox', 'visible': False, 'size': 'full'})
+        self.assertLess([row['id'] for row in rows].index('next'), [row['id'] for row in rows].index('pinboard'))
         stored = TodayLayout.objects.get(family=self.family, user=self.user)
         self.assertEqual(stored.widgets, legacy)
+
+    def test_week_settings_are_private_and_persisted(self):
+        config = self.client.get(self.url).data
+        week = next(row for row in config['widgets'] if row['id'] == 'week')
+        week['settings'] = {'events': False, 'waste': True, 'holidays': True, 'special': False}
+        saved = self.client.put(self.url, config, format='json')
+        self.assertEqual(saved.status_code, 200)
+        stored = TodayLayout.objects.get(family=self.family, user=self.user)
+        self.assertEqual(next(row for row in stored.widgets if row['id'] == 'week')['settings'], week['settings'])
+        self.client.force_authenticate(self.other)
+        other_week = next(row for row in self.client.get(self.url).data['widgets'] if row['id'] == 'week')
+        self.assertEqual(other_week['settings'], DEFAULT_WEEK_SETTINGS)
 
     def test_saved_custom_order_is_never_replaced_by_new_reference_default(self):
         custom = deepcopy(DEFAULT_WIDGETS)
@@ -80,6 +93,9 @@ class TodayLayoutTests(TestCase):
             item = deepcopy(valid); item[field] = value; invalid.append(item)
         for field, value in [('id', 'private-data'), ('visible', 'true'), ('size', 'giant'), ('extra', 1)]:
             item = deepcopy(valid); item['widgets'][0][field] = value; invalid.append(item)
+        item = deepcopy(valid); item['widgets'][0]['settings']['events'] = 'yes'; invalid.append(item)
+        item = deepcopy(valid); item['widgets'][0]['settings']['secret'] = True; invalid.append(item)
+        item = deepcopy(valid); item['widgets'][1]['settings'] = deepcopy(DEFAULT_WEEK_SETTINGS); invalid.append(item)
         item = deepcopy(valid); item['widgets'][1] = item['widgets'][0]; invalid.append(item)
         item = deepcopy(valid); item['user'] = self.other.id; invalid.append(item)
         for item in invalid:
