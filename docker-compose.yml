@@ -85,7 +85,9 @@ services:
     entrypoint: ["/bin/sh", "-c"]
     command: ["python manage.py flush_transactional_email --loop --interval 10"]
 
-  receipt-worker:
+  # Transitional worker for the still-legacy PetDocument OCR only. Receipts no
+  # longer run here; every new/retried receipt is handled by document-worker.
+  pet-document-worker:
     build:
       context: .
       dockerfile: backend/Dockerfile
