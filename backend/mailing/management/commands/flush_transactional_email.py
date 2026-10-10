@@ -1,6 +1,7 @@
 import time
 
 from django.core.management.base import BaseCommand
+from django.db import close_old_connections
 
 from mailing.service import process_one_transactional_email
 
@@ -16,7 +17,11 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         processed = 0
         while True:
-            did_work = process_one_transactional_email()
+            close_old_connections()
+            try:
+                did_work = process_one_transactional_email()
+            finally:
+                close_old_connections()
             if did_work:
                 processed += 1
                 if not options["loop"] and processed >= options["max"]:
