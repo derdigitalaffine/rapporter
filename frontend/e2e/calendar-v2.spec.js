@@ -24,14 +24,16 @@ test('calendar defaults to week and switches week month list without horizontal 
 
 test('calendar source filter uses configured source name icon appearance and can be toggled',async({page})=>{
  await bootCalendar(page);
+ await page.getByRole('button',{name:'Liste',exact:true}).click();
  const source=page.locator('.calendar-source-chip').filter({hasText:'Kita'});
  await expect(source).toBeVisible();
  await expect(source).toHaveAttribute('aria-pressed','true');
+ await expect(page.getByText('Kita-Fest',{exact:true})).toBeVisible();
  await source.click();
  await expect(source).toHaveAttribute('aria-pressed','false');
  await expect(page.getByText('Kita-Fest',{exact:true})).toHaveCount(0);
  await source.click();
- await expect(page.getByText('Kita-Fest',{exact:true}).first()).toBeVisible();
+ await expect(page.getByText('Kita-Fest',{exact:true})).toBeVisible();
 });
 
 test('Today week compass navigates weeks, resets to today and opens tapped day in calendar',async({page})=>{
@@ -50,9 +52,12 @@ test('Today week compass navigates weeks, resets to today and opens tapped day i
  await expect(page.getByRole('button',{name:'Woche',exact:true})).toHaveAttribute('aria-pressed','true');
 });
 
-test('waste collection appears only once on Today',async({page})=>{
+test('waste collection stays out of Up next and appears only as a dedicated waste card',async({page})=>{
  const state=await installApiMocks(page);
  state.events.push({id:'waste-today-1',family:state.family.id,source:'waste-source-1',type:'waste.collection',title:'Restmüll',starts_at:new Date(Date.now()+2*3600000).toISOString(),ends_at:null,actionable:true,payload:{provider:'Abfallkalender',waste_type:'rest'}});
  await page.goto('/');
- await expect(page.getByText('Restmüll',{exact:true})).toHaveCount(1);
+ await expect(page.getByTestId('today-context').getByText('Restmüll',{exact:true})).toHaveCount(0);
+ const wasteSection=page.getByTestId('next-waste');
+ await expect(wasteSection.locator('.today-waste-event')).toHaveCount(1);
+ await expect(wasteSection).toContainText('Restmüll');
 });
