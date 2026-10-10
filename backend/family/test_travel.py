@@ -1,6 +1,7 @@
 import io
 import tempfile
 from datetime import date
+from zoneinfo import ZoneInfo
 
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -69,12 +70,14 @@ class TravelTests(TestCase):
     def test_crud_roles_dates_and_calendar_sync(self):
         created = self.create_trip()
         trip = Trip.objects.select_related("calendar_event").get(pk=created["id"])
-        self.assertEqual(trip.calendar_event.type, "travel.trip")
-        self.assertEqual(trip.calendar_event.payload["trip_id"], str(trip.id))
-        self.assertEqual(trip.calendar_event.payload["civil_start"], "2027-07-10")
-        self.assertEqual(trip.calendar_event.payload["civil_end"], "2027-07-17")
-        self.assertEqual(trip.calendar_event.starts_at.date(), date(2027, 7, 10))
-        self.assertEqual(trip.calendar_event.ends_at.date(), date(2027, 7, 18))
+        event = trip.calendar_event
+        self.assertEqual(event.type, "travel.trip")
+        self.assertEqual(event.payload["trip_id"], str(trip.id))
+        self.assertEqual(event.payload["date_start"], "2027-07-10")
+        self.assertEqual(event.payload["date_end_exclusive"], "2027-07-18")
+        berlin = ZoneInfo("Europe/Berlin")
+        self.assertEqual(event.starts_at.astimezone(berlin).date(), date(2027, 7, 10))
+        self.assertEqual(event.ends_at.astimezone(berlin).date(), date(2027, 7, 18))
 
         response = self.client.patch(
             f"/api/trips/{trip.id}/",
@@ -85,7 +88,7 @@ class TravelTests(TestCase):
         trip.refresh_from_db()
         trip.calendar_event.refresh_from_db()
         self.assertEqual(trip.calendar_event.title, "Meerurlaub")
-        self.assertEqual(trip.calendar_event.payload["civil_end"], "2027-07-20")
+        self.assertEqual(trip.calendar_event.payload["date_end_exclusive"], "2027-07-21")
 
         self.client.force_authenticate(self.teen)
         self.assertEqual(self.client.post("/api/trips/", self.payload(title="No"), format="json").status_code, 403)
