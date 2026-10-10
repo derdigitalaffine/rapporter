@@ -28,7 +28,7 @@ services:
       # In the standard topology every public request reaches Django through
       # exactly this pinned Caddy peer. This keeps X-Forwarded-For useful for
       # abuse keys without trusting an entire private Docker address range.
-      AUTH_TRUSTED_PROXY_CIDRS: ${AUTH_TRUSTED_PROXY_CIDRS:-172.31.254.2/32}
+      AUTH_TRUSTED_PROXY_CIDRS: ${AUTH_TRUSTED_PROXY_CIDRS:-172.28.254.14/32}
     networks:
       - default
       - familyos_proxy
@@ -129,7 +129,9 @@ services:
       PUBLIC_HOST: ${PUBLIC_HOST:-localhost}
     networks:
       familyos_proxy:
-        ipv4_address: ${FAMILYOS_CADDY_IP:-172.31.254.2}
+        # Keep the trusted proxy peer outside Docker's dynamic allocation range
+        # so another container can never be handed the same address first.
+        ipv4_address: ${FAMILYOS_CADDY_IP:-172.28.254.14}
     ports:
       - "${HTTP_BIND:-0.0.0.0}:${HTTP_PORT:-80}:80"
     volumes:
@@ -141,7 +143,10 @@ networks:
   familyos_proxy:
     ipam:
       config:
-        - subnet: ${FAMILYOS_PROXY_SUBNET:-172.31.254.0/28}
+        - subnet: ${FAMILYOS_PROXY_SUBNET:-172.28.254.0/28}
+          # Dynamic peers (currently backend) are allocated only from the lower
+          # half. Caddy uses a pinned address in the upper half.
+          ip_range: ${FAMILYOS_PROXY_DYNAMIC_RANGE:-172.28.254.0/29}
 
 volumes:
   postgres_data:
