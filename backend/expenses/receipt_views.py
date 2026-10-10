@@ -23,7 +23,7 @@ def receipt_file(request, expense_id):
     if request.method == "DELETE":
         with transaction.atomic():
             locked = (
-                Expense.objects.select_for_update()
+                Expense.objects.select_for_update(of=("self",))
                 .select_related("receipt_document")
                 .filter(id=expense.id)
                 .first()
