@@ -41,16 +41,22 @@ class FamilyEventViewSet(BaseFamilyEventViewSet):
         return response
 
     def perform_create(self, serializer):
+        if serializer.validated_data.get("source"):
+            raise PermissionDenied("Externe Kalendertermine werden von ihrer Quelle verwaltet.")
         if serializer.validated_data.get("type") in READ_ONLY_EVENT_TYPES:
             raise PermissionDenied("Dieser Termin wird von seinem Fachbereich verwaltet.")
         super().perform_create(serializer)
 
     def perform_update(self, serializer):
+        if serializer.instance.source_id or serializer.validated_data.get("source"):
+            raise PermissionDenied("Externe Kalendertermine sind schreibgeschützt.")
         if serializer.instance.type in READ_ONLY_EVENT_TYPES or serializer.validated_data.get("type") in READ_ONLY_EVENT_TYPES:
             raise PermissionDenied("Dieser Termin ist hier schreibgeschützt.")
         super().perform_update(serializer)
 
     def perform_destroy(self, instance):
+        if instance.source_id:
+            raise PermissionDenied("Externe Kalendertermine sind schreibgeschützt.")
         if instance.type in READ_ONLY_EVENT_TYPES:
             raise PermissionDenied("Dieser Termin muss in seinem Fachbereich gelöscht werden.")
         super().perform_destroy(instance)
