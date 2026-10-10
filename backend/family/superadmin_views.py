@@ -8,6 +8,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
 from auth_abuse.service import enforce
+from auth_identity.service import EmailIdentityError, normalize_email
 from auth_sessions.service import require_fresh_session
 
 from .invitation_service import issue_invitation
@@ -38,6 +39,13 @@ def _rate_limited_response(decision):
 def _enforce_sensitive_action(request):
     require_fresh_session(request)
     return enforce("superadmin.sensitive_action", request=request, user=request.user)
+
+
+def _normalized_required_email(value):
+    try:
+        return normalize_email(value)
+    except EmailIdentityError:
+        return ""
 
 
 def _family_row(family):
@@ -97,12 +105,14 @@ def superadmin_families(request):
         return _rate_limited_response(decision)
 
     name = str(request.data.get("name") or "").strip()
-    owner_email = str(request.data.get("owner_email") or "").strip().lower()
+    owner_email = _normalized_required_email(request.data.get("owner_email") or "")
     owner_name = str(request.data.get("owner_name") or "").strip()
     locale = str(request.data.get("locale") or "de").strip().lower()
     family_timezone = str(request.data.get("timezone") or "Europe/Berlin").strip()
     if not name:
         return Response({"detail": "Familienname fehlt."}, status=status.HTTP_400_BAD_REQUEST)
+    if not owner_email:
+        return Response({"detail": "Gültige Owner-E-Mail fehlt."}, status=status.HTTP_400_BAD_REQUEST)
     if locale not in {"de", "en"}:
         locale = "de"
 
@@ -126,7 +136,7 @@ def superadmin_families(request):
         {
             "family": _family_row(family),
             "invite_id": str(invite.id),
-            "delivery": "queued" if invite.email else "not_queued",
+            "delivery": "queued",
         },
         status=status.HTTP_201_CREATED,
     )
@@ -162,8 +172,10 @@ def superadmin_owner_invite(request, family_id):
         return Response({"detail": "Familie nicht gefunden."}, status=status.HTTP_404_NOT_FOUND)
     if family.status != Family.Status.ACTIVE:
         return Response({"detail": "Eine gesperrte Familie kann keine neue Owner-Einladung erhalten."}, status=status.HTTP_409_CONFLICT)
-    email = str(request.data.get("email") or "").strip().lower()
+    email = _normalized_required_email(request.data.get("email") or "")
     display_name = str(request.data.get("display_name") or "").strip()
+    if not email:
+        return Response({"detail": "Gültige Owner-E-Mail fehlt."}, status=status.HTTP_400_BAD_REQUEST)
     invite, _token = issue_invitation(
         family=family,
         role=Membership.Role.OWNER,
@@ -175,7 +187,7 @@ def superadmin_owner_invite(request, family_id):
     return Response(
         {
             "invite_id": str(invite.id),
-            "delivery": "queued" if invite.email else "not_queued",
+            "delivery": "queued",
             "family": _family_row(family),
         },
         status=status.HTTP_201_CREATED,
