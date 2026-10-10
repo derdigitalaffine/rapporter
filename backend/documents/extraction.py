@@ -55,9 +55,10 @@ def _psm_for(image):
     return 3
 
 
-def _ocr_image(image, page_number):
+def _ocr_image(image, page_number, *, heartbeat):
     image = ImageOps.autocontrast(ImageOps.grayscale(image))
     config = f"--psm {_psm_for(image)}"
+    heartbeat()
     try:
         data = pytesseract.image_to_data(
             image,
@@ -66,8 +67,10 @@ def _ocr_image(image, page_number):
             timeout=OCR_TIMEOUT_SECONDS,
             output_type=Output.DICT,
         )
+        heartbeat()
         language = "deu+eng"
     except pytesseract.TesseractError:
+        heartbeat()
         try:
             data = pytesseract.image_to_data(
                 image,
@@ -75,6 +78,7 @@ def _ocr_image(image, page_number):
                 timeout=OCR_TIMEOUT_SECONDS,
                 output_type=Output.DICT,
             )
+            heartbeat()
             language = "default"
         except (pytesseract.TesseractError, RuntimeError, OSError) as exc:
             raise ProcessingError("ocr_failed", "Lokale OCR konnte die Seite nicht verarbeiten.", retryable=True) from exc
@@ -148,11 +152,13 @@ def _page_field(page_data, source):
     }
 
 
-def _extract_image(handle):
+def _extract_image(handle, *, heartbeat):
+    heartbeat()
     try:
         with Image.open(handle) as source:
             source.load()
-            page = _ocr_image(source.convert("RGB"), 1)
+            heartbeat()
+            page = _ocr_image(source.convert("RGB"), 1, heartbeat=heartbeat)
     except ProcessingError:
         raise
     except (UnidentifiedImageError, OSError, ValueError) as exc:
@@ -170,7 +176,8 @@ def _extract_image(handle):
     )
 
 
-def _extract_pdf(handle):
+def _extract_pdf(handle, *, heartbeat):
+    heartbeat()
     try:
         reader = PdfReader(handle, strict=False)
     except (PdfReadError, ValueError, OSError, EOFError) as exc:
@@ -180,7 +187,9 @@ def _extract_pdf(handle):
     languages = set()
     used_ocr = False
     for page_number, page in enumerate(reader.pages, start=1):
+        heartbeat()
         embedded = _normalise_text(page.extract_text() or "")
+        heartbeat()
         if len(embedded) >= MIN_EMBEDDED_TEXT_CHARS:
             page_data = {
                 "page": page_number,
@@ -198,7 +207,9 @@ def _extract_pdf(handle):
             page_images = list(page.images)
         except Exception:
             page_images = []
+        heartbeat()
         for page_image in page_images:
+            heartbeat()
             try:
                 image = page_image.image.convert("RGB")
             except Exception:
@@ -206,7 +217,7 @@ def _extract_pdf(handle):
                     image = Image.open(io.BytesIO(page_image.data)).convert("RGB")
                 except Exception:
                     continue
-            ocr_pages.append(_ocr_image(image, page_number))
+            ocr_pages.append(_ocr_image(image, page_number, heartbeat=heartbeat))
         if ocr_pages:
             used_ocr = True
             languages.update(item["language"] for item in ocr_pages if item["language"])
@@ -226,6 +237,7 @@ def _extract_pdf(handle):
             fields.append(_page_field(page_data, "ocr"))
         else:
             page_results.append({"page": page_number, "text": embedded, "confidence": 0.0, "source": "unreadable", "word_count": 0})
+        heartbeat()
 
     text = _normalise_text("\n\n".join(item["text"] for item in page_results if item["text"]))[:MAX_TEXT_CHARS]
     return ExtractionResult(
@@ -242,16 +254,18 @@ def _extract_pdf(handle):
     )
 
 
-def extract_document(document):
+def extract_document(document, *, heartbeat=None):
+    heartbeat = heartbeat or (lambda: None)
+    heartbeat()
     try:
         handle = open_canonical(document.canonical_file)
     except (FileNotFoundError, OSError) as exc:
         raise ProcessingError("canonical_missing", "Die kanonische Dokumentdatei fehlt.") from exc
     try:
         if document.mime_type == "application/pdf":
-            return _extract_pdf(handle)
+            return _extract_pdf(handle, heartbeat=heartbeat)
         if document.mime_type.startswith("image/"):
-            return _extract_image(handle)
+            return _extract_image(handle, heartbeat=heartbeat)
         raise ProcessingError("unsupported_mime", "Der Dokumenttyp kann nicht lokal verarbeitet werden.")
     finally:
         handle.close()
