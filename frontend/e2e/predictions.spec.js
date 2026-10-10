@@ -15,6 +15,12 @@ test('routine editor shows learned cadence and keeps frequency goals optional',a
     last_done_at:new Date(Date.now()-7*86400000).toISOString(),logs:[],
     target_count:null,target_period_days:7,reminder_enabled:true,prediction:{status:'due',expected_at:new Date().toISOString(),learned_interval_days:7,expected_interval_days:7,confidence:.84,sample_count:5,interval_count:4,days_until_expected:0},
   });
+  await page.route('**/api/routines/**',async route=>{
+    const request=route.request();
+    const path=new URL(request.url()).pathname;
+    if(path==='/api/routines/'&&request.method()==='GET')return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(state.routines)});
+    return route.fallback();
+  });
 
   await page.goto('/?page=routines');
   await page.locator('.row-main-button').filter({hasText:'Bad putzen'}).click();
