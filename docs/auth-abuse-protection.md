@@ -31,6 +31,8 @@ The current application enforces:
 
 Password-login failures use the same generic response for known and unknown identifiers. A rate-limited login keeps that same generic detail and adds HTTP `429`, `Retry-After`, `code=rate_limited` and a numeric `retry_after`. Successful logins forgive identifier-specific counters, while network/global pressure remains.
 
+Invitation creation validates the requested family and verifies Owner/Adult membership before consuming the family-scoped invite budget. This prevents authenticated non-members from poisoning another family's shared rate-limit bucket with a guessed family ID.
+
 ## Persistent multi-worker store
 
 Counters are stored in PostgreSQL through `AuthAbuseBucket`. A bucket is unique by scope, HMAC key and window kind. Enforcement uses transactions plus `SELECT ... FOR UPDATE`; concurrent first writers are reconciled through the database uniqueness constraint. This makes the budget shared across Gunicorn workers and across application replicas using the same database.
@@ -45,15 +47,23 @@ IPv4 defaults to `/32`; IPv6 defaults to `/64` so temporary IPv6 interface addre
 
 ### Reverse proxies
 
-`X-Forwarded-For` is ignored unless the direct peer (`REMOTE_ADDR`) belongs to an explicitly configured `AUTH_TRUSTED_PROXY_CIDRS` network. When trusted, the chain is walked from right to left and only configured trusted proxy hops are discarded. This prevents blindly trusting a client-supplied forwarding header.
+`X-Forwarded-For` is ignored unless the direct peer (`REMOTE_ADDR`) is explicitly trusted. Trust can be configured in two ways:
 
-Example for an installation whose application is reachable only from a known reverse-proxy network:
+- `AUTH_TRUSTED_PROXY_HOSTS` for exact proxy hosts controlled by the deployment. Hostnames are resolved when the abuse service evaluates a request and only the resulting exact `/32` or `/128` peer addresses are trusted. This handles container IP changes without trusting the whole container subnet.
+- `AUTH_TRUSTED_PROXY_CIDRS` for additional known proxy networks operated by the administrator.
+
+When the direct peer is trusted, the forwarding chain is walked from right to left and only configured trusted proxy hops are discarded. A client-supplied forwarding header from any other peer is ignored.
+
+The official Compose deployment sets `AUTH_TRUSTED_PROXY_HOSTS=caddy` for the backend by default. This is important because Caddy is the only exposed HTTP entry point; without trusting that exact peer, every external client would otherwise appear as the Caddy container and share one network-rate-limit bucket.
+
+Example for an installation with Caddy plus an additional known upstream reverse-proxy network:
 
 ```env
-AUTH_TRUSTED_PROXY_CIDRS=172.20.0.0/16
+AUTH_TRUSTED_PROXY_HOSTS=caddy
+AUTH_TRUSTED_PROXY_CIDRS=10.20.0.0/24
 ```
 
-Use the actual proxy/network CIDR for the deployment. Leaving this setting empty is safe: forwarded addresses are ignored and the direct peer is used.
+Only configure hostnames or CIDRs you operate. DNS/hostname resolution failure is fail-closed: forwarded addresses are ignored unless the direct peer still matches another explicitly trusted entry.
 
 ## Configuration
 
@@ -62,6 +72,9 @@ Optional environment variables:
 ```env
 # Recommended as a separate random secret; unset/blank falls back to DJANGO_SECRET_KEY.
 AUTH_ABUSE_HMAC_KEY=
+# Standard Compose uses caddy. Non-Compose deployments may leave this empty.
+AUTH_TRUSTED_PROXY_HOSTS=caddy
+# Additional explicitly trusted proxy networks only.
 AUTH_TRUSTED_PROXY_CIDRS=
 AUTH_ABUSE_IPV4_PREFIX=32
 AUTH_ABUSE_IPV6_PREFIX=64
