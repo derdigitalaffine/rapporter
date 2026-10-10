@@ -7,6 +7,7 @@ from .development_service import development_payload, record_observation
 from .family_modules import active_membership, care_access, require_manager, require_module
 from .models import BabyProfile, CareCircleAccess, DevelopmentObservation, PregnancyJourney
 from .pregnancy_service import archive_pregnancy, complete_birth, create_managed_child
+from .template_service import pregnancy_template_items
 from .views import AlreadyBornInput, BirthBabyInput, ObservationInput, _serialize_baby, _serialize_pregnancy, requested_family
 
 
@@ -52,6 +53,19 @@ def pregnancy_birth(request, pregnancy_id):
     serializer.is_valid(raise_exception=True)
     babies = complete_birth(request.user, row, serializer.validated_data)
     return Response({"babies": [_serialize_baby(baby) for baby in babies]})
+
+
+@api_view(["POST"])
+def pregnancy_templates(request, pregnancy_id):
+    row = PregnancyJourney.objects.select_related("family").filter(pk=pregnancy_id).first()
+    if not row:
+        raise NotFound()
+    return Response(pregnancy_template_items(
+        request.user,
+        row,
+        include_tasks=request.data.get("tasks", True),
+        include_shopping=request.data.get("shopping", True),
+    ))
 
 
 @api_view(["GET", "POST"])
