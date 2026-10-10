@@ -48,6 +48,25 @@ class AuthAbuseServiceTests(TestCase):
         )
         self.assertEqual(str(client_ip(request)), "198.51.100.25")
 
+    @override_settings(AUTH_TRUSTED_PROXY_CIDRS=["172.31.254.2/32"])
+    def test_standard_compose_caddy_peer_preserves_client_network_identity(self):
+        request = self.factory.get(
+            "/",
+            REMOTE_ADDR="172.31.254.2",
+            HTTP_X_FORWARDED_FOR="198.51.100.77",
+        )
+        self.assertEqual(str(client_ip(request)), "198.51.100.77")
+        self.assertEqual(network_identity(request), "198.51.100.77/32")
+
+    @override_settings(AUTH_TRUSTED_PROXY_CIDRS=["172.31.254.2/32"])
+    def test_direct_untrusted_peer_cannot_spoof_compose_proxy_header(self):
+        request = self.factory.get(
+            "/",
+            REMOTE_ADDR="198.51.100.88",
+            HTTP_X_FORWARDED_FOR="203.0.113.99",
+        )
+        self.assertEqual(str(client_ip(request)), "198.51.100.88")
+
     @override_settings(AUTH_TRUSTED_PROXY_CIDRS=[], AUTH_ABUSE_IPV6_PREFIX=64)
     def test_ipv6_network_identity_uses_prefix(self):
         request = self.factory.get("/", REMOTE_ADDR="2001:db8:abcd:1234:1111:2222:3333:4444")
