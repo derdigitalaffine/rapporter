@@ -1,4 +1,3 @@
-from django.utils import timezone
 from rest_framework import permissions, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
@@ -9,6 +8,7 @@ from .cookies import set_access_cookie
 from .models import AuthSession
 from .service import (
     active_sessions_for_user,
+    is_fresh,
     issue_access_token,
     mark_reauthenticated,
     require_fresh_session,
@@ -40,14 +40,7 @@ def session_list(request):
     current = getattr(request, "auth_session", None)
     current_sid = current.pk if current else None
     rows = [serialize_session(item, current_sid=current_sid) for item in active_sessions_for_user(request.user)]
-    return Response({"sessions": rows, "fresh": bool(current and current.last_reauthenticated_at + __freshness_delta() > timezone.now())})
-
-
-def __freshness_delta():
-    # Kept local to avoid exposing configuration details in the API surface.
-    from .service import freshness_lifetime
-
-    return freshness_lifetime()
+    return Response({"sessions": rows, "fresh": bool(current and is_fresh(current))})
 
 
 @api_view(["DELETE"])
@@ -89,9 +82,11 @@ def reauthenticate_password(request):
 
     password = request.data.get("password") or ""
     if not password or not request.user.check_password(password):
+        # This is a failed confirmation inside an otherwise valid login session,
+        # not an expired access token. Keep it out of the global 401-refresh path.
         return Response(
             {"detail": REAUTH_FAILURE_DETAIL, "code": "reauth_failed"},
-            status=status.HTTP_401_UNAUTHORIZED,
+            status=status.HTTP_400_BAD_REQUEST,
         )
     if current is None:
         return Response({"detail": "Keine aktive Sitzung."}, status=status.HTTP_401_UNAUTHORIZED)
