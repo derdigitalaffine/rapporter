@@ -4,6 +4,8 @@ Integrationen holen Informationen aus anderen Quellen nach FamilyOS.
 
 Du findest sie unter **Mehr → Integrationen**.
 
+![Integrationsübersicht von FamilyOS](screenshots/integrations.webp)
+
 ## So gehst du vor
 
 1. Öffne den Integrationskatalog.
