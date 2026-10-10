@@ -13,6 +13,11 @@ from .private_images import image_path, optimize_image, remove_image, store_imag
 from .travel_models import Trip, TripPhoto
 
 
+CONCRETE_DATE_PRECISIONS = frozenset(
+    {Trip.DatePrecision.RANGE, Trip.DatePrecision.EXACT}
+)
+
+
 def _can_manage(user, family_id):
     return Membership.objects.filter(
         family_id=family_id,
@@ -25,17 +30,52 @@ def _can_add_photos(user, family_id):
     return Membership.objects.filter(family_id=family_id, user=user).exclude(role=Membership.Role.GUEST).exists()
 
 
-def _event_bounds(trip):
+def _family_zone(family):
     try:
-        zone = ZoneInfo(trip.family.timezone)
+        return ZoneInfo(family.timezone)
     except ZoneInfoNotFoundError:
-        zone = ZoneInfo("UTC")
+        return ZoneInfo("UTC")
+
+
+def _derived_stage(family, precision, starts_on, ends_on):
+    if precision not in CONCRETE_DATE_PRECISIONS or not starts_on or not ends_on:
+        return Trip.Stage.PLANNING
+    today = datetime.now(_family_zone(family)).date()
+    if ends_on < today:
+        return Trip.Stage.COMPLETED
+    if starts_on <= today <= ends_on:
+        return Trip.Stage.ACTIVE
+    return Trip.Stage.SCHEDULED
+
+
+def _event_bounds(trip):
+    zone = _family_zone(trip.family)
     start = datetime.combine(trip.starts_on, time.min, tzinfo=zone)
     end = datetime.combine(trip.ends_on + timedelta(days=1), time.min, tzinfo=zone)
     return start, end
 
 
+def _clear_trip_event(trip):
+    event_id = trip.calendar_event_id
+    if not event_id:
+        return
+    # Detach first so an unrelated event could never be deleted through a stale
+    # relation. Only canonical travel.trip projections are removed.
+    Trip.objects.filter(pk=trip.pk, calendar_event_id=event_id).update(calendar_event=None)
+    trip.calendar_event = None
+    trip.calendar_event_id = None
+    FamilyEvent.objects.filter(pk=event_id, type="travel.trip").delete()
+
+
 def sync_trip_event(trip):
+    if (
+        trip.date_precision not in CONCRETE_DATE_PRECISIONS
+        or not trip.starts_on
+        or not trip.ends_on
+    ):
+        _clear_trip_event(trip)
+        return None
+
     start, end = _event_bounds(trip)
     event = trip.calendar_event or FamilyEvent(family=trip.family)
     event.family = trip.family
@@ -74,6 +114,11 @@ class TripSerializer(serializers.ModelSerializer):
             "family",
             "title",
             "destination",
+            "stage",
+            "date_precision",
+            "date_year",
+            "date_month",
+            "date_season",
             "starts_on",
             "ends_on",
             "notes",
@@ -89,13 +134,171 @@ class TripSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ["created_by", "created_at", "updated_at", "calendar_event_id"]
 
+    def _current(self, attrs, field, default=None):
+        if field in attrs:
+            return attrs[field]
+        if self.instance is not None:
+            return getattr(self.instance, field)
+        return default
+
+    @staticmethod
+    def _has_value(value):
+        return value is not None and value != ""
+
+    def _reject_explicit(self, attrs, fields, message):
+        errors = {
+            field: message
+            for field in fields
+            if field in attrs and self._has_value(attrs[field])
+        }
+        if errors:
+            raise serializers.ValidationError(errors)
+
     def validate(self, attrs):
-        starts_on = attrs.get("starts_on", getattr(self.instance, "starts_on", None))
-        ends_on = attrs.get("ends_on", getattr(self.instance, "ends_on", None))
-        if starts_on and ends_on and ends_on < starts_on:
-            raise serializers.ValidationError({"ends_on": "Das Enddatum darf nicht vor dem Startdatum liegen."})
         if self.instance and "family" in attrs and attrs["family"].id != self.instance.family_id:
             raise serializers.ValidationError({"family": "Die Familie einer Reise kann nicht geändert werden."})
+
+        starts_on = self._current(attrs, "starts_on")
+        ends_on = self._current(attrs, "ends_on")
+        date_year = self._current(attrs, "date_year")
+        date_month = self._current(attrs, "date_month")
+        date_season = self._current(attrs, "date_season", "")
+        family = self._current(attrs, "family")
+
+        precision_explicit = "date_precision" in attrs
+        date_bounds_touched = "starts_on" in attrs or "ends_on" in attrs
+        if precision_explicit:
+            precision = attrs["date_precision"]
+        elif self.instance is None:
+            if starts_on or ends_on:
+                precision = Trip.DatePrecision.EXACT
+            elif date_season:
+                precision = Trip.DatePrecision.SEASON
+            elif date_month:
+                precision = Trip.DatePrecision.MONTH
+            elif date_year:
+                precision = Trip.DatePrecision.YEAR
+            else:
+                precision = Trip.DatePrecision.UNKNOWN
+        elif date_bounds_touched and (starts_on or ends_on):
+            # Legacy clients that start supplying concrete dates do not need to
+            # know about date_precision yet.
+            precision = Trip.DatePrecision.EXACT
+        else:
+            precision = self.instance.date_precision
+        attrs["date_precision"] = precision
+
+        if precision == Trip.DatePrecision.UNKNOWN:
+            self._reject_explicit(
+                attrs,
+                ("starts_on", "ends_on", "date_year", "date_month", "date_season"),
+                "Für eine Reise ohne Datumsangabe darf dieses Feld nicht gesetzt sein.",
+            )
+            starts_on = ends_on = date_year = date_month = None
+            date_season = ""
+            attrs.update(
+                starts_on=None,
+                ends_on=None,
+                date_year=None,
+                date_month=None,
+                date_season="",
+            )
+        elif precision == Trip.DatePrecision.YEAR:
+            self._reject_explicit(
+                attrs,
+                ("starts_on", "ends_on", "date_month", "date_season"),
+                "Für die Präzision Jahr ist nur date_year zulässig.",
+            )
+            if not date_year:
+                raise serializers.ValidationError({"date_year": "Für die Präzision Jahr ist ein Jahr erforderlich."})
+            if not 1 <= date_year <= 9999:
+                raise serializers.ValidationError({"date_year": "Das Jahr muss zwischen 1 und 9999 liegen."})
+            starts_on = ends_on = date_month = None
+            date_season = ""
+            attrs.update(starts_on=None, ends_on=None, date_month=None, date_season="")
+        elif precision == Trip.DatePrecision.SEASON:
+            self._reject_explicit(
+                attrs,
+                ("starts_on", "ends_on", "date_month"),
+                "Für die Präzision Saison sind nur Jahr und Saison zulässig.",
+            )
+            if not date_year:
+                raise serializers.ValidationError({"date_year": "Für eine Saison ist ein Jahr erforderlich."})
+            if not 1 <= date_year <= 9999:
+                raise serializers.ValidationError({"date_year": "Das Jahr muss zwischen 1 und 9999 liegen."})
+            if not date_season:
+                raise serializers.ValidationError({"date_season": "Für die Präzision Saison ist eine Saison erforderlich."})
+            starts_on = ends_on = date_month = None
+            attrs.update(starts_on=None, ends_on=None, date_month=None)
+        elif precision == Trip.DatePrecision.MONTH:
+            self._reject_explicit(
+                attrs,
+                ("starts_on", "ends_on", "date_season"),
+                "Für die Präzision Monat sind nur Jahr und Monat zulässig.",
+            )
+            if not date_year:
+                raise serializers.ValidationError({"date_year": "Für einen Monat ist ein Jahr erforderlich."})
+            if not 1 <= date_year <= 9999:
+                raise serializers.ValidationError({"date_year": "Das Jahr muss zwischen 1 und 9999 liegen."})
+            if date_month is None or not 1 <= date_month <= 12:
+                raise serializers.ValidationError({"date_month": "Der Monat muss zwischen 1 und 12 liegen."})
+            starts_on = ends_on = None
+            date_season = ""
+            attrs.update(starts_on=None, ends_on=None, date_season="")
+        elif precision in CONCRETE_DATE_PRECISIONS:
+            self._reject_explicit(
+                attrs,
+                ("date_year", "date_month", "date_season"),
+                "Bei konkreten Reisedaten dürfen keine ungefähren Datumsfelder gesetzt sein.",
+            )
+            if not starts_on or not ends_on:
+                raise serializers.ValidationError(
+                    {"ends_on": "Für konkrete Reisedaten sind Start- und Enddatum erforderlich."}
+                )
+            if ends_on < starts_on:
+                raise serializers.ValidationError({"ends_on": "Das Enddatum darf nicht vor dem Startdatum liegen."})
+            date_year = date_month = None
+            date_season = ""
+            attrs.update(date_year=None, date_month=None, date_season="")
+        else:
+            raise serializers.ValidationError({"date_precision": "Unbekannte Datumspräzision."})
+
+        stage_explicit = "stage" in attrs
+        archived_explicit = "archived" in attrs
+        archived = self._current(attrs, "archived", False)
+        stage = self._current(attrs, "stage")
+
+        if stage_explicit and archived_explicit and (
+            (attrs["stage"] == Trip.Stage.ARCHIVED) != bool(attrs["archived"])
+        ):
+            raise serializers.ValidationError(
+                {"archived": "archived und stage müssen denselben Archivstatus beschreiben."}
+            )
+
+        if stage_explicit:
+            stage = attrs["stage"]
+            archived = stage == Trip.Stage.ARCHIVED
+            attrs["archived"] = archived
+        elif archived_explicit:
+            archived = bool(attrs["archived"])
+            if archived:
+                stage = Trip.Stage.ARCHIVED
+            elif self.instance is None or self.instance.stage == Trip.Stage.ARCHIVED:
+                stage = _derived_stage(family, precision, starts_on, ends_on)
+            attrs["stage"] = stage
+        elif self.instance is None:
+            stage = _derived_stage(family, precision, starts_on, ends_on)
+            attrs["stage"] = stage
+            attrs["archived"] = stage == Trip.Stage.ARCHIVED
+        else:
+            stage = self.instance.stage
+
+        if stage in {Trip.Stage.SCHEDULED, Trip.Stage.ACTIVE, Trip.Stage.COMPLETED}:
+            if precision not in CONCRETE_DATE_PRECISIONS:
+                raise serializers.ValidationError(
+                    {"stage": "Scheduled, active und completed benötigen konkrete Reisedaten."}
+                )
+
         return attrs
 
     def get_photos(self, obj):
