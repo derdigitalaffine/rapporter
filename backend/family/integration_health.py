@@ -6,11 +6,17 @@ from .extended_integrations import sync_source as raw_sync_source
 from .weather_integrations import sync_dwd, sync_weather
 
 
+ICS_ADAPTERS = {"ics", "google_ics", "microsoft_ics", "webuntis_ics", "moodle_ics"}
+
+
 def _sync_source(source):
     adapter = (source.config or {}).get("adapter")
     if adapter == "rlp_school_holidays":
         from .school_holidays import sync_school_holidays
         return sync_school_holidays(source)
+    if adapter in ICS_ADAPTERS:
+        from .ics_projection import sync_ics_projection
+        return sync_ics_projection(source)
     if adapter == "dwd":
         return sync_dwd(source)
     if adapter == "weather":
