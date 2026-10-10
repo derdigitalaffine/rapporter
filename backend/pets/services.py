@@ -264,9 +264,13 @@ def report_payload(pet, from_at, to_at, sections):
             for row in PetHealthEvent.objects.filter(pet=pet).filter(Q(occurred_at__range=(from_at, to_at)) | Q(next_due_at__range=(from_at, to_at)))
         ]
     if "documents" in selected:
+        documents = pet.documents.filter(
+            Q(occurred_at__range=(from_at.date(), to_at.date()))
+            | Q(occurred_at__isnull=True, created_at__range=(from_at, to_at))
+        )
         payload["documents"] = [
             {"id": str(row.id), "kind": row.kind, "title": row.title, "occurred_at": row.occurred_at.isoformat() if row.occurred_at else None, "provider_name": row.provider_name}
-            for row in pet.documents.filter(occurred_at__gte=from_at.date(), occurred_at__lte=to_at.date())
+            for row in documents
         ]
     if "questions" in selected:
         payload["questions"] = [
