@@ -40,7 +40,6 @@
   --color-focus:#277f86;
   --color-selected:var(--color-positive);
   --color-disabled:#aeb8b6;
-  --tap-target:44px;
   --transition-fast:140ms;
 
   /* Spacing */
@@ -85,32 +84,19 @@ button,a,input,select,textarea,summary{outline:none}
 
 button:disabled,[aria-disabled="true"]{cursor:not-allowed;opacity:.52}
 
-:where(input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),select,textarea){
-  border-radius:var(--radius-md);
-}
-
-.primary,.secondary,.ghost-danger,.text-button{
-  min-height:var(--tap-target);
-  border-radius:var(--radius-md);
-}
 .primary{
   background:var(--color-action-primary);
   color:#fff;
-  transition:transform var(--transition-fast) ease,box-shadow var(--transition-fast) ease,opacity var(--transition-fast) ease;
+  border-radius:var(--radius-md);
+  min-height:44px;
+  transition:transform .12s ease,box-shadow .12s ease,opacity .12s ease;
 }
-.secondary{
-  border:1px solid var(--color-border);
-  background:var(--color-surface);
-  color:var(--color-text);
-}
-.primary:not(:disabled):active,.secondary:not(:disabled):active{transform:translateY(1px)}
-.compact{min-height:var(--tap-target)}
+.primary:not(:disabled):active{transform:translateY(1px)}
 
-.small-action,.fab-inline,.icon-button,.icon-btn,.back-button,.sheet-close{
-  min-width:var(--tap-target);
-  min-height:var(--tap-target);
+.small-action,.fab-inline,.icon-button,.back-button,.sheet-close{
+  min-width:44px;
+  min-height:44px;
 }
-.icon-btn,.icon-button,.back-button,.sheet-close{border-radius:var(--radius-md)}
 
 .ghost-danger,.danger-text{color:var(--color-danger)}
 .error{background:var(--color-danger-soft);color:#8b3434}
@@ -121,9 +107,9 @@ button:disabled,[aria-disabled="true"]{cursor:not-allowed;opacity:.52}
 
 .status-pill,.role-pill,.chip,.sync-badge{border-radius:var(--radius-pill)}
 
-/* Keep the shell stable while a newly selected page paints. */
+/* Page switches stay perceptually connected without a heavy animation. */
 .page-transition{animation:page-enter var(--transition-fast) ease-out both}
-@keyframes page-enter{from{opacity:.72;transform:translateY(3px)}to{opacity:1;transform:none}}
+@keyframes page-enter{from{opacity:.76;transform:translateY(2px)}to{opacity:1;transform:none}}
 
 @media(prefers-reduced-motion:reduce){
   *,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
