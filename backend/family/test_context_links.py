@@ -14,7 +14,7 @@ from .context_links import (
     remove_context_link,
 )
 from .context_models import ContextLink
-from .models import Family, Membership, Task
+from .models import Family, Membership, ShoppingItem, ShoppingList, Task
 from .notes_models import Note, NoteShare
 from .travel_models import Trip
 
@@ -211,6 +211,60 @@ class ContextLinkServiceTests(TestCase):
         links = {row.source.ref.type: row.source.deep_link for row in rows}
         self.assertEqual(links["note"], f"/?page=notes&note={note.id}")
         self.assertEqual(links["board_post"], f"/?page=board&post={board.id}&family={self.family.id}")
+
+    def test_shopping_refs_resolve_with_canonical_acl_lifecycle_and_deep_links(self):
+        shopping_list = ShoppingList.objects.create(family=self.family, name="Reise")
+        item = ShoppingItem.objects.create(shopping_list=shopping_list, name="Sonnencreme", added_by=self.alice)
+        self.link(source_type="shopping_list", source_id=shopping_list.id)
+        self.link(source_type="shopping_item", source_id=item.id)
+
+        shopping_list.archived = True
+        shopping_list.save(update_fields=["archived", "updated_at"])
+        rows = list_context_links(
+            user=self.alice,
+            family=self.family,
+            anchor_type="trip",
+            anchor_id=self.trip.id,
+        )
+        by_type = {row.source.ref.type: row.source for row in rows}
+        self.assertEqual(set(by_type), {"shopping_list", "shopping_item"})
+        self.assertEqual(by_type["shopping_list"].lifecycle, "archived")
+        self.assertEqual(by_type["shopping_list"].deep_link, f"/?page=shopping&list={shopping_list.id}")
+        self.assertEqual(by_type["shopping_item"].lifecycle, "available")
+        self.assertEqual(by_type["shopping_item"].deep_link, f"/?page=shopping&item={item.id}")
+
+    def test_hidden_shopping_item_never_leaks_through_existing_context_link(self):
+        shopping_list = ShoppingList.objects.create(family=self.family, name="Geschenke")
+        item = ShoppingItem.objects.create(
+            shopping_list=shopping_list,
+            name="Überraschung",
+            added_by=self.alice,
+            hidden_from_user=self.viewer,
+        )
+        link, _ = self.link(source_type="shopping_item", source_id=item.id)
+
+        with self.assertRaises(ContextObjectUnavailable):
+            self.link(user=self.viewer, source_type="shopping_item", source_id=item.id)
+        self.assertEqual(
+            list_context_links(
+                user=self.viewer,
+                family=self.family,
+                anchor_type="trip",
+                anchor_id=self.trip.id,
+            ),
+            [],
+        )
+        self.assertTrue(ContextLink.objects.filter(pk=link.id).exists())
+
+    def test_cross_family_shopping_refs_are_neutral_unavailable(self):
+        foreign_list = ShoppingList.objects.create(family=self.other_family, name="Secret")
+        foreign_item = ShoppingItem.objects.create(shopping_list=foreign_list, name="Private", added_by=self.other)
+
+        with self.assertRaises(ContextObjectUnavailable):
+            self.link(source_type="shopping_list", source_id=foreign_list.id)
+        with self.assertRaises(ContextObjectUnavailable):
+            self.link(source_type="shopping_item", source_id=foreign_item.id)
+        self.assertFalse(ContextLink.objects.exists())
 
     def test_listing_batches_same_type_without_n_plus_one(self):
         for index in range(20):
