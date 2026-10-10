@@ -25,7 +25,7 @@ Issue: #180, roadmap: #223. Receipt consumer migration: #184.
 
 `Document.library_visible=False` is used for attachments that belong to another canonical product, such as an Expense receipt. They still use the Document ACL, canonical storage, links and processing engine, but are excluded from the generic document library/search/duplicate-discovery path by default. This prevents a single receipt from appearing as a second independent user-facing document.
 
-A domain endpoint may opt into domain-managed documents only after authorizing the canonical domain object. The flag never expands ACL visibility.
+A domain endpoint may opt into domain-managed documents only after authorizing the canonical domain object. The flag never expands ACL visibility. Expense receipts use `visibility=family` because the Expense itself is family-scoped today; `library_visible=False` is what prevents them from becoming separate generic document entries.
 
 ## Receipt consumer (#184)
 
@@ -34,7 +34,7 @@ New Expense receipt flow:
 ```text
 POST /api/expenses/receipt/
 → Document canonicalization/storage
-→ hidden private Document + expense:receipt link
+→ hidden family-scoped Document + expense:receipt link
 → DocumentProcessingRun QUEUED
 → process_documents --loop
 → local OCR/classification
@@ -44,15 +44,17 @@ POST /api/expenses/receipt/
 
 `expenses` no longer contains generic image normalization, Tesseract calls or a receipt worker. It keeps only receipt-domain parsing/scoring. Worker state is projected into `ReceiptExtraction.processing_run` transactionally, so a consumer failure rolls the core finish back and follows the same durable retry policy instead of creating a half-completed state.
 
+Retry is idempotent against the current active Document run: retrying while OCR is already `PROCESSING` reuses that run and preserves the visible `PROCESSING` state instead of moving the UI state machine backwards to `QUEUED`.
+
 ### Migration / rollback
 
 The receipt migration follows expand → migrate → cutover → contract:
 
 1. additive `Expense.receipt_document` and `ReceiptExtraction.processing_run` links;
 2. new uploads write only Document Core canonical storage;
-3. `python manage.py migrate_receipts_to_documents` idempotently backfills legacy `receipt_content` rows;
+3. `python manage.py migrate_receipts_to_documents` idempotently backfills legacy `receipt_content` rows, including rows whose MIME metadata is empty because content validation is byte-based;
 4. file reads use Document Core first and legacy BinaryField as a temporary fallback;
-5. legacy `receipt_content` bytes are intentionally retained during this phase for rollback/audit;
+5. legacy `receipt_content` bytes and their original MIME metadata are intentionally retained during this phase for rollback/audit;
 6. removal of the BinaryField is a later contract migration only after backfill and production verification.
 
 The backfill does not silently retry historical REVIEW/READY/FAILED receipts. It only recovers old QUEUED/PROCESSING work onto the durable Document worker; explicit user retry remains explicit.
@@ -79,8 +81,10 @@ The backend suite covers:
 - labelled typed-field provenance and negative false-positive fixtures;
 - image quality metadata and adaptive PSM fallback;
 - receipt upload → hidden Document → shared worker → Expense review;
-- receipt failure/retry without a second queue;
+- hidden receipt Documents are inaccessible through generic Document detail/file endpoints;
+- receipt failure/retry without a second queue, including retry during active OCR;
+- consumer failure rolls back generic completion and follows the durable retry path;
 - tenant-scoped receipt files and deletion lifecycle;
-- idempotent legacy receipt backfill while rollback bytes remain intact.
+- idempotent legacy receipt backfill, missing-MIME backfill, and rollback-byte preservation.
 
 When changing OCR/preprocessing rules, add a fixture that demonstrates the regression. Avoid broad heuristics that turn unlabeled numbers/dates into high-confidence domain fields.
