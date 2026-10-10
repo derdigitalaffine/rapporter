@@ -15,6 +15,7 @@ from auth_identity.service import (
     create_primary_identity,
     generate_internal_username,
     normalize_email,
+    primary_identity,
     queue_verification,
 )
 
@@ -89,6 +90,18 @@ def validate_invite_email(invite, email):
         return True
     try:
         return normalize_email(invite.email) == normalize_email(email)
+    except EmailIdentityError:
+        return False
+
+
+def verified_invite_identity_matches(invite, user):
+    if not invite.email:
+        return True
+    identity = primary_identity(user)
+    if not identity or not identity.verified_at:
+        return False
+    try:
+        return normalize_email(invite.email) == identity.email_normalized
     except EmailIdentityError:
         return False
 
@@ -255,6 +268,11 @@ def invitation_accept(request, token):
         invite = resolve_invitation(token, for_update=True)
         if not invite or not invite.is_active:
             return Response({"detail": INVITE_UNAVAILABLE_DETAIL}, status=status.HTTP_404_NOT_FOUND)
+        if not verified_invite_identity_matches(invite, request.user):
+            return Response(
+                {"detail": "Diese Einladung erfordert die passende verifizierte E-Mail-Adresse."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         try:
             membership = accept_for_user(invite, request.user, (request.data.get("display_name") or "").strip())
         except ValueError as exc:
