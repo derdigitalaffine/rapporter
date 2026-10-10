@@ -89,11 +89,15 @@ class Command(BaseCommand):
                 "action_config": {"title": "{event_title} rausstellen", "priority": "normal"},
             },
         )
-        for name, days, icon in [
-            ("Bad putzen", 7, "sparkles"),
-            ("Bettwäsche wechseln", 14, "bed"),
-            ("Kühlschrank reinigen", 30, "snowflake"),
-            ("Wasserfilter wechseln", 30, "droplets"),
-        ]:
-            Routine.objects.get_or_create(family=family, name=name, defaults={"suggested_interval_days": days, "icon": icon})
+        # Starter routines are examples for a newly created household, not protected
+        # system records. After the first bootstrap they belong fully to the family:
+        # renaming or deleting one must never make the bootstrap recreate it.
+        if family_created:
+            for name, days, icon in [
+                ("Bad putzen", 7, "sparkles"),
+                ("Bettwäsche wechseln", 14, "bed"),
+                ("Kühlschrank reinigen", 30, "snowflake"),
+                ("Wasserfilter wechseln", 30, "droplets"),
+            ]:
+                Routine.objects.create(family=family, name=name, suggested_interval_days=days, icon=icon)
         self.stdout.write(self.style.SUCCESS("FamilyOS bootstrap complete"))
