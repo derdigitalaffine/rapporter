@@ -33,6 +33,12 @@ def _validation_message(exc):
     return str(detail or "Der Beleg konnte nicht sicher gelesen werden.")
 
 
+def _receipt_status_for_run(run):
+    if run.status == DocumentProcessingRun.Status.PROCESSING:
+        return ReceiptExtraction.Status.PROCESSING, Expense.ReceiptStatus.PROCESSING
+    return ReceiptExtraction.Status.QUEUED, Expense.ReceiptStatus.QUEUED
+
+
 def canonicalize_receipt_upload(upload):
     """Apply only receipt-specific admission policy, then use Document storage rules."""
     size = getattr(upload, "size", None)
@@ -193,14 +199,15 @@ def migrate_legacy_receipt(expense, *, enqueue_pending=True):
             }:
                 run, _ = enqueue_document(document)
                 extraction, _ = ReceiptExtraction.objects.get_or_create(expense=locked)
+                extraction_status, expense_status = _receipt_status_for_run(run)
                 extraction.processing_run = run
-                extraction.status = ReceiptExtraction.Status.QUEUED
+                extraction.status = extraction_status
                 extraction.error = ""
                 extraction.processed_at = None
                 extraction.save(
                     update_fields=["processing_run", "status", "error", "processed_at", "updated_at"]
                 )
-                locked.receipt_status = Expense.ReceiptStatus.QUEUED
+                locked.receipt_status = expense_status
                 locked.save(update_fields=["receipt_status", "updated_at"])
                 enqueued = True
             return document, True, enqueued
@@ -238,14 +245,15 @@ def queue_receipt_processing(expense):
 
             run, _ = enqueue_document(document)
             extraction, _ = ReceiptExtraction.objects.get_or_create(expense=locked)
+            extraction_status, expense_status = _receipt_status_for_run(run)
             extraction.processing_run = run
-            extraction.status = ReceiptExtraction.Status.QUEUED
+            extraction.status = extraction_status
             extraction.error = ""
             extraction.processed_at = None
             extraction.save(
                 update_fields=["processing_run", "status", "error", "processed_at", "updated_at"]
             )
-            locked.receipt_status = Expense.ReceiptStatus.QUEUED
+            locked.receipt_status = expense_status
             locked.save(update_fields=["receipt_status", "updated_at"])
             return run
     except Exception:
