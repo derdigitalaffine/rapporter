@@ -1,0 +1,68 @@
+name: Feature-Wunsch
+
+description: Beschreibe ein Nutzerproblem oder einen gewünschten Workflow. Die interne Architektur- und Konkurrenzanalyse übernehmen Maintainer/Agenten.
+title: "[Feature] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Danke für deinen Vorschlag. Beschreibe vor allem **Problem, Nutzer und gewünschten Ablauf**.
+
+        Du musst keine FamilyOS-Architektur kennen und keine Konkurrenzanalyse liefern. Vor einer Umsetzung ergänzen Maintainer/Agenten das Issue um Roadmap-Einordnung, aktuelle Web-Recherche und einen Vergleich relevanter Produkte.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Welches Problem soll gelöst werden?
+      description: Beschreibe die konkrete Situation und warum sie heute mühsam oder unmöglich ist.
+      placeholder: "Wenn ..., möchte ich ..., weil ..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: users
+    attributes:
+      label: Wer hat dieses Problem?
+      description: Zum Beispiel Eltern, Kinder, einzelne Familienmitglieder, Admins oder Self-Hosting-Betreiber.
+    validations:
+      required: true
+
+  - type: textarea
+    id: workflow
+    attributes:
+      label: Wie sollte der ideale Ablauf aussehen?
+      description: Beschreibe den gewünschten Ablauf möglichst aus Nutzersicht. Screenshots oder Beispiele sind willkommen.
+    validations:
+      required: true
+
+  - type: textarea
+    id: current_workaround
+    attributes:
+      label: Wie löst du es heute?
+      description: Optional. Hilft uns zu verstehen, welcher Aufwand oder Medienbruch aktuell entsteht.
+    validations:
+      required: false
+
+  - type: textarea
+    id: constraints
+    attributes:
+      label: Wichtige Randbedingungen
+      description: Optional. Zum Beispiel Datenschutz, Offline-Nutzung, Barrierefreiheit, Mobile, Rollen/Rechte oder Self-Hosting.
+    validations:
+      required: false
+
+  - type: textarea
+    id: examples
+    attributes:
+      label: Beispiele oder Produkte, die dir gefallen
+      description: Optional. Links oder Namen reichen; die systematische Recherche übernehmen wir.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: understanding
+    attributes:
+      label: Hinweis
+      options:
+        - label: Mir ist klar, dass der Vorschlag gegen #223, bestehende FamilyOS-Cores sowie aktuelle Konkurrenz-/Web-Recherche geprüft wird und sich die konkrete Lösung dadurch ändern kann.
+          required: true
