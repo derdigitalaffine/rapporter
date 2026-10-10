@@ -1,18 +1,20 @@
+import logging
+
 from django.conf import settings
-from django.contrib.auth import get_user_model
 from rest_framework import permissions, status
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.exceptions import APIException
 from rest_framework.response import Response
-from rest_framework_simplejwt.serializers import TokenObtainPairSerializer, TokenRefreshSerializer
+from rest_framework_simplejwt.serializers import TokenRefreshSerializer
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from auth_abuse.service import enforce, forgive
+from auth_identity.service import authenticate_identifier, identity_summary
 
 from .authentication import ACCESS_COOKIE, REFRESH_COOKIE
 
 
 LOGIN_FAILURE_DETAIL = "Anmeldung fehlgeschlagen."
+logger = logging.getLogger("security.auth_identity")
 
 
 def _cookie_secure():
@@ -53,9 +55,16 @@ def clear_token_cookies(response):
     return response
 
 
-def _login_identifier(request):
-    username_field = get_user_model().USERNAME_FIELD
-    return request.data.get(username_field) or request.data.get("username") or request.data.get("email") or ""
+def _login_payload(request):
+    # During the migration window old clients may still send only `username`.
+    # The identity service allows that path only for superadmins or accounts
+    # without a primary email identity, so it cannot become a hidden second
+    # login identifier for newly migrated normal users.
+    legacy = bool(request.data.get("legacy")) or (
+        "email" not in request.data and bool(request.data.get("username"))
+    )
+    identifier = request.data.get("username") if legacy else request.data.get("email")
+    return str(identifier or ""), legacy
 
 
 def _rate_limited_login_response(decision):
@@ -74,23 +83,31 @@ def _rate_limited_login_response(decision):
 @api_view(["POST"])
 @permission_classes([permissions.AllowAny])
 def login_view(request):
-    identifier = _login_identifier(request)
+    identifier, legacy = _login_payload(request)
     decision = enforce("login.password", request=request, identifier=identifier)
     if not decision.allowed:
         return _rate_limited_login_response(decision)
 
-    serializer = TokenObtainPairSerializer(data=request.data)
-    try:
-        serializer.is_valid(raise_exception=True)
-    except APIException:
-        # Do not expose whether an identifier exists, is inactive, or merely has
-        # a wrong password. Rate-limit keys behave identically for all values.
+    user = authenticate_identifier(identifier, request.data.get("password") or "", legacy=legacy)
+    if not user:
+        logger.info("auth_login result=failure identity=%s", "legacy" if legacy else "email")
         return Response({"detail": LOGIN_FAILURE_DETAIL}, status=status.HTTP_401_UNAUTHORIZED)
 
-    data = serializer.validated_data
     forgive("login.password", request=request, identifier=identifier)
-    response = Response({"authenticated": True})
-    return set_token_cookies(response, data["access"], data["refresh"])
+    summary = identity_summary(user)
+    logger.info(
+        "auth_login result=success identity=%s user_id=%s",
+        "legacy" if legacy else "email",
+        user.pk,
+    )
+    response = Response(
+        {
+            "authenticated": True,
+            "email_verified": summary["email_verified"],
+            "email_action_required": summary["email_action_required"],
+        }
+    )
+    return set_user_cookies(response, RefreshToken.for_user(user).access_token, RefreshToken.for_user(user))
 
 
 @api_view(["POST"])
@@ -120,13 +137,17 @@ def logout_view(request):
 @api_view(["GET"])
 @permission_classes([permissions.IsAuthenticated])
 def session_view(request):
+    email = identity_summary(request.user)
     return Response(
         {
             "authenticated": True,
             "user": {
                 "id": request.user.pk,
                 "username": request.user.username,
-                "email": request.user.email,
+                "email": email["email"] or request.user.email,
+                "email_verified": email["email_verified"],
+                "email_action_required": email["email_action_required"],
+                "pending_email": email["pending_email"],
                 "is_superadmin": bool(request.user.is_superuser),
             },
         }
