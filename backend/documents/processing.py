@@ -5,6 +5,7 @@ from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
 
+from .consumers import dispatch_processing_consumers
 from .models import Document, DocumentProcessingRun, ExtractedField
 
 PIPELINE_VERSION = "1"
@@ -61,15 +62,10 @@ def _exhausted_due(now):
 
 
 def _terminalize_exhausted_runs(now, *, batch_size=100):
-    """Turn crash-exhausted leases into terminal failures before new claims.
-
-    A hard worker crash never reaches ``fail_run``. Without this sweep an expired
-    PROCESSING row could therefore be reclaimed forever. The bounded batch keeps
-    a single poll cheap while the long-running worker drains larger backlogs on
-    subsequent polls.
-    """
+    """Turn crash-exhausted leases into terminal failures before new claims."""
     exhausted = list(
         DocumentProcessingRun.objects.select_for_update(skip_locked=True)
+        .select_related("document")
         .filter(_exhausted_due(now))
         .order_by("queued_at", "created_at")[:batch_size]
     )
@@ -94,6 +90,7 @@ def _terminalize_exhausted_runs(now, *, batch_size=100):
             ]
         )
         Document.objects.filter(pk=run.document_id).update(processing_status=Document.ProcessingStatus.FAILED)
+        dispatch_processing_consumers(run)
     return len(exhausted)
 
 
@@ -142,6 +139,7 @@ def claim_next_run(*, now=None, lease_seconds=LEASE_SECONDS):
             ]
         )
         Document.objects.filter(pk=run.document_id).update(processing_status=Document.ProcessingStatus.PROCESSING)
+        dispatch_processing_consumers(run)
         return run
 
 
@@ -175,7 +173,7 @@ def finish_run(run, result, *, needs_review=True):
     status = DocumentProcessingRun.Status.REVIEW if needs_review else DocumentProcessingRun.Status.READY
     document_status = Document.ProcessingStatus.REVIEW if needs_review else Document.ProcessingStatus.READY
     with transaction.atomic():
-        locked = DocumentProcessingRun.objects.select_for_update().get(pk=run.pk)
+        locked = DocumentProcessingRun.objects.select_for_update().select_related("document").get(pk=run.pk)
         if not _owns_claim(locked, run):
             return locked
         locked.extracted_fields.all().delete()
@@ -223,6 +221,7 @@ def finish_run(run, result, *, needs_review=True):
             ]
         )
         Document.objects.filter(pk=locked.document_id).update(processing_status=document_status)
+        dispatch_processing_consumers(locked)
         return locked
 
 
@@ -230,7 +229,7 @@ def fail_run(run, *, error_code, safe_error, retryable=True, now=None):
     """Fail safely without touching the canonical document file."""
     now = now or timezone.now()
     with transaction.atomic():
-        locked = DocumentProcessingRun.objects.select_for_update().get(pk=run.pk)
+        locked = DocumentProcessingRun.objects.select_for_update().select_related("document").get(pk=run.pk)
         if not _owns_claim(locked, run):
             return locked
         should_retry = retryable and locked.attempts < MAX_ATTEMPTS
@@ -261,4 +260,5 @@ def fail_run(run, *, error_code, safe_error, retryable=True, now=None):
             ]
         )
         Document.objects.filter(pk=locked.document_id).update(processing_status=document_status)
+        dispatch_processing_consumers(locked)
         return locked
