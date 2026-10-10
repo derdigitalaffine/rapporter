@@ -4,7 +4,7 @@ import {installApiMocks} from './mock-api.js';
 async function bootCalendar(page,{mobile=false}={}){
  if(mobile)await page.setViewportSize({width:390,height:844});
  const state=await installApiMocks(page);
- state.integrations.push({id:'calendar-source-1',family:state.family.id,name:'Kita',kind:'calendar',enabled:true,endpoint:'',config:{adapter:'ics',appearance:{color:'purple',icon:'heart'}},last_sync_status:'success'});
+ state.integrations.push({id:'calendar-source-1',family:state.family.id,name:'Kita',kind:'ics',enabled:true,endpoint:'',config:{adapter:'ics',appearance:{color:'purple',icon:'heart'}},last_sync_status:'success'});
  state.events.push({id:'ics-event-1',family:state.family.id,source:'calendar-source-1',type:'calendar.event',title:'Kita-Fest',starts_at:new Date(Date.now()+26*3600000).toISOString(),ends_at:new Date(Date.now()+28*3600000).toISOString(),actionable:false,payload:{provider:'Kita',location:'Turnhalle',description:'',all_day:false,recurring:true}});
  await page.goto('/?page=calendar');
  return state;
@@ -13,19 +13,18 @@ async function bootCalendar(page,{mobile=false}={}){
 test('calendar defaults to week and switches week month list without horizontal overflow',async({page})=>{
  await bootCalendar(page,{mobile:true});
  await expect(page.getByRole('button',{name:'Woche',exact:true})).toHaveAttribute('aria-pressed','true');
- await expect(page.getByText('Kinderarzt',{exact:true}).first()).toBeVisible();
- await expect(page.getByText('Kita-Fest',{exact:true}).first()).toBeVisible();
  await page.getByRole('button',{name:'Monat',exact:true}).click();
  await expect(page.getByRole('button',{name:'Monat',exact:true})).toHaveAttribute('aria-pressed','true');
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
  await page.getByRole('button',{name:'Liste',exact:true}).click();
  await expect(page.getByRole('button',{name:'Liste',exact:true})).toHaveAttribute('aria-pressed','true');
  await expect(page.getByText('Kinderarzt',{exact:true})).toBeVisible();
+ await expect(page.getByText('Kita-Fest',{exact:true})).toBeVisible();
 });
 
 test('calendar source filter uses configured source name icon appearance and can be toggled',async({page})=>{
  await bootCalendar(page);
- const source=page.getByRole('button',{name:/Kita/});
+ const source=page.locator('.calendar-source-chip').filter({hasText:'Kita'});
  await expect(source).toBeVisible();
  await expect(source).toHaveAttribute('aria-pressed','true');
  await source.click();
