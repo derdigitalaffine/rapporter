@@ -55,6 +55,17 @@ class ReceiptDocumentCutoverTests(TestCase):
             format="multipart",
         )
 
+    def test_supporting_receipt_document_is_not_listed_in_general_library(self):
+        response = self.upload()
+        self.assertEqual(response.status_code, 202, response.data)
+        expense = Expense.objects.select_related("receipt_document").get(pk=response.data["id"])
+        self.assertFalse(expense.receipt_document.library_visible)
+
+        listed = self.client.get(f"/api/documents/?family={self.family.id}")
+
+        self.assertEqual(listed.status_code, 200, listed.data)
+        self.assertNotIn(str(expense.receipt_document_id), {row["id"] for row in listed.data})
+
     def test_document_result_projects_into_existing_expense_review_contract(self):
         response = self.upload()
         self.assertEqual(response.status_code, 202, response.data)
@@ -119,6 +130,24 @@ class ReceiptDocumentCutoverTests(TestCase):
             1,
         )
 
+    def test_retry_does_not_regress_an_active_processing_status(self):
+        response = self.upload()
+        expense = Expense.objects.get(pk=response.data["id"])
+        extraction = ReceiptExtraction.objects.get(expense=expense)
+        run = extraction.processing_run
+        run.status = DocumentProcessingRun.Status.PROCESSING
+        run.save(update_fields=["status", "updated_at"])
+
+        retry = self.client.post(f"/api/expenses/{expense.id}/retry-receipt/", {}, format="json")
+
+        self.assertEqual(retry.status_code, 202, retry.data)
+        self.assertEqual(retry.data["status"], ReceiptExtraction.Status.PROCESSING)
+        extraction.refresh_from_db()
+        expense.refresh_from_db()
+        self.assertEqual(extraction.processing_run_id, run.id)
+        self.assertEqual(extraction.status, ReceiptExtraction.Status.PROCESSING)
+        self.assertEqual(expense.receipt_status, Expense.ReceiptStatus.PROCESSING)
+
     def test_delete_removes_domain_owned_document_and_extraction(self):
         response = self.upload()
         expense = Expense.objects.get(pk=response.data["id"])
@@ -158,6 +187,7 @@ class ReceiptDocumentCutoverTests(TestCase):
         self.assertEqual(first_extraction.id, second_extraction.id)
         self.assertTrue(expense.receipt_content)
         self.assertEqual(expense.receipt_document_id, first_document.id)
+        self.assertFalse(first_document.library_visible)
         self.assertEqual(extraction.status, ReceiptExtraction.Status.REVIEW)
         self.assertEqual(extraction.processing_run.document_id, first_document.id)
         self.assertEqual(DocumentLink.objects.filter(document=first_document, object_id=expense.id).count(), 1)
