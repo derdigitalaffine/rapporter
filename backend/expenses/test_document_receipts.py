@@ -97,6 +97,10 @@ class ReceiptDocumentCoreTests(TestCase):
             .filter(pk=document.pk)
             .exists()
         )
+        # Even the owner cannot bypass the canonical Expense lifecycle by
+        # guessing the hidden Document UUID in generic document endpoints.
+        self.assertEqual(self.client.get(f"/api/documents/{document.id}/").status_code, 404)
+        self.assertEqual(self.client.get(f"/api/documents/{document.id}/file/").status_code, 404)
 
     def test_shared_worker_projects_receipt_parser_into_expense_review(self):
         response = self.upload_receipt()
@@ -123,6 +127,32 @@ class ReceiptDocumentCoreTests(TestCase):
         self.assertEqual(extraction.raw_text, result.text)
         self.assertEqual(extraction.total, Decimal("12.34"))
         self.assertGreater(extraction.field_confidences["total"], 0.8)
+
+    def test_consumer_failure_rolls_back_core_finish_and_retries_same_durable_job(self):
+        response = self.upload_receipt()
+        expense = Expense.objects.get(id=response.data["id"])
+        claimed = claim_next_run()
+        result = ExtractionResult(
+            text="MARKT\nSUMME EUR 12,34",
+            extractor="fixture",
+            fields=[{"key": "text.page", "value_json": {"text": "MARKT SUMME EUR 12,34"}}],
+            needs_review=True,
+        )
+        with (
+            patch("documents.worker.extract_document", return_value=result),
+            patch("expenses.document_receipts.parse_receipt_text", side_effect=RuntimeError("parser bug")),
+        ):
+            retried = process_claimed_run(claimed)
+
+        retried.refresh_from_db()
+        expense.refresh_from_db()
+        extraction = ReceiptExtraction.objects.get(expense=expense)
+        self.assertEqual(retried.status, DocumentProcessingRun.Status.RETRY)
+        self.assertEqual(retried.normalized_text, "")
+        self.assertFalse(retried.extracted_fields.exists())
+        self.assertEqual(expense.receipt_status, Expense.ReceiptStatus.QUEUED)
+        self.assertEqual(extraction.status, ReceiptExtraction.Status.QUEUED)
+        self.assertEqual(extraction.processing_run_id, retried.id)
 
     def test_shared_worker_failure_and_retry_use_document_runs_only(self):
         response = self.upload_receipt()
@@ -210,6 +240,7 @@ class ReceiptDocumentCoreTests(TestCase):
         first_document_id = expense.receipt_document_id
         self.assertIsNotNone(first_document_id)
         self.assertTrue(expense.receipt_content)
+        self.assertEqual(expense.receipt_mime, "image/png")
         self.assertEqual(expense.receipt_status, Expense.ReceiptStatus.READY)
         self.assertIsNone(extraction.processing_run_id)
         self.assertFalse(expense.receipt_document.library_visible)
@@ -219,6 +250,22 @@ class ReceiptDocumentCoreTests(TestCase):
         expense.refresh_from_db()
         self.assertEqual(expense.receipt_document_id, first_document_id)
         self.assertEqual(Document.objects.filter(pk=first_document_id).count(), 1)
+
+    def test_legacy_backfill_sniffs_content_when_mime_metadata_is_missing(self):
+        expense = Expense.objects.create(
+            family=self.family,
+            paid_by=self.member,
+            created_by=self.user,
+            source=Expense.Source.RECEIPT,
+            receipt_status=Expense.ReceiptStatus.READY,
+            receipt_content=self.image_bytes(),
+            receipt_mime="",
+        )
+        call_command("migrate_receipts_to_documents")
+        expense.refresh_from_db()
+        self.assertIsNotNone(expense.receipt_document_id)
+        self.assertEqual(expense.receipt_mime, "")
+        self.assertEqual(expense.receipt_document.mime_type, "image/webp")
 
     def test_pending_legacy_backfill_recovers_onto_shared_queue(self):
         expense = Expense.objects.create(
