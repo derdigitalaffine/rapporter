@@ -15,6 +15,7 @@ from family.models import Membership
 
 from .access import active_membership, can_manage_document, can_view_document, visible_documents
 from .models import Document, DocumentAccess, DocumentLink
+from .processing import enqueue_document
 from .serializers import document_payload
 from .storage import canonicalize_upload, open_canonical, remove_canonical, store_canonical
 
@@ -98,8 +99,6 @@ def _document_or_404(user, document_id, require_manage=False):
         raise Http404
     allowed = can_manage_document(user, document) if require_manage else can_view_document(user, document)
     if not allowed or (document.archived_at and not can_manage_document(user, document)):
-        # Privacy boundary: callers cannot distinguish a missing UUID from an
-        # existing document they are not allowed to know about.
         raise Http404
     return document
 
@@ -165,11 +164,12 @@ def document_collection(request):
             document.save(force_insert=True)
             _replace_access(document, access_rows)
             _replace_links(document, link_rows)
+            enqueue_document(document)
     except Exception:
         remove_canonical(key)
         raise
     document = _document_or_404(request.user, document.id)
-    return Response(document_payload(document, request.user), status=status.HTTP_201_CREATED)
+    return Response(document_payload(document, request.user), status=status.HTTP_202_ACCEPTED)
 
 
 @api_view(["GET", "PATCH", "DELETE"])
