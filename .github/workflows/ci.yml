@@ -156,6 +156,9 @@ jobs:
         run: |
           docker compose config > /tmp/compose-tls.yml
           grep -q 'target: 443' /tmp/compose-tls.yml
+          grep -q '172.30.255.2/32' /tmp/compose-tls.yml
+          grep -q 'ipv4_address: 172.30.255.2' /tmp/compose-tls.yml
+          grep -q 'subnet: 172.30.255.0/29' /tmp/compose-tls.yml
       - name: Validate plain-HTTP reverse-proxy compose config
         env:
           COMPOSE_FILE: docker-compose.yml
@@ -164,9 +167,12 @@ jobs:
           HTTP_PORT: "8080"
           PUBLIC_SCHEME: https
           PUBLIC_HOST: familyos.example.com
+          AUTH_TRUSTED_PROXY_CIDRS: 10.23.0.10/32
         run: |
           docker compose config > /tmp/compose-proxy.yml
           grep -q 'published: "8080"' /tmp/compose-proxy.yml
+          grep -q '172.30.255.2/32' /tmp/compose-proxy.yml
+          grep -q '10.23.0.10/32' /tmp/compose-proxy.yml
           if grep -q 'target: 443' /tmp/compose-proxy.yml; then
             echo "proxy mode must not publish container port 443" >&2
             exit 1
