@@ -43,7 +43,7 @@ test('Today shows exactly the next two waste collections with large semantic ico
   await expect(yellow.locator('svg')).toHaveCSS('font-size','26px');
 });
 
-test('Calendar maps rest, yellow, bio and paper collections to their semantic icon colors',async({page})=>{
+test('Calendar renders waste as compact typed special events instead of appointments',async({page})=>{
   const state=await installApiMocks(page,{authenticated:true,language:'de',dismissOnboarding:true});
   state.events.push(
     wasteEvent('waste-rest','Restmüll',24),
@@ -62,10 +62,13 @@ test('Calendar maps rest, yellow, bio and paper collections to their semantic ic
     'Papiertonne':['waste-paper','rgb(220, 236, 255)'],
   };
   for(const [title,[className,color]] of Object.entries(expected)){
-    const row=page.getByRole('button',{name:new RegExp(title)});
+    const row=page.locator('.agenda-waste').filter({hasText:title});
     await expect(row).toBeVisible();
-    const icon=row.locator(`.agenda-source-icon.${className}`);
-    await expect(icon).toHaveCount(1);
-    await expect(icon).toHaveCSS('background-color',color);
+    await expect(row).toContainText('MÜLLABFUHR');
+    await expect(row.locator('.agenda-time')).toHaveCount(0);
+    const marker=row.locator(`.waste-dot.${className}`);
+    await expect(marker).toHaveCount(1);
+    await expect(marker).toHaveCSS('background-color',color);
+    await expect(marker.locator('svg')).toHaveCount(1);
   }
 });
