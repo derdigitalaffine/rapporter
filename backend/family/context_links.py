@@ -291,6 +291,31 @@ def _note_can_link(user, note):
     return note.author_id == user.id or note.shares.filter(user=user, permission="edit").exists()
 
 
+def _birthday_occasion_visible_queryset(user, family):
+    from .birthday_context_models import BirthdayOccasion
+
+    can_plan = Membership.objects.filter(
+        family=family,
+        user=user,
+        role__in=[Membership.Role.OWNER, Membership.Role.ADULT, Membership.Role.TEEN],
+    ).exists()
+    if not can_plan:
+        return BirthdayOccasion.objects.none()
+    return (
+        BirthdayOccasion.objects.filter(family=family)
+        .filter(
+            Q(person__active=True)
+            | Q(
+                membership__birthday_visibility__in=[
+                    Membership.BirthdayVisibility.DAY_MONTH,
+                    Membership.BirthdayVisibility.FULL_DATE,
+                ]
+            )
+        )
+        .exclude(membership__user=user)
+    )
+
+
 @lru_cache(maxsize=1)
 def default_context_registry():
     """Canonical registry. New domains extend this allowlist explicitly."""
@@ -355,6 +380,14 @@ def default_context_registry():
             deep_link=lambda obj: f"/?page=board&post={obj.id}&family={obj.family_id}",
         )
     )
+    registry.register_type(
+        ContextTypeAdapter(
+            key="birthday_occasion",
+            visible_queryset=_birthday_occasion_visible_queryset,
+            family_id=lambda obj: obj.family_id,
+            deep_link=lambda obj: "/?page=birthdays",
+        )
+    )
     registry.register_relation(
         ContextRelationAdapter(
             key="context",
@@ -367,6 +400,18 @@ def default_context_registry():
                     ("board_post", "trip"),
                 }
             ),
+        )
+    )
+    registry.register_relation(
+        ContextRelationAdapter(
+            key="birthday.gift_task",
+            allowed_pairs=frozenset({("birthday_occasion", "task")}),
+        )
+    )
+    registry.register_relation(
+        ContextRelationAdapter(
+            key="birthday.shopping_item",
+            allowed_pairs=frozenset({("birthday_occasion", "shopping_item")}),
         )
     )
     return registry
