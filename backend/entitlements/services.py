@@ -8,8 +8,8 @@ from django.utils import timezone
 
 from family.models import Family, Membership
 
-from .catalog import FULL_ACCESS_PLAN_KEYS, VALID_PLAN_KEYS
-from .models import CapabilityDefinition, EntitlementGrant, EntitlementGrantAudit
+from .catalog import COMMERCIAL_CUTOVER_KEY, FULL_ACCESS_PLAN_KEYS, LEGACY_SOURCE_REF, VALID_PLAN_KEYS
+from .models import CapabilityDefinition, EntitlementCutover, EntitlementGrant, EntitlementGrantAudit
 
 
 MAX_CAPABILITIES_PER_GRANT = 64
@@ -152,6 +152,64 @@ def _audit_snapshot(grant):
         "ends_at": grant.ends_at.isoformat() if grant.ends_at else None,
         "revoked_at": grant.revoked_at.isoformat() if grant.revoked_at else None,
     }
+
+
+@transaction.atomic
+def apply_commercial_cutover(*, cutover_at):
+    """Grandfather every family that existed at an explicit commercial cutover instant."""
+    if cutover_at is None or timezone.is_naive(cutover_at):
+        raise ValidationError("Commercial-Cutover benötigt einen timezone-aware Zeitstempel.")
+    now = timezone.now()
+    if cutover_at > now:
+        raise ValidationError("Commercial-Cutover darf nicht in der Zukunft liegen.")
+
+    marker = EntitlementCutover.objects.select_for_update().filter(pk=COMMERCIAL_CUTOVER_KEY).first()
+    if marker is not None and marker.cutover_at != cutover_at:
+        raise ValidationError("Commercial-Cutover wurde bereits mit einem anderen Stichtag angewendet.")
+    if marker is None:
+        marker = EntitlementCutover.objects.create(
+            key=COMMERCIAL_CUTOVER_KEY,
+            cutover_at=cutover_at,
+            applied_at=now,
+            eligible_family_count=0,
+        )
+
+    eligible = Family.objects.filter(created_at__lte=cutover_at).order_by("id").values_list("id", flat=True)
+    eligible_count = eligible.count()
+    created_count = 0
+    reason = "Bestandsfamilie beim Commercial-Cutover"
+    for family_id in eligible.iterator(chunk_size=500):
+        grant, created = EntitlementGrant.objects.get_or_create(
+            family_id=family_id,
+            origin=EntitlementGrant.Origin.LEGACY_GRANDFATHERED,
+            source_ref=LEGACY_SOURCE_REF,
+            defaults={
+                "plan_key": "vip",
+                "capability_set": [],
+                "starts_at": cutover_at,
+                "active": True,
+                "reason": reason,
+                "metadata": {
+                    "cutover_key": COMMERCIAL_CUTOVER_KEY,
+                    "cutover_at": cutover_at.isoformat(),
+                },
+            },
+        )
+        if created:
+            created_count += 1
+            EntitlementGrantAudit.objects.create(
+                grant=grant,
+                family_id=family_id,
+                action=EntitlementGrantAudit.Action.GRANTED,
+                actor=None,
+                reason=reason,
+                snapshot=_audit_snapshot(grant),
+            )
+
+    if marker.eligible_family_count != eligible_count:
+        marker.eligible_family_count = eligible_count
+        marker.save(update_fields=["eligible_family_count", "updated_at"])
+    return marker, created_count
 
 
 @transaction.atomic
