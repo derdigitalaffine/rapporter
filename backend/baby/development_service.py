@@ -1,6 +1,9 @@
+import hashlib
+import hmac
 from datetime import datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
+from django.conf import settings
 from django.utils import timezone
 from rest_framework.exceptions import PermissionDenied, ValidationError
 
@@ -43,7 +46,9 @@ REFERENCE_ROWS = [
     (24, "cognitive", "uses-switches-knobs", "Probiert einfache Schalter oder Drehknöpfe aus", "Explores simple switches or knobs"),
 ]
 
-# Mid-points inside the G-BA examination periods, used only as planning suggestions.
+# Planning suggestions inside the currently effective G-BA examination windows.
+# U10 was resolved in August 2026 but was not yet in force when this reference
+# version was implemented, so it is deliberately not activated prematurely.
 U_EXAMS = [
     ("U2", 6, "3.–10. Lebenstag"),
     ("U3", 31, "4.–5. Lebenswoche"),
@@ -55,6 +60,7 @@ U_EXAMS = [
     ("U8", 1430, "46.–48. Lebensmonat"),
     ("U9", 1887, "60.–64. Lebensmonat"),
 ]
+GBA_SOURCE_VERSION = "Kinder-Richtlinie, in Kraft seit 2026-01-01"
 GBA_SOURCE_URL = "https://www.g-ba.de/richtlinien/15/"
 
 
@@ -148,6 +154,12 @@ def record_observation(user, baby_id, *, milestone_key="", title="", state="obse
     return DevelopmentObservation.objects.create(baby=baby, milestone_key="", title=str(title).strip()[:160], **defaults)
 
 
+def _private_event_token(baby, exam):
+    raw = f"baby-preventive:{baby.id}:{exam}".encode()
+    digest = hmac.new(settings.SECRET_KEY.encode(), raw, hashlib.sha256).hexdigest()[:32]
+    return f"familyos-private:{digest}"
+
+
 def ensure_u_exam_events(user, baby_id):
     baby = _baby_for_user(user, baby_id)
     zone = ZoneInfo(baby.family.timezone)
@@ -156,22 +168,15 @@ def ensure_u_exam_events(user, baby_id):
     for name, days, label in U_EXAMS:
         event_date = baby.birth_date + timedelta(days=days)
         starts_at = datetime.combine(event_date, time(hour=9), tzinfo=zone)
-        external_id = f"baby:{baby.id}:preventive:{name}"
         event, _ = FamilyEvent.objects.get_or_create(
             family=baby.family,
-            external_id=external_id,
+            external_id=_private_event_token(baby, name),
             defaults={
-                "type": "baby.preventive",
-                "title": f"{name} Vorsorge · {baby.display_name}",
+                "type": "family.appointment",
+                "title": "Vorsorgetermin" if baby.family.locale.startswith("de") else "Check-up",
                 "starts_at": starts_at,
                 "actionable": True,
-                "payload": {
-                    "baby_id": str(baby.id),
-                    "exam": name,
-                    "recommended_window": label,
-                    "source_url": GBA_SOURCE_URL,
-                    "planning_suggestion": True,
-                },
+                "payload": {"deep_link": "/?page=baby&view=development", "private_context": True},
             },
         )
         if event.starts_at >= now - timedelta(days=30):
@@ -181,8 +186,9 @@ def ensure_u_exam_events(user, baby_id):
 
 def add_appointment_question(user, baby_id, *, event_id, text):
     baby = _baby_for_user(user, baby_id)
-    event = FamilyEvent.objects.filter(pk=event_id, family=baby.family, type="baby.preventive").first()
-    if not event or str(event.payload.get("baby_id")) != str(baby.id):
+    event = FamilyEvent.objects.filter(pk=event_id, family=baby.family).first()
+    valid_tokens = {_private_event_token(baby, name) for name, _, _ in U_EXAMS}
+    if not event or event.external_id not in valid_tokens:
         raise ValidationError({"event": "Preventive appointment not found for this baby."})
     value = str(text or "").strip()
     if not value:
