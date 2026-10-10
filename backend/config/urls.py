@@ -11,4 +11,6 @@ urlpatterns = [
     path("api/auth/session/", session_view, name="auth_session"),
     path("api/", include("family.urls")),
     path("api/", include("expenses.urls")),
+    path("api/", include("baby.urls")),
+    path("api/", include("pets.urls")),
 ]

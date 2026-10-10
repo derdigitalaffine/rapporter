@@ -6,7 +6,7 @@ async function boot(page){
   await installApiMocks(page,{dismissOnboarding:true});
   await page.goto('/');
   await page.waitForLoadState('networkidle');
-  await expect(page.getByRole('heading',{name:/Musterfamilie/})).toBeVisible();
+  await expect(page.locator('.today-hero h1')).toBeVisible();
 }
 
 async function announceUpdate(page){

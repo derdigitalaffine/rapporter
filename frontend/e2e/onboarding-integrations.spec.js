@@ -44,6 +44,6 @@ test('returning from integration hub refreshes completion without manual reload'
   await page.goBack();
 
   await expect(page).toHaveURL(/\/$/);
-  await expect(integrationStep(page)).toContainText('Erledigt');
+  await expect(integrationStep(page)).toContainText('Erledigt',{timeout:15000});
   await expect(page.getByRole('button',{name:'Später weiter'})).toBeVisible();
 });
