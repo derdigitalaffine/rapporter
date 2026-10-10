@@ -77,7 +77,7 @@ class ReceiptDocumentCoreTests(TestCase):
         self.assertEqual(expense.receipt_mime, "image/webp")
         self.assertIsNotNone(document)
         self.assertEqual(document.kind, "expense_receipt")
-        self.assertEqual(document.visibility, Document.Visibility.PRIVATE)
+        self.assertEqual(document.visibility, Document.Visibility.FAMILY)
         self.assertFalse(document.library_visible)
         self.assertEqual(document.owner_membership, self.member)
         self.assertTrue(self.storage.exists(document.canonical_file))
