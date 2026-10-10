@@ -43,11 +43,33 @@ def _integration_values(request):
     return dict(raw)
 
 
+def _supports_local_calendar_name(item):
+    adapter = str((item.get("defaults") or {}).get("adapter") or "")
+    return not item.get("oauth_provider") and (adapter == "ics" or adapter.endswith("_ics"))
+
+
+def _local_calendar_name(item, values):
+    raw = values.pop("calendar_name", "")
+    if not _supports_local_calendar_name(item):
+        return item["name"]
+    cleaned = " ".join(str(raw or "").split())
+    return cleaned[:120] or item["name"]
+
+
 @api_view(["GET"])
 def smart_integration_catalog(request):
     result = []
     for item in INTEGRATION_CATALOG:
         row = dict(item)
+        row["fields"] = [dict(field) for field in row.get("fields", [])]
+        if _supports_local_calendar_name(row):
+            row["fields"].insert(0, {
+                "key": "calendar_name",
+                "label": "Kalendername",
+                "type": "text",
+                "required": False,
+                "default": row["name"],
+            })
         if row.get("oauth_provider"):
             row["oauth_ready"] = oauth_available(row["oauth_provider"])
         result.append(row)
@@ -82,6 +104,7 @@ def smart_integration_connect(request):
     except ValueError as exc:
         return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
     endpoint = values.pop("endpoint", "")
+    display_name = _local_calendar_name(item, values)
     config = {**item.get("defaults", {}), **values}
     if item.get("singleton"):
         # Lock the family so simultaneous connects cannot create duplicate subscriptions.
@@ -95,7 +118,7 @@ def smart_integration_connect(request):
             source.save(update_fields=["enabled", "updated_at"])
     else:
         source = IntegrationSource.objects.create(
-            family=family, kind=item["kind"], name=item["name"],
+            family=family, kind=item["kind"], name=display_name,
             endpoint=endpoint, config=config, enabled=True,
         )
     try:

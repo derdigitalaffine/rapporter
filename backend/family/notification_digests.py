@@ -61,7 +61,7 @@ def enqueue_notification(membership, event_type, context, *, url=None):
             if prior and prior["event_type"] == "shopping.item.created":
                 event_type = "shopping.item.created"
             if key in events or len(events) < MAX_EVENTS:
-                events[key] = {"event_type": event_type, "context": context, "url": url, "queued_at": prior.get("queued_at") if prior else now.isoformat()}
+                events[key] = {"event_type": event_type, "context": context, "url": url, "queued_at": now.isoformat()}
             else:
                 events["overflow"] = {"event_type": "shopping.item.updated" if shopping else event_type, "context": {"list_id": context.get("list_id"), "list": context.get("list"), "overflow": True}, "url": url, "queued_at": now.isoformat()}
         batch.events = events
@@ -104,23 +104,16 @@ def _visible_events(batch, pref):
                 if not receipt or receipt.read_at:
                     continue
         result.append(event)
+    result.sort(key=lambda event: event.get("queued_at") or "")
     return result
-
-
-def _shopping_event_order(event):
-    """PostgreSQL JSONB does not preserve object-key insertion order."""
-    queued_at = event.get("queued_at")
-    item_id = event.get("context", {}).get("item_id")
-    return (queued_at is None, queued_at or "", str(item_id or ""))
 
 
 def _render(batch, events):
     from .domain_notifications import EVENT_SPECS, _SafeContext, _target_url
     family = batch.membership.family
     lang = "en" if family.locale.startswith("en") else "de"
+    first = events[0]
     if batch.bucket.startswith("shopping:"):
-        events = sorted(events, key=_shopping_event_order)
-        first = events[0]
         overflow = any(e["context"].get("overflow") for e in events)
         events = [e for e in events if not e["context"].get("overflow")]
         names = list(dict.fromkeys(e["context"].get("item", "") for e in events if e["context"].get("item")))
@@ -140,7 +133,6 @@ def _render(batch, events):
         ctx = dict(first["context"])
         ctx.pop("item_id", None)
         return title[:160], body[:300], _target_url("shopping.items.cleared", ctx)
-    first = events[0]
     spec = EVENT_SPECS[first["event_type"]]
     ctx = _SafeContext(first["context"])
     title = spec["title"][lang].format_map(ctx)
