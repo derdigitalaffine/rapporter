@@ -90,13 +90,8 @@ jobs:
           cache: pip
           cache-dependency-path: backend/requirements.txt
       - run: pip install -r backend/requirements.txt
-      - name: Emit Pregnancy & Baby initial migration
-        working-directory: backend
-        run: |
-          python manage.py makemigrations baby --dry-run --verbosity 3
-          exit 1
       - working-directory: backend
-        run: python manage.py makemigrations family expenses --check --dry-run
+        run: python manage.py makemigrations family expenses baby --check --dry-run
       - working-directory: backend
         run: python manage.py migrate && python manage.py check
       - working-directory: backend
@@ -134,7 +129,7 @@ jobs:
       - name: Validate internal TLS Caddy config
         run: docker run --rm -e DOMAIN=familyos.local -v "$PWD/Caddyfile.selfsigned:/etc/caddy/Caddyfile:ro" caddy:2-alpine caddy validate --config /etc/caddy/Caddyfile
       - name: Validate reverse-proxy Caddy config
-        run: docker run --rm -e PUBLIC_HOST=familyos.example.com -e PUBLIC_SCHEME=https -v "$PWD/Caddyfile.proxy:/etc/caddy/Caddyfile:ro" caddy:2-alpine caddy validate --config /etc/caddy/Caddyfile
+        run: docker run --rm -e PUBLIC_HOST=familyos.example.com -e PUBLIC_SCHEME=https -v "$PWD/Caddyfile.proxy:/etc/caddy/Caddyfile.proxy:ro" caddy:2-alpine caddy validate --config /etc/caddy/Caddyfile.proxy
       - run: cp .env.example .env
       - name: Validate default TLS compose config
         run: |
