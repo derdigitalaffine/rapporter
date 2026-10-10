@@ -1,7 +1,11 @@
+import socket
 from concurrent.futures import ThreadPoolExecutor
+from unittest.mock import patch
 
 from django.db import close_old_connections, connection
 from django.test import RequestFactory, TestCase, TransactionTestCase, override_settings
+
+from config.settings import _TrustedProxyCidrs
 
 from .models import AuthAbuseBucket
 from .service import POLICIES, client_ip, enforce, network_identity
@@ -47,6 +51,43 @@ class AuthAbuseServiceTests(TestCase):
             HTTP_X_FORWARDED_FOR="198.51.100.25, 203.0.113.11",
         )
         self.assertEqual(str(client_ip(request)), "198.51.100.25")
+
+    @override_settings(AUTH_TRUSTED_PROXY_CIDRS=_TrustedProxyCidrs([], ["caddy"]))
+    @patch("config.settings.socket.getaddrinfo")
+    def test_trusted_proxy_hostname_tracks_exact_compose_peer(self, getaddrinfo):
+        getaddrinfo.side_effect = [
+            [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("172.20.0.3", 0))],
+            [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("172.20.0.4", 0))],
+            [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("172.20.0.4", 0))],
+        ]
+        first = self.factory.get(
+            "/",
+            REMOTE_ADDR="172.20.0.3",
+            HTTP_X_FORWARDED_FOR="198.51.100.25",
+        )
+        after_proxy_restart = self.factory.get(
+            "/",
+            REMOTE_ADDR="172.20.0.4",
+            HTTP_X_FORWARDED_FOR="198.51.100.26",
+        )
+        spoofed_from_other_peer = self.factory.get(
+            "/",
+            REMOTE_ADDR="172.20.0.5",
+            HTTP_X_FORWARDED_FOR="198.51.100.27",
+        )
+        self.assertEqual(str(client_ip(first)), "198.51.100.25")
+        self.assertEqual(str(client_ip(after_proxy_restart)), "198.51.100.26")
+        self.assertEqual(str(client_ip(spoofed_from_other_peer)), "172.20.0.5")
+
+    @override_settings(AUTH_TRUSTED_PROXY_CIDRS=_TrustedProxyCidrs([], ["missing-proxy"]))
+    @patch("config.settings.socket.getaddrinfo", side_effect=socket.gaierror("not found"))
+    def test_unresolvable_trusted_proxy_hostname_fails_closed(self, _getaddrinfo):
+        request = self.factory.get(
+            "/",
+            REMOTE_ADDR="172.20.0.3",
+            HTTP_X_FORWARDED_FOR="198.51.100.25",
+        )
+        self.assertEqual(str(client_ip(request)), "172.20.0.3")
 
     @override_settings(AUTH_TRUSTED_PROXY_CIDRS=[], AUTH_ABUSE_IPV6_PREFIX=64)
     def test_ipv6_network_identity_uses_prefix(self):
