@@ -8,6 +8,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
 from auth_abuse.service import enforce
+from auth_sessions.service import require_fresh_session
 
 from .models import Family, FamilyInvitation, Membership
 
@@ -34,6 +35,7 @@ def _rate_limited_response(decision):
 
 
 def _enforce_sensitive_action(request):
+    require_fresh_session(request)
     return enforce("superadmin.sensitive_action", request=request, user=request.user)
 
 
