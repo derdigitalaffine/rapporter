@@ -12,6 +12,7 @@ class FamilyConfig(AppConfig):
         from .family_master_models import FamilyMasterData
         from .notes_models import Note, NoteRevision, NoteShare
         from .today_models import TodayLayout
+        from .travel_models import Trip, TripPhoto
         core_models.BoardPost = BoardPost
         core_models.BoardImage = BoardImage
         core_models.FamilyMasterData = FamilyMasterData
@@ -19,6 +20,8 @@ class FamilyConfig(AppConfig):
         core_models.NoteShare = NoteShare
         core_models.NoteRevision = NoteRevision
         core_models.TodayLayout = TodayLayout
+        core_models.Trip = Trip
+        core_models.TripPhoto = TripPhoto
         from . import models_features  # noqa: F401
         from . import board_notifications  # noqa: F401
         from . import prediction_signals  # noqa: F401
