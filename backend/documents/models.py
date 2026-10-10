@@ -28,6 +28,11 @@ class Document(models.Model):
     document_date = models.DateField(null=True, blank=True)
     correspondent = models.CharField(max_length=180, blank=True)
     visibility = models.CharField(max_length=16, choices=Visibility.choices, default=Visibility.PRIVATE, db_index=True)
+    # Domain-owned attachments (for example an Expense receipt) still use the
+    # Document ACL/storage/processing core but do not have to appear as a second
+    # item in the generic document library. Direct domain access remains ACL
+    # checked and the flag is intentionally independent from visibility.
+    library_visible = models.BooleanField(default=True, db_index=True)
     owner_membership = models.ForeignKey(Membership, on_delete=models.PROTECT, related_name="owned_documents")
     canonical_file = models.CharField(max_length=500, editable=False)
     mime_type = models.CharField(max_length=96, editable=False)

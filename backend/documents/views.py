@@ -94,7 +94,7 @@ def _replace_links(document, rows):
 def _document_or_404(user, document_id, require_manage=False):
     document = Document.objects.select_related("family", "owner_membership").prefetch_related(
         "access_entries", "domain_links"
-    ).filter(id=document_id).first()
+    ).filter(id=document_id, library_visible=True).first()
     if not document:
         raise Http404
     allowed = can_manage_document(user, document) if require_manage else can_view_document(user, document)

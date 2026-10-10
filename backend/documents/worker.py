@@ -1,15 +1,21 @@
+from .consumers import dispatch_processing_consumers
 from .extraction import ProcessingError, extract_document
 from .processing import ClaimLost, fail_run, finish_run, renew_lease
+
+
+def _publish(final):
+    if final is not None:
+        dispatch_processing_consumers(final)
+    return final
 
 
 def process_claimed_run(run):
     """Execute one already-claimed run without ever mutating its canonical file.
 
-    Database connection lifecycle belongs to the long-running management loop,
-    not this unit of work. Keeping this helper connection-neutral also makes it
-    safe to call from an existing transaction (for example Django TestCase or a
-    future orchestrator). Long-running extraction renews the durable lease at
-    page/OCR boundaries; a lost fencing token aborts publication immediately.
+    Generic run state commits first. Domain consumers run afterwards and are
+    best-effort projections, so an Expense parser bug cannot turn successful OCR
+    into a retry or duplicate CPU work. A domain object deleted during OCR is a
+    normal form of claim loss and never crashes the long-running worker.
     """
 
     def heartbeat():
@@ -19,10 +25,11 @@ def process_claimed_run(run):
     try:
         result = extract_document(run.document, heartbeat=heartbeat)
         heartbeat()
+        final = finish_run(run, result, needs_review=result.needs_review)
     except ClaimLost:
-        return run.__class__.objects.get(pk=run.pk)
+        return run.__class__.objects.filter(pk=run.pk).first()
     except ProcessingError as exc:
-        return fail_run(
+        final = fail_run(
             run,
             error_code=exc.code,
             safe_error=exc.safe_message,
@@ -30,11 +37,14 @@ def process_claimed_run(run):
         )
     except Exception:
         # Raw exception strings can contain file contents, paths or library
-        # details. Persist only a stable redacted category for operators.
-        return fail_run(
+        # details. Persist only a stable redacted category for operators. This
+        # still covers generic persistence failures; domain projection happens
+        # only after this block and can never enter the OCR retry policy.
+        final = fail_run(
             run,
             error_code="processing_failed",
             safe_error="Dokumentverarbeitung ist unerwartet fehlgeschlagen.",
             retryable=True,
         )
-    return finish_run(run, result, needs_review=result.needs_review)
+
+    return _publish(final)

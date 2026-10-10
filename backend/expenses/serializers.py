@@ -65,7 +65,10 @@ class ExpenseSerializer(serializers.ModelSerializer):
         return obj.paid_by.display_name or obj.paid_by.user.username
 
     def get_receipt_available(self, obj):
-        return bool(obj.receipt_mime)
+        # A backfilled legacy row may have had missing MIME metadata. Once its
+        # hidden Document exists, availability must follow that canonical link
+        # without forcing a deferred BinaryField read on expense lists.
+        return bool(obj.receipt_document_id or obj.receipt_mime)
 
     def validate_currency(self, value):
         value = (value or "EUR").upper()
