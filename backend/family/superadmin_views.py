@@ -10,7 +10,8 @@ from rest_framework.response import Response
 from auth_abuse.service import enforce
 from auth_sessions.service import require_fresh_session
 
-from .models import Family, FamilyInvitation, Membership
+from .invitation_service import issue_invitation
+from .models import Family, Membership
 
 
 RATE_LIMIT_DETAIL = "Zu viele Anfragen. Bitte später erneut versuchen."
@@ -60,7 +61,12 @@ def _family_row(family):
             for item in owners
         ],
         "pending_owner_invites": [
-            {"token": item.token, "email": item.email, "display_name": item.display_name, "expires_at": item.expires_at}
+            {
+                "id": str(item.id),
+                "email": item.email,
+                "display_name": item.display_name,
+                "expires_at": item.expires_at,
+            }
             for item in pending
         ],
         "created_at": family.created_at,
@@ -108,7 +114,7 @@ def superadmin_families(request):
             timezone=family_timezone,
             status=Family.Status.ACTIVE,
         )
-        invite = FamilyInvitation.objects.create(
+        invite, _token = issue_invitation(
             family=family,
             role=Membership.Role.OWNER,
             invited_by=request.user,
@@ -116,7 +122,14 @@ def superadmin_families(request):
             display_name=owner_name,
             expires_at=timezone.now() + timedelta(days=7),
         )
-    return Response({"family": _family_row(family), "invite_token": invite.token}, status=status.HTTP_201_CREATED)
+    return Response(
+        {
+            "family": _family_row(family),
+            "invite_id": str(invite.id),
+            "delivery": "queued" if invite.email else "not_queued",
+        },
+        status=status.HTTP_201_CREATED,
+    )
 
 
 @api_view(["PATCH"])
@@ -151,7 +164,7 @@ def superadmin_owner_invite(request, family_id):
         return Response({"detail": "Eine gesperrte Familie kann keine neue Owner-Einladung erhalten."}, status=status.HTTP_409_CONFLICT)
     email = str(request.data.get("email") or "").strip().lower()
     display_name = str(request.data.get("display_name") or "").strip()
-    invite = FamilyInvitation.objects.create(
+    invite, _token = issue_invitation(
         family=family,
         role=Membership.Role.OWNER,
         invited_by=request.user,
@@ -159,4 +172,11 @@ def superadmin_owner_invite(request, family_id):
         display_name=display_name,
         expires_at=timezone.now() + timedelta(days=7),
     )
-    return Response({"invite_token": invite.token, "family": _family_row(family)}, status=status.HTTP_201_CREATED)
+    return Response(
+        {
+            "invite_id": str(invite.id),
+            "delivery": "queued" if invite.email else "not_queued",
+            "family": _family_row(family),
+        },
+        status=status.HTTP_201_CREATED,
+    )
