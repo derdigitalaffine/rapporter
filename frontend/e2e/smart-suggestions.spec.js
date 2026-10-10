@@ -1,17 +1,19 @@
 import {test,expect} from '@playwright/test';
 import {installApiMocks} from './mock-api.js';
 
-async function boot(page,path){
+async function boot(page,path,configure){
   await installApiMocks(page);
+  await configure?.();
   await page.goto(path);
   await page.waitForLoadState('networkidle');
 }
 
 test('remembered task suggestion adds immediately with learned defaults',async({page})=>{
-  await page.route('**/api/tasks/suggestions/**',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify([{name:'Pflanzen gießen',notes:'Wohnzimmer zuerst',priority:'high',estimate_minutes:15,count:6}])}));
   let creates=0;
   page.on('request',request=>{if(new URL(request.url()).pathname==='/api/smart/tasks/quick-add/')creates+=1});
-  await boot(page,'/?page=tasks');
+  await boot(page,'/?page=tasks',async()=>{
+    await page.route('**/api/tasks/suggestions/**',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify([{name:'Pflanzen gießen',notes:'Wohnzimmer zuerst',priority:'high',estimate_minutes:15,count:6}])}));
+  });
   const input=page.locator('.smart-input input');
   await input.focus();
   const suggestion=page.getByRole('button',{name:'Pflanzen gießen · Hinzufügen'});
@@ -26,8 +28,9 @@ test('remembered task suggestion adds immediately with learned defaults',async({
 });
 
 test('remembered shopping suggestion adds immediately with learned defaults',async({page})=>{
-  await page.route('**/api/shopping-items/suggestions/**',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify([{name:'Hafermilch',quantity:'2 l',category:'Kühlung',aisle:'Kühlregal',note:'Barista',count:4}])}));
-  await boot(page,'/?page=shopping');
+  await boot(page,'/?page=shopping',async()=>{
+    await page.route('**/api/shopping-items/suggestions/**',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify([{name:'Hafermilch',quantity:'2 l',category:'Kühlung',aisle:'Kühlregal',note:'Barista',count:4}])}));
+  });
   const input=page.locator('.smart-input input').first();
   await input.focus();
   const suggestion=page.getByRole('button',{name:'Hafermilch · Hinzufügen'});
