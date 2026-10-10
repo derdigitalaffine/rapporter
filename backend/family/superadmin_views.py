@@ -7,12 +7,34 @@ from rest_framework import permissions, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
+from auth_abuse.service import enforce
+
 from .models import Family, FamilyInvitation, Membership
+
+
+RATE_LIMIT_DETAIL = "Zu viele Anfragen. Bitte später erneut versuchen."
 
 
 class IsSuperAdmin(permissions.BasePermission):
     def has_permission(self, request, view):
         return bool(request.user and request.user.is_authenticated and request.user.is_superuser)
+
+
+def _rate_limited_response(decision):
+    response = Response(
+        {
+            "detail": RATE_LIMIT_DETAIL,
+            "code": "rate_limited",
+            "retry_after": decision.retry_after,
+        },
+        status=status.HTTP_429_TOO_MANY_REQUESTS,
+    )
+    response["Retry-After"] = str(decision.retry_after)
+    return response
+
+
+def _enforce_sensitive_action(request):
+    return enforce("superadmin.sensitive_action", request=request, user=request.user)
 
 
 def _family_row(family):
@@ -62,6 +84,10 @@ def superadmin_families(request):
         rows = Family.objects.prefetch_related("memberships__user", "invitations").order_by("name", "created_at")
         return Response([_family_row(family) for family in rows])
 
+    decision = _enforce_sensitive_action(request)
+    if not decision.allowed:
+        return _rate_limited_response(decision)
+
     name = str(request.data.get("name") or "").strip()
     owner_email = str(request.data.get("owner_email") or "").strip().lower()
     owner_name = str(request.data.get("owner_name") or "").strip()
@@ -94,6 +120,10 @@ def superadmin_families(request):
 @api_view(["PATCH"])
 @permission_classes([IsSuperAdmin])
 def superadmin_family_detail(request, family_id):
+    decision = _enforce_sensitive_action(request)
+    if not decision.allowed:
+        return _rate_limited_response(decision)
+
     family = Family.objects.filter(id=family_id).first()
     if not family:
         return Response({"detail": "Familie nicht gefunden."}, status=status.HTTP_404_NOT_FOUND)
@@ -108,6 +138,10 @@ def superadmin_family_detail(request, family_id):
 @api_view(["POST"])
 @permission_classes([IsSuperAdmin])
 def superadmin_owner_invite(request, family_id):
+    decision = _enforce_sensitive_action(request)
+    if not decision.allowed:
+        return _rate_limited_response(decision)
+
     family = Family.objects.filter(id=family_id).first()
     if not family:
         return Response({"detail": "Familie nicht gefunden."}, status=status.HTTP_404_NOT_FOUND)

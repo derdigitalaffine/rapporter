@@ -8,9 +8,27 @@ from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 
+from auth_abuse.service import enforce
+
 from .auth_views import set_user_cookies
 from .models import Family, FamilyInvitation, Membership
 from .serializers import FamilyInvitationSerializer, MembershipSerializer
+
+
+RATE_LIMIT_DETAIL = "Zu viele Anfragen. Bitte später erneut versuchen."
+
+
+def _rate_limited_response(decision):
+    response = Response(
+        {
+            "detail": RATE_LIMIT_DETAIL,
+            "code": "rate_limited",
+            "retry_after": decision.retry_after,
+        },
+        status=status.HTTP_429_TOO_MANY_REQUESTS,
+    )
+    response["Retry-After"] = str(decision.retry_after)
+    return response
 
 
 def can_invite(user, family):
@@ -72,6 +90,18 @@ class FamilyInvitationViewSet(viewsets.ModelViewSet):
         ).values_list("family_id", flat=True)
         return FamilyInvitation.objects.filter(family_id__in=family_ids).select_related("family", "invited_by", "accepted_by").order_by("-created_at")
 
+    def create(self, request, *args, **kwargs):
+        family_id = request.data.get("family")
+        decision = enforce(
+            "invite.create",
+            request=request,
+            user=request.user,
+            family_id=family_id,
+        )
+        if not decision.allowed:
+            return _rate_limited_response(decision)
+        return super().create(request, *args, **kwargs)
+
     def perform_create(self, serializer):
         family = serializer.validated_data["family"]
         if not can_invite(self.request.user, family):
@@ -98,6 +128,14 @@ class FamilyInvitationViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["post"])
     def renew(self, request, pk=None):
         invite = self.get_object()
+        decision = enforce(
+            "invite.resend",
+            request=request,
+            user=request.user,
+            family_id=invite.family_id,
+        )
+        if not decision.allowed:
+            return _rate_limited_response(decision)
         if invite.accepted_at:
             return Response({"detail": "Bereits angenommen."}, status=status.HTTP_400_BAD_REQUEST)
         invite.revoked_at = None
