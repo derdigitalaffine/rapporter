@@ -11,6 +11,7 @@ class FamilyConfig(AppConfig):
         from .board_models import BoardImage, BoardPost
         from .family_master_models import FamilyMasterData
         from .notes_models import Note, NoteRevision, NoteShare
+        from .shopping_models import ShoppingListStoreProfile, ShoppingStore, ShoppingTemplate, ShoppingTemplateItem
         from .today_models import TodayLayout
         from .travel_models import Trip, TripPhoto
         core_models.BoardPost = BoardPost
@@ -19,6 +20,10 @@ class FamilyConfig(AppConfig):
         core_models.Note = Note
         core_models.NoteShare = NoteShare
         core_models.NoteRevision = NoteRevision
+        core_models.ShoppingStore = ShoppingStore
+        core_models.ShoppingListStoreProfile = ShoppingListStoreProfile
+        core_models.ShoppingTemplate = ShoppingTemplate
+        core_models.ShoppingTemplateItem = ShoppingTemplateItem
         core_models.TodayLayout = TodayLayout
         core_models.Trip = Trip
         core_models.TripPhoto = TripPhoto
