@@ -74,16 +74,19 @@ class TransactionalMailTests(TestCase):
         subject, text, html = service.render_transactional_email(row)
         self.assertEqual(subject, "Password changed")
         self.assertIn("Your FamilyOS password was changed.", text)
+        self.assertIn('lang="en"', html)
         self.assertIn("FamilyOS", html)
         self.assertNotIn("http://", html)
         self.assertNotIn("https://", html)
 
     def test_reference_resolver_builds_only_same_app_relative_urls(self):
         service.register_reference_resolver("security-test", lambda _id: "/account/security")
-        row = self.enqueue(reference_type="security-test", reference_id="42", context={"action_label": "Öffnen"})
+        row = self.enqueue(locale="en", reference_type="security-test", reference_id="42", context={})
         _, text, html = service.render_transactional_email(row)
         self.assertIn("https://familyos.test/account/security", text)
         self.assertIn("https://familyos.test/account/security", html)
+        self.assertIn("Open FamilyOS", html)
+        self.assertIn('lang="en"', html)
 
         service.register_reference_resolver("external-test", lambda _id: "https://evil.example/phish")
         external = self.enqueue(key="mail-external", reference_type="external-test", reference_id="1")
