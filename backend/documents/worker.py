@@ -15,6 +15,10 @@ def process_claimed_run(run):
     that call inside this try block means a consumer failure rolls the finish
     transaction back and follows the same durable retry policy instead of
     leaving a completed generic run with an unprojected domain object.
+
+    A domain object can also be deleted while OCR is in flight. Cascade deletion
+    then removes the durable run; this is a normal form of claim loss, not a
+    reason to crash the long-running worker process.
     """
 
     def heartbeat():
@@ -26,7 +30,7 @@ def process_claimed_run(run):
         heartbeat()
         return finish_run(run, result, needs_review=result.needs_review)
     except ClaimLost:
-        return run.__class__.objects.get(pk=run.pk)
+        return run.__class__.objects.filter(pk=run.pk).first()
     except ProcessingError as exc:
         return fail_run(
             run,
