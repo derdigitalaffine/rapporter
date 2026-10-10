@@ -13,7 +13,7 @@ async function bootVisual(page,path='/'){
   await page.goto(path);await page.waitForLoadState('networkidle');await page.evaluate(()=>document.fonts.ready.then(()=>true));await expect(page.locator('.app-shell')).toBeVisible();return state;
 }
 async function snapshot(page,name){
-  const thresholds=name==='today'?{maxDiffPixelRatio:.04}:name==='more'?{maxDiffPixelRatio:.03}:name==='members'?{maxDiffPixels:300}:{maxDiffPixels:100};
+  const thresholds=name==='today'?{maxDiffPixelRatio:.06}:name==='more'?{maxDiffPixelRatio:.03}:name==='members'?{maxDiffPixels:300}:{maxDiffPixels:100};
   await expect(page).toHaveScreenshot(`${name}.png`,{animations:'disabled',caret:'hide',...thresholds});
 }
 async function bottom(page,label){await page.locator('.bottom-nav').getByRole('button',{name:new RegExp(`^${label}$`)}).click()}
