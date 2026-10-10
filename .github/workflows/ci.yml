@@ -1,11 +1,15 @@
 name: ci
+
 on:
   push:
-    branches: [main, "feat/**", "subproject/**"]
+    branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -17,48 +21,11 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: frontend/package.json
+          cache-dependency-path: frontend/package-lock.json
       - working-directory: frontend
-        run: npm install
-      - working-directory: frontend
-        run: npm run build
-
-  e2e:
-    needs: [frontend]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: frontend/package.json
-      - working-directory: frontend
-        run: npm install
+        run: npm ci --prefer-offline --no-audit --no-fund
       - working-directory: frontend
         run: npm run build
-      - working-directory: frontend
-        run: npx playwright install --with-deps chromium
-      - working-directory: frontend
-        run: npm run e2e
-      - name: Upload visual regression diffs
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: visual-regression-diffs-${{ github.run_attempt }}
-          path: frontend/test-results/**/*.png
-          if-no-files-found: ignore
-          retention-days: 14
-      - name: Upload Playwright report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: playwright-report-${{ github.run_attempt }}
-          path: |
-            frontend/playwright-report
-            frontend/test-results
-          if-no-files-found: ignore
-          retention-days: 14
 
   backend:
     runs-on: ubuntu-latest
@@ -82,6 +49,7 @@ jobs:
       POSTGRES_PASSWORD: test-password
       DJANGO_SECRET_KEY: ci-only-secret
       DJANGO_DEBUG: "true"
+      PIP_DISABLE_PIP_VERSION_CHECK: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -97,8 +65,61 @@ jobs:
       - working-directory: backend
         run: python manage.py test
 
+  e2e_shard:
+    name: e2e / ${{ matrix.project }} / ${{ matrix.shard }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        project: [mobile-chromium, desktop-chromium]
+        shard: [1/2, 2/2]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - working-directory: frontend
+        run: npm ci --prefer-offline --no-audit --no-fund
+      - working-directory: frontend
+        run: npm run build
+      - working-directory: frontend
+        run: npx playwright install --with-deps chromium
+      - working-directory: frontend
+        run: npm run e2e -- --project=${{ matrix.project }} --shard=${{ matrix.shard }}
+      - name: Upload visual regression diffs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-regression-diffs-${{ matrix.project }}-${{ strategy.job-index }}-${{ github.run_attempt }}
+          path: frontend/test-results/**/*.png
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-${{ matrix.project }}-${{ strategy.job-index }}-${{ github.run_attempt }}
+          path: |
+            frontend/playwright-report
+            frontend/test-results
+          if-no-files-found: ignore
+          retention-days: 14
+
+  # Keep the historical "e2e" check name stable for branch protection while
+  # running all browser shards in parallel above.
+  e2e:
+    runs-on: ubuntu-latest
+    if: always()
+    needs: [e2e_shard]
+    env:
+      E2E_SHARD_RESULT: ${{ needs.e2e_shard.result }}
+    steps:
+      - name: Require all E2E shards
+        run: test "$E2E_SHARD_RESULT" = "success"
+
   containers:
-    needs: [frontend, backend, e2e]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
