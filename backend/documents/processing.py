@@ -18,6 +18,10 @@ ACTIVE_STATUSES = {
 }
 
 
+class ClaimLost(Exception):
+    """Raised when a worker no longer owns the durable processing claim."""
+
+
 def enqueue_document(document, *, pipeline_version=PIPELINE_VERSION):
     """Create at most one active run for a document and mark it queued."""
     with transaction.atomic():
@@ -41,11 +45,56 @@ def enqueue_document(document, *, pipeline_version=PIPELINE_VERSION):
 
 
 def _claimable(now):
-    return (
+    attempts_left = Q(attempts__lt=MAX_ATTEMPTS)
+    return attempts_left & (
         Q(status=DocumentProcessingRun.Status.QUEUED)
         | Q(status=DocumentProcessingRun.Status.RETRY, next_retry_at__lte=now)
         | Q(status=DocumentProcessingRun.Status.PROCESSING, lease_expires_at__lte=now)
     )
+
+
+def _exhausted_due(now):
+    return Q(attempts__gte=MAX_ATTEMPTS) & (
+        Q(status=DocumentProcessingRun.Status.RETRY, next_retry_at__lte=now)
+        | Q(status=DocumentProcessingRun.Status.PROCESSING, lease_expires_at__lte=now)
+    )
+
+
+def _terminalize_exhausted_runs(now, *, batch_size=100):
+    """Turn crash-exhausted leases into terminal failures before new claims.
+
+    A hard worker crash never reaches ``fail_run``. Without this sweep an expired
+    PROCESSING row could therefore be reclaimed forever. The bounded batch keeps
+    a single poll cheap while the long-running worker drains larger backlogs on
+    subsequent polls.
+    """
+    exhausted = list(
+        DocumentProcessingRun.objects.select_for_update(skip_locked=True)
+        .filter(_exhausted_due(now))
+        .order_by("queued_at", "created_at")[:batch_size]
+    )
+    for run in exhausted:
+        run.status = DocumentProcessingRun.Status.FAILED
+        run.processed_at = now
+        run.claim_token = None
+        run.lease_expires_at = None
+        run.next_retry_at = None
+        run.error_code = "attempts_exhausted"
+        run.safe_error = "Dokumentverarbeitung wurde nach mehreren fehlgeschlagenen Versuchen beendet."
+        run.save(
+            update_fields=[
+                "status",
+                "processed_at",
+                "claim_token",
+                "lease_expires_at",
+                "next_retry_at",
+                "error_code",
+                "safe_error",
+                "updated_at",
+            ]
+        )
+        Document.objects.filter(pk=run.document_id).update(processing_status=Document.ProcessingStatus.FAILED)
+    return len(exhausted)
 
 
 def claim_next_run(*, now=None, lease_seconds=LEASE_SECONDS):
@@ -53,11 +102,13 @@ def claim_next_run(*, now=None, lease_seconds=LEASE_SECONDS):
 
     `select_for_update(skip_locked=True)` lets multiple PostgreSQL workers poll the
     same queue without processing the same run. Expired processing leases are
-    claimable, which makes a killed worker restart-safe. The fresh claim token
-    prevents a stale worker from publishing after another worker reclaimed it.
+    claimable while attempts remain, which makes a killed worker restart-safe
+    without allowing infinite crash loops. The fresh claim token fences stale
+    workers from publishing after another worker reclaimed the run.
     """
     now = now or timezone.now()
     with transaction.atomic():
+        _terminalize_exhausted_runs(now)
         run = (
             DocumentProcessingRun.objects.select_for_update(skip_locked=True)
             .select_related("document")
@@ -92,6 +143,23 @@ def claim_next_run(*, now=None, lease_seconds=LEASE_SECONDS):
         )
         Document.objects.filter(pk=run.document_id).update(processing_status=Document.ProcessingStatus.PROCESSING)
         return run
+
+
+def renew_lease(run, *, now=None, lease_seconds=LEASE_SECONDS):
+    """Extend a claim only while this worker still owns its fencing token."""
+    if not run.claim_token:
+        return False
+    now = now or timezone.now()
+    lease_expires_at = now + timedelta(seconds=lease_seconds)
+    updated = DocumentProcessingRun.objects.filter(
+        pk=run.pk,
+        status=DocumentProcessingRun.Status.PROCESSING,
+        claim_token=run.claim_token,
+    ).update(lease_expires_at=lease_expires_at, updated_at=now)
+    if updated:
+        run.lease_expires_at = lease_expires_at
+        return True
+    return False
 
 
 def _owns_claim(locked, claimed):
