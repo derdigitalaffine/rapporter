@@ -1,20 +1,16 @@
-"""Local document text extraction with provenance.
-
-The pipeline deliberately has no network/LLM dependency. Born-digital PDF pages
-use their embedded text. Image documents and image-only PDF pages use local
-Tesseract TSV output so confidence and bounding boxes remain available for
-review and future typed extractors.
-"""
+"""Local document text extraction with quality data and provenance."""
 from dataclasses import dataclass, field
 import io
 import statistics
 
-from PIL import Image, ImageOps, UnidentifiedImageError
+from PIL import Image, UnidentifiedImageError
 from pypdf import PdfReader
 from pypdf.errors import PdfReadError
 import pytesseract
 from pytesseract import Output
 
+from .intelligence import enrich_extraction
+from .quality import prepare_for_ocr
 from .storage import open_canonical
 
 MAX_TEXT_CHARS = 250_000
@@ -46,18 +42,17 @@ def _normalise_text(value):
     return "\n".join(line for line in lines if line).strip()
 
 
-def _psm_for(image):
+def _psm_candidates(image):
     width, height = image.size
-    # Dense/narrow receipt-like pages benefit from a single text block, while
-    # document pages should let Tesseract discover their layout automatically.
-    if height > width * 1.35:
-        return 6
-    return 3
+    if height > width * 1.45:
+        return (6, 4, 3)
+    if width > height * 1.4:
+        return (3, 4, 6)
+    return (3, 6, 4)
 
 
-def _ocr_image(image, page_number, *, heartbeat):
-    image = ImageOps.autocontrast(ImageOps.grayscale(image))
-    config = f"--psm {_psm_for(image)}"
+def _run_tesseract(image, *, psm, heartbeat):
+    config = f"--psm {psm}"
     heartbeat()
     try:
         data = pytesseract.image_to_data(
@@ -68,7 +63,7 @@ def _ocr_image(image, page_number, *, heartbeat):
             output_type=Output.DICT,
         )
         heartbeat()
-        language = "deu+eng"
+        return data, "deu+eng"
     except pytesseract.TesseractError:
         heartbeat()
         try:
@@ -79,12 +74,14 @@ def _ocr_image(image, page_number, *, heartbeat):
                 output_type=Output.DICT,
             )
             heartbeat()
-            language = "default"
+            return data, "default"
         except (pytesseract.TesseractError, RuntimeError, OSError) as exc:
             raise ProcessingError("ocr_failed", "Lokale OCR konnte die Seite nicht verarbeiten.", retryable=True) from exc
     except (RuntimeError, OSError) as exc:
         raise ProcessingError("ocr_failed", "Lokale OCR konnte die Seite nicht verarbeiten.", retryable=True) from exc
 
+
+def _tsv_page(data, page_number, *, psm, language, width, height):
     words = []
     confidences = []
     line_parts = []
@@ -132,12 +129,65 @@ def _ocr_image(image, page_number, *, heartbeat):
         "text": text,
         "language": language,
         "confidence": round(mean_confidence, 4),
-        "width": image.width,
-        "height": image.height,
+        "width": width,
+        "height": height,
         "words": words,
         "word_count": len(confidences),
-        "psm": _psm_for(image),
+        "psm": psm,
     }
+
+
+def _candidate_score(page):
+    if not page["word_count"]:
+        return 0.0
+    coverage = min(1.0, page["word_count"] / 20)
+    return page["confidence"] * (0.75 + coverage * 0.25)
+
+
+def _ocr_image(image, page_number, *, heartbeat):
+    prepared, quality = prepare_for_ocr(image)
+    candidates = []
+    best = None
+    for psm in _psm_candidates(prepared):
+        data, language = _run_tesseract(prepared, psm=psm, heartbeat=heartbeat)
+        page = _tsv_page(
+            data,
+            page_number,
+            psm=psm,
+            language=language,
+            width=prepared.width,
+            height=prepared.height,
+        )
+        candidates.append(
+            {
+                "psm": psm,
+                "confidence": page["confidence"],
+                "word_count": page["word_count"],
+                "score": round(_candidate_score(page), 4),
+            }
+        )
+        if best is None or _candidate_score(page) > _candidate_score(best):
+            best = page
+        # Strong output should not pay for fallback modes. Weak/sparse output
+        # tries alternative layouts deterministically.
+        if page["confidence"] >= 0.82 and page["word_count"] >= 2:
+            break
+        if page["confidence"] >= 0.65 and page["word_count"] >= 12:
+            break
+    best = best or {
+        "page": page_number,
+        "text": "",
+        "language": "",
+        "confidence": 0.0,
+        "width": prepared.width,
+        "height": prepared.height,
+        "words": [],
+        "word_count": 0,
+        "psm": _psm_candidates(prepared)[0],
+    }
+    best["psm_candidates"] = candidates
+    best["quality"] = quality
+    return best
 
 
 def _page_field(page_data, source):
@@ -165,7 +215,7 @@ def _extract_image(handle, *, heartbeat):
         raise ProcessingError("image_decode_failed", "Das gespeicherte Bild konnte nicht gelesen werden.") from exc
     return ExtractionResult(
         text=page["text"][:MAX_TEXT_CHARS],
-        extractor="tesseract-tsv",
+        extractor="tesseract-tsv-adaptive",
         language=page["language"],
         quality_data={
             "pages": [{key: value for key, value in page.items() if key != "text"}],
@@ -231,7 +281,9 @@ def _extract_pdf(handle, *, heartbeat):
                 "source": "ocr",
                 "word_count": sum(item["word_count"] for item in ocr_pages),
                 "words": all_words,
-                "psm": sorted({item["psm"] for item in ocr_pages}),
+                "psm": [item["psm"] for item in ocr_pages],
+                "psm_candidates": [item["psm_candidates"] for item in ocr_pages],
+                "quality": [item["quality"] for item in ocr_pages],
             }
             page_results.append(page_data)
             fields.append(_page_field(page_data, "ocr"))
@@ -242,7 +294,7 @@ def _extract_pdf(handle, *, heartbeat):
     text = _normalise_text("\n\n".join(item["text"] for item in page_results if item["text"]))[:MAX_TEXT_CHARS]
     return ExtractionResult(
         text=text,
-        extractor="pypdf+tesseract-tsv" if used_ocr else "pypdf",
+        extractor="pypdf+tesseract-tsv-adaptive" if used_ocr else "pypdf",
         language="+".join(sorted(languages)),
         quality_data={
             "pages": [{key: value for key, value in item.items() if key != "text"} for item in page_results],
@@ -263,9 +315,11 @@ def extract_document(document, *, heartbeat=None):
         raise ProcessingError("canonical_missing", "Die kanonische Dokumentdatei fehlt.") from exc
     try:
         if document.mime_type == "application/pdf":
-            return _extract_pdf(handle, heartbeat=heartbeat)
-        if document.mime_type.startswith("image/"):
-            return _extract_image(handle, heartbeat=heartbeat)
-        raise ProcessingError("unsupported_mime", "Der Dokumenttyp kann nicht lokal verarbeitet werden.")
+            result = _extract_pdf(handle, heartbeat=heartbeat)
+        elif document.mime_type.startswith("image/"):
+            result = _extract_image(handle, heartbeat=heartbeat)
+        else:
+            raise ProcessingError("unsupported_mime", "Der Dokumenttyp kann nicht lokal verarbeitet werden.")
+        return enrich_extraction(result)
     finally:
         handle.close()
