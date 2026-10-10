@@ -9,21 +9,16 @@ const prediction={
 };
 
 test('routine editor shows learned cadence and keeps frequency goals optional',async({page})=>{
-  const state=await installApiMocks(page);
-  state.routines.push({
+  await installApiMocks(page);
+  const routine={
     id:'routine-1',family:'family-1',name:'Bad putzen',icon:'history',active:true,
-    last_done_at:new Date(Date.now()-7*86400000).toISOString(),logs:[],
+    last_done_at:new Date(Date.now()-7*86400000).toISOString(),logs:[],log_count:0,
     target_count:null,target_period_days:7,reminder_enabled:true,prediction:{status:'due',expected_at:new Date().toISOString(),learned_interval_days:7,expected_interval_days:7,confidence:.84,sample_count:5,interval_count:4,days_until_expected:0},
-  });
-  await page.route('**/api/routines/**',async route=>{
-    const request=route.request();
-    const path=new URL(request.url()).pathname;
-    if(path==='/api/routines/'&&request.method()==='GET')return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(state.routines)});
-    return route.fallback();
-  });
+  };
+  await page.route('**/api/routines/**',async route=>{if(route.request().method()==='GET')return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({results:[routine],next:null})});return route.fallback()});
 
   await page.goto('/?page=routines');
-  await page.locator('.row-main-button').filter({hasText:'Bad putzen'}).click();
+  const card=page.locator('.routine-card').filter({hasText:'Bad putzen'});await expect(card).toBeVisible();await card.locator('.row-main-button').click();
 
   const dialog=page.getByRole('dialog');
   await expect(dialog).toContainText('Jetzt fällig');

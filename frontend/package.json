@@ -22,12 +22,15 @@
     "@fortawesome/free-solid-svg-icons": "latest",
     "@fortawesome/free-regular-svg-icons": "latest",
     "@fortawesome/react-fontawesome": "latest",
+    "@uiw/react-markdown-preview": "latest",
+    "@uiw/react-md-editor": "^4.1.2",
     "@zxing/browser": "latest",
     "@zxing/library": "latest",
     "bwip-js": "latest",
     "i18next": "latest",
     "qrcode": "latest",
-    "react-i18next": "latest"
+    "react-i18next": "latest",
+    "rehype-sanitize": "latest"
   },
   "devDependencies": {
     "@axe-core/playwright": "latest",
