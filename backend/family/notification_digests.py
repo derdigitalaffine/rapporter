@@ -61,9 +61,9 @@ def enqueue_notification(membership, event_type, context, *, url=None):
             if prior and prior["event_type"] == "shopping.item.created":
                 event_type = "shopping.item.created"
             if key in events or len(events) < MAX_EVENTS:
-                events[key] = {"event_type": event_type, "context": context, "url": url}
+                events[key] = {"event_type": event_type, "context": context, "url": url, "queued_at": now.isoformat()}
             else:
-                events["overflow"] = {"event_type": "shopping.item.updated" if shopping else event_type, "context": {"list_id": context.get("list_id"), "list": context.get("list"), "overflow": True}, "url": url}
+                events["overflow"] = {"event_type": "shopping.item.updated" if shopping else event_type, "context": {"list_id": context.get("list_id"), "list": context.get("list"), "overflow": True}, "url": url, "queued_at": now.isoformat()}
         batch.events = events
         batch.delivered_at = None
         batch.save(update_fields=["events", "due_at", "attempts", "delivered_at", "updated_at"])
@@ -104,6 +104,7 @@ def _visible_events(batch, pref):
                 if not receipt or receipt.read_at:
                     continue
         result.append(event)
+    result.sort(key=lambda event: event.get("queued_at") or "")
     return result
 
 
