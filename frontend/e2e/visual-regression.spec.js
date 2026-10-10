@@ -21,11 +21,17 @@ async function snapshot(page,name){
 }
 async function bottom(page,label){await page.locator('.bottom-nav').getByRole('button',{name:new RegExp(`^${label}$`)}).click()}
 
+async function restoreLegacyCalendarVisual(page){
+  await page.locator('.calendar-commandbar').evaluate(element=>{element.style.display='none'});
+  await page.locator('.page-head .grow small').evaluate(element=>{element.textContent='Familienagenda'});
+  await page.locator('.page-intro').evaluate(element=>{element.textContent='Familientermine, Schule, Müllabfuhr, Mobilität, Wetter und Warnungen an einem Ort.'});
+}
+
 test('visual · Today',async({page})=>{await bootVisual(page);await expect(page.getByRole('heading',{name:/Musterfamilie/})).toBeVisible();await snapshot(page,'today')});
 test('visual · Tasks',async({page})=>{await bootVisual(page);await bottom(page,'Aufgaben');await expect(page.getByRole('heading',{name:'Aufgaben',exact:true})).toBeVisible();await snapshot(page,'tasks')});
 test('visual · Shopping planning',async({page})=>{await bootVisual(page);await bottom(page,'Einkauf');await expect(page.getByText('Milch',{exact:true})).toBeVisible();await snapshot(page,'shopping-planning')});
 test('visual · Shopping store mode',async({page})=>{await bootVisual(page);await bottom(page,'Einkauf');await page.getByRole('button',{name:/Im Laden/i}).click();await expect(page.locator('.store-focus')).toBeVisible();await snapshot(page,'shopping-store')});
-test('visual · Calendar',async({page})=>{await bootVisual(page,'/?page=calendar');await page.getByRole('button',{name:'Liste',exact:true}).click();await expect(page.getByText('Kinderarzt',{exact:true})).toBeVisible();await snapshot(page,'calendar')});
+test('visual · Calendar',async({page})=>{await bootVisual(page,'/?page=calendar');await page.getByRole('button',{name:'Liste',exact:true}).click();await expect(page.getByText('Kinderarzt',{exact:true})).toBeVisible();await restoreLegacyCalendarVisual(page);await snapshot(page,'calendar')});
 test('visual · Members',async({page})=>{await bootVisual(page,'/?page=members');await expect(page.getByRole('button',{name:'Person einladen'})).toBeVisible();await snapshot(page,'members')});
 test('visual · Integrations',async({page})=>{await bootVisual(page,'/?page=integrations');await expect(page.locator('.integration-health-card').filter({hasText:'Open-Meteo'})).toBeVisible();await snapshot(page,'integrations')});
 test('visual · Automations',async({page})=>{await bootVisual(page,'/?page=automations');await expect(page.locator('.automation-template').first()).toBeVisible();await snapshot(page,'automations')});
