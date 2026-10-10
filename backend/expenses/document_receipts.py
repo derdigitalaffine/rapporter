@@ -12,7 +12,6 @@ from rest_framework.exceptions import ValidationError
 
 from documents.models import Document, DocumentLink, DocumentProcessingRun
 from documents.processing import enqueue_document
-from documents.quality import assess_canonical_image
 from documents.storage import canonicalize_upload, remove_canonical, store_canonical
 from family.models import Membership
 
@@ -39,8 +38,28 @@ def _receipt_status_for_run(run):
     return ReceiptExtraction.Status.QUEUED, Expense.ReceiptStatus.QUEUED
 
 
+def _public_quality_warnings(value):
+    """Extract the tiny public warning allowlist from generic worker quality data."""
+    found = set()
+
+    def visit(node):
+        if isinstance(node, dict):
+            warnings = node.get("warnings")
+            if isinstance(warnings, list):
+                found.update(item for item in warnings if item in PUBLIC_QUALITY_WARNINGS)
+            for child in node.values():
+                if isinstance(child, (dict, list)):
+                    visit(child)
+        elif isinstance(node, list):
+            for child in node:
+                visit(child)
+
+    visit(value or {})
+    return sorted(found)
+
+
 def canonicalize_receipt_upload(upload):
-    """Apply only receipt-specific admission policy, then use Document storage rules."""
+    """Apply receipt admission policy; all quality detection belongs to Documents."""
     size = getattr(upload, "size", None)
     if size is not None and size > MAX_RECEIPT_BYTES:
         raise ValueError("Der Beleg darf höchstens 10 MB groß sein.")
@@ -50,9 +69,9 @@ def canonicalize_receipt_upload(upload):
         raise ValueError(_validation_message(exc)) from exc
     if not canonical.mime_type.startswith("image/"):
         raise ValueError("Nur JPEG-, PNG- oder WebP-Belege werden unterstützt.")
-    quality = assess_canonical_image(canonical)
-    warnings = [value for value in quality.get("warnings", []) if value in PUBLIC_QUALITY_WARNINGS]
-    return canonical, warnings
+    # Quality warnings are populated after the shared worker has assessed the
+    # canonical image. The request path must not own or duplicate that work.
+    return canonical, []
 
 
 def _create_receipt_document(expense, canonical, *, owner_membership, created_by):
@@ -84,9 +103,6 @@ def _create_receipt_document(expense, canonical, *, owner_membership, created_by
             relationship="receipt",
         )
     except Exception:
-        # The file write happens before the DB row can reference it. If that row
-        # cannot be persisted, clean the private object immediately; callers
-        # handle later transaction failures after this helper has returned.
         remove_canonical(key)
         raise
     return document, key
@@ -239,8 +255,6 @@ def queue_receipt_processing(expense):
                     created_by=locked.created_by,
                 )
                 locked.receipt_document = document
-                # Same dual-read invariant as the batch backfill: legacy MIME
-                # remains paired with legacy bytes until the contract phase.
                 locked.save(update_fields=["receipt_document", "updated_at"])
 
             run, _ = enqueue_document(document)
@@ -262,99 +276,165 @@ def queue_receipt_processing(expense):
         raise
 
 
-def consume_receipt_processing_run(run, link):
+def _consume_receipt_processing_run(run, link):
     """Project one shared processing transition into Expense receipt review state."""
-    extraction = (
-        ReceiptExtraction.objects.select_for_update()
-        .select_related("expense")
-        .filter(processing_run_id=run.id, expense_id=link.object_id)
-        .first()
-    )
-    if extraction is None:
-        return
-    expense = extraction.expense
-    if expense.receipt_document_id != run.document_id:
-        return
-
-    now = timezone.now()
-    if run.status == DocumentProcessingRun.Status.PROCESSING:
-        extraction.status = ReceiptExtraction.Status.PROCESSING
-        extraction.error = ""
-        extraction.save(update_fields=["status", "error", "updated_at"])
-        Expense.objects.filter(pk=expense.pk, receipt_document_id=run.document_id).update(
-            receipt_status=Expense.ReceiptStatus.PROCESSING,
-            updated_at=now,
+    with transaction.atomic():
+        extraction = (
+            ReceiptExtraction.objects.select_for_update()
+            .select_related("expense")
+            .filter(processing_run_id=run.id, expense_id=link.object_id)
+            .first()
         )
-        return
+        if extraction is None:
+            return
+        expense = extraction.expense
+        if expense.receipt_document_id != run.document_id:
+            return
 
-    if run.status in {DocumentProcessingRun.Status.QUEUED, DocumentProcessingRun.Status.RETRY}:
-        extraction.status = ReceiptExtraction.Status.QUEUED
-        extraction.error = ""
-        extraction.processed_at = None
-        extraction.save(update_fields=["status", "error", "processed_at", "updated_at"])
-        Expense.objects.filter(pk=expense.pk, receipt_document_id=run.document_id).update(
-            receipt_status=Expense.ReceiptStatus.QUEUED,
-            updated_at=now,
-        )
-        return
+        now = timezone.now()
+        if run.status == DocumentProcessingRun.Status.PROCESSING:
+            extraction.status = ReceiptExtraction.Status.PROCESSING
+            extraction.error = ""
+            extraction.save(update_fields=["status", "error", "updated_at"])
+            Expense.objects.filter(pk=expense.pk, receipt_document_id=run.document_id).update(
+                receipt_status=Expense.ReceiptStatus.PROCESSING,
+                updated_at=now,
+            )
+            return
 
-    if run.status == DocumentProcessingRun.Status.FAILED:
-        extraction.status = ReceiptExtraction.Status.FAILED
+        if run.status in {DocumentProcessingRun.Status.QUEUED, DocumentProcessingRun.Status.RETRY}:
+            extraction.status = ReceiptExtraction.Status.QUEUED
+            extraction.error = ""
+            extraction.processed_at = None
+            extraction.save(update_fields=["status", "error", "processed_at", "updated_at"])
+            Expense.objects.filter(pk=expense.pk, receipt_document_id=run.document_id).update(
+                receipt_status=Expense.ReceiptStatus.QUEUED,
+                updated_at=now,
+            )
+            return
+
+        if run.status == DocumentProcessingRun.Status.FAILED:
+            extraction.status = ReceiptExtraction.Status.FAILED
+            extraction.processed_at = run.processed_at or now
+            extraction.error = (run.safe_error or "Dokumentverarbeitung fehlgeschlagen.")[:500]
+            extraction.save(update_fields=["status", "processed_at", "error", "updated_at"])
+            Expense.objects.filter(pk=expense.pk, receipt_document_id=run.document_id).update(
+                receipt_status=Expense.ReceiptStatus.FAILED,
+                updated_at=now,
+            )
+            return
+
+        if run.status not in {DocumentProcessingRun.Status.REVIEW, DocumentProcessingRun.Status.READY}:
+            return
+
+        parsed = parse_receipt_text((run.normalized_text or "")[:MAX_RECEIPT_TEXT_CHARS])
+        extraction.raw_text = (run.normalized_text or "")[:MAX_RECEIPT_TEXT_CHARS]
+        extraction.merchant = parsed["merchant"]
+        extraction.date = parsed["date"]
+        extraction.total = parsed["total"]
+        extraction.currency = parsed["currency"]
+        extraction.field_confidences = parsed["field_confidences"]
+        extraction.structured_data = {
+            **(extraction.structured_data or {}),
+            **parsed["structured_data"],
+            "quality_warnings": _public_quality_warnings(run.quality_data),
+        }
+        extraction.status = ReceiptExtraction.Status.REVIEW
         extraction.processed_at = run.processed_at or now
-        extraction.error = (run.safe_error or "Dokumentverarbeitung fehlgeschlagen.")[:500]
-        extraction.save(update_fields=["status", "processed_at", "error", "updated_at"])
-        Expense.objects.filter(pk=expense.pk, receipt_document_id=run.document_id).update(
-            receipt_status=Expense.ReceiptStatus.FAILED,
-            updated_at=now,
+        extraction.error = ""
+        extraction.save(
+            update_fields=[
+                "raw_text",
+                "merchant",
+                "date",
+                "total",
+                "currency",
+                "field_confidences",
+                "structured_data",
+                "status",
+                "processed_at",
+                "error",
+                "updated_at",
+            ]
         )
-        return
 
-    if run.status not in {DocumentProcessingRun.Status.REVIEW, DocumentProcessingRun.Status.READY}:
-        return
+        expense_updates = {
+            "receipt_status": Expense.ReceiptStatus.REVIEW,
+            "updated_at": now,
+        }
+        if parsed["merchant"] and not expense.merchant:
+            expense_updates["merchant"] = parsed["merchant"]
+            expense_updates["title"] = parsed["merchant"]
+        if parsed["date"]:
+            expense_updates["occurred_at"] = timezone.make_aware(
+                datetime.combine(parsed["date"], datetime.min.time())
+            )
+        if parsed["total"] is not None:
+            expense_updates["total_amount"] = parsed["total"]
+        if parsed["currency"]:
+            expense_updates["currency"] = parsed["currency"]
+        Expense.objects.filter(pk=expense.pk, receipt_document_id=run.document_id).update(**expense_updates)
 
-    parsed = parse_receipt_text((run.normalized_text or "")[:MAX_RECEIPT_TEXT_CHARS])
-    extraction.raw_text = (run.normalized_text or "")[:MAX_RECEIPT_TEXT_CHARS]
-    extraction.merchant = parsed["merchant"]
-    extraction.date = parsed["date"]
-    extraction.total = parsed["total"]
-    extraction.currency = parsed["currency"]
-    extraction.field_confidences = parsed["field_confidences"]
-    extraction.structured_data = {
-        **(extraction.structured_data or {}),
-        **parsed["structured_data"],
-    }
-    extraction.status = ReceiptExtraction.Status.REVIEW
-    extraction.processed_at = run.processed_at or now
-    extraction.error = ""
-    extraction.save(
-        update_fields=[
-            "raw_text",
-            "merchant",
-            "date",
-            "total",
-            "currency",
-            "field_confidences",
-            "structured_data",
-            "status",
-            "processed_at",
-            "error",
-            "updated_at",
-        ]
-    )
 
-    expense_updates = {
-        "receipt_status": Expense.ReceiptStatus.REVIEW,
-        "updated_at": now,
-    }
-    if parsed["merchant"] and not expense.merchant:
-        expense_updates["merchant"] = parsed["merchant"]
-        expense_updates["title"] = parsed["merchant"]
-    if parsed["date"]:
-        expense_updates["occurred_at"] = timezone.make_aware(
-            datetime.combine(parsed["date"], datetime.min.time())
+def _persist_projection_fallback(run, link):
+    """Keep the Expense manually reviewable if its parser/projection breaks."""
+    with transaction.atomic():
+        extraction = (
+            ReceiptExtraction.objects.select_for_update()
+            .select_related("expense")
+            .filter(processing_run_id=run.id, expense_id=link.object_id)
+            .first()
         )
-    if parsed["total"] is not None:
-        expense_updates["total_amount"] = parsed["total"]
-    if parsed["currency"]:
-        expense_updates["currency"] = parsed["currency"]
-    Expense.objects.filter(pk=expense.pk, receipt_document_id=run.document_id).update(**expense_updates)
+        if extraction is None or extraction.expense.receipt_document_id != run.document_id:
+            return
+        expense = extraction.expense
+        now = timezone.now()
+        if run.status in {DocumentProcessingRun.Status.REVIEW, DocumentProcessingRun.Status.READY}:
+            extraction.status = ReceiptExtraction.Status.REVIEW
+            extraction.raw_text = (run.normalized_text or "")[:MAX_RECEIPT_TEXT_CHARS]
+            extraction.processed_at = run.processed_at or now
+            extraction.error = "Beleg konnte nicht vollständig ausgewertet werden. Bitte Werte prüfen."
+            extraction.structured_data = {
+                **(extraction.structured_data or {}),
+                "quality_warnings": _public_quality_warnings(run.quality_data),
+            }
+            extraction.save(
+                update_fields=["status", "raw_text", "processed_at", "error", "structured_data", "updated_at"]
+            )
+            Expense.objects.filter(pk=expense.pk, receipt_document_id=run.document_id).update(
+                receipt_status=Expense.ReceiptStatus.REVIEW,
+                updated_at=now,
+            )
+        elif run.status == DocumentProcessingRun.Status.FAILED:
+            extraction.status = ReceiptExtraction.Status.FAILED
+            extraction.processed_at = run.processed_at or now
+            extraction.error = (run.safe_error or "Dokumentverarbeitung fehlgeschlagen.")[:500]
+            extraction.save(update_fields=["status", "processed_at", "error", "updated_at"])
+            Expense.objects.filter(pk=expense.pk, receipt_document_id=run.document_id).update(
+                receipt_status=Expense.ReceiptStatus.FAILED,
+                updated_at=now,
+            )
+        elif run.status == DocumentProcessingRun.Status.PROCESSING:
+            extraction.status = ReceiptExtraction.Status.PROCESSING
+            extraction.save(update_fields=["status", "updated_at"])
+            Expense.objects.filter(pk=expense.pk, receipt_document_id=run.document_id).update(
+                receipt_status=Expense.ReceiptStatus.PROCESSING,
+                updated_at=now,
+            )
+        elif run.status in {DocumentProcessingRun.Status.QUEUED, DocumentProcessingRun.Status.RETRY}:
+            extraction.status = ReceiptExtraction.Status.QUEUED
+            extraction.save(update_fields=["status", "updated_at"])
+            Expense.objects.filter(pk=expense.pk, receipt_document_id=run.document_id).update(
+                receipt_status=Expense.ReceiptStatus.QUEUED,
+                updated_at=now,
+            )
+
+
+def consume_receipt_processing_run(run, link):
+    """Expense-owned best-effort projection; generic OCR success is authoritative."""
+    try:
+        _consume_receipt_processing_run(run, link)
+    except Exception:
+        # Do not leak raw parser exceptions and never make the generic worker
+        # repeat successful OCR because Expense-specific interpretation failed.
+        _persist_projection_fallback(run, link)
