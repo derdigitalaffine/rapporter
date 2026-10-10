@@ -4,7 +4,7 @@ from datetime import date, timedelta
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.utils import timezone
-from rest_framework.exceptions import PermissionDenied, ValidationError
+from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
 
 from family.models import Family, Membership, UserProfile
 
@@ -57,7 +57,7 @@ class BabyDomainTests(TestCase):
     def test_module_is_off_by_default_and_sensitive_access_requires_care_circle(self):
         setting = FamilyModuleSetting.objects.create(family=self.family, module_key="pregnancy_baby")
         self.assertFalse(setting.enabled)
-        with self.assertRaises(PermissionDenied):
+        with self.assertRaises(NotFound):
             care_access(self.owner, self.family, "pregnancy")
         self.enable()
         self.assertTrue(CareCircleAccess.objects.filter(family=self.family, membership=self.owner_membership, can_view_pregnancy=True).exists())
