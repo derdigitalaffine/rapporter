@@ -52,10 +52,10 @@ class FamilyEventViewSet(BaseFamilyEventViewSet):
         queryset = queryset.filter(family_id__in=[family.id for family in families])
         start_raw = self.request.query_params.get("start")
         end_raw = self.request.query_params.get("end")
-        if not start_raw and not end_raw:
-            return queryset
+        # Range filtering is additive. Legacy clients historically supplied zero or
+        # one bound and must keep the old paginated-list behavior.
         if not start_raw or not end_raw:
-            raise ValidationError("Use both start and end for a bounded calendar range.")
+            return queryset
         start, end = _parse_range(self.request, date.today())
         include_undated = self.request.query_params.get("include_undated") == "1"
         overlap = None
