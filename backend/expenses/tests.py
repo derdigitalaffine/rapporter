@@ -2,7 +2,6 @@ import io
 import uuid
 from datetime import date
 from decimal import Decimal
-from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -10,6 +9,7 @@ from django.test import TestCase
 from PIL import Image
 from rest_framework.test import APIClient
 
+from documents.models import Document, DocumentLink, DocumentProcessingRun
 from family.models import Family, Membership
 from .models import Expense, ExpenseShare, ReceiptExtraction
 from .money import balance_summary, build_split, simplify_balances
@@ -184,23 +184,37 @@ class ExpenseApiTests(TestCase):
         response = self.client.get(f"/api/expenses/{foreign.id}/")
         self.assertEqual(response.status_code, 404)
 
-    @patch("expenses.views.enqueue_receipt_extraction")
-    def test_receipt_upload_creates_private_queued_draft(self, enqueue):
+    def test_receipt_upload_uses_private_document_queue_without_binary_copy(self):
         image = Image.new("RGB", (900, 1200), "white")
         buffer = io.BytesIO()
         image.save(buffer, format="PNG")
         upload = SimpleUploadedFile("receipt.png", buffer.getvalue(), content_type="image/png")
-        with self.captureOnCommitCallbacks(execute=True):
-            response = self.client.post("/api/expenses/receipt/", {"family": str(self.family.id), "receipt": upload}, format="multipart")
+        response = self.client.post(
+            "/api/expenses/receipt/",
+            {"family": str(self.family.id), "receipt": upload},
+            format="multipart",
+        )
         self.assertEqual(response.status_code, 202, response.data)
-        expense = Expense.objects.get(id=response.data["id"])
+        expense = Expense.objects.select_related("receipt_document").get(id=response.data["id"])
         self.assertEqual(expense.status, Expense.Status.DRAFT)
         self.assertEqual(expense.receipt_status, Expense.ReceiptStatus.QUEUED)
-        self.assertEqual(expense.receipt_mime, "image/jpeg")
-        self.assertTrue(expense.receipt_content)
+        self.assertIsNone(expense.receipt_content)
+        self.assertEqual(expense.receipt_mime, "image/webp")
+        self.assertIsNotNone(expense.receipt_document_id)
+        self.assertEqual(expense.receipt_document.visibility, Document.Visibility.PRIVATE)
+        self.assertEqual(expense.receipt_document.kind, "receipt")
+        self.assertTrue(
+            DocumentLink.objects.filter(
+                document=expense.receipt_document,
+                domain_type=DocumentLink.DomainType.EXPENSE,
+                object_id=expense.id,
+                relationship="receipt",
+            ).exists()
+        )
         extraction = ReceiptExtraction.objects.get(expense=expense)
         self.assertEqual(extraction.status, ReceiptExtraction.Status.QUEUED)
-        enqueue.assert_called_once_with(extraction.id)
+        self.assertEqual(extraction.processing_run.document_id, expense.receipt_document_id)
+        self.assertEqual(extraction.processing_run.status, DocumentProcessingRun.Status.QUEUED)
 
     def test_receipt_api_exposes_quality_hints_but_not_raw_ocr_evidence(self):
         expense = Expense.objects.create(
