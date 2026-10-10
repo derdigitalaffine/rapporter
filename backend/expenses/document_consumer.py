@@ -136,15 +136,30 @@ def consume_receipt_document(run, link):
         _consume_receipt_run(run, link)
     except Exception:
         # A domain parser failure must not turn successful generic OCR into a
-        # failed Document run. Persist a redacted Expense-side failure instead.
+        # failed Document run. Preserve the same run fence in the failure path so
+        # a stale callback can never overwrite a newer retry's visible status.
         now = timezone.now()
-        ReceiptExtraction.objects.filter(processing_run_id=run.id).update(
+        extraction_ids = list(
+            ReceiptExtraction.objects.filter(
+                processing_run_id=run.id,
+                expense_id=link.object_id,
+                expense__receipt_document_id=run.document_id,
+            ).values_list("id", flat=True)
+        )
+        if not extraction_ids:
+            return
+        ReceiptExtraction.objects.filter(id__in=extraction_ids, processing_run_id=run.id).update(
             status=ReceiptExtraction.Status.FAILED,
             processed_at=now,
             error="Belegauswertung ist unerwartet fehlgeschlagen.",
             updated_at=now,
         )
-        Expense.objects.filter(receipt_document_id=run.document_id).update(
+        Expense.objects.filter(
+            id=link.object_id,
+            receipt_document_id=run.document_id,
+            extraction__id__in=extraction_ids,
+            extraction__processing_run_id=run.id,
+        ).update(
             receipt_status=Expense.ReceiptStatus.FAILED,
             updated_at=now,
         )
