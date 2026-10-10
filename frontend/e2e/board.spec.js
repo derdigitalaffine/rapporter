@@ -16,6 +16,8 @@ async function boot(page,language='de'){
   if(method==='DELETE'){rows=[];return route.fulfill({status:204,body:''})}
  });
  await page.goto('/?page=board');
+ await page.waitForLoadState('networkidle');
+ await expect(page.locator('.app-shell')).toBeVisible();
 }
 
 test('pin note, edit, reload and remove it from the family pinboard',async({page})=>{
