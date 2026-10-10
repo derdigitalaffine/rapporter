@@ -21,9 +21,8 @@ LOGIN_FAILURE_DETAIL = "Anmeldung fehlgeschlagen."
 
 
 def set_user_cookies(response, user, request=None, *, auth_method=AuthSession.AuthMethod.PASSWORD):
-    session, access, refresh = create_session(user, request, auth_method=auth_method)
-    set_token_cookies(response, access, refresh)
-    return response, session
+    _session, access, refresh = create_session(user, request, auth_method=auth_method)
+    return set_token_cookies(response, access, refresh)
 
 
 def _login_identifier(request):
@@ -62,10 +61,14 @@ def login_view(request):
         return Response({"detail": LOGIN_FAILURE_DETAIL}, status=status.HTTP_401_UNAUTHORIZED)
 
     forgive("login.password", request=request, identifier=identifier)
-    response = Response({"authenticated": True})
-    response, session = set_user_cookies(response, serializer.user, request)
-    response.data["session"] = serialize_session(session, current_sid=session.pk)
-    return response
+    session, access, refresh = create_session(serializer.user, request)
+    response = Response(
+        {
+            "authenticated": True,
+            "session": serialize_session(session, current_sid=session.pk),
+        }
+    )
+    return set_token_cookies(response, access, refresh)
 
 
 @api_view(["POST"])
