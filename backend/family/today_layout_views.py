@@ -11,9 +11,10 @@ from .models import Family, Membership, TodayLayout
 
 LEGACY_WIDGET_IDS = ('weather', 'priority', 'waste', 'next', 'tasks', 'shopping', 'routines', 'birthdays', 'notes')
 PRE_PINBOARD_WIDGET_IDS = LEGACY_WIDGET_IDS + ('loyalty', 'inbox')
-WIDGET_IDS = PRE_PINBOARD_WIDGET_IDS + ('week', 'pinboard')
+WIDGET_IDS = PRE_PINBOARD_WIDGET_IDS + ('trip', 'week', 'pinboard')
+SQUARE_WIDGET_IDS = frozenset(('trip', 'next', 'weather', 'routines', 'waste', 'inbox', 'birthdays', 'notes', 'loyalty'))
 DEFAULT_WEEK_SETTINGS = {'events': True, 'waste': True, 'holidays': True, 'special': True}
-DEFAULT_WIDGET_ORDER = ('week', 'priority', 'next', 'pinboard', 'weather', 'tasks', 'shopping', 'routines', 'waste', 'inbox', 'birthdays', 'notes', 'loyalty')
+DEFAULT_WIDGET_ORDER = ('week', 'priority', 'trip', 'next', 'pinboard', 'weather', 'tasks', 'shopping', 'routines', 'waste', 'inbox', 'birthdays', 'notes', 'loyalty')
 
 
 def _default_widget(key, *, visible=True):
@@ -32,27 +33,34 @@ def _normalize_saved_widget(row):
     clean = deepcopy(row)
     if clean.get('id') == 'week':
         supplied = clean.get('settings') if isinstance(clean.get('settings'), dict) else {}
-        clean['settings'] = {key: supplied.get(key, value) if type(supplied.get(key, value)) is bool else value for key, value in DEFAULT_WEEK_SETTINGS.items()}
+        clean['settings'] = {
+            key: supplied.get(key, value) if type(supplied.get(key, value)) is bool else value
+            for key, value in DEFAULT_WEEK_SETTINGS.items()
+        }
     else:
         clean.pop('settings', None)
     return clean
 
 
 def _expanded_widgets(widgets):
-    """Preserve saved choices while introducing the week/pinboard surfaces safely."""
+    """Preserve saved settings while adding newly introduced Today surfaces safely."""
     rows = [_normalize_saved_widget(row) for row in deepcopy(widgets)]
     seen = {row.get('id') for row in rows if isinstance(row, dict)}
-    # The old week strip was always visible in the Today header. Move that information
-    # into the configurable widget without making it disappear for existing users.
+
     if 'week' not in seen:
         rows.insert(0, _default_widget('week', visible=True))
         seen.add('week')
-    # Pinnwand is a deliberate prominent replacement for the old board entry point.
+
+    if 'trip' not in seen:
+        priority_index = next((index for index, row in enumerate(rows) if row.get('id') == 'priority'), None)
+        rows.insert(priority_index + 1 if priority_index is not None else 1, _default_widget('trip', visible=True))
+        seen.add('trip')
+
     if 'pinboard' not in seen:
-        index = next((idx + 1 for idx, row in enumerate(rows) if row.get('id') == 'next'), min(4, len(rows)))
-        rows.insert(index, _default_widget('pinboard', visible=True))
+        next_index = next((index for index, row in enumerate(rows) if row.get('id') == 'next'), None)
+        rows.insert(next_index + 1 if next_index is not None else min(5, len(rows)), _default_widget('pinboard', visible=True))
         seen.add('pinboard')
-    # Older releases already used this policy for later optional Today widgets.
+
     for key in PRE_PINBOARD_WIDGET_IDS:
         if key not in seen:
             rows.append(_default_widget(key, visible=False))
@@ -74,11 +82,14 @@ def _validate_widget(widget, seen):
     key = widget['id']
     if not isinstance(key, str) or key not in WIDGET_IDS or key in seen:
         return False
-    if type(widget['visible']) is not bool or widget['size'] not in ('full', 'compact'):
+    if type(widget['visible']) is not bool or widget['size'] not in ('full', 'compact', 'square'):
+        return False
+    if widget['size'] == 'square' and key not in SQUARE_WIDGET_IDS:
         return False
     if key == 'week':
         settings = widget.get('settings', DEFAULT_WEEK_SETTINGS)
-        if not isinstance(settings, dict) or set(settings) != set(DEFAULT_WEEK_SETTINGS) or any(type(value) is not bool for value in settings.values()):
+        if (not isinstance(settings, dict) or set(settings) != set(DEFAULT_WEEK_SETTINGS) or
+                any(type(value) is not bool for value in settings.values())):
             return False
     elif 'settings' in widget:
         return False
