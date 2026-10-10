@@ -31,7 +31,16 @@ class Expense(TimestampedModel):
     paid_by = models.ForeignKey(Membership, on_delete=models.PROTECT, related_name="expenses_paid")
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name="family_expenses_created")
     client_request_id = models.UUIDField(null=True, blank=True)
+    # Legacy dual-read field. New receipt uploads use receipt_document; the binary
+    # payload remains temporarily for an idempotent backfill/rollback window.
     receipt_content = models.BinaryField(null=True, blank=True, editable=False)
+    receipt_document = models.OneToOneField(
+        "documents.Document",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="receipt_expense",
+    )
     receipt_mime = models.CharField(max_length=64, blank=True)
     receipt_status = models.CharField(max_length=16, choices=ReceiptStatus.choices, default=ReceiptStatus.NONE)
     notes = models.TextField(blank=True)
@@ -80,6 +89,13 @@ class ReceiptExtraction(TimestampedModel):
         FAILED = "failed", "Failed"
 
     expense = models.OneToOneField(Expense, on_delete=models.CASCADE, related_name="extraction")
+    processing_run = models.ForeignKey(
+        "documents.DocumentProcessingRun",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="receipt_extractions",
+    )
     status = models.CharField(max_length=16, choices=Status.choices, default=Status.QUEUED, db_index=True)
     merchant = models.CharField(max_length=180, blank=True)
     date = models.DateField(null=True, blank=True)
