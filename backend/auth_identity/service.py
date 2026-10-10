@@ -79,10 +79,17 @@ def _email_conflicts(normalized: str, *, user_id=None) -> bool:
         identities = identities.exclude(user_id=user_id)
     if identities.exists():
         return True
-    users = get_user_model().objects.filter(email__iexact=normalized)
+
+    users = get_user_model().objects.exclude(email="")
     if user_id is not None:
         users = users.exclude(pk=user_id)
-    return users.exists()
+    for legacy_email in users.values_list("email", flat=True).iterator():
+        try:
+            if normalize_email(legacy_email) == normalized:
+                return True
+        except EmailIdentityError:
+            continue
+    return False
 
 
 def create_primary_identity(user, email: str, *, verified=False) -> EmailIdentity:
