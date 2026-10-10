@@ -21,9 +21,9 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: frontend/package.json
+          cache-dependency-path: frontend/package-lock.json
       - working-directory: frontend
-        run: npm install --prefer-offline --no-audit --no-fund
+        run: npm ci --prefer-offline --no-audit --no-fund
       - working-directory: frontend
         run: npm run build
 
@@ -66,32 +66,33 @@ jobs:
         run: python manage.py test
 
   e2e_shard:
-    name: e2e / ${{ matrix.project }}
+    name: e2e / ${{ matrix.project }} / ${{ matrix.shard }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         project: [mobile-chromium, desktop-chromium]
+        shard: [1/2, 2/2]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: frontend/package.json
+          cache-dependency-path: frontend/package-lock.json
       - working-directory: frontend
-        run: npm install --prefer-offline --no-audit --no-fund
+        run: npm ci --prefer-offline --no-audit --no-fund
       - working-directory: frontend
         run: npm run build
       - working-directory: frontend
         run: npx playwright install --with-deps chromium
       - working-directory: frontend
-        run: npm run e2e -- --project=${{ matrix.project }}
+        run: npm run e2e -- --project=${{ matrix.project }} --shard=${{ matrix.shard }}
       - name: Upload visual regression diffs
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: visual-regression-diffs-${{ matrix.project }}-${{ github.run_attempt }}
+          name: visual-regression-diffs-${{ matrix.project }}-${{ strategy.job-index }}-${{ github.run_attempt }}
           path: frontend/test-results/**/*.png
           if-no-files-found: ignore
           retention-days: 14
@@ -99,7 +100,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-report-${{ matrix.project }}-${{ github.run_attempt }}
+          name: playwright-report-${{ matrix.project }}-${{ strategy.job-index }}-${{ github.run_attempt }}
           path: |
             frontend/playwright-report
             frontend/test-results
@@ -107,7 +108,7 @@ jobs:
           retention-days: 14
 
   # Keep the historical "e2e" check name stable for branch protection while
-  # running the expensive browser suites in parallel above.
+  # running all browser shards in parallel above.
   e2e:
     runs-on: ubuntu-latest
     if: always()
