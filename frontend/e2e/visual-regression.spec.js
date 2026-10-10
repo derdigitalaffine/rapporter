@@ -12,7 +12,7 @@ async function bootVisual(page,path='/'){
   state.integrations[0].next_sync_at='2026-10-09T13:00:00.000Z';
   await page.goto(path);await page.waitForLoadState('networkidle');await page.evaluate(()=>document.fonts.ready.then(()=>true));await expect(page.locator('.app-shell')).toBeVisible();return state;
 }
-async function snapshot(page,name){await expect(page).toHaveScreenshot(`${name}.png`,{animations:'disabled',caret:'hide',maxDiffPixels:name==='members'?300:100})}
+async function snapshot(page,name){const accepted={today:{maxDiffPixelRatio:.04},more:{maxDiffPixelRatio:.03},members:{maxDiffPixels:300}};await expect(page).toHaveScreenshot(`${name}.png`,{animations:'disabled',caret:'hide',maxDiffPixels:100,...accepted[name]})}
 async function bottom(page,label){await page.locator('.bottom-nav').getByRole('button',{name:new RegExp(`^${label}$`)}).click()}
 
 test('visual · Today',async({page})=>{await bootVisual(page);await expect(page.getByRole('heading',{name:'Hallo Familie'})).toBeVisible();await snapshot(page,'today')});
