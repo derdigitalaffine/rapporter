@@ -160,7 +160,13 @@ class AuthAbuseIntegrationTests(TestCase):
             password="super-secure-123",
         )
         client = APIClient()
-        client.force_authenticate(admin)
+        login = client.post(
+            "/api/auth/login/",
+            {"username": admin.username, "password": "super-secure-123"},
+            format="json",
+            REMOTE_ADDR="198.51.100.55",
+        )
+        self.assertEqual(login.status_code, 200)
         responses = []
         for index in range(6):
             requested = Family.Status.SUSPENDED if index % 2 == 0 else Family.Status.ACTIVE

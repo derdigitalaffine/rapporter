@@ -217,7 +217,7 @@ def invitation_register(request, token):
             "membership": MembershipSerializer(membership).data,
             "family": {"id": str(invite.family_id), "name": invite.family.name},
         }, status=status.HTTP_201_CREATED)
-        return set_user_cookies(response, user)
+        return set_user_cookies(response, user, request=request)
 
 
 @api_view(["POST"])
