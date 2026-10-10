@@ -13,10 +13,10 @@ from pypdf import PdfWriter
 
 from family.models import Family, Membership
 
-from .extraction import ProcessingError, extract_document
+from .extraction import ExtractionResult, ProcessingError, extract_document
 from .models import Document, DocumentProcessingRun
-from .processing import claim_next_run, enqueue_document, fail_run
-from .storage import canonicalize_upload, default_storage, store_canonical
+from .processing import claim_next_run, enqueue_document, fail_run, finish_run
+from .storage import canonicalize_upload, store_canonical
 from .worker import process_claimed_run
 
 
@@ -84,6 +84,7 @@ class DocumentProcessingTests(TestCase):
         self.assertEqual(claimed.id, first.id)
         self.assertEqual(claimed.status, DocumentProcessingRun.Status.PROCESSING)
         self.assertEqual(claimed.attempts, 1)
+        self.assertIsNotNone(claimed.claim_token)
         self.assertIsNotNone(claimed.started_at)
         self.assertIsNotNone(claimed.processing_started_at)
         self.assertGreater(claimed.lease_expires_at, claimed.processing_started_at)
@@ -102,7 +103,42 @@ class DocumentProcessingTests(TestCase):
         reclaimed = claim_next_run()
         self.assertEqual(reclaimed.id, run.id)
         self.assertEqual(reclaimed.attempts, 2)
+        self.assertIsNotNone(reclaimed.claim_token)
         self.assertGreater(reclaimed.lease_expires_at, timezone.now())
+
+    def test_stale_worker_cannot_publish_after_lease_is_reclaimed(self):
+        document = self.create_document()
+        enqueue_document(document)
+        first_claim = claim_next_run()
+        first_token = first_claim.claim_token
+        DocumentProcessingRun.objects.filter(pk=first_claim.pk).update(
+            lease_expires_at=timezone.now() - timedelta(seconds=1)
+        )
+
+        second_claim = claim_next_run()
+        self.assertNotEqual(second_claim.claim_token, first_token)
+        stale_result = ExtractionResult(
+            text="stale result",
+            extractor="test",
+            fields=[{"key": "text.page", "value_json": {"text": "stale result"}}],
+            needs_review=False,
+        )
+        unchanged = finish_run(first_claim, stale_result, needs_review=False)
+        self.assertEqual(unchanged.status, DocumentProcessingRun.Status.PROCESSING)
+        self.assertEqual(unchanged.claim_token, second_claim.claim_token)
+        self.assertEqual(unchanged.normalized_text, "")
+        self.assertFalse(unchanged.extracted_fields.exists())
+
+        current_result = ExtractionResult(
+            text="current result",
+            extractor="test",
+            fields=[{"key": "text.page", "value_json": {"text": "current result"}}],
+            needs_review=False,
+        )
+        completed = finish_run(second_claim, current_result, needs_review=False)
+        self.assertEqual(completed.status, DocumentProcessingRun.Status.READY)
+        self.assertIsNone(completed.claim_token)
+        self.assertEqual(completed.normalized_text, "current result")
 
     def test_retry_backoff_becomes_terminal_after_max_attempts(self):
         document = self.create_document()
@@ -119,6 +155,7 @@ class DocumentProcessingTests(TestCase):
             retryable=True,
         )
         self.assertEqual(failed.status, DocumentProcessingRun.Status.FAILED)
+        self.assertIsNone(failed.claim_token)
         document.refresh_from_db()
         self.assertEqual(document.processing_status, Document.ProcessingStatus.FAILED)
 
@@ -142,6 +179,7 @@ class DocumentProcessingTests(TestCase):
 
         self.assertEqual(completed.status, DocumentProcessingRun.Status.REVIEW)
         self.assertEqual(completed.normalized_text, "Familie Test")
+        self.assertIsNone(completed.claim_token)
         field = completed.extracted_fields.get(key="text.page")
         self.assertEqual(field.page, 1)
         self.assertEqual(field.evidence_text, "Familie Test")
@@ -193,5 +231,6 @@ class DocumentProcessingTests(TestCase):
             completed = process_claimed_run(claimed)
 
         self.assertEqual(completed.status, DocumentProcessingRun.Status.FAILED)
+        self.assertIsNone(completed.claim_token)
         self.assertTrue(self.storage.exists(stored_key))
         self.assertEqual(Document.objects.get(pk=document.pk).canonical_file, stored_key)
