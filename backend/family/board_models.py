@@ -14,6 +14,7 @@ class BoardPost(TimestampedModel):
         SHOPPING = 'shopping', 'Shopping item'
         SHOPPING_LIST = 'shopping_list', 'Shopping list'
         TRIP = 'trip', 'Trip'
+        DOCUMENT = 'document', 'Document'
 
     family = models.ForeignKey(Family, on_delete=models.CASCADE, related_name='board_posts')
     author = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, related_name='board_posts')
