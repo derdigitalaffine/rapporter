@@ -12,7 +12,7 @@ def normalize_email(value):
     if not raw or "@" not in raw:
         return ""
     local, domain = raw.rsplit("@", 1)
-    normalized = f"{local.casefold()}@{domain.casefold()}"
+    normalized = f"{local}@{domain.casefold()}"
     try:
         validate_email(normalized)
     except ValidationError:
