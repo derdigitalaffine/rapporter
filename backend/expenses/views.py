@@ -4,6 +4,7 @@ from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from documents.models import DocumentProcessingRun
 from documents.processing import enqueue_document
 from documents.storage import remove_canonical
 from family.models import Family, Membership
@@ -159,15 +160,18 @@ class ExpenseViewSet(viewsets.ModelViewSet):
             return Response({"receipt": ["Kein Beleg vorhanden."]}, status=status.HTTP_400_BAD_REQUEST)
 
         run, _ = enqueue_document(document)
+        processing = run.status == DocumentProcessingRun.Status.PROCESSING
+        receipt_status = ReceiptExtraction.Status.PROCESSING if processing else ReceiptExtraction.Status.QUEUED
+        expense_receipt_status = Expense.ReceiptStatus.PROCESSING if processing else Expense.ReceiptStatus.QUEUED
         extraction, _ = ReceiptExtraction.objects.get_or_create(expense=expense)
         extraction.processing_run = run
-        extraction.status = ReceiptExtraction.Status.QUEUED
+        extraction.status = receipt_status
         extraction.error = ""
         extraction.processed_at = None
         extraction.save(update_fields=["processing_run", "status", "error", "processed_at", "updated_at"])
-        expense.receipt_status = Expense.ReceiptStatus.QUEUED
+        expense.receipt_status = expense_receipt_status
         expense.save(update_fields=["receipt_status", "updated_at"])
-        return Response({"status": "queued"}, status=status.HTTP_202_ACCEPTED)
+        return Response({"status": receipt_status}, status=status.HTTP_202_ACCEPTED)
 
     def _family(self, request, from_body=False):
         from rest_framework.exceptions import NotFound, ValidationError
