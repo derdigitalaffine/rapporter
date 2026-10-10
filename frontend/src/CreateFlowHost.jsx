@@ -6,6 +6,7 @@ import EventEditor from './EventEditor';
 import RoutineEditor from './RoutineEditor';
 import LoyaltyCardEditor from './LoyaltyCardEditor';
 import ExpenseEditor from './ExpenseEditor';
+import {BabyCreateSheet,PetCreateSheet} from './ModuleCreateSheets';
 
 export default function CreateFlowHost({action,family,data,context={},onClose,onRefresh}){
  const [createdShoppingList,setCreatedShoppingList]=useState(null);
@@ -18,6 +19,8 @@ export default function CreateFlowHost({action,family,data,context={},onClose,on
  const shoppingList=selectedShoppingList||(context.shoppingListId&&context.shoppingListId!=='all'?shoppingLists.find(list=>String(list.id)===String(context.shoppingListId)):shoppingLists[0]);
  async function saved(){await onRefresh?.();onClose()}
  if(action==='birthday')return <BirthdayEditor family={family} onClose={onClose} onSaved={saved}/>;
+ if(action==='baby')return <BabyCreateSheet family={family} onClose={onClose} onSaved={saved}/>;
+ if(action==='pets')return <PetCreateSheet family={family} onClose={onClose} onSaved={saved}/>;
  if(action==='task')return <TaskEditor family={family} lists={taskLists} members={family.memberships||[]} defaultListId={taskListId} onClose={onClose} onSaved={saved}/>;
  if(action==='shoppingItem'){
   if(!shoppingLists.length)return <ListEditor type="shopping" family={family} onClose={onClose} onSaved={async list=>{setCreatedShoppingList(list);await onRefresh?.()}}/>;
