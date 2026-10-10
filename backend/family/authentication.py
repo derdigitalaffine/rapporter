@@ -1,9 +1,9 @@
 from rest_framework_simplejwt.authentication import JWTAuthentication
 
-from .request_context import set_current_actor
+from auth_sessions.cookies import ACCESS_COOKIE, REFRESH_COOKIE
+from auth_sessions.service import active_session_for_token
 
-ACCESS_COOKIE = "famuhle_access"
-REFRESH_COOKIE = "famuhle_refresh"
+from .request_context import set_current_actor
 
 
 class CookieJWTAuthentication(JWTAuthentication):
@@ -17,5 +17,7 @@ class CookieJWTAuthentication(JWTAuthentication):
             return None
         validated_token = self.get_validated_token(raw_token)
         user = self.get_user(validated_token)
+        session = active_session_for_token(validated_token)
+        request.auth_session = session
         set_current_actor(user, request.path)
         return user, validated_token
