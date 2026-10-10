@@ -38,6 +38,12 @@ test('core task shopping and calendar controls share comfortable touch targets',
   await page.goto('/?page=shopping');await page.waitForLoadState('networkidle');
   await expectTouchTarget(page.locator('.smart-input button').first());
   await page.goto('/?page=calendar');await page.waitForLoadState('networkidle');
+  const controls=page.getByRole('region',{name:'Kalender steuern'});
+  await expectTouchTarget(controls.getByRole('button',{name:'Vorheriger Zeitraum'}));
+  await expectTouchTarget(controls.getByRole('button',{name:'Heute',exact:true}));
+  await expectTouchTarget(controls.getByRole('button',{name:'Nächster Zeitraum'}));
+  await expectTouchTarget(controls.getByRole('button',{name:'Liste',exact:true}));
+  await controls.getByRole('button',{name:'Liste',exact:true}).click();
   await expectTouchTarget(page.locator('.agenda-event').first());
 });
 
