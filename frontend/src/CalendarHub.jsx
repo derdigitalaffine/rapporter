@@ -15,6 +15,7 @@ import './calendar-hub.css';
 
 const unwrap=value=>value?.results||value||[];
 const VIEW_VALUES=['week','month','list'];
+const calendarViewFromLocation=()=>{const value=new URLSearchParams(window.location.search).get('view');return VIEW_VALUES.includes(value)?value:'week'};
 
 export default function CalendarHub({family,onBack,t}){
  const targetDay=new URLSearchParams(window.location.search).get('day');
@@ -22,7 +23,7 @@ export default function CalendarHub({family,onBack,t}){
  const today=zonedDateKey(new Date(),timeZone);
  const [events,setEvents]=useState([]);
  const [sources,setSources]=useState([]);
- const [view,setView]=useState('week');
+ const [view,setView]=useState(calendarViewFromLocation);
  const [anchor,setAnchor]=useState(targetDay||today);
  const [selectedDay,setSelectedDay]=useState(targetDay||today);
  const [hiddenSources,setHiddenSources]=useState(()=>new Set());
@@ -60,7 +61,13 @@ export default function CalendarHub({family,onBack,t}){
   const next=addDays(anchor,direction*7);setAnchor(next);setSelectedDay(next);
  }
  function goToday(){setAnchor(today);setSelectedDay(today);setShowPast(false)}
- function changeView(next){if(VIEW_VALUES.includes(next))setView(next)}
+ function changeView(next){
+  if(!VIEW_VALUES.includes(next))return;
+  setView(next);
+  const url=new URL(window.location.href);
+  if(next==='week')url.searchParams.delete('view');else url.searchParams.set('view',next);
+  window.history.replaceState(window.history.state,'',`${url.pathname}${url.search}${url.hash}`);
+ }
  function openEvent(event){if(event.type==='birthday'&&event.payload?.url){window.location.assign(event.payload.url);return}setDetail(event)}
  const dayEvents=day=>eventsForDay(periodEvents,day,timeZone);
 
