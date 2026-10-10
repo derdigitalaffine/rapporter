@@ -5,12 +5,25 @@ from django.db import migrations, models
 import django.db.models.deletion
 
 
+def keep_contract_document_links(apps, schema_editor):
+    # Runtime creates links only after a Contract exists. No forward backfill is needed.
+    pass
+
+
+def remove_contract_document_links(apps, schema_editor):
+    # DocumentLink is intentionally generic and has no FK to Contract. Delete the
+    # contract-domain references before dropping Contract rows during rollback.
+    DocumentLink = apps.get_model("documents", "DocumentLink")
+    DocumentLink.objects.filter(domain_type="contract").delete()
+
+
 class Migration(migrations.Migration):
     initial = True
 
     dependencies = [
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
         ("family", "0001_initial"),
+        ("documents", "0001_initial"),
     ]
 
     operations = [
@@ -73,4 +86,5 @@ class Migration(migrations.Migration):
         migrations.AddIndex(model_name="contract", index=models.Index(fields=["family", "status", "end_date"], name="contract_family_end_idx")),
         migrations.AddConstraint(model_name="contractaccess", constraint=models.UniqueConstraint(fields=("contract", "membership"), name="contract_access_member_uniq")),
         migrations.AddIndex(model_name="contractreminder", index=models.Index(fields=["status", "due_on"], name="contract_reminder_due_idx")),
+        migrations.RunPython(keep_contract_document_links, remove_contract_document_links),
     ]
