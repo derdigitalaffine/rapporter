@@ -1,0 +1,86 @@
+.file-drop-zone{
+ position:relative;
+ width:100%;
+ min-height:96px;
+ display:grid;
+ grid-template-columns:46px minmax(0,1fr);
+ align-items:center;
+ gap:12px;
+ padding:14px;
+ border:1.5px dashed color-mix(in srgb,var(--green) 42%,var(--line));
+ border-radius:var(--radius-lg,20px);
+ background:color-mix(in srgb,var(--green-soft) 48%,var(--surface));
+ color:var(--ink);
+ cursor:pointer;
+ overflow:hidden;
+ transition:border-color .14s ease,background .14s ease,transform .14s ease,box-shadow .14s ease;
+}
+.file-drop-zone:hover,.file-drop-zone.is-dragging{
+ border-color:var(--green);
+ background:var(--green-soft);
+}
+.file-drop-zone.is-dragging{transform:translateY(-1px);box-shadow:var(--shadow-sm)}
+.file-drop-zone:focus-within{
+ outline:3px solid color-mix(in srgb,var(--color-focus,#277f86) 42%,transparent);
+ outline-offset:2px;
+}
+.file-drop-zone.is-disabled{cursor:not-allowed;opacity:.52}
+.file-drop-zone__input{
+ position:absolute;
+ inset:0;
+ z-index:2;
+ width:100%;
+ height:100%;
+ opacity:0;
+ cursor:pointer;
+}
+.file-drop-zone__input:disabled{cursor:not-allowed}
+.file-drop-zone__icon{
+ width:46px;
+ height:46px;
+ border-radius:15px;
+ display:grid;
+ place-items:center;
+ background:var(--surface);
+ color:var(--green);
+ border:1px solid var(--line);
+ pointer-events:none;
+}
+.file-drop-zone__copy{min-width:0;display:grid;gap:3px;text-align:left;pointer-events:none}
+.file-drop-zone__copy strong{font-size:.95rem;line-height:1.25}
+.file-drop-zone__copy small{color:var(--muted);font-size:.78rem;line-height:1.35}
+.file-drop-zone.compact{min-height:76px;padding:11px 12px}
+.file-drop-zone.compact .file-drop-zone__icon{width:42px;height:42px}
+.file-drop-zone-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+
+/* Dynamic adapter forms may still render a native file input. Keep those usable as
+ * a full-width drop/tap surface instead of falling back to the browser's tiny control. */
+input[type="file"]:not(.file-drop-zone__input){
+ width:100%;
+ min-height:88px;
+ padding:14px;
+ border:1.5px dashed color-mix(in srgb,var(--green) 42%,var(--line));
+ border-radius:var(--radius-lg,20px);
+ background:color-mix(in srgb,var(--green-soft) 48%,var(--surface));
+ color:var(--ink);
+ cursor:pointer;
+}
+input[type="file"]:not(.file-drop-zone__input)::file-selector-button{
+ min-height:44px;
+ margin-right:12px;
+ padding:0 14px;
+ border:1px solid var(--line);
+ border-radius:var(--radius-md,14px);
+ background:var(--surface);
+ color:var(--ink);
+ font:inherit;
+ font-weight:800;
+ cursor:pointer;
+}
+input[type="file"]:not(.file-drop-zone__input):focus-visible{
+ outline:3px solid color-mix(in srgb,var(--color-focus,#277f86) 42%,transparent);
+ outline-offset:2px;
+}
+
+@media(max-width:520px){.file-drop-zone-grid{grid-template-columns:minmax(0,1fr)}.file-drop-zone{min-height:88px}}
+@media(prefers-reduced-motion:reduce){.file-drop-zone{transition:none}.file-drop-zone.is-dragging{transform:none}}
