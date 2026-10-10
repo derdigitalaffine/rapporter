@@ -67,6 +67,10 @@ def set_reference(user, baby_id, *, reference_key, corrected_age_enabled=None):
     setting.reference_version = f"{REFERENCE_METADATA[reference_key]['label']} {REFERENCE_METADATA[reference_key]['version']}"
     if corrected_age_enabled is not None:
         setting.corrected_age_enabled = bool(corrected_age_enabled)
+    elif reference_key == "who_2006_corrected":
+        setting.corrected_age_enabled = True
+    elif reference_key == "who_2006":
+        setting.corrected_age_enabled = False
     setting.save()
     return setting
 
@@ -130,16 +134,30 @@ def _metric_zscore(baby, measurement, metric, value, setting):
         return None
 
 
+def _default_reference_for_baby(baby):
+    corrected = bool(baby.gestational_age_weeks is not None and baby.gestational_age_weeks < 37)
+    key = "who_2006_corrected" if corrected else "who_2006"
+    return key, corrected
+
+
 def growth_payload(user, baby_id):
     baby = _baby_for_user(user, baby_id)
-    setting, _ = BabyGrowthReferenceSetting.objects.get_or_create(
+    default_key, default_corrected = _default_reference_for_baby(baby)
+    setting, created = BabyGrowthReferenceSetting.objects.get_or_create(
         baby=baby,
         defaults={
-            "reference_key": "who_2006_corrected" if baby.gestational_age_weeks is not None and baby.gestational_age_weeks < 37 else "who_2006",
-            "reference_version": "WHO Child Growth Standards 2006",
-            "corrected_age_enabled": bool(baby.gestational_age_weeks is not None and baby.gestational_age_weeks < 37),
+            "reference_key": default_key,
+            "reference_version": f"{REFERENCE_METADATA[default_key]['label']} {REFERENCE_METADATA[default_key]['version']}",
+            "corrected_age_enabled": default_corrected,
         },
     )
+    # Earlier profiles were initialized with the generic WHO key while setting
+    # corrected_age_enabled=True. Normalize that inconsistent state so the API,
+    # UI label and z-score age basis all describe the same selected reference.
+    if not created and setting.corrected_age_enabled and setting.reference_key == "who_2006":
+        setting.reference_key = "who_2006_corrected"
+        setting.reference_version = f"{REFERENCE_METADATA['who_2006_corrected']['label']} {REFERENCE_METADATA['who_2006_corrected']['version']}"
+        setting.save(update_fields=["reference_key", "reference_version", "updated_at"])
     metadata = REFERENCE_METADATA.get(setting.reference_key, REFERENCE_METADATA["who_2006"])
     points = []
     for row in baby.growth_measurements.order_by("measured_at", "created_at"):
