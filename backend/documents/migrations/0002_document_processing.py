@@ -22,6 +22,7 @@ class Migration(migrations.Migration):
                 ("normalized_text", models.TextField(blank=True)),
                 ("quality_data", models.JSONField(blank=True, default=dict)),
                 ("attempts", models.PositiveIntegerField(default=0)),
+                ("claim_token", models.UUIDField(blank=True, editable=False, null=True)),
                 ("queued_at", models.DateTimeField(db_index=True, default=django.utils.timezone.now)),
                 ("started_at", models.DateTimeField(blank=True, null=True)),
                 ("processing_started_at", models.DateTimeField(blank=True, null=True)),
