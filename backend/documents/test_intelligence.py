@@ -8,7 +8,7 @@ from .intelligence import classify_result, enrich_extraction
 from .quality import assess_image, prepare_for_ocr
 
 
-def result_for(text):
+def result_for(text, *, needs_review=True):
     return ExtractionResult(
         text=text,
         extractor="fixture",
@@ -23,7 +23,7 @@ def result_for(text):
                 "source_type": "explicit",
             }
         ],
-        needs_review=True,
+        needs_review=needs_review,
     )
 
 
@@ -66,6 +66,22 @@ class DocumentIntelligenceTests(SimpleTestCase):
             self.assertEqual(fields[key]["source_type"], "explicit")
             self.assertGreater(float(fields[key]["confidence"]), 0.9)
             self.assertEqual(fields[key]["extractor_version"], "rules-v1")
+
+    def test_concrete_born_digital_suggestions_stay_in_review(self):
+        invoice = enrich_extraction(
+            result_for(
+                "Rechnung\nRechnungsnummer: RE-2026-0042\nGesamt: 42,00 EUR",
+                needs_review=False,
+            )
+        )
+        self.assertTrue(invoice.needs_review)
+        self.assertEqual(invoice.quality_data["classification"]["kind"], "invoice")
+
+        generic = enrich_extraction(
+            result_for("Familiennotiz ohne strukturierten Dokumenttyp", needs_review=False)
+        )
+        self.assertFalse(generic.needs_review)
+        self.assertEqual(generic.quality_data["classification"]["kind"], "generic")
 
     def test_unlabelled_numbers_do_not_become_amount_or_deadline_fields(self):
         result = enrich_extraction(
