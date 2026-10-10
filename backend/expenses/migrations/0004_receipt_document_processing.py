@@ -4,7 +4,7 @@ import django.db.models.deletion
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("documents", "0002_document_processing"),
+        ("documents", "0003_document_library_visible"),
         ("expenses", "0003_expense_client_request_id"),
     ]
 
