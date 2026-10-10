@@ -133,29 +133,48 @@ def care_timeline(user, baby_id, *, start=None, end=None, limit=200):
     return list(qs.order_by("-started_at", "-created_at")[: min(max(int(limit), 1), 500)])
 
 
+def _sleep_overlap_seconds(row, start, end):
+    if row.kind != BabyCareLog.Kind.SLEEP:
+        return 0
+    sleep_end = row.ended_at or end
+    overlap_start = max(row.started_at, start)
+    overlap_end = min(sleep_end, end)
+    return max(0, (overlap_end - overlap_start).total_seconds())
+
+
 def care_summary(user, baby_id, *, hours=24):
     baby, membership, _ = _baby_for_user(user, baby_id, "care")
     hours = min(max(int(hours), 1), 24 * 14)
-    since = timezone.now() - timedelta(hours=hours)
-    rows = list(BabyCareLog.objects.filter(baby=baby, started_at__gte=since).order_by("started_at"))
+    now = timezone.now()
+    since = now - timedelta(hours=hours)
+    rows = list(
+        BabyCareLog.objects.filter(baby=baby)
+        .filter(Q(started_at__gte=since) | Q(kind=BabyCareLog.Kind.SLEEP, ended_at__isnull=True))
+        .filter(started_at__lte=now)
+        .order_by("started_at")
+    )
     counts = defaultdict(int)
     totals = defaultdict(float)
     last = {}
     sleep_seconds = 0
+    active_sleep_started_at = None
     for row in rows:
         counts[row.kind] += 1
         last[row.kind] = row.started_at
         if row.kind in {BabyCareLog.Kind.BOTTLE, BabyCareLog.Kind.PUMP} and row.value.get("ml") is not None:
             totals[f"{row.kind}_ml"] += float(row.value["ml"])
-        if row.kind == BabyCareLog.Kind.SLEEP and row.ended_at:
-            sleep_seconds += max(0, (row.ended_at - row.started_at).total_seconds())
-    state, _ = BabyViewState.objects.get_or_create(baby=baby, membership=membership, defaults={"last_viewed_at": timezone.now()})
+        if row.kind == BabyCareLog.Kind.SLEEP:
+            sleep_seconds += _sleep_overlap_seconds(row, since, now)
+            if row.ended_at is None:
+                active_sleep_started_at = row.started_at
+    state, _ = BabyViewState.objects.get_or_create(baby=baby, membership=membership, defaults={"last_viewed_at": now})
     since_last = BabyCareLog.objects.filter(baby=baby, created_at__gt=state.last_viewed_at).count()
     return {
         "window_hours": hours,
         "counts": dict(counts),
         "totals": dict(totals),
         "sleep_minutes": round(sleep_seconds / 60),
+        "active_sleep_started_at": active_sleep_started_at.isoformat() if active_sleep_started_at else None,
         "last": {key: value.isoformat() for key, value in last.items()},
         "new_since_last_view": since_last,
     }
@@ -181,16 +200,31 @@ def handover_payload(user, handover_id):
     if not handover:
         raise ValidationError({"handover": "Handover not found."})
     baby, membership, _ = _baby_for_user(user, handover.baby_id, "care")
-    rows = BabyCareLog.objects.filter(baby=baby, started_at__gte=handover.from_at, started_at__lte=handover.to_at).order_by("started_at")
+    rows = list(
+        BabyCareLog.objects.filter(baby=baby)
+        .filter(Q(started_at__gte=handover.from_at, started_at__lte=handover.to_at) | Q(kind=BabyCareLog.Kind.SLEEP, ended_at__isnull=True, started_at__lt=handover.from_at))
+        .filter(started_at__lte=handover.to_at)
+        .order_by("started_at")
+    )
     HandoverRead.objects.update_or_create(handover=handover, membership=membership, defaults={"read_at": timezone.now()})
     counts = defaultdict(int)
+    totals = defaultdict(float)
+    sleep_seconds = 0
     for row in rows:
         counts[row.kind] += 1
+        if row.kind in {BabyCareLog.Kind.BOTTLE, BabyCareLog.Kind.PUMP} and row.value.get("ml") is not None:
+            totals[f"{row.kind}_ml"] += float(row.value["ml"])
+        sleep_seconds += _sleep_overlap_seconds(row, handover.from_at, handover.to_at)
     return {
         "id": str(handover.id),
         "from_at": handover.from_at.isoformat(),
         "to_at": handover.to_at.isoformat(),
         "note": handover.note,
         "counts": dict(counts),
-        "events": list(rows.values("id", "kind", "started_at", "ended_at", "value")),
+        "totals": dict(totals),
+        "sleep_minutes": round(sleep_seconds / 60),
+        "events": [
+            {"id": row.id, "kind": row.kind, "started_at": row.started_at, "ended_at": row.ended_at, "value": row.value}
+            for row in rows
+        ],
     }
