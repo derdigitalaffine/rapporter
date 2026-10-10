@@ -48,8 +48,8 @@ def sync_trip_event(trip):
     event.payload = {
         "trip_id": str(trip.id),
         "all_day": True,
-        "civil_start": trip.starts_on.isoformat(),
-        "civil_end": trip.ends_on.isoformat(),
+        "date_start": trip.starts_on.isoformat(),
+        "date_end_exclusive": (trip.ends_on + timedelta(days=1)).isoformat(),
         "location": trip.destination,
         "read_only": True,
     }
@@ -124,7 +124,9 @@ class TripSerializer(serializers.ModelSerializer):
         if not obj.created_by:
             return "FamilyOS"
         membership = Membership.objects.filter(family=obj.family, user=obj.created_by).only("display_name").first()
-        return membership.display_name or obj.created_by.get_short_name() or obj.created_by.username if membership else obj.created_by.username
+        if membership and membership.display_name:
+            return membership.display_name
+        return obj.created_by.get_short_name() or obj.created_by.username
 
 
 class TripViewSet(viewsets.ModelViewSet):
