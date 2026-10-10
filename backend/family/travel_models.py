@@ -1,7 +1,7 @@
 from django.conf import settings
 from django.db import models
 
-from .models import Family, FamilyEvent, TimestampedModel
+from .models import Family, FamilyEvent, Membership, TimestampedModel
 
 
 class Trip(TimestampedModel):
@@ -28,6 +28,7 @@ class Trip(TimestampedModel):
         WINTER = "winter", "Winter"
 
     family = models.ForeignKey(Family, on_delete=models.CASCADE, related_name="trips")
+    participants = models.ManyToManyField(Membership, related_name="travel_trips", blank=True)
     title = models.CharField(max_length=160)
     destination = models.CharField(max_length=160, blank=True)
     stage = models.CharField(max_length=16, choices=Stage.choices, default=Stage.PLANNING)
