@@ -1,7 +1,7 @@
 import uuid
 
 from django.db import transaction
-from django.db.models import Min, Q
+from django.db.models import Min
 from django.http import FileResponse, Http404
 from rest_framework import serializers, viewsets
 from rest_framework.decorators import action, api_view
@@ -9,67 +9,14 @@ from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 
-from .models import BoardPost, BoardImage, FamilyEvent, Membership, Note, ShoppingItem, Task
+from .models import BoardPost, BoardImage, Membership
 from .domain_notifications import notify_domain_event
+from .pin_adapters import resolve_pin_target, resolve_pin_targets, validate_pin_target
 from .private_images import optimize_image, store_image, remove_image, image_path
-
-
-REFERENCE_KINDS = {BoardPost.Kind.EVENT, BoardPost.Kind.TASK, BoardPost.Kind.NOTE_REF, BoardPost.Kind.SHOPPING}
 
 
 class BoardPagination(PageNumberPagination):
     page_size = 20
-
-
-def _note_visible(note_id, family_id, user):
-    return Note.objects.filter(id=note_id, family_id=family_id).filter(Q(author=user) | Q(shares__user=user)).distinct().first()
-
-
-def _target(post, user):
-    """Resolve a pin target for this viewer. A pin never grants access to its target."""
-    if not post.target_id:
-        return None
-    if post.kind == BoardPost.Kind.EVENT:
-        row = FamilyEvent.objects.filter(id=post.target_id, family_id=post.family_id).first()
-        if row:
-            return {'id': str(row.id), 'kind': 'event', 'title': row.title, 'subtitle': row.starts_at, 'event_type': row.type, 'url': f'/?page=calendar&event={row.id}'}
-    elif post.kind == BoardPost.Kind.TASK:
-        row = Task.objects.filter(id=post.target_id, family_id=post.family_id).exclude(hidden_from_user=user).first()
-        if row:
-            return {'id': str(row.id), 'kind': 'task', 'title': row.title, 'subtitle': row.due_at, 'completed': bool(row.completed_at), 'url': f'/?page=tasks&task={row.id}'}
-    elif post.kind == BoardPost.Kind.NOTE_REF:
-        row = _note_visible(post.target_id, post.family_id, user)
-        if row:
-            preview = (row.body or '').strip().replace('\n', ' ')[:180]
-            return {'id': str(row.id), 'kind': 'note_ref', 'title': row.title or 'Notiz', 'subtitle': preview, 'url': f'/?page=notes&note={row.id}'}
-    elif post.kind == BoardPost.Kind.SHOPPING:
-        row = ShoppingItem.objects.filter(id=post.target_id, shopping_list__family_id=post.family_id).select_related('shopping_list').first()
-        if row:
-            return {'id': str(row.id), 'kind': 'shopping', 'title': row.name, 'subtitle': row.shopping_list.name, 'checked': row.checked, 'url': '/?page=shopping'}
-    return {'id': str(post.target_id), 'kind': post.kind, 'available': False}
-
-
-def _validate_target(kind, target_id, family_id, user):
-    if kind not in REFERENCE_KINDS:
-        if target_id:
-            raise ValidationError({'target_id': 'Dieser Pinnwand-Typ darf kein Ziel besitzen.'})
-        return
-    if not target_id:
-        raise ValidationError({'target_id': 'Bitte ein Objekt zum Anpinnen auswählen.'})
-    try:
-        target_id = uuid.UUID(str(target_id))
-    except (TypeError, ValueError, AttributeError):
-        raise ValidationError({'target_id': 'Ungültiges Ziel.'})
-    if kind == BoardPost.Kind.EVENT:
-        visible = FamilyEvent.objects.filter(id=target_id, family_id=family_id).exists()
-    elif kind == BoardPost.Kind.TASK:
-        visible = Task.objects.filter(id=target_id, family_id=family_id).exclude(hidden_from_user=user).exists()
-    elif kind == BoardPost.Kind.NOTE_REF:
-        visible = bool(_note_visible(target_id, family_id, user))
-    else:
-        visible = ShoppingItem.objects.filter(id=target_id, shopping_list__family_id=family_id).exists()
-    if not visible:
-        raise ValidationError({'target_id': 'Das ausgewählte Objekt ist in dieser Familie nicht verfügbar.'})
 
 
 class BoardSerializer(serializers.ModelSerializer):
@@ -102,14 +49,25 @@ class BoardSerializer(serializers.ModelSerializer):
         return obj.family_id in self.context.get('reorder_families', set())
 
     def get_target(self, obj):
-        return _target(obj, self.context['request'].user)
+        resolved = self.context.get('pin_targets')
+        if resolved is not None and obj.id in resolved:
+            return resolved[obj.id]
+        return resolve_pin_target(obj, self.context['request'].user)
 
     def validate(self, attrs):
         family = attrs.get('family') or getattr(self.instance, 'family', None)
         kind = attrs.get('kind', getattr(self.instance, 'kind', BoardPost.Kind.NOTE))
         target_id = attrs.get('target_id', getattr(self.instance, 'target_id', None))
         if family:
-            _validate_target(kind, target_id, family.id, self.context['request'].user)
+            user = self.context['request'].user
+            membership = Membership.objects.filter(family=family, user=user).first()
+            if not membership:
+                # Fail before resolving a target so a foreign family cannot be used
+                # as an existence oracle for guessed object ids.
+                raise PermissionDenied('Kein Zugriff auf diese Familie.')
+            if self.instance is None and membership.role == 'guest':
+                raise PermissionDenied('Diese Rolle darf keine Pins erstellen.')
+            validate_pin_target(kind, target_id, family.id, user)
         return attrs
 
 
@@ -130,6 +88,17 @@ class BoardViewSet(viewsets.ModelViewSet):
         context['moderated_families'] = set(Membership.objects.filter(user=self.request.user, role__in=['owner', 'adult']).values_list('family_id', flat=True))
         context['reorder_families'] = set(Membership.objects.filter(user=self.request.user).exclude(role='guest').values_list('family_id', flat=True))
         return context
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.filter_queryset(self.get_queryset())
+        page = self.paginate_queryset(queryset)
+        rows = page if page is not None else list(queryset)
+        context = self.get_serializer_context()
+        context['pin_targets'] = resolve_pin_targets(rows, request.user)
+        serializer = self.get_serializer(rows, many=True, context=context)
+        if page is not None:
+            return self.get_paginated_response(serializer.data)
+        return Response(serializer.data)
 
     def perform_create(self, serializer):
         family = serializer.validated_data['family']

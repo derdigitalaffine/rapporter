@@ -174,15 +174,18 @@ def _resolve_action(row):
 
 
 def render_transactional_email(row):
-    spec = TEMPLATE_SPECS[row.template_key][row.locale if row.locale in ("de", "en") else "de"]
+    locale = row.locale if row.locale in ("de", "en") else "de"
+    spec = TEMPLATE_SPECS[row.template_key][locale]
     subject, title, body = spec
     action_url = _resolve_action(row)
     action_label = row.context.get("action_label", "")
     render_context = {
+        "lang": locale,
         "title": title,
         "body": body,
         "action_url": action_url,
         "action_label": action_label,
+        "default_action_label": "Open FamilyOS" if locale == "en" else "FamilyOS öffnen",
         "details": row.context.get("details", ""),
         "support_text": row.context.get("support_text", ""),
     }
