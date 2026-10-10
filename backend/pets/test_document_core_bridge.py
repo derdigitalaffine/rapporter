@@ -5,6 +5,7 @@ from unittest.mock import patch
 from django.test import SimpleTestCase
 from PIL import Image, ImageEnhance, ImageOps
 
+from documents.legacy_image import extract_legacy_image_text
 from .ocr import UploadAdapter, _ocr_image, extract_pet_fields, prepare_pet_upload
 
 
@@ -37,6 +38,18 @@ class PetDocumentCoreBridgeTests(SimpleTestCase):
             text = _ocr_image(b"image")
         self.assertEqual(text, "Tierarzt Rechnung")
         shared.assert_called_once_with(b"image")
+
+    def test_documents_bridge_preserves_legacy_psm6_timeout_contract(self):
+        content = self.legacy_normalized_bytes(self.image_bytes())
+        with patch("documents.legacy_image.pytesseract.image_to_string", return_value="Tierarzt") as ocr:
+            text = extract_legacy_image_text(content)
+
+        self.assertEqual(text, "Tierarzt")
+        self.assertEqual(ocr.call_count, 1)
+        _, kwargs = ocr.call_args
+        self.assertEqual(kwargs["lang"], "deu+eng")
+        self.assertEqual(kwargs["config"], "--psm 6")
+        self.assertEqual(kwargs["timeout"], 20)
 
     def test_pet_invoice_suggestions_do_not_depend_on_expense_receipt_parser(self):
         result = extract_pet_fields(
