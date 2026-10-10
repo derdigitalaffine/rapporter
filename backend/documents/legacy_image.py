@@ -1,50 +1,67 @@
 """Compatibility adapter for legacy domains not yet migrated to ``Document``.
 
-This module deliberately contains no domain semantics. It lets remaining legacy
-BinaryField consumers reuse the canonical Document image validation,
-normalization, quality assessment and adaptive OCR implementation while their
-schema migration is scheduled separately.
+This module deliberately contains no domain semantics. Remaining BinaryField
+consumers reuse the shared Document OCR implementation, while image storage keeps
+their historical byte contract until those rows are migrated to ``Document``.
+That compatibility matters because legacy domains use the normalized-byte hash
+for duplicate detection.
 """
 from io import BytesIO
 
-from PIL import Image
-from rest_framework.exceptions import ValidationError
+from PIL import Image, ImageEnhance, ImageOps, ImageStat, UnidentifiedImageError
 
 from .extraction import _ocr_image
-from .quality import assess_image
-from .storage import canonicalize_upload
 
-PUBLIC_LEGACY_WARNINGS = {"low_resolution", "dark"}
-
-
-def _message(exc):
-    detail = getattr(exc, "detail", exc)
-    if isinstance(detail, dict):
-        detail = detail.get("file") or next(iter(detail.values()), None)
-    if isinstance(detail, (list, tuple)):
-        detail = detail[0] if detail else None
-    return str(detail or "Die Bilddatei konnte nicht sicher gelesen werden.")
+MAX_LEGACY_IMAGE_BYTES = 10 * 1024 * 1024
+MAX_LEGACY_IMAGE_PIXELS = 25_000_000
+ALLOWED_LEGACY_FORMATS = {"JPEG", "PNG", "WEBP"}
 
 
 def canonicalize_legacy_image(upload):
-    """Return Document-Core canonical image bytes for a legacy domain upload."""
+    """Preserve the pre-Document image bytes/hash contract for legacy domains.
+
+    PetDocument historically reused Expense receipt normalization: EXIF-aware RGB,
+    max 2500px, slight contrast enhancement, then JPEG quality 88. Existing rows
+    store the hash of those normalized bytes, so switching this bridge to WebP
+    would make identical re-uploads miss duplicate detection. Keep this transform
+    here only as an explicit migration compatibility boundary; OCR itself is the
+    shared Document engine below.
+    """
+    raw = upload.read()
+    if not raw:
+        raise ValueError("Die Bilddatei ist leer.")
+    if len(raw) > MAX_LEGACY_IMAGE_BYTES:
+        raise ValueError("Das Dokument darf höchstens 10 MB groß sein.")
     try:
-        canonical = canonicalize_upload(upload)
-    except ValidationError as exc:
-        raise ValueError(_message(exc)) from exc
-    if not canonical.mime_type.startswith("image/"):
-        raise ValueError("Nur JPEG-, PNG- oder WebP-Bilder werden unterstützt.")
-    with Image.open(BytesIO(canonical.content)) as image:
-        warnings = [
-            warning
-            for warning in assess_image(image).get("warnings", [])
-            if warning in PUBLIC_LEGACY_WARNINGS
-        ]
-    return canonical.content, canonical.mime_type, warnings
+        probe = Image.open(BytesIO(raw))
+        image_format = (probe.format or "").upper()
+        probe.verify()
+        if image_format not in ALLOWED_LEGACY_FORMATS:
+            raise ValueError("Nur JPEG-, PNG- oder WebP-Bilder werden unterstützt.")
+        image = Image.open(BytesIO(raw))
+        width, height = image.size
+        if width * height > MAX_LEGACY_IMAGE_PIXELS:
+            raise ValueError("Das Bild hat zu viele Bildpunkte.")
+        image = ImageOps.exif_transpose(image).convert("RGB")
+    except (UnidentifiedImageError, OSError, Image.DecompressionBombError) as exc:
+        raise ValueError("Die Datei ist kein gültiges Bild.") from exc
+
+    warnings = []
+    if min(image.size) < 700:
+        warnings.append("low_resolution")
+    brightness = ImageStat.Stat(ImageOps.grayscale(image)).mean[0]
+    if brightness < 55:
+        warnings.append("dark")
+
+    image.thumbnail((2500, 2500), Image.Resampling.LANCZOS)
+    image = ImageEnhance.Contrast(image).enhance(1.08)
+    output = BytesIO()
+    image.save(output, format="JPEG", quality=88, optimize=True)
+    return output.getvalue(), "image/jpeg", warnings
 
 
 def extract_legacy_image_text(content):
-    """Run the shared adaptive OCR engine over legacy in-database image bytes."""
+    """Run the shared adaptive Document OCR engine over legacy image bytes."""
     with Image.open(BytesIO(content)) as source:
         source.load()
         page = _ocr_image(source.convert("RGB"), 1, heartbeat=lambda: None)
