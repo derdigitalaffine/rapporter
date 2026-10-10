@@ -5,7 +5,7 @@ from django.test import TestCase
 from rest_framework.test import APIClient
 
 from .models import Family, Membership, TodayLayout
-from .today_layout_views import DEFAULT_WIDGET_ORDER, DEFAULT_WIDGETS, DEFAULT_WEEK_SETTINGS, LEGACY_WIDGET_IDS
+from .today_layout_views import DEFAULT_WEEK_SETTINGS, DEFAULT_WIDGET_ORDER, DEFAULT_WIDGETS, LEGACY_WIDGET_IDS
 
 
 class TodayLayoutTests(TestCase):
@@ -37,7 +37,7 @@ class TodayLayoutTests(TestCase):
         self.assertEqual(self.client.put(self.url, initial.data, format='json').status_code, 200)
         self.assertEqual(TodayLayout.objects.count(), 2)
 
-    def test_legacy_saved_layout_is_expanded_without_changing_existing_settings(self):
+    def test_legacy_saved_layout_adds_week_trip_and_pinboard_without_changing_existing_settings(self):
         legacy = [
             {'id': key, 'visible': key != 'weather', 'size': 'compact' if key == 'tasks' else 'full'}
             for key in LEGACY_WIDGET_IDS
@@ -46,14 +46,21 @@ class TodayLayoutTests(TestCase):
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data['revision'], 3)
-        rows = response.data['widgets']
-        self.assertEqual(rows[0], {'id': 'week', 'visible': True, 'size': 'full', 'settings': DEFAULT_WEEK_SETTINGS})
-        self.assertEqual(next(row for row in rows if row['id'] == 'pinboard'), {'id': 'pinboard', 'visible': True, 'size': 'full'})
-        for expected in legacy:
-            self.assertEqual(next(row for row in rows if row['id'] == expected['id']), expected)
-        self.assertEqual(next(row for row in rows if row['id'] == 'loyalty'), {'id': 'loyalty', 'visible': False, 'size': 'full'})
-        self.assertEqual(next(row for row in rows if row['id'] == 'inbox'), {'id': 'inbox', 'visible': False, 'size': 'full'})
-        self.assertLess([row['id'] for row in rows].index('next'), [row['id'] for row in rows].index('pinboard'))
+        expanded = response.data['widgets']
+        self.assertEqual([row for row in expanded if row['id'] in LEGACY_WIDGET_IDS], legacy)
+        self.assertEqual(expanded[0], {'id': 'week', 'visible': True, 'size': 'full', 'settings': DEFAULT_WEEK_SETTINGS})
+        priority_index = next(index for index, row in enumerate(expanded) if row['id'] == 'priority')
+        trip_index = next(index for index, row in enumerate(expanded) if row['id'] == 'trip')
+        self.assertEqual(trip_index, priority_index + 1)
+        self.assertEqual(expanded[trip_index], {'id': 'trip', 'visible': True, 'size': 'full'})
+        next_index = next(index for index, row in enumerate(expanded) if row['id'] == 'next')
+        pinboard_index = next(index for index, row in enumerate(expanded) if row['id'] == 'pinboard')
+        self.assertEqual(pinboard_index, next_index + 1)
+        self.assertEqual(expanded[pinboard_index], {'id': 'pinboard', 'visible': True, 'size': 'full'})
+        self.assertEqual(expanded[-2:], [
+            {'id': 'loyalty', 'visible': False, 'size': 'full'},
+            {'id': 'inbox', 'visible': False, 'size': 'full'},
+        ])
         stored = TodayLayout.objects.get(family=self.family, user=self.user)
         self.assertEqual(stored.widgets, legacy)
 
@@ -78,6 +85,24 @@ class TodayLayoutTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data['revision'], 7)
         self.assertEqual(response.data['widgets'], custom)
+
+    def test_square_size_is_allowed_only_for_supported_widgets(self):
+        valid = {'version': 1, 'revision': 0, 'widgets': deepcopy(DEFAULT_WIDGETS)}
+        trip = next(row for row in valid['widgets'] if row['id'] == 'trip')
+        trip['size'] = 'square'
+        saved = self.client.put(self.url, valid, format='json')
+        self.assertEqual(saved.status_code, 200)
+        self.assertEqual(next(row for row in saved.data['widgets'] if row['id'] == 'trip')['size'], 'square')
+
+        invalid = deepcopy(saved.data)
+        task = next(row for row in invalid['widgets'] if row['id'] == 'tasks')
+        task['size'] = 'square'
+        self.assertEqual(self.client.put(self.url, invalid, format='json').status_code, 400)
+
+        invalid_week = deepcopy(saved.data)
+        week = next(row for row in invalid_week['widgets'] if row['id'] == 'week')
+        week['size'] = 'square'
+        self.assertEqual(self.client.put(self.url, invalid_week, format='json').status_code, 400)
 
     def test_stale_writes_do_not_overwrite(self):
         initial = self.client.get(self.url).data
