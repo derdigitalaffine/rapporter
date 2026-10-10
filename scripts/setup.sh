@@ -30,6 +30,46 @@ valid_port(){ [[ "$1" =~ ^[0-9]+$ ]] && (( $1 >= 1 && $1 <= 65535 )); }
 valid_bind(){ [[ "$1" == "0.0.0.0" || "$1" == "127.0.0.1" || "$1" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; }
 need(){ command -v "$1" >/dev/null 2>&1 || { box "'$1' fehlt. Bitte installieren und den Wizard erneut starten."; exit 1; }; }
 
+select_proxy_network(){
+  local existing_subnet existing_range existing_caddy existing_trusted
+  existing_subnet=$(env_value FAMILYOS_PROXY_SUBNET)
+  existing_range=$(env_value FAMILYOS_PROXY_DYNAMIC_RANGE)
+  existing_caddy=$(env_value FAMILYOS_CADDY_IP)
+  existing_trusted=$(env_value AUTH_TRUSTED_PROXY_CIDRS)
+
+  if [[ -n "$existing_subnet" && -n "$existing_range" && -n "$existing_caddy" && -n "$existing_trusted" ]]; then
+    FAMILYOS_PROXY_SUBNET="$existing_subnet"
+    FAMILYOS_PROXY_DYNAMIC_RANGE="$existing_range"
+    FAMILYOS_CADDY_IP="$existing_caddy"
+    AUTH_TRUSTED_PROXY_CIDRS="$existing_trusted"
+    return 0
+  fi
+
+  local candidates=(
+    "172.28.254.0/28|172.28.254.0/29|172.28.254.14"
+    "172.26.254.0/28|172.26.254.0/29|172.26.254.14"
+    "172.16.254.0/28|172.16.254.0/29|172.16.254.14"
+    "10.254.254.0/28|10.254.254.0/29|10.254.254.14"
+    "10.253.254.0/28|10.253.254.0/29|10.253.254.14"
+  )
+  local candidate subnet range caddy probe
+  for candidate in "${candidates[@]}"; do
+    IFS='|' read -r subnet range caddy <<<"$candidate"
+    probe="familyos-network-probe-$$-$RANDOM"
+    if docker network create --driver bridge --subnet "$subnet" --ip-range "$range" "$probe" >/dev/null 2>&1; then
+      docker network rm "$probe" >/dev/null 2>&1 || true
+      FAMILYOS_PROXY_SUBNET="$subnet"
+      FAMILYOS_PROXY_DYNAMIC_RANGE="$range"
+      FAMILYOS_CADDY_IP="$caddy"
+      AUTH_TRUSTED_PROXY_CIDRS="$caddy/32"
+      return 0
+    fi
+  done
+
+  box "Kein freies FamilyOS-Proxy-Subnetz aus der sicheren Kandidatenliste gefunden.\n\nBitte vorhandene Docker-Netze prüfen oder FAMILYOS_PROXY_SUBNET, FAMILYOS_PROXY_DYNAMIC_RANGE, FAMILYOS_CADDY_IP und AUTH_TRUSTED_PROXY_CIDRS manuell in .env konfigurieren."
+  return 1
+}
+
 need docker
 need openssl
 if ! docker compose version >/dev/null 2>&1; then box "Docker Compose v2 wurde nicht gefunden."; exit 1; fi
@@ -49,12 +89,14 @@ if [[ -f "$ENV_FILE" ]]; then
   EXISTING_VAPID_SUBJECT=$(env_value VAPID_SUBJECT)
 fi
 
+select_proxy_network
+
 box "Willkommen bei FamilyOS.\n\nDieser Assistent erzeugt die vollständige .env, richtet HTTPS/Reverse Proxy sowie den globalen Superadmin und den ersten Familien-Owner ein.\n\nDer Superadmin verwaltet Familien-Tenants, gehört selbst aber keiner Familie an.\n\nWeb Push wird serverseitig automatisch vorbereitet; die Browser-Berechtigung bleibt weiterhin freiwillig."
 TLS_MODE=$(menu "Betriebsmodus wählen" internal "Self-Signed / Caddy Internal CA (LAN/erster Start)" public "Öffentliches HTTPS via ACME / Let's Encrypt" proxy "Plain HTTP hinter eigenem Reverse Proxy (TLS dort)")
 COMPOSE_FILE="docker-compose.yml:docker-compose.override.yml"; PUBLIC_SCHEME="https"; PUBLIC_PORT=443; HTTP_BIND="0.0.0.0"; HTTPS_BIND="0.0.0.0"; HTTP_PORT=80; HTTPS_PORT=443
 if [[ "$TLS_MODE" == "internal" ]]; then DEFAULT_HOST="$(local_ip)"; DEFAULT_HOST="${DEFAULT_HOST:-localhost}"; DOMAIN=$(input "Hostname oder IP für den lokalen Zugriff." "$DEFAULT_HOST"); CADDYFILE="Caddyfile.selfsigned"
 elif [[ "$TLS_MODE" == "public" ]]; then DOMAIN=$(input "Öffentliche Domain. DNS A/AAAA muss auf diesen Server zeigen." "familyos.example.com"); CADDYFILE="Caddyfile"
-else DOMAIN=$(input "Öffentliche Domain, unter der dein vorhandener Reverse Proxy FamilyOS bereitstellt." "familyos.example.com"); CADDYFILE="Caddyfile.proxy"; COMPOSE_FILE="docker-compose.yml"; HTTP_BIND="127.0.0.1"; HTTP_PORT=8080
+else DOMAIN=$(input "Öffentliche Domain, unter der dein vorhandener Reverse Proxy FamilyOS bereitgestellt wird." "familyos.example.com"); CADDYFILE="Caddyfile.proxy"; COMPOSE_FILE="docker-compose.yml"; HTTP_BIND="127.0.0.1"; HTTP_PORT=8080
 fi
 if [[ "$TLS_MODE" == "proxy" ]]; then
   if yesno "Erweiterte Reverse-Proxy-Einstellungen öffnen?\n\nStandardmäßig lauscht FamilyOS nur auf 127.0.0.1:8080 und belegt keinen HTTPS-Port."; then
@@ -109,7 +151,7 @@ fi
 
 GOOGLE_STATUS="aus"; MICROSOFT_STATUS="aus"; [[ -n "$GOOGLE_OAUTH_CLIENT_ID" ]] && GOOGLE_STATUS="konfiguriert"; [[ -n "$MICROSOFT_OAUTH_CLIENT_ID" ]] && MICROSOFT_STATUS="konfiguriert"
 if [[ "$TLS_MODE" == "proxy" ]]; then NETWORK_SUMMARY="Lokaler TLS/SSL-Listener: aus\nReverse-Proxy-Upstream: http://$HTTP_BIND:$HTTP_PORT\nÖffentliche App-URL: $APP_URL"; else NETWORK_SUMMARY="HTTP-Port: $HTTP_PORT\nHTTPS-Port: $HTTPS_PORT\nApp-URL: $APP_URL"; fi
-SUMMARY="Modus: $TLS_MODE\nHost: $DOMAIN\n$NETWORK_SUMMARY\nZeitzone: $TIME_ZONE\nSprache: $INITIAL_LOCALE\nErste Familie: $INITIAL_FAMILY_NAME\nSuperadmin: $DJANGO_SUPERUSER_USERNAME ($DJANGO_SUPERUSER_EMAIL)\nFamilien-Owner: $INITIAL_OWNER_USERNAME ($INITIAL_OWNER_EMAIL)\nDatenbank: $POSTGRES_DB / $POSTGRES_USER\nWorker: $GUNICORN_WORKERS\nIntegrations-Sync: alle $INTEGRATION_SYNC_SECONDS Sekunden\nGoogle OAuth: $GOOGLE_STATUS\nMicrosoft OAuth: $MICROSOFT_STATUS\nWeb Push: $PUSH_STATUS\n\nSecrets werden in .env geschrieben und hier absichtlich nicht angezeigt."
+SUMMARY="Modus: $TLS_MODE\nHost: $DOMAIN\n$NETWORK_SUMMARY\nProxy-Netz: $FAMILYOS_PROXY_SUBNET · Caddy: $FAMILYOS_CADDY_IP\nZeitzone: $TIME_ZONE\nSprache: $INITIAL_LOCALE\nErste Familie: $INITIAL_FAMILY_NAME\nSuperadmin: $DJANGO_SUPERUSER_USERNAME ($DJANGO_SUPERUSER_EMAIL)\nFamilien-Owner: $INITIAL_OWNER_USERNAME ($INITIAL_OWNER_EMAIL)\nDatenbank: $POSTGRES_DB / $POSTGRES_USER\nWorker: $GUNICORN_WORKERS\nIntegrations-Sync: alle $INTEGRATION_SYNC_SECONDS Sekunden\nGoogle OAuth: $GOOGLE_STATUS\nMicrosoft OAuth: $MICROSOFT_STATUS\nWeb Push: $PUSH_STATUS\n\nSecrets werden in .env geschrieben und hier absichtlich nicht angezeigt."
 if ! yesno "$SUMMARY\n\nKonfiguration schreiben?"; then exit 0; fi
 
 cat > "$ENV_FILE" <<EOF
@@ -133,6 +175,13 @@ CSRF_TRUSTED_ORIGINS=$ORIGIN
 CORS_ALLOWED_ORIGINS=$ORIGIN
 TIME_ZONE=$TIME_ZONE
 INITIAL_LOCALE=$INITIAL_LOCALE
+
+# Dedicated proxy network. Keep the Caddy IP outside the dynamic range and keep
+# AUTH_TRUSTED_PROXY_CIDRS aligned with the pinned Caddy address (/32).
+FAMILYOS_PROXY_SUBNET=$FAMILYOS_PROXY_SUBNET
+FAMILYOS_PROXY_DYNAMIC_RANGE=$FAMILYOS_PROXY_DYNAMIC_RANGE
+FAMILYOS_CADDY_IP=$FAMILYOS_CADDY_IP
+AUTH_TRUSTED_PROXY_CIDRS=$AUTH_TRUSTED_PROXY_CIDRS
 
 POSTGRES_DB=$POSTGRES_DB
 POSTGRES_USER=$POSTGRES_USER
