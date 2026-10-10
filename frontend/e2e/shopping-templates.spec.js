@@ -14,7 +14,7 @@ async function installTemplateMocks(page,state){
   }
   let match=path.match(/^\/shopping-stores\/([^/]+)\/assign\/$/);
   if(match&&method==='POST'){
-   const store=stores.find(row=>row.id===match[1]);store.shopping_list_ids=[body.shopping_list];const list=state.shoppingLists.find(row=>row.id===body.shopping_list);if(list)list.store=store.display_label;return json(route,{shopping_list:body.shopping_list,store:store.id,display_label:store.display_label});
+   const store=stores.find(row=>row.id===match[1]);for(const row of stores)row.shopping_list_ids=(row.shopping_list_ids||[]).filter(id=>String(id)!==String(body.shopping_list));store.shopping_list_ids=[...(store.shopping_list_ids||[]),body.shopping_list];const list=state.shoppingLists.find(row=>row.id===body.shopping_list);if(list)list.store=store.display_label;return json(route,{shopping_list:body.shopping_list,store:store.id,display_label:store.display_label});
   }
   if(path==='/shopping-templates/'&&method==='GET')return json(route,templates);
   if(path==='/shopping-templates/'&&method==='POST'){
@@ -50,6 +50,15 @@ async function openTools(page){
  await expect(buttons).toHaveCount(2);
  await buttons.nth(1).click();
  await expect(page.getByTestId('shopping-template-tools')).toBeVisible();
+}
+async function waitForOfflineShell(page){
+ await page.evaluate(async()=>{
+  if(!('serviceWorker' in navigator))throw new Error('service_worker_unavailable');
+  await navigator.serviceWorker.ready;
+  if(!navigator.serviceWorker.controller){
+   await new Promise((resolve,reject)=>{const timeout=setTimeout(()=>reject(new Error('service_worker_controller_timeout')),6000);navigator.serviceWorker.addEventListener('controllerchange',()=>{clearTimeout(timeout);resolve()},{once:true})});
+  }
+ });
 }
 
 test('shopping list can be saved as template, previewed and applied without duplicates',async({page})=>{
@@ -88,6 +97,25 @@ test('store profile assigns legacy store label and exposes safe offers link in s
  await expect(offers).toHaveAttribute('href','https://offers.example.test/rewe');
  await expect(offers).toHaveAttribute('target','_blank');
  await expect(offers).toHaveAttribute('rel',/noopener/);
+});
+
+test('loaded template can be queued offline and is applied once after reconnect',async({page,context})=>{
+ const state=await installApiMocks(page,{dismissOnboarding:true});await installTemplateMocks(page,state);await openTools(page);
+ const tools=page.getByTestId('shopping-template-tools');
+ await tools.getByRole('button',{name:'Neue Vorlage'}).click();
+ const form=tools.locator('form').filter({hasText:'Artikel – einer pro Zeile'});
+ await form.getByLabel('Name der Vorlage').fill('Offline-Vorrat');
+ await form.getByLabel('Artikel – einer pro Zeile').fill('Brot offline');
+ await form.getByRole('button',{name:'Vorlage speichern'}).click();
+ await expect(tools.getByText('Offline-Vorrat',{exact:true})).toBeVisible();
+ await waitForOfflineShell(page);await context.setOffline(true);
+ await expect(tools.getByText(/Geladene Vorlagen bleiben offline verfügbar/)).toBeVisible();
+ await tools.getByRole('button',{name:'Vorlage verwenden'}).click();
+ await tools.getByRole('button',{name:'Vorlage verwenden'}).click();
+ await expect(page.getByText(/Vorlage vorgemerkt/)).toBeVisible();
+ expect(state.shoppingLists[0].items.some(item=>item.name==='Brot offline')).toBe(false);
+ await context.setOffline(false);
+ await expect.poll(()=>state.shoppingLists[0].items.filter(item=>item.name==='Brot offline').length,{timeout:10000}).toBe(1);
 });
 
 test('manual template and template tools stay usable in English at 390px',async({page})=>{
