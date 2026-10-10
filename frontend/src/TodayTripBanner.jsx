@@ -10,19 +10,18 @@ const words={
  en:{label:'Next trip',inDays:'{{count}} days to go',tomorrow:'Leaving tomorrow',today:'Leaving today',tripDay:'Day {{day}} of {{total}}',finished:'Trip finished'},
 };
 
-export default function TodayTripBanner({family,open,language='de',widgetSize='full',trips:dashboardTrips}){
- const [fallbackTrips,setFallbackTrips]=useState([]);
+export default function TodayTripBanner({family,open,language='de',widgetSize='full'}){
+ const [trips,setTrips]=useState([]);
  useEffect(()=>{
-  if(Array.isArray(dashboardTrips)){setFallbackTrips([]);return undefined}
   let current=true;
-  setFallbackTrips([]);
+  setTrips([]);
   api(`/trips/?family=${encodeURIComponent(family.id)}`)
-   .then(result=>{if(current)setFallbackTrips(unwrap(result))})
-   .catch(()=>{if(current)setFallbackTrips([])});
+   .then(result=>{if(current)setTrips(unwrap(result))})
+   .catch(()=>{if(current)setTrips([])});
   return()=>{current=false};
- },[family.id,dashboardTrips]);
+ },[family.id]);
  const copy=words[language.startsWith('en')?'en':'de'];
- const trip=nextRelevantTrip(Array.isArray(dashboardTrips)?dashboardTrips:fallbackTrips);
+ const trip=nextRelevantTrip(trips);
  if(!trip)return null;
  const countdown=tripCountdown(trip,copy);
  return <div className={`app-widget today-widget today-widget-${widgetSize} today-trip-widget`} data-today-widget="trip" data-widget-size={widgetSize}>
