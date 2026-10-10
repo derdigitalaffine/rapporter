@@ -15,3 +15,11 @@ Reference pins store only an allow-listed `kind` plus the canonical object's UUI
 Currently registered reference kinds are calendar events, tasks, note references, shopping items, routines and shopping lists. Routine and shopping-list pins preserve lifecycle visibility for existing references: an inactive routine or archived shopping list resolves with lifecycle `archived`, but cannot be newly pinned. Deleted targets become neutral `available: false`. Cross-family target IDs are rejected before any preview data is disclosed.
 
 `ContextRef`/`ContextLink` remains the universal cross-domain object-addressing contract. `PinAdapter` adds only board-specific preview, pin authorization and lifecycle semantics; it must not grow into a second generic-reference persistence layer. Additional adapters such as documents or trips should reuse their canonical domain ACLs and keep preview payloads minimal.
+
+## Stable board order (#219)
+
+`BoardPost.position` is a family/board-scoped integer order key. New pins continue to reserve a 1000-point gap before the current first pin. `/api/board/reorder/` keeps its existing `{family, ids}` contract and remains transactional: every row of that family is locked before an order plan is applied, guessed/foreign IDs fail before any position write, and guests cannot reorder.
+
+Reordering no longer renumbers every pin for every arrow click. The backend computes a longest stable subsequence of the requested order, keeps those persisted positions unchanged, and assigns only moved segments to free integer positions between stable neighbours. A normal one-step move therefore changes one row. If repeated moves eventually consume every integer in a local gap, the backend performs a deterministic 1000-spaced full rebalance and then resumes sparse updates. This trades a rare O(n) maintenance write for O(changed pins) writes on normal interaction without introducing fractional/database-specific order values.
+
+The current Board UI already exposes up/down arrow controls, so keyboard/touch users have a non-drag reordering path; the backend optimization does not change that interaction or response shape.
