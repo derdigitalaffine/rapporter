@@ -9,6 +9,7 @@ class FamilyConfig(AppConfig):
         # Feature models live in separate modules to keep the core model file merge-friendly.
         from . import models as core_models
         from .board_models import BoardImage, BoardPost
+        from .context_models import ContextLink
         from .family_master_models import FamilyMasterData
         from .notes_models import Note, NoteRevision, NoteShare
         from .shopping_models import ShoppingListStoreProfile, ShoppingStore, ShoppingTemplate, ShoppingTemplateItem
@@ -16,6 +17,7 @@ class FamilyConfig(AppConfig):
         from .travel_models import Trip, TripPhoto
         core_models.BoardPost = BoardPost
         core_models.BoardImage = BoardImage
+        core_models.ContextLink = ContextLink
         core_models.FamilyMasterData = FamilyMasterData
         core_models.Note = Note
         core_models.NoteShare = NoteShare
