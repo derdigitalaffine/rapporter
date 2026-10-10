@@ -7,9 +7,14 @@ def process_claimed_run(run):
 
     Database connection lifecycle belongs to the long-running management loop,
     not this unit of work. Keeping this helper connection-neutral also makes it
-    safe to call from an existing transaction (for example Django TestCase or a
-    future orchestrator). Long-running extraction renews the durable lease at
-    page/OCR boundaries; a lost fencing token aborts publication immediately.
+    safe to call from an existing transaction. Long-running extraction renews
+    the durable lease at page/OCR boundaries; a lost fencing token aborts
+    publication immediately.
+
+    Domain-consumer projection is part of ``finish_run``'s transaction. Keeping
+    that call inside this try block means a consumer failure rolls the finish
+    transaction back and follows the same durable retry policy instead of
+    leaving a completed generic run with an unprojected domain object.
     """
 
     def heartbeat():
@@ -19,6 +24,7 @@ def process_claimed_run(run):
     try:
         result = extract_document(run.document, heartbeat=heartbeat)
         heartbeat()
+        return finish_run(run, result, needs_review=result.needs_review)
     except ClaimLost:
         return run.__class__.objects.get(pk=run.pk)
     except ProcessingError as exc:
@@ -37,4 +43,3 @@ def process_claimed_run(run):
             safe_error="Dokumentverarbeitung ist unerwartet fehlgeschlagen.",
             retryable=True,
         )
-    return finish_run(run, result, needs_review=result.needs_review)
