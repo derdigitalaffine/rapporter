@@ -9,6 +9,8 @@ async function boot(page,viewport={width:390,height:844}){
   await expect(page.getByRole('heading',{name:/Musterfamilie/})).toBeVisible();
 }
 
+const isContentMutation=request=>['POST','PATCH','DELETE'].includes(request.method())&&request.url().includes('/api/')&&!request.url().includes('/api/push/badge/');
+
 for(const viewport of [{width:390,height:844},{width:844,height:390}]){
   test(`Today task module action opens editor in one tap and saves without navigation at ${viewport.width}x${viewport.height}`,async({page})=>{
     let created=null;await boot(page,viewport);
@@ -32,7 +34,7 @@ for(const viewport of [{width:390,height:844},{width:844,height:390}]){
 }
 
 test('Today shopping module action focuses the real item editor and Escape returns to Today without mutation',async({page})=>{
-  let mutations=0;page.on('request',request=>{if(['POST','PATCH','DELETE'].includes(request.method())&&request.url().includes('/api/'))mutations++});
+  let mutations=0;page.on('request',request=>{if(isContentMutation(request))mutations++});
   await boot(page);
   await page.locator('[data-today-widget="shopping"]').getByRole('button',{name:/Artikel hinzufügen|Add item/}).click();
   const dialog=page.getByRole('dialog');
