@@ -102,6 +102,54 @@ class AuthAbuseIntegrationTests(TestCase):
         self.assertEqual(responses[5].status_code, 429)
         self.assertEqual(responses[5].data["code"], "rate_limited")
 
+    def test_foreign_family_attempt_does_not_consume_victim_invite_budget(self):
+        User = get_user_model()
+        victim_owner = User.objects.create_user(
+            username="victim-owner",
+            email="victim-owner@example.com",
+            password="test-pass-123",
+        )
+        victim_family = Family.objects.create(name="Victim Family", slug="abuse-victim-family")
+        Membership.objects.create(
+            family=victim_family,
+            user=victim_owner,
+            role=Membership.Role.OWNER,
+            display_name="Victim Owner",
+        )
+
+        attacker = APIClient()
+        attacker.force_authenticate(self.user)
+        denied = attacker.post(
+            "/api/invitations/",
+            {
+                "family": str(victim_family.id),
+                "role": "adult",
+                "email": "poison@example.com",
+                "expires_at": (timezone.now() + timedelta(days=7)).isoformat(),
+            },
+            format="json",
+            REMOTE_ADDR="198.51.100.60",
+        )
+        self.assertEqual(denied.status_code, 403)
+        self.assertFalse(
+            AuthAbuseBucket.objects.filter(scope="invite.create", key_kind="family").exists()
+        )
+
+        legitimate = APIClient()
+        legitimate.force_authenticate(victim_owner)
+        created = legitimate.post(
+            "/api/invitations/",
+            {
+                "family": str(victim_family.id),
+                "role": "adult",
+                "email": "legitimate@example.com",
+                "expires_at": (timezone.now() + timedelta(days=7)).isoformat(),
+            },
+            format="json",
+            REMOTE_ADDR="198.51.100.61",
+        )
+        self.assertEqual(created.status_code, 201)
+
     def test_superadmin_sensitive_mutations_are_rate_limited(self):
         User = get_user_model()
         admin = User.objects.create_superuser(
