@@ -1,5 +1,6 @@
 import math
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from django.utils import timezone
 from rest_framework.exceptions import PermissionDenied, ValidationError
@@ -39,7 +40,13 @@ def _baby_for_user(user, baby_id):
 
 
 def chronological_age_days(baby, measured_at):
-    measured_date = measured_at.date() if isinstance(measured_at, datetime) else measured_at
+    if isinstance(measured_at, datetime):
+        if timezone.is_aware(measured_at):
+            measured_date = measured_at.astimezone(ZoneInfo(baby.family.timezone)).date()
+        else:
+            measured_date = measured_at.date()
+    else:
+        measured_date = measured_at
     return max(0, (measured_date - baby.birth_date).days)
 
 
