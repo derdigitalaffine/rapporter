@@ -6,6 +6,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from auth_abuse.models import AuthAbuseBucket
+from auth_abuse.service import hash_identity
 
 from .models import Family, Membership
 
@@ -101,6 +102,33 @@ class AuthAbuseIntegrationTests(TestCase):
         self.assertEqual([response.status_code for response in responses[:5]], [201] * 5)
         self.assertEqual(responses[5].status_code, 429)
         self.assertEqual(responses[5].data["code"], "rate_limited")
+
+    def test_foreign_family_invite_does_not_consume_foreign_family_budget(self):
+        foreign_family = Family.objects.create(name="Bob Family", slug="abuse-bob-family")
+        client = APIClient()
+        client.force_authenticate(self.user)
+
+        response = client.post(
+            "/api/invitations/",
+            {
+                "family": str(foreign_family.id),
+                "role": "adult",
+                "email": "victim@example.com",
+                "expires_at": (timezone.now() + timedelta(days=7)).isoformat(),
+            },
+            format="json",
+            REMOTE_ADDR="198.51.100.56",
+        )
+
+        self.assertEqual(response.status_code, 403)
+        foreign_family_key = hash_identity("family", str(foreign_family.id))
+        self.assertFalse(
+            AuthAbuseBucket.objects.filter(
+                scope="invite.create",
+                key_kind="family",
+                key_hash=foreign_family_key,
+            ).exists()
+        )
 
     def test_superadmin_sensitive_mutations_are_rate_limited(self):
         User = get_user_model()
