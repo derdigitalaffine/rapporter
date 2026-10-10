@@ -5,7 +5,8 @@ from django.test import TestCase, override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from family.models import Family, FamilyInvitation, Membership
+from family.invitation_service import issue_invitation
+from family.models import Family, Membership
 from mailing.models import TransactionalEmail
 
 from .models import EmailIdentity
@@ -228,7 +229,7 @@ class EmailIdentityTests(TestCase):
         )
         family = Family.objects.create(name="Invite Family", slug="identity-invite-family", locale="en")
         Membership.objects.create(family=family, user=owner, role=Membership.Role.OWNER)
-        invite = FamilyInvitation.objects.create(
+        invite, token = issue_invitation(
             family=family,
             invited_by=owner,
             role=Membership.Role.ADULT,
@@ -238,7 +239,7 @@ class EmailIdentityTests(TestCase):
         )
 
         response = self.client.post(
-            f"/api/invite/{invite.token}/register/",
+            f"/api/invite/{token}/register/",
             {
                 "email": "new.member@Example.com",
                 "password": "new-member-pass-123",
@@ -259,6 +260,8 @@ class EmailIdentityTests(TestCase):
                 recipient="new.member@example.com",
             ).exists()
         )
+        invite.refresh_from_db()
+        self.assertIsNotNone(invite.accepted_at)
 
     def test_invite_email_collision_rolls_back_generated_user_membership_and_identity(self):
         User = get_user_model()
@@ -275,7 +278,7 @@ class EmailIdentityTests(TestCase):
         create_primary_identity(existing, "taken@example.com", verified=True)
         family = Family.objects.create(name="Collision Family", slug="identity-collision-family", locale="de")
         Membership.objects.create(family=family, user=owner, role=Membership.Role.OWNER)
-        invite = FamilyInvitation.objects.create(
+        invite, token = issue_invitation(
             family=family,
             invited_by=owner,
             role=Membership.Role.ADULT,
@@ -290,7 +293,7 @@ class EmailIdentityTests(TestCase):
         )
 
         response = self.client.post(
-            f"/api/invite/{invite.token}/register/",
+            f"/api/invite/{token}/register/",
             {
                 "email": "taken@example.com",
                 "password": "new-member-pass-123",
