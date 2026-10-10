@@ -148,7 +148,7 @@ jobs:
       - name: Validate public Caddy config
         run: docker run --rm -e DOMAIN=familyos.example.com -v "$PWD/Caddyfile:/etc/caddy/Caddyfile:ro" caddy:2-alpine caddy validate --config /etc/caddy/Caddyfile
       - name: Validate internal TLS Caddy config
-        run: docker run --rm -e DOMAIN=familyos.local -v "$PWD/Caddyfile.selfsigned:/etc/caddy/Caddyfile.selfsigned:ro" caddy:2-alpine caddy validate --config /etc/caddy/Caddyfile.selfsigned
+        run: docker run --rm -e DOMAIN=familyos.local -v "$PWD/Caddyfile.selfsigned:/etc/caddy/Caddyfile:ro" caddy:2-alpine caddy validate --config /etc/caddy/Caddyfile
       - name: Validate reverse-proxy Caddy config
         run: docker run --rm -e PUBLIC_HOST=familyos.example.com -e PUBLIC_SCHEME=https -v "$PWD/Caddyfile.proxy:/etc/caddy/Caddyfile.proxy:ro" caddy:2-alpine caddy validate --config /etc/caddy/Caddyfile.proxy
       - run: cp .env.example .env
