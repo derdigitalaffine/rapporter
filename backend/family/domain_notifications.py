@@ -1,5 +1,6 @@
 from urllib.parse import urlencode
 
+from .badges import increment_badge
 from .models import Membership
 from .models_features import NotificationPreference
 from .push import send_user_push
@@ -102,7 +103,7 @@ def notify_domain_event(
     exclude_users=None,
     url=None,
 ):
-    """Resolve family recipients and send a best-effort domain push without affecting the mutation."""
+    """Resolve recipients and record unread activity without affecting the originating mutation."""
     spec = EVENT_SPECS.get(event_type)
     if not spec:
         return {"sent": 0, "errors": 0, "recipients": 0}
@@ -133,6 +134,7 @@ def notify_domain_event(
             continue
         recipients += 1
         try:
+            unread_count = increment_badge(membership.user)
             if policy == "queue":
                 enqueue_notification(membership, event_type, context, url=url)
                 continue
@@ -142,6 +144,7 @@ def notify_domain_event(
                 body,
                 url or _target_url(event_type, context),
                 tag=f"fam-uh-le:{event_type}",
+                badge_count=unread_count,
             )
             sent += result.get("sent", 0)
             errors += result.get("errors", 0)
