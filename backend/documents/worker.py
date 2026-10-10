@@ -1,5 +1,5 @@
 from .extraction import ProcessingError, extract_document
-from .processing import fail_run, finish_run
+from .processing import ClaimLost, fail_run, finish_run, renew_lease
 
 
 def process_claimed_run(run):
@@ -8,10 +8,19 @@ def process_claimed_run(run):
     Database connection lifecycle belongs to the long-running management loop,
     not this unit of work. Keeping this helper connection-neutral also makes it
     safe to call from an existing transaction (for example Django TestCase or a
-    future orchestrator).
+    future orchestrator). Long-running extraction renews the durable lease at
+    page/OCR boundaries; a lost fencing token aborts publication immediately.
     """
+
+    def heartbeat():
+        if not renew_lease(run):
+            raise ClaimLost()
+
     try:
-        result = extract_document(run.document)
+        result = extract_document(run.document, heartbeat=heartbeat)
+        heartbeat()
+    except ClaimLost:
+        return run.__class__.objects.get(pk=run.pk)
     except ProcessingError as exc:
         return fail_run(
             run,
