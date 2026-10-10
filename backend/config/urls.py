@@ -9,6 +9,7 @@ urlpatterns = [
     path("api/auth/refresh/", refresh_view, name="auth_refresh"),
     path("api/auth/logout/", logout_view, name="auth_logout"),
     path("api/auth/session/", session_view, name="auth_session"),
+    path("api/auth/email/", include("auth_identity.urls")),
     path("api/", include("family.urls")),
     path("api/", include("expenses.urls")),
     path("api/", include("baby.urls")),
