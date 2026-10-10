@@ -3,7 +3,7 @@ from math import sqrt
 
 from PIL import Image, ImageFilter, ImageOps, ImageStat
 
-MAX_SKEW_SAMPLE_DIMENSION = 900
+MAX_SKEW_SAMPLE_DIMENSION = 480
 SKEW_CANDIDATES = (-3.0, -2.0, -1.0, 0.0, 1.0, 2.0, 3.0)
 
 
@@ -55,9 +55,9 @@ def _projection_score(binary):
 def estimate_skew(image):
     """Estimate only small page skew; large rotations belong to EXIF/capture handling.
 
-    A downscaled high-contrast copy is scored by horizontal text-line projection.
-    The canonical file is never changed; the selected angle applies only to the
-    transient OCR image.
+    A bounded downscaled high-contrast copy is scored by horizontal text-line
+    projection. The canonical file is never changed; the selected angle applies
+    only to the transient OCR image.
     """
     gray = ImageOps.grayscale(image)
     sample = gray.copy()
