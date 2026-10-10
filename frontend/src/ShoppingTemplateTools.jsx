@@ -93,7 +93,11 @@ export default function ShoppingTemplateTools({familyId,list,onChanged}){
   setBusy(true);setError('');
   try{
    if(selectedStore){await api(`/shopping-stores/${selectedStore}/assign/`,{method:'POST',body:JSON.stringify({shopping_list:list.id})});toast(t('shoppingTemplateUi.assigned'),{type:'success'})}
-   else if(assignedStore){await api(`/shopping-stores/${assignedStore.id}/unassign/`,{method:'POST',body:JSON.stringify({shopping_list:list.id})});toast(t('shoppingTemplateUi.assignmentRemoved'),{type:'success'})}
+   else if(assignedStore){
+    await api(`/shopping-stores/${assignedStore.id}/unassign/`,{method:'POST',body:JSON.stringify({shopping_list:list.id})});
+    if(list.store===assignedStore.display_label)await api(`/shopping-lists/${list.id}/`,{method:'PATCH',body:JSON.stringify({store:''})});
+    toast(t('shoppingTemplateUi.assignmentRemoved'),{type:'success'});
+   }
    await load();await onChanged?.();
   }catch(e){setError(e.message);toast(e.message||t('shoppingTemplateUi.loadFailed'),{type:'error'})}finally{setBusy(false)}
  }
