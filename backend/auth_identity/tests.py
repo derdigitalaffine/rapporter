@@ -41,14 +41,25 @@ class EmailIdentityTests(TestCase):
         )
         self.client = APIClient()
 
-    def test_normalization_preserves_plus_and_dots_but_is_case_insensitive(self):
-        self.assertEqual(normalize_email(" Person.Name+tag@Example.COM "), "person.name+tag@example.com")
+    def test_normalization_preserves_local_part_plus_and_dots_and_folds_domain(self):
+        self.assertEqual(
+            normalize_email(" Person.Name+tag@Example.COM "),
+            "Person.Name+tag@example.com",
+        )
+        self.assertEqual(
+            normalize_email("Person.Name+tag@EXAMPLE.COM"),
+            normalize_email("Person.Name+tag@example.com"),
+        )
         self.assertNotEqual(
+            normalize_email("Person.Name+tag@example.com"),
             normalize_email("person.name+tag@example.com"),
-            normalize_email("personname@example.com"),
+        )
+        self.assertNotEqual(
+            normalize_email("Person.Name+tag@example.com"),
+            normalize_email("PersonName@example.com"),
         )
 
-    def test_normalized_identity_is_globally_unique(self):
+    def test_normalized_identity_is_globally_unique_for_same_local_and_domain(self):
         create_primary_identity(self.user, "Alice@Example.com")
         other = get_user_model().objects.create_user(
             username="other",
@@ -56,13 +67,23 @@ class EmailIdentityTests(TestCase):
             password="test-pass-123",
         )
         with self.assertRaises(EmailConflictError):
-            create_primary_identity(other, "alice@example.COM")
+            create_primary_identity(other, "Alice@example.COM")
+
+    def test_local_part_case_is_not_rewritten_into_an_existing_identity(self):
+        create_primary_identity(self.user, "Alice@Example.com")
+        other = get_user_model().objects.create_user(
+            username="other-case",
+            email="",
+            password="test-pass-123",
+        )
+        identity = create_primary_identity(other, "alice@example.com")
+        self.assertEqual(identity.email_normalized, "alice@example.com")
 
     def test_email_login_succeeds_and_username_login_is_closed_after_migration(self):
         create_primary_identity(self.user, "Alice@Example.com", verified=True)
         response = self.client.post(
             "/api/auth/login/",
-            {"email": "ALICE@example.com", "password": "test-pass-123"},
+            {"email": "Alice@EXAMPLE.COM", "password": "test-pass-123"},
             format="json",
             REMOTE_ADDR="198.51.100.101",
         )
@@ -79,10 +100,10 @@ class EmailIdentityTests(TestCase):
         self.assertEqual(legacy.status_code, 401)
 
     def test_unknown_and_wrong_email_have_same_public_response(self):
-        create_primary_identity(self.user, "alice@example.com")
+        create_primary_identity(self.user, "Alice@example.com")
         known = APIClient().post(
             "/api/auth/login/",
-            {"email": "alice@example.com", "password": "wrong-password"},
+            {"email": "Alice@example.com", "password": "wrong-password"},
             format="json",
             REMOTE_ADDR="198.51.100.103",
         )
@@ -107,7 +128,7 @@ class EmailIdentityTests(TestCase):
         self.assertTrue(response.data["email_action_required"])
 
     def test_verification_is_idempotent(self):
-        identity = queue_verification(create_primary_identity(self.user, "alice@example.com"))
+        identity = queue_verification(create_primary_identity(self.user, "Alice@example.com"))
         token = verification_token(identity)
         first = self.client.post("/api/auth/email/verify/", {"token": token}, format="json")
         second = self.client.post("/api/auth/email/verify/", {"token": token}, format="json")
@@ -120,7 +141,7 @@ class EmailIdentityTests(TestCase):
 
     @override_settings(EMAIL_VERIFICATION_MAX_AGE_SECONDS=-1)
     def test_expired_verification_token_is_rejected(self):
-        identity = queue_verification(create_primary_identity(self.user, "alice@example.com"))
+        identity = queue_verification(create_primary_identity(self.user, "Alice@example.com"))
         response = self.client.post(
             "/api/auth/email/verify/",
             {"token": verification_token(identity)},
@@ -129,7 +150,7 @@ class EmailIdentityTests(TestCase):
         self.assertEqual(response.status_code, 400)
 
     def test_resend_has_cooldown_and_uses_central_abuse_scope(self):
-        identity = create_primary_identity(self.user, "alice@example.com")
+        identity = create_primary_identity(self.user, "Alice@example.com")
         self.client.force_authenticate(self.user)
         first = self.client.post(
             "/api/auth/email/verification/resend/",
@@ -153,7 +174,7 @@ class EmailIdentityTests(TestCase):
         self.client.force_authenticate(self.user)
         response = self.client.post(
             "/api/auth/email/change/",
-            {"email": "new@example.com", "password": "test-pass-123"},
+            {"email": "new@EXAMPLE.COM", "password": "test-pass-123"},
             format="json",
             REMOTE_ADDR="198.51.100.107",
         )
@@ -191,7 +212,7 @@ class EmailIdentityTests(TestCase):
         self.client.force_authenticate(self.user)
         response = self.client.post(
             "/api/auth/email/change/",
-            {"email": "OTHER@example.com", "password": "test-pass-123"},
+            {"email": "other@EXAMPLE.COM", "password": "test-pass-123"},
             format="json",
             REMOTE_ADDR="198.51.100.108",
         )
@@ -219,7 +240,7 @@ class EmailIdentityTests(TestCase):
         response = self.client.post(
             f"/api/invite/{invite.token}/register/",
             {
-                "email": "NEW.member@Example.com",
+                "email": "new.member@Example.com",
                 "password": "new-member-pass-123",
                 "display_name": "New Member",
             },
