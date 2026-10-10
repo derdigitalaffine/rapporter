@@ -139,6 +139,14 @@ button{touch-action:manipulation}
   min-width:0;
 }
 
+/* Preserve the established desktop shell while applying the shared tokens. */
+@media(min-width:760px){
+  .app-shell{padding:0 24px 40px 126px;max-width:1100px}
+  .topbar{padding-left:0}
+  .bottom-nav{left:calc(50% - 430px);top:88px;bottom:auto;transform:none;width:96px;height:auto;grid-template-columns:1fr;background:transparent;border:0;padding:0;gap:8px}
+  .bottom-nav button{height:68px;background:var(--color-surface);border:1px solid var(--color-border);box-shadow:var(--shadow-sm)}
+}
+
 @media(prefers-reduced-motion:reduce){
   *,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
 }
