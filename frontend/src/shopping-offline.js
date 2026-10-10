@@ -28,9 +28,9 @@ export async function queueShoppingDelete(familyId,targetId){
 export async function queueShoppingTemplateApply(familyId,templateId,shoppingListId){
   const rows=await listShoppingMutations(familyId);
   const duplicate=rows.find(row=>row.type==='template_apply'&&String(row.templateId)===String(templateId)&&String(row.shoppingListId)===String(shoppingListId)&&row.status!=='failed');
-  if(duplicate)return duplicate;
+  if(duplicate)return {...duplicate,deduplicated:true};
   const mutation={id:uuid(),familyId:String(familyId),type:'template_apply',templateId:String(templateId),shoppingListId:String(shoppingListId),createdAt:Date.now(),attempts:0,status:'pending'};
-  await putShoppingMutation(mutation);return mutation;
+  await putShoppingMutation(mutation);return {...mutation,deduplicated:false};
 }
 
 export function applyShoppingMutations(lists,mutations){
