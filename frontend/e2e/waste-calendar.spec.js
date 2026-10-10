@@ -54,6 +54,7 @@ test('Calendar renders waste as compact typed special events instead of appointm
 
   await page.goto('/?page=calendar');
   await page.waitForLoadState('networkidle');
+  await page.getByRole('button',{name:'Liste',exact:true}).click();
 
   const expected={
     'Restmüll':['waste-rest','rgb(236, 239, 241)'],
