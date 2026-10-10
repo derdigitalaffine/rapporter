@@ -22,7 +22,9 @@ export default function BoardHub({family,onBack}){
 
  async function load(path=`/board/?family=${encodeURIComponent(familyId)}`,append=false){
   setLoading(true);setError('');
-  try{const data=await api(path);let incoming=unwrap(data);const target=new URLSearchParams(location.search).get('post');if(!append&&target&&!incoming.some(row=>String(row.id)===target)){try{const focused=await api(`/board/${encodeURIComponent(target)}/?family=${encodeURIComponent(familyId)}`);incoming=[focused,...incoming]}catch{}}
+  try{
+   const data=await api(path);let incoming=unwrap(data);const target=new URLSearchParams(location.search).get('post');
+   if(!append&&target&&!incoming.some(row=>String(row.id)===target)){try{const focused=await api(`/board/${encodeURIComponent(target)}/?family=${encodeURIComponent(familyId)}`);incoming=[focused,...incoming]}catch{}}
    setRows(previous=>append?[...previous,...incoming]:incoming);
    if(target)setTimeout(()=>document.getElementById(`pin-${target}`)?.scrollIntoView({block:'nearest'}),100);
    setNext(data?.next?new URL(data.next,location.origin).pathname.replace(/^\/api/,'')+new URL(data.next,location.origin).search:null);
@@ -34,21 +36,36 @@ export default function BoardHub({family,onBack}){
  function close(){setCompose(false);setEditing(null);setKind('note');setText('');setFiles([]);setTargetId('');setChoices([]);setError('')}
  function startCompose(nextKind='note'){close();setKind(nextKind);setCompose(true)}
  function addFiles(picked){if(picked.length+files.length>4||picked.some(file=>file.size>10*1024*1024)){setError(w.limit);return}setError('');setFiles(old=>[...old,...picked])}
- async function loadChoices(nextKind){setChoicesBusy(true);setChoices([]);setTargetId('');try{
-  if(nextKind==='event'){const result=unwrap(await api('/events/')).filter(row=>String(row.family)===String(familyId));setChoices(result.map(row=>({id:row.id,title:row.title,meta:formatDate(row.starts_at,en)})))}
-  else if(nextKind==='task'){const result=unwrap(await api('/tasks/')).filter(row=>String(row.family)===String(familyId)&&!row.completed_at);setChoices(result.map(row=>({id:row.id,title:row.title,meta:row.due_at?formatDate(row.due_at,en):''}))}
-  else if(nextKind==='note_ref'){const result=unwrap(await api(`/notes/?family=${encodeURIComponent(familyId)}`));setChoices(result.map(row=>({id:row.id,title:row.title||w.note_ref,meta:(row.body||'').replace(/\s+/g,' ').slice(0,90)})))}
-  else if(nextKind==='shopping'){const lists=unwrap(await api('/shopping-lists/')).filter(row=>String(row.family)===String(familyId));setChoices(lists.flatMap(list=>(list.items||[]).filter(item=>!item.checked).map(item=>({id:item.id,title:item.name,meta:list.name}))));}
- }catch(e){setError(e.message||w.failed)}finally{setChoicesBusy(false)}}
- async function submit(e){e.preventDefault();setBusy(true);setError('');try{
-  if(editing){await api(`/board/${editing.id}/`,{method:'PATCH',body:JSON.stringify({text})})}
-  else if(['note','photo'].includes(kind)){const body=new FormData();body.append('family',familyId);body.append('kind',kind);body.append('text',text);files.forEach(file=>body.append('images',file));await api('/board/',{method:'POST',body})}
-  else await api('/board/',{method:'POST',body:JSON.stringify({family:familyId,kind,target_id:targetId,text:text.trim()})});
-  close();await load();
- }catch(e){setError(e.message||w.failed)}finally{setBusy(false)}}
+ async function loadChoices(nextKind){
+  setChoicesBusy(true);setChoices([]);setTargetId('');
+  try{
+   if(nextKind==='event'){
+    const result=unwrap(await api('/events/')).filter(row=>String(row.family)===String(familyId));
+    setChoices(result.map(row=>({id:row.id,title:row.title,meta:formatDate(row.starts_at,en)})));
+   }else if(nextKind==='task'){
+    const result=unwrap(await api('/tasks/')).filter(row=>String(row.family)===String(familyId)&&!row.completed_at);
+    setChoices(result.map(row=>({id:row.id,title:row.title,meta:row.due_at?formatDate(row.due_at,en):''})));
+   }else if(nextKind==='note_ref'){
+    const result=unwrap(await api(`/notes/?family=${encodeURIComponent(familyId)}`));
+    setChoices(result.map(row=>({id:row.id,title:row.title||w.note_ref,meta:(row.body||'').replace(/\s+/g,' ').slice(0,90)})));
+   }else if(nextKind==='shopping'){
+    const lists=unwrap(await api('/shopping-lists/')).filter(row=>String(row.family)===String(familyId));
+    setChoices(lists.flatMap(list=>(list.items||[]).filter(item=>!item.checked).map(item=>({id:item.id,title:item.name,meta:list.name}))));
+   }
+  }catch(e){setError(e.message||w.failed)}finally{setChoicesBusy(false)}
+ }
+ async function submit(e){
+  e.preventDefault();setBusy(true);setError('');
+  try{
+   if(editing){await api(`/board/${editing.id}/`,{method:'PATCH',body:JSON.stringify({text})})}
+   else if(['note','photo'].includes(kind)){const body=new FormData();body.append('family',familyId);body.append('kind',kind);body.append('text',text);files.forEach(file=>body.append('images',file));await api('/board/',{method:'POST',body})}
+   else await api('/board/',{method:'POST',body:JSON.stringify({family:familyId,kind,target_id:targetId,text:text.trim()})});
+   close();await load();
+  }catch(e){setError(e.message||w.failed)}finally{setBusy(false)}
+ }
  async function removePhoto(image){setBusy(true);try{await api(`/board-images/${image.id}/`,{method:'DELETE'});setEditing(old=>({...old,images:old.images.filter(row=>row.id!==image.id)}));await load()}catch(e){setError(e.message)}finally{setBusy(false)}}
  async function remove(row){if(!await confirmAction({title:w.confirm,confirmLabel:w.remove,cancelLabel:w.cancel,danger:true}))return;setBusy(true);try{await api(`/board/${row.id}/`,{method:'DELETE'});setRows(old=>old.filter(pin=>pin.id!==row.id))}catch(e){setError(e.message)}finally{setBusy(false)}}
- async function move(row,delta){const index=rows.findIndex(item=>item.id===row.id),other=index+delta;if(index<0||other<0||other>=rows.length)return;const reordered=[...rows];[reordered[index],reordered[other]]=[reordered[other],reordered[index]];setRows(reordered);try{await api('/board/reorder/',{method:'POST',body:JSON.stringify({family:familyId,ids:reordered.map(item=>item.id)})})}catch(e){setRows(rows);setError(e.message||w.failed)}}
+ async function move(row,delta){const index=rows.findIndex(item=>item.id===row.id),other=index+delta;if(index<0||other<0||other>=rows.length)return;const before=rows;const reordered=[...rows];[reordered[index],reordered[other]]=[reordered[other],reordered[index]];setRows(reordered);try{await api('/board/reorder/',{method:'POST',body:JSON.stringify({family:familyId,ids:reordered.map(item=>item.id)})})}catch(e){setRows(before);setError(e.message||w.failed)}}
  const selected=useMemo(()=>choices.find(item=>String(item.id)===String(targetId)),[choices,targetId]);
 
  return <section className="board-hub"><header className="page-head board-head"><button className="icon-btn" aria-label={w.back} onClick={onBack}><Icon name="back"/></button><div className="grow"><small>{w.eyebrow}</small><h1>{w.title}</h1><p>{w.hint}</p></div>{canPost&&!compose&&<button className="primary board-pin-button" onClick={()=>startCompose()}><Icon name="plus"/> {w.pin}</button>}</header>
