@@ -32,4 +32,5 @@ LIGHT_CAPABILITY_KEYS = frozenset(spec.key for spec in CAPABILITY_SPECS if spec.
 PREMIUM_CAPABILITY_KEYS = frozenset(spec.key for spec in CAPABILITY_SPECS if spec.premium)
 FULL_ACCESS_PLAN_KEYS = frozenset({"premium", "vip"})
 VALID_PLAN_KEYS = frozenset({"light", *FULL_ACCESS_PLAN_KEYS})
-LEGACY_SOURCE_REF = "migration:legacy-vip-v1"
+COMMERCIAL_CUTOVER_KEY = "commercial-v1"
+LEGACY_SOURCE_REF = "commercial-cutover:legacy-vip-v1"
