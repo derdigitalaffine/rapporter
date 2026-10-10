@@ -63,7 +63,9 @@ export default function ShoppingTemplateTools({familyId,list,onChanged}){
  async function applyTemplate(template){
   if(busy||!list)return;
   if(!online){
-   await queueShoppingTemplateApply(familyId,template.id,list.id);toast(t('shoppingTemplateUi.applyQueued'),{type:'success'});return;
+   const queued=await queueShoppingTemplateApply(familyId,template.id,list.id);
+   if(!queued.deduplicated)toast(t('shoppingTemplateUi.applyQueued'),{type:'success'});
+   return;
   }
   setBusy(true);setError('');
   try{
