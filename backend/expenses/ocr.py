@@ -1,6 +1,5 @@
 import io
 import re
-import threading
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
 
@@ -241,6 +240,10 @@ def process_receipt_extraction(extraction_id):
 
 
 def enqueue_receipt_extraction(extraction_id):
-    thread = threading.Thread(target=process_receipt_extraction, args=(extraction_id,), daemon=True, name=f"receipt-{extraction_id}")
-    thread.start()
-    return thread
+    """Wake-up compatibility hook; durable workers own OCR execution.
+
+    The queued database row is the source of truth. Request processes must never
+    spawn OCR threads. Existing callers may keep invoking this hook while the
+    legacy receipt model is migrated to the shared document-processing core.
+    """
+    return None
