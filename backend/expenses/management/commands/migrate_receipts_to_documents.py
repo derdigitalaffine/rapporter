@@ -17,9 +17,10 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         batch_size = max(1, options["batch_size"])
         max_items = max(0, options["max_items"])
+        # Content detection is byte-based in Document Core, so a legacy row with
+        # missing/incorrect MIME metadata is still a valid backfill candidate.
         queryset = (
             Expense.objects.filter(receipt_document__isnull=True, receipt_content__isnull=False)
-            .exclude(receipt_mime="")
             .select_related("paid_by", "created_by", "receipt_document")
             .order_by("created_at", "id")
         )
