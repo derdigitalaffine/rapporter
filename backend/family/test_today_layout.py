@@ -5,7 +5,7 @@ from django.test import TestCase
 from rest_framework.test import APIClient
 
 from .models import Family, Membership, TodayLayout
-from .today_layout_views import DEFAULT_WIDGETS, LEGACY_WIDGET_IDS
+from .today_layout_views import DEFAULT_WIDGET_ORDER, DEFAULT_WIDGETS, LEGACY_WIDGET_IDS
 
 
 class TodayLayoutTests(TestCase):
@@ -24,6 +24,8 @@ class TodayLayoutTests(TestCase):
         initial = self.client.get(self.url)
         self.assertEqual(initial.status_code, 200)
         self.assertEqual(initial.data['revision'], 0)
+        self.assertEqual([row['id'] for row in initial.data['widgets']], list(DEFAULT_WIDGET_ORDER))
+        self.assertTrue(all(row['visible'] for row in initial.data['widgets']))
         self.assertFalse(TodayLayout.objects.exists())
         config = deepcopy(initial.data); config['widgets'].reverse(); config['widgets'][0].update(visible=False, size='compact')
         saved = self.client.put(self.url, config, format='json')
@@ -53,6 +55,16 @@ class TodayLayoutTests(TestCase):
         )
         stored = TodayLayout.objects.get(family=self.family, user=self.user)
         self.assertEqual(stored.widgets, legacy)
+
+    def test_saved_custom_order_is_never_replaced_by_new_reference_default(self):
+        custom = deepcopy(DEFAULT_WIDGETS)
+        custom = custom[3:] + custom[:3]
+        custom[0].update(visible=False, size='compact')
+        TodayLayout.objects.create(family=self.family, user=self.user, widgets=custom, revision=7)
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['revision'], 7)
+        self.assertEqual(response.data['widgets'], custom)
 
     def test_stale_writes_do_not_overwrite(self):
         initial = self.client.get(self.url).data
