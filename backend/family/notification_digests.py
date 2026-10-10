@@ -5,6 +5,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from django.db import transaction
 from django.utils import timezone
 
+from .badges import badge_count as current_badge_count
 from .models import Family, Membership, ShoppingItem, ShoppingList
 from .models_features import NotificationBatch, NotificationPreference
 from .push import send_user_push
@@ -167,7 +168,7 @@ def flush_notification_batches(now=None, limit=100):
                 continue
             title, body, url = _render(batch, events)
             try:
-                result = send_user_push(member.user, title, body, url, tag=f"fam-uh-le:{member.family_id}:{batch.bucket}")
+                result = send_user_push(member.user, title, body, url, tag=f"fam-uh-le:{member.family_id}:{batch.bucket}", badge_count=current_badge_count(member.user))
             except Exception:
                 result = {"sent": 0, "errors": 1}
             sent += result.get("sent", 0)
