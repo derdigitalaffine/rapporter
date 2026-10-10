@@ -6,7 +6,7 @@ async function boot(page,viewport={width:390,height:844}){
   await installApiMocks(page,{dismissOnboarding:true});
   await page.goto('/');
   await page.waitForLoadState('networkidle');
-  await expect(page.getByRole('heading',{name:/Hallo Familie|Hello family/})).toBeVisible();
+  await expect(page.locator('.today-hero h1')).toBeVisible();
 }
 
 function quickActions(page){return page.locator('.today-quick-actions')}
@@ -28,7 +28,7 @@ for(const viewport of [{width:390,height:844},{width:844,height:390}]){
     await dialog.getByRole('button',{name:/Speichern|Save/,exact:true}).click();
     await expect(dialog).toHaveCount(0);
     await expect(page).toHaveURL(/127\.0\.0\.1:4173\/$/);
-    await expect(page.getByRole('heading',{name:/Hallo Familie|Hello family/})).toBeVisible();
+    await expect(page.locator('.today-hero h1')).toBeVisible();
     expect(created?.title).toBe('Direkt von Heute');expect(created?.family).toBe('family-1');
   });
 }

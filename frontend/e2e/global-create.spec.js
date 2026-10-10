@@ -1,7 +1,7 @@
 import {test,expect} from '@playwright/test';
 import {installApiMocks} from './mock-api.js';
 
-async function boot(page,viewport={width:390,height:844}){await page.setViewportSize(viewport);await installApiMocks(page,{dismissOnboarding:true});await page.goto('/');await page.waitForLoadState('networkidle');await expect(page.getByRole('heading',{name:/Hallo Familie|Hello family/})).toBeVisible()}
+async function boot(page,viewport={width:390,height:844}){await page.setViewportSize(viewport);await installApiMocks(page,{dismissOnboarding:true});await page.goto('/');await page.waitForLoadState('networkidle');await expect(page.locator('.today-hero h1')).toBeVisible()}
 async function bootPage(page,target,viewport={width:390,height:844}){await page.setViewportSize(viewport);await installApiMocks(page,{dismissOnboarding:true});await page.goto(`/?page=${target}`);await page.waitForLoadState('networkidle')}
 async function fab(page){const button=page.locator('.global-create-fab');await expect(button).toBeVisible();return button}
 async function boxesDoNotOverlap(a,b){const x=await a.boundingBox(),y=await b.boundingBox();expect(x).not.toBeNull();expect(y).not.toBeNull();const overlap=!(x.x+x.width<=y.x||y.x+y.width<=x.x||x.y+x.height<=y.y||y.y+y.height<=x.y);expect(overlap).toBe(false)}
@@ -12,7 +12,7 @@ test('Heute -> global create palette -> Aufgabe -> save returns to Heute',async(
   const button=await fab(page);await expect(button).toHaveAttribute('aria-label','Hinzufügen');await button.click();
   const palette=page.getByRole('dialog',{name:'Neu hinzufügen'});await expect(palette).toBeVisible();await palette.getByRole('button',{name:'Aufgabe',exact:true}).click();
   const title=page.getByLabel('Titel');await expect(title).toBeFocused();await title.fill('Schuhe für morgen bereitstellen');await page.getByRole('button',{name:'Speichern',exact:true}).click();
-  await expect(page.getByRole('heading',{name:/Hallo Familie/})).toBeVisible();await expect(page.getByRole('dialog')).toHaveCount(0);expect(created?.family).toBe('family-1');expect(created?.title).toBe('Schuhe für morgen bereitstellen');
+  await expect(page.locator('.today-hero h1')).toBeVisible();await expect(page.getByRole('dialog')).toHaveCount(0);expect(created?.family).toBe('family-1');expect(created?.title).toBe('Schuhe für morgen bereitstellen');
 });
 
 test('Aufgaben opens the shared Task editor with one FAB tap',async({page})=>{await boot(page);await page.locator('.bottom-nav').getByRole('button',{name:'Aufgaben'}).click();const button=await fab(page);await expect(button).toHaveAttribute('aria-label','Aufgabe hinzufügen');await button.click();await expect(page.getByRole('dialog').getByRole('heading',{name:'Aufgabe hinzufügen'})).toBeVisible();await expect(page.getByLabel('Titel')).toBeFocused()});

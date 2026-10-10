@@ -1,20 +1,16 @@
 /*
  * Canonical adaptive layout layer for FamilyOS.
  *
- * Layout modes are based on usable viewport space rather than device names:
- * - compact: default / phones (mobile-safety.css owns the final phone guards)
- * - medium: >=760px with enough height for a navigation rail
- * - large: >=960px with enough height for a persistent labelled sidebar
- *
- * Keep shell/navigation/grid breakpoints here. Feature styles should describe
- * their components, not invent additional app-shell breakpoints.
+ * The primary information architecture stays stable across viewport sizes:
+ * the five main destinations always live in the same bottom navigation.
+ * Larger screens gain content width and denser grids, not a different nav model.
  */
 :root{
   --content-reading:680px;
   --content-wide:1240px;
   --content-max:1320px;
   --shell-max:1560px;
-  --side-nav-width:148px;
+  --bottom-nav-height:76px;
 }
 
 html,body,#root{max-width:100%;overflow-x:hidden}
@@ -29,58 +25,61 @@ html,body,#root{max-width:100%;overflow-x:hidden}
   .today-important-grid{grid-template-columns:minmax(0,1fr)}
 }
 
-/*
- * Medium and large layouts require enough vertical room. This deliberately
- * excludes wide phones such as 844x390; mobile-safety.css also contains a
- * defensive reset for those viewports.
- */
 @media (min-width:760px) and (min-height:621px){
   .app-shell{
     width:100%;
     max-width:1180px;
     margin:0 auto;
-    padding:0 28px 48px calc(var(--side-nav-width) + 32px);
+    padding:0 28px calc(var(--bottom-nav-height) + 34px + env(safe-area-inset-bottom));
   }
   .topbar{min-height:72px;padding-left:0;padding-right:0}
-  .content{width:100%;max-width:none;padding:20px 0 96px}
+  .content{width:100%;max-width:none;padding:20px 0 24px}
 
+  /* Reset the legacy desktop rail into the same five-destination bottom control. */
   .bottom-nav{
     position:fixed;
-    left:max(20px,calc(50vw - 590px + 20px));
-    top:92px;
-    bottom:auto;
-    transform:none;
-    width:var(--side-nav-width);
-    height:auto;
-    padding:0;
-    border:0;
-    background:transparent;
-    backdrop-filter:none;
+    top:auto;
+    right:auto;
+    bottom:0;
+    left:50%;
+    z-index:30;
+    transform:translateX(-50%);
+    width:min(760px,calc(100vw - 48px));
+    height:calc(var(--bottom-nav-height) + env(safe-area-inset-bottom));
+    padding:7px 12px calc(7px + env(safe-area-inset-bottom));
+    border:1px solid var(--line);
+    border-bottom:0;
+    border-radius:22px 22px 0 0;
+    background:rgba(255,255,255,.95);
+    backdrop-filter:blur(20px);
+    -webkit-backdrop-filter:blur(20px);
     display:grid;
-    grid-template-columns:1fr;
-    gap:9px;
+    grid-template-columns:repeat(5,minmax(0,1fr));
+    gap:0;
+    box-shadow:0 -12px 34px rgba(28,58,60,.08);
   }
   .bottom-nav button{
     min-width:0;
-    min-height:58px;
+    min-height:52px;
     height:auto;
-    display:grid;
-    grid-template-columns:30px minmax(0,1fr);
-    justify-items:start;
+    padding:4px 8px;
+    border:0;
+    border-radius:12px;
+    background:transparent;
+    box-shadow:none;
+    display:flex;
+    flex-direction:column;
     align-items:center;
-    gap:9px;
-    padding:10px 12px;
-    border:1px solid var(--line);
-    border-radius:15px;
-    background:var(--surface);
-    box-shadow:var(--shadow-sm);
-    font-size:12px;
-    text-align:left;
+    justify-content:center;
+    gap:3px;
+    color:#7c898a;
+    font-size:11px;
+    text-align:center;
   }
-  .bottom-nav button svg{justify-self:center}
-  .bottom-nav button span{display:block;min-width:0;white-space:normal;overflow-wrap:anywhere;line-height:1.1}
-  .bottom-nav button.active{background:var(--green-soft);border-color:color-mix(in srgb,var(--green) 25%,var(--line));color:var(--green)}
-  .bottom-nav i{top:6px;right:7px}
+  .bottom-nav button svg{justify-self:auto}
+  .bottom-nav button span{display:block;max-width:100%;white-space:normal;overflow-wrap:anywhere;line-height:1.1}
+  .bottom-nav button.active{border-color:transparent;background:transparent;color:var(--green);font-weight:800}
+  .bottom-nav i{top:3px;right:24%}
 
   .smart-page,.today-page{max-width:none}
   .smart-head,.page-head{align-items:flex-start}
@@ -107,10 +106,8 @@ html,body,#root{max-width:100%;overflow-x:hidden}
 }
 
 @media (min-width:960px) and (min-height:621px){
-  :root{--side-nav-width:154px}
-  .app-shell{max-width:1480px;padding-left:194px;padding-right:40px}
-  .content{max-width:var(--content-wide)}
-  .bottom-nav{left:max(28px,calc(50vw - 740px + 28px));width:var(--side-nav-width)}
+  .app-shell{max-width:1480px;padding-left:40px;padding-right:40px}
+  .app-shell .content{max-width:var(--content-wide);margin-inline:auto}
 
   .today-main-grid{grid-template-columns:minmax(0,1.2fr) minmax(320px,.8fr);gap:20px}
   .today-important-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
@@ -123,9 +120,8 @@ html,body,#root{max-width:100%;overflow-x:hidden}
 }
 
 @media (min-width:1180px) and (min-height:621px){
-  .app-shell{max-width:var(--shell-max);padding-left:206px;padding-right:52px}
-  .content{max-width:var(--content-max)}
-  .bottom-nav{left:max(30px,calc(50vw - 780px + 30px));width:158px}
+  .app-shell{max-width:var(--shell-max);padding-left:52px;padding-right:52px}
+  .app-shell .content{max-width:var(--content-max)}
   .today-main-grid{grid-template-columns:minmax(0,1.25fr) minmax(360px,.75fr);gap:22px}
   .shopping-page .shopping-groups{gap:18px}
   .integration-group>.stack{grid-template-columns:repeat(2,minmax(0,1fr))}
@@ -149,12 +145,12 @@ html,body,#root{max-width:100%;overflow-x:hidden}
 @supports(padding:max(0px)){
   .app-shell{padding-left:env(safe-area-inset-left);padding-right:env(safe-area-inset-right)}
   @media(min-width:760px) and (min-height:621px){
-    .app-shell{padding-left:max(calc(var(--side-nav-width) + 32px),env(safe-area-inset-left));padding-right:max(28px,env(safe-area-inset-right))}
+    .app-shell{padding-left:max(28px,env(safe-area-inset-left));padding-right:max(28px,env(safe-area-inset-right))}
   }
   @media(min-width:960px) and (min-height:621px){
-    .app-shell{padding-left:max(194px,env(safe-area-inset-left));padding-right:max(40px,env(safe-area-inset-right))}
+    .app-shell{padding-left:max(40px,env(safe-area-inset-left));padding-right:max(40px,env(safe-area-inset-right))}
   }
   @media(min-width:1180px) and (min-height:621px){
-    .app-shell{padding-left:max(206px,env(safe-area-inset-left));padding-right:max(52px,env(safe-area-inset-right))}
+    .app-shell{padding-left:max(52px,env(safe-area-inset-left));padding-right:max(52px,env(safe-area-inset-right))}
   }
 }
