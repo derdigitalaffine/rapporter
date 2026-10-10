@@ -219,5 +219,12 @@ def enrich_extraction(result):
             source_type="derived",
         )
     )
-    result.fields.extend(EXTRACTOR_REGISTRY[classification.kind](result))
+    typed_fields = EXTRACTOR_REGISTRY[classification.kind](result)
+    result.fields.extend(typed_fields)
+    # The intelligence layer is a proposal layer. A concrete classification or
+    # any typed suggestion must stay in REVIEW even when the source PDF was
+    # born-digital and OCR itself needed no human review. Only a truly generic
+    # document without typed proposals may remain READY.
+    if classification.kind != "generic" or typed_fields:
+        result.needs_review = True
     return result
