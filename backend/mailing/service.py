@@ -64,6 +64,10 @@ TEMPLATE_SPECS = {
 _REFERENCE_RESOLVERS = {}
 
 
+class IdempotencyConflictError(ValueError):
+    """The same message key was reused for a semantically different delivery."""
+
+
 def register_reference_resolver(reference_type, resolver):
     _REFERENCE_RESOLVERS[reference_type] = resolver
 
@@ -89,6 +93,25 @@ def _validate_context(context):
             raise ValueError(f"Mail context value is too long: {key}")
 
 
+def _assert_same_delivery(row, *, template_key, locale, recipient_hash, reference_type, reference_id):
+    expected = (
+        template_key,
+        locale,
+        recipient_hash,
+        reference_type,
+        reference_id,
+    )
+    actual = (
+        row.template_key,
+        row.locale,
+        row.recipient_hash,
+        row.reference_type,
+        row.reference_id,
+    )
+    if actual != expected:
+        raise IdempotencyConflictError("Transactional mail message_key is already used for a different delivery.")
+
+
 def enqueue_transactional_email(*, message_key, template_key, recipient, locale="de", context=None,
                                 reference_type="", reference_id=""):
     if template_key not in TEMPLATE_SPECS:
@@ -99,20 +122,32 @@ def enqueue_transactional_email(*, message_key, template_key, recipient, locale=
     context = context or {}
     _validate_context(context)
     locale = "en" if str(locale).lower().startswith("en") else "de"
+    reference_type = str(reference_type or "")
+    reference_id = str(reference_id or "")
+    recipient_hash = _recipient_hash(normalized_recipient)
     now = timezone.now()
-    row, _ = TransactionalEmail.objects.get_or_create(
+    row, created = TransactionalEmail.objects.get_or_create(
         message_key=message_key,
         defaults={
             "template_key": template_key,
             "locale": locale,
             "recipient": normalized_recipient,
-            "recipient_hash": _recipient_hash(normalized_recipient),
+            "recipient_hash": recipient_hash,
             "context": context,
             "reference_type": reference_type,
-            "reference_id": str(reference_id or ""),
+            "reference_id": reference_id,
             "next_attempt_at": now,
         },
     )
+    if not created:
+        _assert_same_delivery(
+            row,
+            template_key=template_key,
+            locale=locale,
+            recipient_hash=recipient_hash,
+            reference_type=reference_type,
+            reference_id=reference_id,
+        )
     return row
 
 
@@ -162,14 +197,38 @@ def _message_id(row):
     return f"<{digest}@{host}>"
 
 
+def _clear_terminal_failure(row, *, now, error_code):
+    row.status = TransactionalEmail.Status.FAILED
+    row.last_error_code = error_code
+    row.payload_cleared_at = now
+    row.recipient = ""
+    row.context = {}
+    row.lease_token = None
+    row.lease_expires_at = None
+
+
 def claim_due_email(now=None):
     now = now or timezone.now()
     due = Q(status__in=[TransactionalEmail.Status.QUEUED, TransactionalEmail.Status.RETRY], next_attempt_at__lte=now)
     expired_lease = Q(status=TransactionalEmail.Status.SENDING, lease_expires_at__lte=now)
+    claimable = due | expired_lease
     with transaction.atomic():
+        exhausted = (
+            TransactionalEmail.objects.select_for_update(skip_locked=True)
+            .filter(claimable, attempt_count__gte=MAX_ATTEMPTS)
+            .order_by("next_attempt_at", "created_at")
+            .first()
+        )
+        if exhausted:
+            _clear_terminal_failure(exhausted, now=now, error_code="attempts_exhausted")
+            exhausted.save(update_fields=[
+                "status", "last_error_code", "payload_cleared_at", "recipient", "context",
+                "lease_token", "lease_expires_at", "updated_at",
+            ])
+
         row = (
             TransactionalEmail.objects.select_for_update(skip_locked=True)
-            .filter(due | expired_lease)
+            .filter(claimable, attempt_count__lt=MAX_ATTEMPTS)
             .order_by("next_attempt_at", "created_at")
             .first()
         )
@@ -231,14 +290,18 @@ def _finalize_failure(row, exc):
             locked.status = TransactionalEmail.Status.RETRY
             delay = BASE_RETRY_SECONDS * (2 ** max(0, locked.attempt_count - 1))
             locked.next_attempt_at = now + timedelta(seconds=min(delay, 3600))
+            locked.last_error_code = error_code
+            locked.lease_token = None
+            locked.lease_expires_at = None
+            locked.save(update_fields=[
+                "status", "next_attempt_at", "last_error_code", "lease_token", "lease_expires_at", "updated_at",
+            ])
         else:
-            locked.status = TransactionalEmail.Status.FAILED
-        locked.last_error_code = error_code
-        locked.lease_token = None
-        locked.lease_expires_at = None
-        locked.save(update_fields=[
-            "status", "next_attempt_at", "last_error_code", "lease_token", "lease_expires_at", "updated_at",
-        ])
+            _clear_terminal_failure(locked, now=now, error_code=error_code)
+            locked.save(update_fields=[
+                "status", "last_error_code", "payload_cleared_at", "recipient", "context",
+                "lease_token", "lease_expires_at", "updated_at",
+            ])
     return True
 
 
