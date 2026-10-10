@@ -8,6 +8,7 @@ from rest_framework.decorators import api_view
 from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
 from rest_framework.response import Response
 
+from .birthday_context import sync_birthday_gift_plan_context
 from .birthdays import can_plan, local_now, next_occurrence, plan_query, project, targets
 from .models import BirthdayGiftPlan, BirthdayPerson, Family, Membership, ShoppingItem, ShoppingList, Task, TaskList
 from .views import family_ids
@@ -124,4 +125,5 @@ def gift_plan(request):
         plan.linked_shopping_item=ShoppingItem.objects.create(shopping_list=shopping_list,name=plan.idea_text.strip()[:160] or (f"Gift for {target['name']}" if english else f"Geschenk für {target['name']}"),added_by=request.user,birthday_context=plan.id,hidden_from_user_id=target['target_user'])
         if plan.status in {'none','idea'}:plan.status='planned'
     plan.save()
+    sync_birthday_gift_plan_context(plan, user=request.user)
     return Response(next(x for x in project(family,request.user,today) if x['key']==target['key']))
