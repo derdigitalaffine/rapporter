@@ -1,56 +1,28 @@
-from django.conf import settings
 from django.contrib.auth import get_user_model
 from rest_framework import permissions, status
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view, authentication_classes, permission_classes
 from rest_framework.exceptions import APIException
 from rest_framework.response import Response
-from rest_framework_simplejwt.serializers import TokenObtainPairSerializer, TokenRefreshSerializer
-from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
 from auth_abuse.service import enforce, forgive
-
-from .authentication import ACCESS_COOKIE, REFRESH_COOKIE
+from auth_sessions.cookies import REFRESH_COOKIE, clear_token_cookies, set_token_cookies
+from auth_sessions.models import AuthSession
+from auth_sessions.service import (
+    SessionUnavailable,
+    create_session,
+    revoke_from_refresh,
+    rotate_refresh,
+    serialize_session,
+)
 
 
 LOGIN_FAILURE_DETAIL = "Anmeldung fehlgeschlagen."
 
 
-def _cookie_secure():
-    return not settings.DEBUG
-
-
-def set_token_cookies(response, access, refresh=None):
-    response.set_cookie(
-        ACCESS_COOKIE,
-        str(access),
-        max_age=int(settings.SIMPLE_JWT["ACCESS_TOKEN_LIFETIME"].total_seconds()),
-        httponly=True,
-        secure=_cookie_secure(),
-        samesite="Lax",
-        path="/",
-    )
-    if refresh is not None:
-        response.set_cookie(
-            REFRESH_COOKIE,
-            str(refresh),
-            max_age=int(settings.SIMPLE_JWT["REFRESH_TOKEN_LIFETIME"].total_seconds()),
-            httponly=True,
-            secure=_cookie_secure(),
-            samesite="Lax",
-            path="/",
-        )
-    return response
-
-
-def set_user_cookies(response, user):
-    refresh = RefreshToken.for_user(user)
-    return set_token_cookies(response, refresh.access_token, refresh)
-
-
-def clear_token_cookies(response):
-    response.delete_cookie(ACCESS_COOKIE, path="/", samesite="Lax")
-    response.delete_cookie(REFRESH_COOKIE, path="/", samesite="Lax")
-    return response
+def set_user_cookies(response, user, request=None, *, auth_method=AuthSession.AuthMethod.PASSWORD):
+    _session, access, refresh = create_session(user, request, auth_method=auth_method)
+    return set_token_cookies(response, access, refresh)
 
 
 def _login_identifier(request):
@@ -72,6 +44,7 @@ def _rate_limited_login_response(decision):
 
 
 @api_view(["POST"])
+@authentication_classes([])
 @permission_classes([permissions.AllowAny])
 def login_view(request):
     identifier = _login_identifier(request)
@@ -87,32 +60,48 @@ def login_view(request):
         # a wrong password. Rate-limit keys behave identically for all values.
         return Response({"detail": LOGIN_FAILURE_DETAIL}, status=status.HTTP_401_UNAUTHORIZED)
 
-    data = serializer.validated_data
     forgive("login.password", request=request, identifier=identifier)
-    response = Response({"authenticated": True})
-    return set_token_cookies(response, data["access"], data["refresh"])
+    session, access, refresh = create_session(serializer.user, request)
+    response = Response(
+        {
+            "authenticated": True,
+            "session": serialize_session(session, current_sid=session.pk),
+        }
+    )
+    return set_token_cookies(response, access, refresh)
 
 
 @api_view(["POST"])
+@authentication_classes([])
 @permission_classes([permissions.AllowAny])
 def refresh_view(request):
-    refresh = request.COOKIES.get(REFRESH_COOKIE)
-    if not refresh:
+    raw_refresh = request.COOKIES.get(REFRESH_COOKIE)
+    if not raw_refresh:
         return Response({"detail": "Keine aktive Sitzung."}, status=status.HTTP_401_UNAUTHORIZED)
-    serializer = TokenRefreshSerializer(data={"refresh": refresh})
     try:
-        serializer.is_valid(raise_exception=True)
-    except Exception:
-        response = Response({"detail": "Sitzung abgelaufen."}, status=status.HTTP_401_UNAUTHORIZED)
+        result = rotate_refresh(raw_refresh)
+    except SessionUnavailable as exc:
+        response = Response(
+            {"detail": str(exc.detail), "code": exc.get_codes()},
+            status=status.HTTP_401_UNAUTHORIZED,
+        )
         return clear_token_cookies(response)
-    data = serializer.validated_data
+
+    if result.parallel_conflict:
+        # Another same-browser tab won the row lock and already rotated the
+        # shared cookie. Returning success without a second rotation avoids a
+        # false-positive compromise response.
+        return Response({"authenticated": True, "parallel_refresh": True})
+
     response = Response({"authenticated": True})
-    return set_token_cookies(response, data["access"], data.get("refresh"))
+    return set_token_cookies(response, result.access, result.refresh)
 
 
 @api_view(["POST"])
+@authentication_classes([])
 @permission_classes([permissions.AllowAny])
 def logout_view(request):
+    revoke_from_refresh(request.COOKIES.get(REFRESH_COOKIE), reason="logout")
     response = Response({"authenticated": False})
     return clear_token_cookies(response)
 
@@ -120,6 +109,7 @@ def logout_view(request):
 @api_view(["GET"])
 @permission_classes([permissions.IsAuthenticated])
 def session_view(request):
+    session = getattr(request, "auth_session", None)
     return Response(
         {
             "authenticated": True,
@@ -129,5 +119,6 @@ def session_view(request):
                 "email": request.user.email,
                 "is_superadmin": bool(request.user.is_superuser),
             },
+            "session": serialize_session(session, current_sid=session.pk) if session else None,
         }
     )
