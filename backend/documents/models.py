@@ -116,6 +116,7 @@ class DocumentProcessingRun(models.Model):
     normalized_text = models.TextField(blank=True)
     quality_data = models.JSONField(default=dict, blank=True)
     attempts = models.PositiveIntegerField(default=0)
+    claim_token = models.UUIDField(null=True, blank=True, editable=False)
     queued_at = models.DateTimeField(default=timezone.now, db_index=True)
     started_at = models.DateTimeField(null=True, blank=True)
     processing_started_at = models.DateTimeField(null=True, blank=True)
