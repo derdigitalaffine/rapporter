@@ -59,7 +59,7 @@ jobs:
           cache-dependency-path: backend/requirements.txt
       - run: pip install -r backend/requirements.txt
       - working-directory: backend
-        run: python manage.py makemigrations auth_abuse family expenses baby pets documents mailing --check --dry-run
+        run: python manage.py makemigrations auth_abuse telemetry family expenses baby pets documents mailing --check --dry-run
       - working-directory: backend
         run: python manage.py migrate && python manage.py check
       - working-directory: backend
