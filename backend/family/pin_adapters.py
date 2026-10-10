@@ -245,6 +245,60 @@ class TripPinAdapter(ContextBackedPinAdapter):
         }
 
 
+class DocumentPinAdapter(PinAdapter):
+    key = BoardPost.Kind.DOCUMENT
+
+    def queryset(self, user):
+        raise RuntimeError('Document pin adapters require a family scope.')
+
+    def _visible(self, user, family_ids, *, include_archived=False):
+        # Import lazily so the Documents domain remains the sole owner of its ACL
+        # without introducing a family.models <-> documents.access import cycle.
+        from documents.access import visible_documents_for_user
+
+        return visible_documents_for_user(
+            user,
+            family_ids,
+            include_archived=include_archived,
+            include_domain_managed=False,
+        )
+
+    def can_view(self, user, family_id, target_id):
+        return self._visible(user, [family_id], include_archived=True).filter(pk=target_id).exists()
+
+    def can_pin(self, user, family_id, target_id):
+        return self._visible(user, [family_id]).filter(pk=target_id).exists()
+
+    def lifecycle_state(self, target):
+        return 'archived' if target.archived_at else 'available'
+
+    def preview(self, row):
+        subtitle = row.correspondent or (row.document_date.isoformat() if row.document_date else None)
+        return {
+            'id': str(row.id),
+            'kind': 'document',
+            'title': row.title,
+            'subtitle': subtitle,
+            'lifecycle': self.lifecycle_state(row),
+            'url': f'/api/documents/{row.id}/file/',
+        }
+
+    def resolve_many(self, posts, user):
+        posts = [post for post in posts if post.target_id]
+        if not posts:
+            return {}
+
+        target_ids = {post.target_id for post in posts}
+        family_ids = {post.family_id for post in posts}
+        rows = self._visible(user, family_ids, include_archived=True).filter(pk__in=target_ids)
+        by_key = {(row.family_id, row.id): row for row in rows}
+        return {
+            post.id: self.preview(by_key[(post.family_id, post.target_id)])
+            for post in posts
+            if (post.family_id, post.target_id) in by_key
+        }
+
+
 PIN_ADAPTERS = {}
 
 
@@ -263,6 +317,7 @@ for adapter in (
     ShoppingItemPinAdapter(),
     ShoppingListPinAdapter(),
     TripPinAdapter(),
+    DocumentPinAdapter(),
 ):
     register_pin_adapter(adapter)
 
