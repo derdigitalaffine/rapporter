@@ -36,7 +36,7 @@ class TodayLayoutTests(TestCase):
         self.assertEqual(self.client.put(self.url, initial.data, format='json').status_code, 200)
         self.assertEqual(TodayLayout.objects.count(), 2)
 
-    def test_legacy_saved_layout_is_expanded_without_changing_existing_settings(self):
+    def test_legacy_saved_layout_restores_trip_without_changing_existing_settings(self):
         legacy = [
             {'id': key, 'visible': key != 'weather', 'size': 'compact' if key == 'tasks' else 'full'}
             for key in LEGACY_WIDGET_IDS
@@ -45,14 +45,16 @@ class TodayLayoutTests(TestCase):
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data['revision'], 3)
-        self.assertEqual(response.data['widgets'][:len(legacy)], legacy)
-        self.assertEqual(
-            response.data['widgets'][len(legacy):],
-            [
-                {'id': 'loyalty', 'visible': False, 'size': 'full'},
-                {'id': 'inbox', 'visible': False, 'size': 'full'},
-            ],
-        )
+        expanded = response.data['widgets']
+        self.assertEqual([row for row in expanded if row['id'] in LEGACY_WIDGET_IDS], legacy)
+        trip_index = next(index for index, row in enumerate(expanded) if row['id'] == 'trip')
+        priority_index = next(index for index, row in enumerate(expanded) if row['id'] == 'priority')
+        self.assertEqual(trip_index, priority_index + 1)
+        self.assertEqual(expanded[trip_index], {'id': 'trip', 'visible': True, 'size': 'full'})
+        self.assertEqual(expanded[-2:], [
+            {'id': 'loyalty', 'visible': False, 'size': 'full'},
+            {'id': 'inbox', 'visible': False, 'size': 'full'},
+        ])
         stored = TodayLayout.objects.get(family=self.family, user=self.user)
         self.assertEqual(stored.widgets, legacy)
 
@@ -65,6 +67,20 @@ class TodayLayoutTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data['revision'], 7)
         self.assertEqual(response.data['widgets'], custom)
+
+    def test_square_size_is_allowed_only_for_supported_widgets(self):
+        valid = {'version': 1, 'revision': 0, 'widgets': deepcopy(DEFAULT_WIDGETS)}
+        trip = next(row for row in valid['widgets'] if row['id'] == 'trip')
+        trip['size'] = 'square'
+        saved = self.client.put(self.url, valid, format='json')
+        self.assertEqual(saved.status_code, 200)
+        self.assertEqual(next(row for row in saved.data['widgets'] if row['id'] == 'trip')['size'], 'square')
+
+        invalid = deepcopy(saved.data)
+        invalid['revision'] = saved.data['revision']
+        task = next(row for row in invalid['widgets'] if row['id'] == 'tasks')
+        task['size'] = 'square'
+        self.assertEqual(self.client.put(self.url, invalid, format='json').status_code, 400)
 
     def test_stale_writes_do_not_overwrite(self):
         initial = self.client.get(self.url).data
