@@ -20,7 +20,7 @@ from auth_sessions.service import (
 LOGIN_FAILURE_DETAIL = "Anmeldung fehlgeschlagen."
 
 
-def set_user_cookies(response, user, request, *, auth_method=AuthSession.AuthMethod.PASSWORD):
+def set_user_cookies(response, user, request=None, *, auth_method=AuthSession.AuthMethod.PASSWORD):
     session, access, refresh = create_session(user, request, auth_method=auth_method)
     set_token_cookies(response, access, refresh)
     return response, session
