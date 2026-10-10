@@ -32,13 +32,28 @@ class TransactionalMailTests(TestCase):
 
     def test_enqueue_is_idempotent_and_recipient_is_normalized(self):
         first = self.enqueue()
-        second = self.enqueue(recipient="other@example.com")
+        second = self.enqueue(recipient="person@example.com")
         self.assertEqual(first.pk, second.pk)
         self.assertEqual(TransactionalEmail.objects.count(), 1)
         first.refresh_from_db()
         self.assertEqual(first.recipient, "person@example.com")
         self.assertEqual(len(first.recipient_hash), 64)
         self.assertNotIn("person@example.com", first.recipient_hash)
+
+    def test_message_key_collision_with_different_immutable_semantics_is_rejected(self):
+        first = self.enqueue(reference_type="security", reference_id="42")
+        conflicts = [
+            {"recipient": "other@example.com", "reference_type": "security", "reference_id": "42"},
+            {"template_key": "password.reset", "reference_type": "security", "reference_id": "42"},
+            {"locale": "en", "reference_type": "security", "reference_id": "42"},
+            {"reference_type": "other", "reference_id": "42"},
+            {"reference_type": "security", "reference_id": "99"},
+        ]
+        for values in conflicts:
+            with self.subTest(values=values), self.assertRaises(service.IdempotencyConflict):
+                self.enqueue(**values)
+        self.assertEqual(TransactionalEmail.objects.count(), 1)
+        self.assertEqual(TransactionalEmail.objects.get().pk, first.pk)
 
     def test_sensitive_context_keys_are_rejected(self):
         for key in ("reset_token", "password", "webauthn_challenge", "client_secret", "authorization"):
@@ -109,6 +124,23 @@ class TransactionalMailTests(TestCase):
         self.assertEqual(claimed.pk, row.pk)
         self.assertNotEqual(str(claimed.lease_token), "11111111-1111-1111-1111-111111111111")
         self.assertEqual(claimed.attempt_count, 1)
+
+    def test_expired_worker_lease_at_max_attempts_is_terminal_not_reclaimed(self):
+        row = self.enqueue()
+        row.status = TransactionalEmail.Status.SENDING
+        row.attempt_count = service.MAX_ATTEMPTS
+        row.lease_expires_at = timezone.now() - timedelta(seconds=1)
+        row.lease_token = "11111111-1111-1111-1111-111111111111"
+        row.save(update_fields=["status", "attempt_count", "lease_expires_at", "lease_token"])
+
+        self.assertIsNone(service.claim_due_email())
+
+        row.refresh_from_db()
+        self.assertEqual(row.status, TransactionalEmail.Status.FAILED)
+        self.assertEqual(row.attempt_count, service.MAX_ATTEMPTS)
+        self.assertEqual(row.last_error_code, "lease_expired")
+        self.assertIsNone(row.lease_token)
+        self.assertIsNone(row.lease_expires_at)
 
     def test_two_worker_claims_do_not_claim_same_message(self):
         first = self.enqueue(key="worker-1")
