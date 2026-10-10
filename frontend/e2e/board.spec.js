@@ -10,7 +10,6 @@ async function boot(page,language='de'){
  });await page.goto('/?page=board');
 }
 test('publish, edit, reload and delete family post',async({page})=>{
- test.setTimeout(60000);
  await boot(page);
  await page.getByRole('button',{name:'Neuer Beitrag',exact:true}).click();
  let form=page.locator('.board-compose');await expect(form).toBeVisible();
@@ -19,7 +18,10 @@ test('publish, edit, reload and delete family post',async({page})=>{
  const post=page.locator('.board-post').first();await expect(post).toContainText('Wir treffen uns im Garten.');
  await post.getByRole('button',{name:'Bearbeiten',exact:true}).click();
  form=page.locator('.board-compose');await expect(form).toBeVisible();
- await form.getByLabel('Mitteilung',{exact:true}).fill('Wir treffen uns um 16 Uhr.');
+ await expect(page.locator('.board-compose textarea')).toBeFocused();
+ await page.keyboard.press('Control+A');
+ await page.keyboard.insertText('Wir treffen uns um 16 Uhr.');
+ await expect(page.locator('.board-compose textarea')).toHaveValue('Wir treffen uns um 16 Uhr.');
  await form.getByRole('button',{name:'Speichern',exact:true}).click();
  await page.reload();await expect(page.locator('.board-post')).toContainText('16 Uhr');
  await page.locator('.board-post').getByRole('button',{name:'Löschen',exact:true}).click();
