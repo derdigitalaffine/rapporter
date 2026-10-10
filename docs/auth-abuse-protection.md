@@ -31,6 +31,8 @@ The current application enforces:
 
 Password-login failures use the same generic response for known and unknown identifiers. A rate-limited login keeps that same generic detail and adds HTTP `429`, `Retry-After`, `code=rate_limited` and a numeric `retry_after`. Successful logins forgive identifier-specific counters, while network/global pressure remains.
 
+Invitation creation validates the target family and the actor's Owner/Adult membership before consuming the family-scoped abuse budget. An authenticated user therefore cannot spend another family's invitation allowance by submitting a guessed family ID.
+
 ## Persistent multi-worker store
 
 Counters are stored in PostgreSQL through `AuthAbuseBucket`. A bucket is unique by scope, HMAC key and window kind. Enforcement uses transactions plus `SELECT ... FOR UPDATE`; concurrent first writers are reconciled through the database uniqueness constraint. This makes the budget shared across Gunicorn workers and across application replicas using the same database.
@@ -47,22 +49,28 @@ IPv4 defaults to `/32`; IPv6 defaults to `/64` so temporary IPv6 interface addre
 
 `X-Forwarded-For` is ignored unless the direct peer (`REMOTE_ADDR`) belongs to an explicitly configured `AUTH_TRUSTED_PROXY_CIDRS` network. When trusted, the chain is walked from right to left and only configured trusted proxy hops are discarded. This prevents blindly trusting a client-supplied forwarding header.
 
-Example for an installation whose application is reachable only from a known reverse-proxy network:
+The standard Docker Compose topology puts Caddy on a dedicated internal proxy network and pins it to `172.31.254.2`. The backend therefore trusts exactly that peer by default:
 
 ```env
-AUTH_TRUSTED_PROXY_CIDRS=172.20.0.0/16
+FAMILYOS_PROXY_SUBNET=172.31.254.0/28
+FAMILYOS_CADDY_IP=172.31.254.2
+AUTH_TRUSTED_PROXY_CIDRS=172.31.254.2/32
 ```
 
-Use the actual proxy/network CIDR for the deployment. Leaving this setting empty is safe: forwarded addresses are ignored and the direct peer is used.
+If that subnet conflicts with an existing Docker network, choose a different private subnet/IP and keep `AUTH_TRUSTED_PROXY_CIDRS` aligned with the exact Caddy address (`/32` for IPv4). Do not broaden trust to an entire private RFC1918 range merely for convenience: any peer inside a trusted CIDR may supply forwarding headers.
+
+For a custom external reverse-proxy deployment, configure only the direct proxy address(es) or the smallest network that actually contains controlled proxy hops. Leaving `AUTH_TRUSTED_PROXY_CIDRS` empty is safe when Django receives client connections directly: forwarding headers are ignored and `REMOTE_ADDR` is used. In the standard bundled Caddy topology, however, leaving it empty would collapse all public clients onto Caddy's network identity, so the Compose default above is intentional.
 
 ## Configuration
 
-Optional environment variables:
+Environment variables:
 
 ```env
 # Recommended as a separate random secret; unset/blank falls back to DJANGO_SECRET_KEY.
 AUTH_ABUSE_HMAC_KEY=
-AUTH_TRUSTED_PROXY_CIDRS=
+FAMILYOS_PROXY_SUBNET=172.31.254.0/28
+FAMILYOS_CADDY_IP=172.31.254.2
+AUTH_TRUSTED_PROXY_CIDRS=172.31.254.2/32
 AUTH_ABUSE_IPV4_PREFIX=32
 AUTH_ABUSE_IPV6_PREFIX=64
 AUTH_ABUSE_RETENTION_SECONDS=86400
