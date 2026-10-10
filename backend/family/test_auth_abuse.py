@@ -116,6 +116,7 @@ class AuthAbuseIntegrationTests(TestCase):
             role=Membership.Role.OWNER,
             display_name="Bob",
         )
+        expires_at = (timezone.now() + timedelta(days=7)).isoformat()
 
         attacker = APIClient()
         attacker.force_authenticate(self.user)
@@ -126,6 +127,7 @@ class AuthAbuseIntegrationTests(TestCase):
                     "family": str(foreign_family.id),
                     "role": "adult",
                     "email": f"poison-{index}@example.com",
+                    "expires_at": expires_at,
                 },
                 format="json",
                 REMOTE_ADDR="198.51.100.56",
@@ -143,6 +145,7 @@ class AuthAbuseIntegrationTests(TestCase):
                 "family": str(foreign_family.id),
                 "role": "adult",
                 "email": "legitimate@example.com",
+                "expires_at": expires_at,
             },
             format="json",
             REMOTE_ADDR="198.51.100.57",
