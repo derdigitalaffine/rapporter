@@ -16,6 +16,7 @@ class PasswordResetState(models.Model):
         related_name="+",
     )
     version = models.PositiveBigIntegerField(default=0)
+    locale = models.CharField(max_length=8, default="de")
     requested_at = models.DateTimeField(null=True, blank=True)
     consumed_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
