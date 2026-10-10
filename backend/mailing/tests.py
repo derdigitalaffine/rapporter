@@ -32,13 +32,37 @@ class TransactionalMailTests(TestCase):
 
     def test_enqueue_is_idempotent_and_recipient_is_normalized(self):
         first = self.enqueue()
-        second = self.enqueue(recipient="other@example.com")
+        second = self.enqueue(recipient="person@example.com")
         self.assertEqual(first.pk, second.pk)
         self.assertEqual(TransactionalEmail.objects.count(), 1)
         first.refresh_from_db()
         self.assertEqual(first.recipient, "person@example.com")
         self.assertEqual(len(first.recipient_hash), 64)
         self.assertNotIn("person@example.com", first.recipient_hash)
+
+    def test_message_key_conflict_rejects_different_delivery_semantics(self):
+        cases = (
+            ("recipient", {"recipient": "other@example.com"}),
+            ("template", {"template_key": "password.changed"}),
+            ("locale", {"locale": "en"}),
+            ("reference", {"reference_type": "security", "reference_id": "42"}),
+        )
+        for suffix, changed in cases:
+            with self.subTest(suffix=suffix):
+                key = f"conflict-{suffix}"
+                self.enqueue(key=key)
+                with self.assertRaises(service.IdempotencyConflictError):
+                    self.enqueue(key=key, **changed)
+        self.assertEqual(TransactionalEmail.objects.count(), len(cases))
+
+    def test_identical_enqueue_remains_idempotent_after_payload_cleanup(self):
+        row = self.enqueue(key="sent-idempotent")
+        self.assertTrue(service.process_one_transactional_email())
+        row.refresh_from_db()
+        self.assertEqual(row.recipient, "")
+        again = self.enqueue(key="sent-idempotent", recipient="person@example.com")
+        self.assertEqual(again.pk, row.pk)
+        self.assertEqual(TransactionalEmail.objects.count(), 1)
 
     def test_sensitive_context_keys_are_rejected(self):
         for key in ("reset_token", "password", "webauthn_challenge", "client_secret", "authorization"):
@@ -79,7 +103,7 @@ class TransactionalMailTests(TestCase):
         self.assertEqual(mail.outbox[0].to, ["person@example.com"])
         self.assertTrue(mail.outbox[0].extra_headers["Message-ID"].startswith("<"))
 
-    def test_transport_failure_retries_with_redacted_error_class(self):
+    def test_transport_failure_retries_with_redacted_error_class_and_keeps_payload(self):
         row = self.enqueue()
         with patch("mailing.service.EmailMultiAlternatives.send", side_effect=OSError("smtp secret host detail")):
             self.assertTrue(service.process_one_transactional_email())
@@ -88,8 +112,11 @@ class TransactionalMailTests(TestCase):
         self.assertEqual(row.last_error_code, "transport")
         self.assertNotIn("secret", row.last_error_code)
         self.assertGreater(row.next_attempt_at, timezone.now())
+        self.assertEqual(row.recipient, "person@example.com")
+        self.assertEqual(row.context, {"details": "Sicherer Hinweis"})
+        self.assertIsNone(row.payload_cleared_at)
 
-    def test_recipient_rejection_is_permanent_without_raw_smtp_payload(self):
+    def test_recipient_rejection_is_permanent_and_clears_delivery_payload(self):
         row = self.enqueue()
         error = smtplib.SMTPRecipientsRefused({"person@example.com": (550, b"private provider text")})
         with patch("mailing.service.EmailMultiAlternatives.send", side_effect=error):
@@ -98,8 +125,11 @@ class TransactionalMailTests(TestCase):
         self.assertEqual(row.status, TransactionalEmail.Status.FAILED)
         self.assertEqual(row.last_error_code, "recipient_rejected")
         self.assertNotIn("private", row.last_error_code)
+        self.assertEqual(row.recipient, "")
+        self.assertEqual(row.context, {})
+        self.assertIsNotNone(row.payload_cleared_at)
 
-    def test_expired_worker_lease_is_reclaimed(self):
+    def test_expired_worker_lease_is_reclaimed_below_attempt_limit(self):
         row = self.enqueue()
         row.status = TransactionalEmail.Status.SENDING
         row.lease_expires_at = timezone.now() - timedelta(seconds=1)
@@ -109,6 +139,25 @@ class TransactionalMailTests(TestCase):
         self.assertEqual(claimed.pk, row.pk)
         self.assertNotEqual(str(claimed.lease_token), "11111111-1111-1111-1111-111111111111")
         self.assertEqual(claimed.attempt_count, 1)
+
+    def test_expired_worker_lease_at_attempt_limit_is_terminal_not_reclaimed(self):
+        row = self.enqueue(key="exhausted-crash")
+        row.status = TransactionalEmail.Status.SENDING
+        row.attempt_count = service.MAX_ATTEMPTS
+        row.lease_expires_at = timezone.now() - timedelta(seconds=1)
+        row.lease_token = "22222222-2222-2222-2222-222222222222"
+        row.save(update_fields=["status", "attempt_count", "lease_expires_at", "lease_token"])
+
+        self.assertIsNone(service.claim_due_email())
+        row.refresh_from_db()
+        self.assertEqual(row.status, TransactionalEmail.Status.FAILED)
+        self.assertEqual(row.attempt_count, service.MAX_ATTEMPTS)
+        self.assertEqual(row.last_error_code, "attempts_exhausted")
+        self.assertIsNone(row.lease_token)
+        self.assertIsNone(row.lease_expires_at)
+        self.assertEqual(row.recipient, "")
+        self.assertEqual(row.context, {})
+        self.assertIsNotNone(row.payload_cleared_at)
 
     def test_two_worker_claims_do_not_claim_same_message(self):
         first = self.enqueue(key="worker-1")
