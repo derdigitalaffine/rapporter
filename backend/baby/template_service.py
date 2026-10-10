@@ -23,6 +23,31 @@ def _task_source(pregnancy, key):
     return f"familyos-preparation:{digest}"
 
 
+def _due_at(pregnancy, week):
+    due = pregnancy.expected_due_date - timedelta(weeks=max(0, 40 - week))
+    return datetime.combine(due, time(hour=9), tzinfo=ZoneInfo(pregnancy.family.timezone))
+
+
+def refresh_existing_preparation_tasks(pregnancy):
+    """Recalculate only tasks users already imported; never create new tasks implicitly."""
+    legacy_source = f"pregnancy:{pregnancy.id}"
+    updated = []
+    for key, title, legacy_title, week in TASK_TEMPLATES:
+        source = _task_source(pregnancy, key)
+        task = Task.objects.filter(family=pregnancy.family, source=source).first()
+        if not task:
+            task = Task.objects.filter(family=pregnancy.family, source=legacy_source, title=legacy_title).first()
+        if not task:
+            continue
+        task.title = title
+        task.source = source
+        task.due_at = _due_at(pregnancy, week)
+        task.tags = ["preparation"]
+        task.save(update_fields=["title", "source", "due_at", "tags", "updated_at"])
+        updated.append(task.id)
+    return updated
+
+
 def pregnancy_template_items(user, pregnancy, *, include_tasks=True, include_shopping=True):
     require_module(pregnancy.family)
     care_access(user, pregnancy.family, "pregnancy")
@@ -32,8 +57,6 @@ def pregnancy_template_items(user, pregnancy, *, include_tasks=True, include_sho
         task_list, _ = TaskList.objects.get_or_create(family=pregnancy.family, name="Vorbereitung", defaults={"icon": "sparkles"})
         legacy_source = f"pregnancy:{pregnancy.id}"
         for key, title, legacy_title, week in TASK_TEMPLATES:
-            due = pregnancy.expected_due_date - timedelta(weeks=max(0, 40 - week))
-            due_at = datetime.combine(due, time(hour=9), tzinfo=ZoneInfo(pregnancy.family.timezone))
             source = _task_source(pregnancy, key)
             task = Task.objects.filter(family=pregnancy.family, source=source).first()
             if not task:
@@ -42,7 +65,7 @@ def pregnancy_template_items(user, pregnancy, *, include_tasks=True, include_sho
                 task.task_list = task_list
                 task.title = title
                 task.source = source
-                task.due_at = due_at
+                task.due_at = _due_at(pregnancy, week)
                 task.tags = ["preparation"]
                 task.save(update_fields=["task_list", "title", "source", "due_at", "tags", "updated_at"])
             else:
@@ -51,7 +74,7 @@ def pregnancy_template_items(user, pregnancy, *, include_tasks=True, include_sho
                     task_list=task_list,
                     title=title,
                     source=source,
-                    due_at=due_at,
+                    due_at=_due_at(pregnancy, week),
                     created_by=user,
                     tags=["preparation"],
                 )
