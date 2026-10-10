@@ -173,7 +173,14 @@ def finish_run(run, result, *, needs_review=True):
     status = DocumentProcessingRun.Status.REVIEW if needs_review else DocumentProcessingRun.Status.READY
     document_status = Document.ProcessingStatus.REVIEW if needs_review else Document.ProcessingStatus.READY
     with transaction.atomic():
-        locked = DocumentProcessingRun.objects.select_for_update().select_related("document").get(pk=run.pk)
+        locked = (
+            DocumentProcessingRun.objects.select_for_update()
+            .select_related("document")
+            .filter(pk=run.pk)
+            .first()
+        )
+        if locked is None:
+            return None
         if not _owns_claim(locked, run):
             return locked
         locked.extracted_fields.all().delete()
@@ -229,7 +236,14 @@ def fail_run(run, *, error_code, safe_error, retryable=True, now=None):
     """Fail safely without touching the canonical document file."""
     now = now or timezone.now()
     with transaction.atomic():
-        locked = DocumentProcessingRun.objects.select_for_update().select_related("document").get(pk=run.pk)
+        locked = (
+            DocumentProcessingRun.objects.select_for_update()
+            .select_related("document")
+            .filter(pk=run.pk)
+            .first()
+        )
+        if locked is None:
+            return None
         if not _owns_claim(locked, run):
             return locked
         should_retry = retryable and locked.attempts < MAX_ATTEMPTS
