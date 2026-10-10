@@ -46,6 +46,8 @@ class ShoppingStoreSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         family = attrs.get("family") or (self.instance.family if self.instance else None)
+        if self.instance and family and family.id != self.instance.family_id:
+            raise serializers.ValidationError({"family": "Geschäft kann nicht in eine andere Familie verschoben werden."})
         request = self.context.get("request")
         if family and request:
             _require_family_member(request.user, family)
@@ -79,6 +81,8 @@ class ShoppingTemplateSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         family = attrs.get("family") or (self.instance.family if self.instance else None)
+        if self.instance and family and family.id != self.instance.family_id:
+            raise serializers.ValidationError({"family": "Vorlage kann nicht in eine andere Familie verschoben werden."})
         request = self.context.get("request")
         if family and request:
             _require_family_member(request.user, family)
