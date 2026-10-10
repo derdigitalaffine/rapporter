@@ -10,33 +10,91 @@ from rest_framework.response import Response
 from .models import Family, Membership, TodayLayout
 
 LEGACY_WIDGET_IDS = ('weather', 'priority', 'waste', 'next', 'tasks', 'shopping', 'routines', 'birthdays', 'notes')
-WIDGET_IDS = LEGACY_WIDGET_IDS + ('loyalty', 'inbox', 'trip')
+PRE_PINBOARD_WIDGET_IDS = LEGACY_WIDGET_IDS + ('loyalty', 'inbox')
+WIDGET_IDS = PRE_PINBOARD_WIDGET_IDS + ('trip', 'week', 'pinboard')
 SQUARE_WIDGET_IDS = frozenset(('trip', 'next', 'weather', 'routines', 'waste', 'inbox', 'birthdays', 'notes', 'loyalty'))
-# New users get the reference-oriented information hierarchy while saved personal
-# layouts keep their relative order. Travel is intentionally restored visibly for
-# existing layouts because it replaces the previously global Today trip countdown.
-DEFAULT_WIDGET_ORDER = ('priority', 'trip', 'next', 'weather', 'tasks', 'shopping', 'routines', 'waste', 'inbox', 'birthdays', 'notes', 'loyalty')
-DEFAULT_WIDGETS = [{'id': key, 'visible': True, 'size': 'full'} for key in DEFAULT_WIDGET_ORDER]
+DEFAULT_WEEK_SETTINGS = {'events': True, 'waste': True, 'holidays': True, 'special': True}
+DEFAULT_WIDGET_ORDER = ('week', 'priority', 'trip', 'next', 'pinboard', 'weather', 'tasks', 'shopping', 'routines', 'waste', 'inbox', 'birthdays', 'notes', 'loyalty')
+
+
+def _default_widget(key, *, visible=True):
+    row = {'id': key, 'visible': visible, 'size': 'full'}
+    if key == 'week':
+        row['settings'] = deepcopy(DEFAULT_WEEK_SETTINGS)
+    return row
+
+
+DEFAULT_WIDGETS = [_default_widget(key) for key in DEFAULT_WIDGET_ORDER]
+
+
+def _normalize_saved_widget(row):
+    if not isinstance(row, dict):
+        return row
+    clean = deepcopy(row)
+    if clean.get('id') == 'week':
+        supplied = clean.get('settings') if isinstance(clean.get('settings'), dict) else {}
+        clean['settings'] = {
+            key: supplied.get(key, value) if type(supplied.get(key, value)) is bool else value
+            for key, value in DEFAULT_WEEK_SETTINGS.items()
+        }
+    else:
+        clean.pop('settings', None)
+    return clean
 
 
 def _expanded_widgets(widgets):
-    """Preserve saved settings while adding newly introduced widgets safely."""
-    rows = deepcopy(widgets)
+    """Preserve saved settings while adding newly introduced Today surfaces safely."""
+    rows = [_normalize_saved_widget(row) for row in deepcopy(widgets)]
     seen = {row.get('id') for row in rows if isinstance(row, dict)}
+
+    if 'week' not in seen:
+        rows.insert(0, _default_widget('week', visible=True))
+        seen.add('week')
+
     if 'trip' not in seen:
-        trip_row = {'id': 'trip', 'visible': True, 'size': 'full'}
         priority_index = next((index for index, row in enumerate(rows) if row.get('id') == 'priority'), None)
-        rows.insert(priority_index + 1 if priority_index is not None else 0, trip_row)
+        rows.insert(priority_index + 1 if priority_index is not None else 1, _default_widget('trip', visible=True))
         seen.add('trip')
-    for key in WIDGET_IDS:
+
+    if 'pinboard' not in seen:
+        next_index = next((index for index, row in enumerate(rows) if row.get('id') == 'next'), None)
+        rows.insert(next_index + 1 if next_index is not None else min(5, len(rows)), _default_widget('pinboard', visible=True))
+        seen.add('pinboard')
+
+    for key in PRE_PINBOARD_WIDGET_IDS:
         if key not in seen:
-            rows.append({'id': key, 'visible': False, 'size': 'full'})
+            rows.append(_default_widget(key, visible=False))
+            seen.add(key)
     return rows
 
 
 def payload(layout=None):
     widgets = _expanded_widgets(layout.widgets) if layout else deepcopy(DEFAULT_WIDGETS)
     return {'version': 1, 'revision': layout.revision if layout else 0, 'widgets': widgets}
+
+
+def _validate_widget(widget, seen):
+    if not isinstance(widget, dict):
+        return False
+    allowed = {'id', 'visible', 'size'} | ({'settings'} if widget.get('id') == 'week' else set())
+    if set(widget) - allowed or not {'id', 'visible', 'size'} <= set(widget):
+        return False
+    key = widget['id']
+    if not isinstance(key, str) or key not in WIDGET_IDS or key in seen:
+        return False
+    if type(widget['visible']) is not bool or widget['size'] not in ('full', 'compact', 'square'):
+        return False
+    if widget['size'] == 'square' and key not in SQUARE_WIDGET_IDS:
+        return False
+    if key == 'week':
+        settings = widget.get('settings', DEFAULT_WEEK_SETTINGS)
+        if (not isinstance(settings, dict) or set(settings) != set(DEFAULT_WEEK_SETTINGS) or
+                any(type(value) is not bool for value in settings.values())):
+            return False
+    elif 'settings' in widget:
+        return False
+    seen.add(key)
+    return True
 
 
 @api_view(['GET', 'PUT'])
@@ -57,25 +115,20 @@ def today_layout(request):
     if type(data['version']) is not int or data['version'] != 1 or type(data['revision']) is not int or data['revision'] < 0:
         return Response({'detail': 'Invalid layout version or revision.'}, status=400)
     widgets = data['widgets']
-    if not isinstance(widgets, list) or len(widgets) != len(WIDGET_IDS):
-        return Response({'detail': 'Supply each supported widget exactly once.'}, status=400)
+    if not isinstance(widgets, list) or not len(LEGACY_WIDGET_IDS) <= len(widgets) <= len(WIDGET_IDS):
+        return Response({'detail': 'Supply supported widgets exactly once.'}, status=400)
     seen = set()
-    for widget in widgets:
-        if (not isinstance(widget, dict) or set(widget) != {'id', 'visible', 'size'} or
-                not isinstance(widget['id'], str) or widget['id'] not in WIDGET_IDS or widget['id'] in seen or
-                type(widget['visible']) is not bool or widget['size'] not in ('full', 'compact', 'square') or
-                (widget['size'] == 'square' and widget['id'] not in SQUARE_WIDGET_IDS)):
-            return Response({'detail': 'Invalid widget configuration.'}, status=400)
-        seen.add(widget['id'])
+    if not all(_validate_widget(widget, seen) for widget in widgets) or any(key not in seen for key in LEGACY_WIDGET_IDS):
+        return Response({'detail': 'Invalid widget configuration.'}, status=400)
+    normalized = _expanded_widgets(widgets)
     with transaction.atomic():
-        # Lock membership: serializes first-save as well as updates without locking all family layouts.
         Membership.objects.select_for_update().get(family=family, user=request.user)
         layout = TodayLayout.objects.filter(family=family, user=request.user).first()
         if data['revision'] != (layout.revision if layout else 0):
             return Response({'detail': 'Layout changed on another device.', 'current': payload(layout)}, status=409)
         if not layout:
             layout = TodayLayout(family=family, user=request.user)
-        layout.widgets = widgets
+        layout.widgets = normalized
         layout.revision += 1
         layout.save()
     return Response(payload(layout))
