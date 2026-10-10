@@ -67,6 +67,7 @@ class ReceiptDocumentCoreTests(TestCase):
     def test_new_upload_uses_hidden_private_document_and_shared_queue(self):
         response = self.upload_receipt()
         self.assertEqual(response.status_code, 202, response.data)
+        self.assertEqual(response.data.get("quality_warnings"), [])
         expense = Expense.objects.select_related("receipt_document").get(id=response.data["id"])
         extraction = ReceiptExtraction.objects.get(expense=expense)
         document = expense.receipt_document
@@ -109,7 +110,10 @@ class ReceiptDocumentCoreTests(TestCase):
         result = ExtractionResult(
             text="REWE MARKT\n08.10.2026\nSUMME EUR 12,34\nGEGEBEN 20,00",
             extractor="fixture",
-            quality_data={"classification": {"kind": "receipt", "confidence": 0.95}},
+            quality_data={
+                "classification": {"kind": "receipt", "confidence": 0.95},
+                "pages": [{"quality": {"warnings": ["dark", "possibly_blurry"]}}],
+            },
             fields=[],
             needs_review=True,
         )
@@ -127,14 +131,16 @@ class ReceiptDocumentCoreTests(TestCase):
         self.assertEqual(extraction.raw_text, result.text)
         self.assertEqual(extraction.total, Decimal("12.34"))
         self.assertGreater(extraction.field_confidences["total"], 0.8)
+        self.assertEqual(extraction.structured_data["quality_warnings"], ["dark"])
 
-    def test_consumer_failure_rolls_back_core_finish_and_retries_same_durable_job(self):
+    def test_consumer_failure_keeps_generic_ocr_success_and_falls_back_to_review(self):
         response = self.upload_receipt()
         expense = Expense.objects.get(id=response.data["id"])
         claimed = claim_next_run()
         result = ExtractionResult(
             text="MARKT\nSUMME EUR 12,34",
             extractor="fixture",
+            quality_data={"pages": [{"quality": {"warnings": ["low_resolution"]}}]},
             fields=[{"key": "text.page", "value_json": {"text": "MARKT SUMME EUR 12,34"}}],
             needs_review=True,
         )
@@ -142,17 +148,21 @@ class ReceiptDocumentCoreTests(TestCase):
             patch("documents.worker.extract_document", return_value=result),
             patch("expenses.document_receipts.parse_receipt_text", side_effect=RuntimeError("parser bug")),
         ):
-            retried = process_claimed_run(claimed)
+            completed = process_claimed_run(claimed)
 
-        retried.refresh_from_db()
+        completed.refresh_from_db()
         expense.refresh_from_db()
         extraction = ReceiptExtraction.objects.get(expense=expense)
-        self.assertEqual(retried.status, DocumentProcessingRun.Status.RETRY)
-        self.assertEqual(retried.normalized_text, "")
-        self.assertFalse(retried.extracted_fields.exists())
-        self.assertEqual(expense.receipt_status, Expense.ReceiptStatus.QUEUED)
-        self.assertEqual(extraction.status, ReceiptExtraction.Status.QUEUED)
-        self.assertEqual(extraction.processing_run_id, retried.id)
+        self.assertEqual(completed.status, DocumentProcessingRun.Status.REVIEW)
+        self.assertEqual(completed.normalized_text, result.text)
+        self.assertTrue(completed.extracted_fields.exists())
+        self.assertEqual(expense.receipt_status, Expense.ReceiptStatus.REVIEW)
+        self.assertEqual(extraction.status, ReceiptExtraction.Status.REVIEW)
+        self.assertEqual(extraction.processing_run_id, completed.id)
+        self.assertEqual(extraction.raw_text, result.text)
+        self.assertIn("Bitte Werte prüfen", extraction.error)
+        self.assertEqual(extraction.structured_data["quality_warnings"], ["low_resolution"])
+        self.assertEqual(expense.receipt_document.processing_runs.count(), 1)
 
     def test_shared_worker_failure_and_retry_use_document_runs_only(self):
         response = self.upload_receipt()
