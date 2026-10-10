@@ -10,12 +10,13 @@
   --color-positive-soft:#e4f3e9;
   --color-accent:#ff8a47;
   --color-accent-soft:#fff0e5;
-  --color-warning:#9b6b00;
+  --color-warning:#8d650b;
   --color-warning-soft:#fff3cf;
   --color-danger:#b84444;
   --color-danger-soft:#fdeaea;
   --color-info:#387d91;
   --color-info-soft:#e9f6fb;
+  --color-neutral-soft:#f0f3ef;
 
   /* Semantic aliases used by feature styles */
   --card:var(--color-surface);
@@ -28,7 +29,7 @@
   --positive:var(--color-positive);
   --green:var(--color-positive);
   --green-soft:var(--color-positive-soft);
-  --soft:#f0f3ef;
+  --soft:var(--color-neutral-soft);
   --bg:var(--color-bg);
   --peach:var(--color-accent);
   --peach-soft:var(--color-accent-soft);
@@ -74,6 +75,7 @@
 
 html{font-family:var(--font-family);color:var(--color-text);background:var(--color-bg)}
 body,button,input,select,textarea{font-family:var(--font-family)}
+body{color:var(--color-text);background:var(--color-bg);font-size:var(--font-size-body)}
 
 button,a,input,select,textarea,summary{outline:none}
 :where(button,a,input,select,textarea,summary):focus-visible{
@@ -82,6 +84,7 @@ button,a,input,select,textarea,summary{outline:none}
 }
 
 button:disabled,[aria-disabled="true"]{cursor:not-allowed;opacity:.52}
+button{touch-action:manipulation}
 
 .primary{
   background:var(--color-action-primary);
@@ -91,6 +94,14 @@ button:disabled,[aria-disabled="true"]{cursor:not-allowed;opacity:.52}
   transition:transform .12s ease,box-shadow .12s ease,opacity .12s ease;
 }
 .primary:not(:disabled):active{transform:translateY(1px)}
+.secondary{
+  min-height:44px;
+  border:1px solid var(--color-border);
+  border-radius:var(--radius-md);
+  background:var(--color-surface);
+  color:var(--color-text);
+}
+.ghost,.text-button{min-height:44px;border-radius:var(--radius-md)}
 
 .small-action,.fab-inline,.icon-button,.back-button,.sheet-close{
   min-width:44px;
@@ -98,13 +109,30 @@ button:disabled,[aria-disabled="true"]{cursor:not-allowed;opacity:.52}
 }
 
 .ghost-danger,.danger-text{color:var(--color-danger)}
-.error{background:var(--color-danger-soft);color:#8b3434}
+.error{background:var(--color-danger-soft);color:var(--color-danger)}
 
-.card,.smart-row,.automation-builder,.automation-template,.rule-row,.done-items{
+.card,.smart-row,.automation-builder,.automation-template,.rule-row,.done-items,.agenda-list{
   border-color:var(--color-border);
+  background:var(--color-surface);
+  box-shadow:var(--shadow-sm);
 }
+.card{border-radius:var(--radius-lg)}
+.smart-row,.rule-row,.done-items{border-radius:var(--radius-md)}
 
 .status-pill,.role-pill,.chip,.sync-badge{border-radius:var(--radius-pill)}
+.count-badge,.badge,.metric-row{font-variant-numeric:tabular-nums}
+
+:where(.quick-form,.editor-form,.list-editor,.routine-editor) input:not([type="checkbox"]):not([type="radio"]),
+:where(.quick-form,.editor-form,.list-editor,.routine-editor) select,
+:where(.quick-form,.editor-form,.list-editor,.routine-editor) textarea{
+  min-height:44px;
+  border:1px solid var(--color-border);
+  border-radius:var(--radius-md);
+  background:var(--color-surface);
+  color:var(--color-text);
+}
+
+.section-title,.integration-section-head,.today-section-head,.agenda-day-head{min-width:0}
 
 /* Shared responsive widget primitive. Full/compact widgets span the grid, while
    square widgets occupy one half-width cell and stay square at every app width. */
