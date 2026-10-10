@@ -136,7 +136,7 @@ def normalize_identifier(value: object) -> str:
 
 
 def _hmac_secret() -> bytes:
-    value = getattr(settings, "AUTH_ABUSE_HMAC_KEY", settings.SECRET_KEY)
+    value = getattr(settings, "AUTH_ABUSE_HMAC_KEY", None) or settings.SECRET_KEY
     return str(value).encode("utf-8")
 
 
