@@ -63,6 +63,17 @@ jobs:
               return refs;
             };
 
+            const coordinationKeys = (body) => {
+              const line = (body || '').split('\n')
+                .find((value) => /^-\s*Coordination keys\s*:/i.test(value.trim()));
+              if (!line) return [];
+              const raw = line.replace(/^-\s*Coordination keys\s*:/i, '');
+              return [...new Set(raw.split(',')
+                .map((key) => key.trim().replace(/^`|`$/g, ''))
+                .filter((key) => /^[a-z0-9_-]+:[a-z0-9_./:-]+$/i.test(key))
+                .map((key) => key.toLowerCase()))];
+            };
+
             const commentCache = new Map();
             const commentsFor = async (issueNumber) => {
               if (!commentCache.has(issueNumber)) {
@@ -104,16 +115,29 @@ jobs:
 
             for (const issue of activeIssues) {
               const comments = await commentsFor(issue.number);
-              const hasClaim = comments.some((comment) => (comment.body || '').includes(claimMarker));
+              const claimComments = comments.filter((comment) => (comment.body || '').includes(claimMarker));
+              const latestClaim = claimComments.at(-1);
+              const keys = latestClaim ? coordinationKeys(latestClaim.body) : [];
               const linkedPrs = prData.filter((pr) => pr.refs.has(issue.number));
               const latestVisibleActivity = Math.max(
                 Date.parse(issue.updated_at || 0),
                 ...linkedPrs.map((pr) => Date.parse(pr.updatedAt || 0)),
               );
-              activeRows.push({ issue, hasClaim, linkedPrs });
+              activeRows.push({ issue, hasClaim: Boolean(latestClaim), keys, linkedPrs });
               if (linkedPrs.length === 0) claimsWithoutPr.push(issue);
               if (now - latestVisibleActivity > staleAfterMs) staleClaims.push(issue);
             }
+
+            const keyOwners = new Map();
+            for (const row of activeRows) {
+              for (const key of row.keys) {
+                if (!keyOwners.has(key)) keyOwners.set(key, []);
+                keyOwners.get(key).push(row.issue);
+              }
+            }
+            const semanticCollisions = [...keyOwners.entries()]
+              .filter(([, owners]) => owners.length > 1)
+              .map(([key, owners]) => ({ key, owners }));
 
             const issueToPrs = new Map();
             for (const pr of prData) {
@@ -174,13 +198,17 @@ jobs:
                 const prs = row.linkedPrs.length
                   ? row.linkedPrs.map((pr) => `#${pr.number}`).join(', ')
                   : 'noch kein schließender PR';
-                lines.push(`- #${row.issue.number} ${row.issue.title} · Claim: ${row.hasClaim ? '✅' : '⚠️ fehlt'} · PR: ${prs}`);
+                const keys = row.keys.length ? row.keys.map((key) => `\`${key}\``).join(', ') : 'keine';
+                lines.push(`- #${row.issue.number} ${row.issue.title} · Claim: ${row.hasClaim ? '✅' : '⚠️ fehlt'} · Keys: ${keys} · PR: ${prs}`);
               }
             }
 
             lines.push('', '### Kollisionssignale');
-            if (sameIssueCollisions.length === 0 && fileOverlaps.length === 0) {
-              lines.push('- ✅ Keine parallelen PR-Ziele oder exakten Dateiüberschneidungen erkannt.');
+            if (semanticCollisions.length === 0 && sameIssueCollisions.length === 0 && fileOverlaps.length === 0) {
+              lines.push('- ✅ Keine semantischen Claim-, parallelen PR-Ziel- oder exakten Dateikollisionen erkannt.');
+            }
+            for (const collision of semanticCollisions.slice(0, 40)) {
+              lines.push(`- ⚠️ Coordination Key \`${collision.key}\` wird parallel von ${collision.owners.map((issue) => `#${issue.number}`).join(', ')} beansprucht. Vertrag/Split im Thread klären.`);
             }
             for (const collision of sameIssueCollisions.slice(0, 25)) {
               lines.push(`- ⚠️ Issue #${collision.issueNumber} wird gleichzeitig von ${collision.list.map((pr) => `#${pr.number}`).join(', ')} geschlossen. Split/Reihenfolge im Thread dokumentieren.`);
@@ -215,7 +243,7 @@ jobs:
             lines.push(
               '',
               '### Koordinationsregel',
-              'Vor Code: **#223 + Ziel-Issue + offene `in progress`-Issues + offene PRs prüfen.** Bei Material-Overlap erst per Kommentar Split/Vertrag/Reihenfolge klären. Externe Reporter müssen die Konkurrenzanalyse nicht selbst liefern.',
+              'Vor Code: **#223 + Ziel-Issue + offene `in progress`-Issues + offene PRs prüfen.** Claims nutzen enge Coordination Keys. Bei Material-Overlap erst per Kommentar Split/Vertrag/Reihenfolge klären. Externe Reporter müssen die Konkurrenzanalyse nicht selbst liefern.',
               '',
               '_Maschinelle Hinweise sind absichtlich konservativ. Fachliche Unabhängigkeit oder ein abgestimmter Overlap darf weiter parallel laufen._',
             );
