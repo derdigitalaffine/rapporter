@@ -18,7 +18,7 @@ class FamilyModuleSetting(BabyBaseModel):
     module_key = models.CharField(max_length=64)
     enabled = models.BooleanField(default=False)
     show_in_main_navigation = models.BooleanField(default=False)
-    settings = models.JSONField(default=dict, blank=True)
+    config = models.JSONField(default=dict, blank=True)
     enabled_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="enabled_family_modules")
     enabled_at = models.DateTimeField(null=True, blank=True)
     disabled_at = models.DateTimeField(null=True, blank=True)
@@ -57,6 +57,7 @@ class PregnancyJourney(BabyBaseModel):
     estimated_from = models.CharField(max_length=16, choices=EstimatedFrom.choices, default=EstimatedFrom.MANUAL)
     start_date = models.DateField(null=True, blank=True)
     notes = models.TextField(blank=True)
+    birth_preferences = models.TextField(blank=True)
     weekly_notification_enabled = models.BooleanField(default=False)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name="pregnancy_journeys_created")
 
@@ -207,7 +208,7 @@ class BabyGrowthMeasurement(BabyBaseModel):
 class BabyGrowthReferenceSetting(BabyBaseModel):
     baby = models.OneToOneField(BabyProfile, on_delete=models.CASCADE, related_name="growth_reference")
     reference_key = models.CharField(max_length=48, default="who_2006")
-    reference_version = models.CharField(max_length=48, default="WHO Child Growth Standards 2006")
+    reference_version = models.CharField(max_length=80, default="WHO Child Growth Standards 2006")
     corrected_age_enabled = models.BooleanField(default=False)
 
 
