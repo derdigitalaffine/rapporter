@@ -27,7 +27,7 @@ test('personal Today preview cancels and saves hidden widgets across reload',asy
  await editor.getByRole('button',{name:'Einkauf · Nach oben',exact:true}).click();
  await editor.getByRole('combobox',{name:'Einkauf · Größe'}).selectOption('compact');
  await editor.getByRole('button',{name:'Speichern',exact:true}).click();await expect(editor).toHaveCount(0);
- await page.reload();await expect(page.getByRole('button',{name:'Raster bearbeiten'}).toBeEnabled();
+ await page.reload();await expect(page.getByRole('button',{name:'Raster bearbeiten'})).toBeEnabled();
  await expect(page.locator('[data-today-widget="tasks"]')).toHaveCount(0);
  await expect(page.locator('[data-today-widget="shopping"]')).toHaveClass(/today-widget-compact/);
  await page.getByRole('button',{name:'Raster bearbeiten'}).click();
@@ -38,10 +38,10 @@ test('personal Today preview cancels and saves hidden widgets across reload',asy
 test('square size is offered for suitable widgets but not dense task lists',async({page})=>{
  await boot(page);await page.getByRole('button',{name:'Raster bearbeiten'}).click();
  const editor=page.getByRole('region',{name:'Raster bearbeiten'});
- const weatherSize=editor.getByRole('combobox',{name:'Wetter · Größe'});
- await expect(weatherSize.locator('option[value="square"]')).toHaveCount(1);
- await weatherSize.selectOption('square');
- await expect(page.locator('[data-today-widget="weather"]')).toHaveAttribute('data-widget-size','square');
+ const routineSize=editor.getByRole('combobox',{name:'Zuletzt gemacht · Größe'});
+ await expect(routineSize.locator('option[value="square"]')).toHaveCount(1);
+ await routineSize.selectOption('square');
+ await expect(page.locator('[data-today-widget="routines"]')).toHaveAttribute('data-widget-size','square');
  const taskSize=editor.getByRole('combobox',{name:'Aufgaben · Größe'});
  await expect(taskSize.locator('option[value="square"]')).toHaveCount(0);
 });
