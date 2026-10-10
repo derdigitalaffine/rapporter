@@ -1,19 +1,19 @@
 """Compatibility adapter for legacy domains not yet migrated to ``Document``.
 
 This module deliberately contains no domain semantics. Remaining BinaryField
-consumers reuse the shared Document OCR implementation, while image storage keeps
-their historical byte contract until those rows are migrated to ``Document``.
-That compatibility matters because legacy domains use the normalized-byte hash
-for duplicate detection.
+consumers reuse a Documents-owned compatibility boundary while image storage and
+OCR keep their historical byte/runtime contract until those rows are migrated to
+``Document``. That compatibility matters because legacy domains use normalized
+bytes for duplicate hashes and may depend on the existing OCR layout behavior.
 """
 from io import BytesIO
 
 from PIL import Image, ImageEnhance, ImageOps, ImageStat, UnidentifiedImageError
-
-from .extraction import _ocr_image
+import pytesseract
 
 MAX_LEGACY_IMAGE_BYTES = 10 * 1024 * 1024
 MAX_LEGACY_IMAGE_PIXELS = 25_000_000
+LEGACY_OCR_TIMEOUT_SECONDS = 20
 ALLOWED_LEGACY_FORMATS = {"JPEG", "PNG", "WEBP"}
 
 
@@ -24,8 +24,7 @@ def canonicalize_legacy_image(upload):
     max 2500px, slight contrast enhancement, then JPEG quality 88. Existing rows
     store the hash of those normalized bytes, so switching this bridge to WebP
     would make identical re-uploads miss duplicate detection. Keep this transform
-    here only as an explicit migration compatibility boundary; OCR itself is the
-    shared Document engine below.
+    here only as an explicit migration compatibility boundary.
     """
     raw = upload.read()
     if not raw:
@@ -61,8 +60,24 @@ def canonicalize_legacy_image(upload):
 
 
 def extract_legacy_image_text(content):
-    """Run the shared adaptive Document OCR engine over legacy image bytes."""
-    with Image.open(BytesIO(content)) as source:
-        source.load()
-        page = _ocr_image(source.convert("RGB"), 1, heartbeat=lambda: None)
-    return page["text"]
+    """Preserve the old PSM-6 OCR behavior behind a Documents-owned adapter.
+
+    This is intentionally *not* the adaptive Document OCR engine: changing a
+    legacy PetDocument's extraction behavior is a separate migration scope. The
+    only #184 requirement here is to remove the dependency on Expense internals.
+    """
+    image = Image.open(BytesIO(content))
+    image = ImageOps.autocontrast(ImageOps.grayscale(image))
+    try:
+        return pytesseract.image_to_string(
+            image,
+            lang="deu+eng",
+            config="--psm 6",
+            timeout=LEGACY_OCR_TIMEOUT_SECONDS,
+        )
+    except pytesseract.TesseractError:
+        return pytesseract.image_to_string(
+            image,
+            config="--psm 6",
+            timeout=LEGACY_OCR_TIMEOUT_SECONDS,
+        )
