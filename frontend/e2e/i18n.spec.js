@@ -18,7 +18,10 @@ test('DE to EN also changes calendar and integration locale-sensitive copy',asyn
  await switchToEnglish(page);
 
  await page.locator('.bottom-nav').getByRole('button',{name:'Calendar',exact:true}).click();
- await expect(page.getByText('Family agenda',{exact:true})).toBeVisible();
+ await expect(page.getByText('Family calendar',{exact:true})).toBeVisible();
+ await expect(page.getByRole('button',{name:'Week',exact:true})).toHaveAttribute('aria-pressed','true');
+ await expect(page.getByText('Familienkalender',{exact:true})).toHaveCount(0);
+ await page.getByRole('button',{name:'List',exact:true}).click();
  await expect(page.getByRole('button',{name:/Show past/})).toBeVisible();
  await expect(page.getByText('Vergangene anzeigen',{exact:true})).toHaveCount(0);
  const dayHeading=page.locator('.agenda-day-head small').first();
