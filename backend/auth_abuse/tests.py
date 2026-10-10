@@ -89,7 +89,7 @@ class AuthAbuseServiceTests(TestCase):
             enforce("login.password", request=request, identifier="victim@example.com")
             for _ in range(POLICIES["login.password"].burst.limit + 1)
         ]
-        self.assertTrue(all(decision.allowed for decision in decisions[:-1])
+        self.assertTrue(all(decision.allowed for decision in decisions[:-1]))
         self.assertFalse(decisions[-1].allowed)
         self.assertGreater(decisions[-1].retry_after, 0)
 
