@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone as dt_timezone
+from datetime import timedelta, timezone as dt_timezone
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -60,7 +60,7 @@ class CalendarV2ProjectionTests(TestCase):
     def test_materializes_recurrence_exdates_exception_and_all_day(self):
         source = IntegrationSource.objects.create(
             family=self.family,
-            kind=IntegrationSource.Kind.CALENDAR,
+            kind=IntegrationSource.Kind.ICS,
             name="Kita & Familie",
             config={"adapter": "ics", "ics_content": self._ics()},
         )
@@ -80,7 +80,7 @@ class CalendarV2ProjectionTests(TestCase):
     def test_successful_resync_removes_stale_projection(self):
         source = IntegrationSource.objects.create(
             family=self.family,
-            kind=IntegrationSource.Kind.CALENDAR,
+            kind=IntegrationSource.Kind.ICS,
             name="ICS",
             config={"adapter": "ics", "ics_content": self._ics()},
         )
@@ -104,7 +104,7 @@ class CalendarV2ProjectionTests(TestCase):
     def test_source_appearance_preserves_sync_config(self):
         source = IntegrationSource.objects.create(
             family=self.family,
-            kind=IntegrationSource.Kind.CALENDAR,
+            kind=IntegrationSource.Kind.ICS,
             name="Privat",
             config={"adapter": "ics", "ics_content": "secret-calendar-payload"},
         )
@@ -120,7 +120,7 @@ class CalendarV2ProjectionTests(TestCase):
         self.assertNotEqual(response.data["config"]["ics_content"], "secret-calendar-payload")
 
     def test_source_appearance_rejects_arbitrary_font_awesome_name(self):
-        source = IntegrationSource.objects.create(family=self.family, kind=IntegrationSource.Kind.CALENDAR, name="Privat", config={"adapter": "ics"})
+        source = IntegrationSource.objects.create(family=self.family, kind=IntegrationSource.Kind.ICS, name="Privat", config={"adapter": "ics"})
         response = self.client.patch(
             f"/api/calendar-sources/{source.id}/appearance/",
             {"color": "purple", "icon": "fa-skull-crossbones"},
@@ -129,7 +129,7 @@ class CalendarV2ProjectionTests(TestCase):
         self.assertEqual(response.status_code, 400)
 
     def test_source_backed_events_are_read_only_through_event_api(self):
-        source = IntegrationSource.objects.create(family=self.family, kind=IntegrationSource.Kind.CALENDAR, name="Extern", config={"adapter": "ics"})
+        source = IntegrationSource.objects.create(family=self.family, kind=IntegrationSource.Kind.ICS, name="Extern", config={"adapter": "ics"})
         event = FamilyEvent.objects.create(
             family=self.family,
             source=source,
