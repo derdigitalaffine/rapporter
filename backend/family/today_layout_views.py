@@ -11,7 +11,10 @@ from .models import Family, Membership, TodayLayout
 
 LEGACY_WIDGET_IDS = ('weather', 'priority', 'waste', 'next', 'tasks', 'shopping', 'routines', 'birthdays', 'notes')
 WIDGET_IDS = LEGACY_WIDGET_IDS + ('loyalty', 'inbox')
-DEFAULT_WIDGETS = [{'id': key, 'visible': True, 'size': 'full'} for key in WIDGET_IDS]
+# New users get the reference-oriented information hierarchy while saved personal
+# layouts keep their exact order through _expanded_widgets().
+DEFAULT_WIDGET_ORDER = ('priority', 'next', 'weather', 'tasks', 'shopping', 'routines', 'waste', 'inbox', 'birthdays', 'notes', 'loyalty')
+DEFAULT_WIDGETS = [{'id': key, 'visible': True, 'size': 'full'} for key in DEFAULT_WIDGET_ORDER]
 
 
 def _expanded_widgets(widgets):

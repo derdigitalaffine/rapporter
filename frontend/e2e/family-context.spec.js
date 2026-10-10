@@ -9,12 +9,12 @@ function dashboardFor(familyId){
   if(familyId==='family-2')return {
     tasks:[{id:'task-b',family:'family-2',task_list:'tasks-b',title:'Hund füttern',notes:'',priority:'high',estimate_minutes:5,assignee:1,assignee_name:'Alex',list_name:'Nebenhaus',due_at:null,completed_at:null}],
     task_lists:[{id:'tasks-b',family:'family-2',name:'Nebenhaus',icon:'list-check',archived:false,sort_order:0,open_count:1,done_count:0}],
-    events:[{id:'event-b',family:'family-2',source:null,type:'calendar.event',title:'Training Nebenfamilie',starts_at:inHours(4),ends_at:inHours(5),actionable:false,payload:{provider:'fam-uh-le'}}],routines:[],shopping_lists:[{id:'shop-b',family:'family-2',name:'Nebenhaus Einkauf',store:'',icon:'cart-shopping',archived:false,sort_order:0,items:[{id:'item-b',shopping_list:'shop-b',name:'Hundefutter',quantity:'1',category:'',aisle:'',note:'',favorite:false,checked:false}],open_count:1,checked_count:0}],inbox_count:0,automation_count:0,
+    events:[{id:'event-b',family:'family-2',source:null,type:'calendar.event',title:'Training Nebenfamilie',starts_at:inHours(4),ends_at:inHours(5),actionable:false,payload:{provider:'FamilyOS'}}],routines:[],shopping_lists:[{id:'shop-b',family:'family-2',name:'Nebenhaus Einkauf',store:'',icon:'cart-shopping',archived:false,sort_order:0,items:[{id:'item-b',shopping_list:'shop-b',name:'Hundefutter',quantity:'1',category:'',aisle:'',note:'',favorite:false,checked:false}],open_count:1,checked_count:0}],inbox_count:0,automation_count:0,
   };
   return {
     tasks:[{id:'task-a',family:'family-1',task_list:'tasks-a',title:'Wäsche aufhängen',notes:'',priority:'normal',estimate_minutes:10,assignee:1,assignee_name:'Alex',list_name:'Alltag',due_at:null,completed_at:null}],
     task_lists:[{id:'tasks-a',family:'family-1',name:'Alltag',icon:'list-check',archived:false,sort_order:0,open_count:1,done_count:0}],
-    events:[{id:'event-a',family:'family-1',source:null,type:'calendar.event',title:'Arzt Musterfamilie',starts_at:inHours(3),ends_at:inHours(4),actionable:false,payload:{provider:'fam-uh-le'}}],routines:[],shopping_lists:[{id:'shop-a',family:'family-1',name:'Supermarkt',store:'',icon:'cart-shopping',archived:false,sort_order:0,items:[{id:'item-a',shopping_list:'shop-a',name:'Milch',quantity:'1 l',category:'',aisle:'',note:'',favorite:false,checked:false}],open_count:1,checked_count:0}],inbox_count:0,automation_count:0,
+    events:[{id:'event-a',family:'family-1',source:null,type:'calendar.event',title:'Arzt Musterfamilie',starts_at:inHours(3),ends_at:inHours(4),actionable:false,payload:{provider:'FamilyOS'}}],routines:[],shopping_lists:[{id:'shop-a',family:'family-1',name:'Supermarkt',store:'',icon:'cart-shopping',archived:false,sort_order:0,items:[{id:'item-a',shopping_list:'shop-a',name:'Milch',quantity:'1 l',category:'',aisle:'',note:'',favorite:false,checked:false}],open_count:1,checked_count:0}],inbox_count:0,automation_count:0,
   };
 }
 
@@ -27,6 +27,8 @@ async function setupTwoFamilies(page){
   });
 }
 
+const taskRows=page=>page.locator('.today-task-row');
+
 test('family switcher isolates dashboard data and persists selection',async({page})=>{
   await setupTwoFamilies(page);
   await page.goto('/');
@@ -34,22 +36,22 @@ test('family switcher isolates dashboard data and persists selection',async({pag
 
   const switcher=page.locator('.family-switcher select');
   await expect(switcher).toHaveValue('family-1');
-  await expect(page.getByText('Wäsche aufhängen',{exact:true})).toBeVisible();
+  await expect(taskRows(page).getByText('Wäsche aufhängen',{exact:true})).toBeVisible();
   await expect(page.getByText('Arzt Musterfamilie',{exact:true})).toBeVisible();
-  await expect(page.getByText('Hund füttern',{exact:true})).toHaveCount(0);
+  await expect(taskRows(page).getByText('Hund füttern',{exact:true})).toHaveCount(0);
   await expect(page.getByText('Training Nebenfamilie',{exact:true})).toHaveCount(0);
 
   await switcher.selectOption('family-2');
   await expect(switcher).toHaveValue('family-2');
-  await expect(page.getByText('Hund füttern',{exact:true})).toBeVisible();
+  await expect(taskRows(page).getByText('Hund füttern',{exact:true})).toBeVisible();
   await expect(page.getByText('Training Nebenfamilie',{exact:true})).toBeVisible();
-  await expect(page.getByText('Wäsche aufhängen',{exact:true})).toHaveCount(0);
+  await expect(taskRows(page).getByText('Wäsche aufhängen',{exact:true})).toHaveCount(0);
   await expect(page.getByText('Arzt Musterfamilie',{exact:true})).toHaveCount(0);
 
   await page.reload();
   await page.waitForLoadState('networkidle');
   await expect(page.locator('.family-switcher select')).toHaveValue('family-2');
-  await expect(page.getByText('Hund füttern',{exact:true})).toBeVisible();
+  await expect(taskRows(page).getByText('Hund füttern',{exact:true})).toBeVisible();
   await expect(page.getByText('Training Nebenfamilie',{exact:true})).toBeVisible();
-  await expect(page.getByText('Wäsche aufhängen',{exact:true})).toHaveCount(0);
+  await expect(taskRows(page).getByText('Wäsche aufhängen',{exact:true})).toHaveCount(0);
 });
