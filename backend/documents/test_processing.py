@@ -1,5 +1,6 @@
 import io
 import tempfile
+import uuid
 from datetime import timedelta
 from unittest.mock import patch
 
@@ -15,7 +16,15 @@ from family.models import Family, Membership
 
 from .extraction import ExtractionResult, ProcessingError, extract_document
 from .models import Document, DocumentProcessingRun
-from .processing import claim_next_run, enqueue_document, fail_run, finish_run
+from .processing import (
+    LEASE_SECONDS,
+    MAX_ATTEMPTS,
+    claim_next_run,
+    enqueue_document,
+    fail_run,
+    finish_run,
+    renew_lease,
+)
 from .storage import canonicalize_upload, store_canonical
 from .worker import process_claimed_run
 
@@ -105,6 +114,60 @@ class DocumentProcessingTests(TestCase):
         self.assertEqual(reclaimed.attempts, 2)
         self.assertIsNotNone(reclaimed.claim_token)
         self.assertGreater(reclaimed.lease_expires_at, timezone.now())
+
+    def test_exhausted_crash_lease_is_failed_instead_of_reclaimed_forever(self):
+        document = self.create_document()
+        run, _ = enqueue_document(document)
+        now = timezone.now()
+        run.status = DocumentProcessingRun.Status.PROCESSING
+        run.attempts = MAX_ATTEMPTS
+        run.claim_token = uuid.uuid4()
+        run.started_at = now - timedelta(hours=1)
+        run.processing_started_at = now - timedelta(minutes=20)
+        run.lease_expires_at = now - timedelta(seconds=1)
+        run.save()
+
+        self.assertIsNone(claim_next_run(now=now))
+        run.refresh_from_db()
+        document.refresh_from_db()
+        self.assertEqual(run.status, DocumentProcessingRun.Status.FAILED)
+        self.assertEqual(run.attempts, MAX_ATTEMPTS)
+        self.assertEqual(run.error_code, "attempts_exhausted")
+        self.assertIsNone(run.claim_token)
+        self.assertIsNone(run.lease_expires_at)
+        self.assertEqual(document.processing_status, Document.ProcessingStatus.FAILED)
+
+    def test_heartbeat_extends_lease_and_prevents_parallel_reclaim(self):
+        document = self.create_document()
+        enqueue_document(document)
+        started = timezone.now()
+        claimed = claim_next_run(now=started, lease_seconds=60)
+        original_expiry = claimed.lease_expires_at
+
+        heartbeat_at = started + timedelta(seconds=55)
+        self.assertTrue(renew_lease(claimed, now=heartbeat_at, lease_seconds=60))
+        self.assertGreater(claimed.lease_expires_at, original_expiry)
+        self.assertIsNone(claim_next_run(now=original_expiry + timedelta(seconds=1), lease_seconds=60))
+
+    def test_worker_wires_heartbeat_into_long_running_extraction(self):
+        document = self.create_document()
+        enqueue_document(document)
+        claimed = claim_next_run()
+
+        def slow_extract(_document, *, heartbeat):
+            DocumentProcessingRun.objects.filter(pk=claimed.pk).update(
+                lease_expires_at=timezone.now() - timedelta(seconds=1)
+            )
+            heartbeat()
+            refreshed = DocumentProcessingRun.objects.get(pk=claimed.pk)
+            self.assertGreater(refreshed.lease_expires_at, timezone.now())
+            return ExtractionResult(text="renewed", extractor="test", needs_review=False)
+
+        with patch("documents.worker.extract_document", side_effect=slow_extract):
+            completed = process_claimed_run(claimed)
+
+        self.assertEqual(completed.status, DocumentProcessingRun.Status.READY)
+        self.assertEqual(completed.normalized_text, "renewed")
 
     def test_stale_worker_cannot_publish_after_lease_is_reclaimed(self):
         document = self.create_document()
