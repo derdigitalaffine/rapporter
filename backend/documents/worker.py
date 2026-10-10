@@ -25,27 +25,26 @@ def process_claimed_run(run):
     try:
         result = extract_document(run.document, heartbeat=heartbeat)
         heartbeat()
+        final = finish_run(run, result, needs_review=result.needs_review)
     except ClaimLost:
         return run.__class__.objects.filter(pk=run.pk).first()
     except ProcessingError as exc:
-        return _publish(
-            fail_run(
-                run,
-                error_code=exc.code,
-                safe_error=exc.safe_message,
-                retryable=exc.retryable,
-            )
+        final = fail_run(
+            run,
+            error_code=exc.code,
+            safe_error=exc.safe_message,
+            retryable=exc.retryable,
         )
     except Exception:
         # Raw exception strings can contain file contents, paths or library
-        # details. Persist only a stable redacted category for operators.
-        return _publish(
-            fail_run(
-                run,
-                error_code="processing_failed",
-                safe_error="Dokumentverarbeitung ist unerwartet fehlgeschlagen.",
-                retryable=True,
-            )
+        # details. Persist only a stable redacted category for operators. This
+        # still covers generic persistence failures; domain projection happens
+        # only after this block and can never enter the OCR retry policy.
+        final = fail_run(
+            run,
+            error_code="processing_failed",
+            safe_error="Dokumentverarbeitung ist unerwartet fehlgeschlagen.",
+            retryable=True,
         )
 
-    return _publish(finish_run(run, result, needs_review=result.needs_review))
+    return _publish(final)
