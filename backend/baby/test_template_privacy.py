@@ -2,6 +2,7 @@ from datetime import date, timedelta
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
+from rest_framework.test import APIClient
 
 from family.models import Family, Membership, Task
 
@@ -18,6 +19,7 @@ class PregnancyTemplatePrivacyTests(TestCase):
         Membership.objects.create(family=self.family, user=self.owner, role=Membership.Role.OWNER, display_name='Alex')
         set_module(self.owner, self.family, enabled=True)
         self.pregnancy = create_pregnancy(self.owner, self.family, expected_due_date=date.today()+timedelta(days=120))
+        self.client = APIClient(); self.client.force_authenticate(self.owner)
 
     def test_shared_tasks_hide_private_context_and_recalculate_after_due_date_change(self):
         first = pregnancy_template_items(self.owner, self.pregnancy, include_tasks=True, include_shopping=False)
@@ -31,9 +33,12 @@ class PregnancyTemplatePrivacyTests(TestCase):
             self.assertNotIn('baby', public.lower())
         old_due = {task.id: task.due_at for task in tasks}
 
-        self.pregnancy.expected_due_date += timedelta(days=14)
-        self.pregnancy.save(update_fields=['expected_due_date','updated_at'])
-        second = pregnancy_template_items(self.owner, self.pregnancy, include_tasks=True, include_shopping=False)
-        self.assertEqual(set(first['tasks']), set(second['tasks']))
-        for task in Task.objects.filter(id__in=second['tasks']):
+        new_due = self.pregnancy.expected_due_date + timedelta(days=14)
+        response = self.client.patch(
+            f'/api/baby/pregnancies/{self.pregnancy.id}/',
+            {'expected_due_date': new_due.isoformat()},
+            format='json',
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        for task in Task.objects.filter(id__in=first['tasks']):
             self.assertEqual(task.due_at, old_due[task.id] + timedelta(days=14))
