@@ -62,7 +62,7 @@ def resolve_invitation(token: str, *, for_update=False):
     digest = invitation_token_digest(token)
     queryset = FamilyInvitation.objects.select_related("family", "invited_by")
     if for_update:
-        queryset = queryset.select_for_update()
+        queryset = queryset.select_for_update(of=("self",))
     return queryset.filter(token=digest).first()
 
 
@@ -114,7 +114,7 @@ def rotate_invitation(invite: FamilyInvitation, *, expires_at=None):
     nonce = _new_nonce()
     with transaction.atomic():
         locked = (
-            FamilyInvitation.objects.select_for_update()
+            FamilyInvitation.objects.select_for_update(of=("self",))
             .select_related("family", "invited_by")
             .get(pk=invite.pk)
         )
