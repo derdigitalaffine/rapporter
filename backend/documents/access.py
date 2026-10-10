@@ -41,7 +41,7 @@ def can_manage_document(user, document):
     return document.access_entries.filter(membership=membership, can_manage=True).exists()
 
 
-def visible_documents(user, family_id, include_archived=False):
+def visible_documents(user, family_id, include_archived=False, include_unlisted=False):
     membership = active_membership(user, family_id)
     if not membership:
         return Document.objects.none()
@@ -57,6 +57,8 @@ def visible_documents(user, family_id, include_archived=False):
         access_entries__can_manage=True,
     )
     queryset = Document.objects.filter(family_id=family_id).filter(query).distinct()
+    if not include_unlisted:
+        queryset = queryset.filter(library_visible=True)
     if not include_archived:
         queryset = queryset.filter(archived_at__isnull=True)
     return queryset
