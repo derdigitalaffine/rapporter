@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 from datetime import timedelta
-from typing import Iterable
 from urllib.parse import urlencode
 
-from django.db.models import Prefetch, Q
+from django.db.models import F, Prefetch, Q, Window
+from django.db.models.functions import RowNumber
 from django.utils import timezone
 
 from .models import Family, Membership, Routine, RoutineLog, RoutineReminderState, Task
@@ -43,7 +43,11 @@ def _action(kind: str, action_id: str, method: str, href: str, payload=None):
 
 
 def _deep_link(page: str, family_id, **params):
-    values = {"page": page, "family": str(family_id), **{key: str(value) for key, value in params.items() if value is not None}}
+    values = {
+        "page": page,
+        "family": str(family_id),
+        **{key: str(value) for key, value in params.items() if value is not None},
+    }
     return "/?" + urlencode(values)
 
 
@@ -178,8 +182,13 @@ def _routine_item(routine: Routine, *, user, family: Family, now):
         state = "done_today"
     else:
         state = "open"
+
     reminder_state = next(iter(getattr(routine, "_action_reminder_states", [])), None)
-    snoozed_until = reminder_state.snoozed_until if reminder_state and reminder_state.snoozed_until and reminder_state.snoozed_until > now else None
+    snoozed_until = (
+        reminder_state.snoozed_until
+        if reminder_state and reminder_state.snoozed_until and reminder_state.snoozed_until > now
+        else None
+    )
     ranking = _ranking("routine", state)
     if routine.active:
         primary = _action("routine", "record_done", "POST", f"/api/routines/{routine.id}/done/")
@@ -191,6 +200,7 @@ def _routine_item(routine: Routine, *, user, family: Family, now):
     else:
         primary = _action("routine", "reactivate", "PATCH", f"/api/routines/{routine.id}/", {"active": True})
         actions = [primary, _action("routine", "edit", "PATCH", f"/api/routines/{routine.id}/")]
+
     return {
         "id": f"routine:{routine.id}",
         "family": str(routine.family_id),
@@ -250,27 +260,27 @@ def _normalise_filters(scope: str, kind: str):
     return scope, kind
 
 
-def _task_queryset(*, family, user, scope, list_id=None, workflow_id=None, now, today_start, tomorrow_start, recent_start):
-    rows = Task.objects.filter(family=family).exclude(hidden_from_user=user).select_related("task_list", "assignee", "workflow_column")
+def _task_queryset(*, family, user, scope, list_id=None, workflow_id=None, today_start, tomorrow_start, recent_start):
+    rows = Task.objects.filter(family=family).exclude(hidden_from_user=user).select_related(
+        "task_list", "assignee", "workflow_column"
+    )
     if list_id:
         rows = rows.filter(task_list_id=list_id)
     if workflow_id:
         rows = rows.filter(workflow_column_id=workflow_id)
     if scope == "mine":
-        rows = rows.filter(assignee=user, completed_at__isnull=True)
-    elif scope == "today":
-        rows = rows.filter(
+        return rows.filter(assignee=user, completed_at__isnull=True)
+    if scope == "today":
+        return rows.filter(
             Q(completed_at__gte=today_start, completed_at__lt=tomorrow_start)
             | Q(completed_at__isnull=True, due_at__lt=tomorrow_start)
             | Q(completed_at__isnull=True, workflow_column__kind__in=["active", "waiting"])
         )
-    elif scope == "upcoming":
-        rows = rows.filter(completed_at__isnull=True, due_at__gte=tomorrow_start)
-    elif scope in {"completed", "recent"}:
-        rows = rows.filter(completed_at__gte=recent_start)
-    else:
-        rows = rows.filter(Q(completed_at__isnull=True) | Q(completed_at__gte=today_start))
-    return rows
+    if scope == "upcoming":
+        return rows.filter(completed_at__isnull=True, due_at__gte=tomorrow_start)
+    if scope in {"completed", "recent"}:
+        return rows.filter(completed_at__gte=recent_start)
+    return rows.filter(Q(completed_at__isnull=True) | Q(completed_at__gte=today_start))
 
 
 def _routine_queryset(*, family, user, scope, now, recent_start):
@@ -279,7 +289,23 @@ def _routine_queryset(*, family, user, scope, now, recent_start):
         rows = rows.filter(active=True)
     elif scope in {"completed", "recent"}:
         rows = rows.filter(logs__done_at__gte=recent_start).distinct()
-    limited_logs = RoutineLog.objects.filter(done_at__lte=now).select_related("done_by").order_by("-done_at", "-id")[:MAX_ROUTINE_LOGS]
+
+    # A raw slice cannot be used for a reverse-FK Prefetch on Django 6.1 because
+    # the relation manager still has to add its parent filter afterwards. Rank
+    # logs per routine in SQL instead: one query, bounded history, no N+1.
+    limited_logs = (
+        RoutineLog.objects.filter(done_at__lte=now)
+        .annotate(
+            _action_row=Window(
+                expression=RowNumber(),
+                partition_by=[F("routine_id")],
+                order_by=[F("done_at").desc(), F("id").desc()],
+            )
+        )
+        .filter(_action_row__lte=MAX_ROUTINE_LOGS)
+        .select_related("done_by")
+        .order_by("routine_id", "-done_at", "-id")
+    )
     reminder_states = RoutineReminderState.objects.filter(membership__user=user)
     return rows.prefetch_related(
         Prefetch("logs", queryset=limited_logs),
@@ -304,14 +330,11 @@ def _matches_scope(item, *, scope, today, zone, recent_start):
 
 
 def _sort_key(item):
-    ranking = item["ranking"]
     sort_at = item.get("_sort_at")
-    # A deterministic timestamp fallback keeps undated items stable without relying
-    # on insertion order or database default ordering.
     sort_stamp = sort_at.timestamp() if sort_at else float("inf")
     priority_weight = {"high": 0, "normal": 1, "low": 2}.get(item.get("priority"), 1)
     return (
-        ranking["bucket"],
+        item["ranking"]["bucket"],
         sort_stamp,
         priority_weight,
         0 if item.get("_mine") else 1,
@@ -359,7 +382,6 @@ def project_actions(
             scope=scope,
             list_id=list_id,
             workflow_id=workflow_id,
-            now=now,
             today_start=today_start,
             tomorrow_start=tomorrow_start,
             recent_start=recent_start,
@@ -370,6 +392,10 @@ def project_actions(
         routines = _routine_queryset(family=family, user=user, scope=scope, now=now, recent_start=recent_start)
         items.extend(_routine_item(routine, user=user, family=family, now=now) for routine in routines)
 
-    items = [item for item in items if _matches_scope(item, scope=scope, today=today, zone=zone, recent_start=recent_start)]
+    items = [
+        item
+        for item in items
+        if _matches_scope(item, scope=scope, today=today, zone=zone, recent_start=recent_start)
+    ]
     items.sort(key=_sort_key)
     return [_public_item(item) for item in items]
