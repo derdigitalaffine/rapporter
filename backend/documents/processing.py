@@ -90,22 +90,19 @@ def _terminalize_exhausted_runs(now, *, batch_size=100):
             ]
         )
         Document.objects.filter(pk=run.document_id).update(processing_status=Document.ProcessingStatus.FAILED)
-        dispatch_processing_consumers(run)
-    return len(exhausted)
+    return exhausted
 
 
 def claim_next_run(*, now=None, lease_seconds=LEASE_SECONDS):
     """Atomically claim one due job with a unique lease ownership token.
 
-    `select_for_update(skip_locked=True)` lets multiple PostgreSQL workers poll the
-    same queue without processing the same run. Expired processing leases are
-    claimable while attempts remain, which makes a killed worker restart-safe
-    without allowing infinite crash loops. The fresh claim token fences stale
-    workers from publishing after another worker reclaimed the run.
+    Queue state commits before best-effort domain projection. A bug in an Expense,
+    Pet or future consumer can therefore never roll back/reclaim a generic OCR
+    lease or make two workers process the same document.
     """
     now = now or timezone.now()
     with transaction.atomic():
-        _terminalize_exhausted_runs(now)
+        exhausted = _terminalize_exhausted_runs(now)
         run = (
             DocumentProcessingRun.objects.select_for_update(skip_locked=True)
             .select_related("document")
@@ -113,34 +110,37 @@ def claim_next_run(*, now=None, lease_seconds=LEASE_SECONDS):
             .order_by("queued_at", "created_at")
             .first()
         )
-        if not run:
-            return None
-        run.status = DocumentProcessingRun.Status.PROCESSING
-        run.attempts += 1
-        run.claim_token = uuid.uuid4()
-        run.started_at = run.started_at or now
-        run.processing_started_at = now
-        run.lease_expires_at = now + timedelta(seconds=lease_seconds)
-        run.next_retry_at = None
-        run.error_code = ""
-        run.safe_error = ""
-        run.save(
-            update_fields=[
-                "status",
-                "attempts",
-                "claim_token",
-                "started_at",
-                "processing_started_at",
-                "lease_expires_at",
-                "next_retry_at",
-                "error_code",
-                "safe_error",
-                "updated_at",
-            ]
-        )
-        Document.objects.filter(pk=run.document_id).update(processing_status=Document.ProcessingStatus.PROCESSING)
+        if run:
+            run.status = DocumentProcessingRun.Status.PROCESSING
+            run.attempts += 1
+            run.claim_token = uuid.uuid4()
+            run.started_at = run.started_at or now
+            run.processing_started_at = now
+            run.lease_expires_at = now + timedelta(seconds=lease_seconds)
+            run.next_retry_at = None
+            run.error_code = ""
+            run.safe_error = ""
+            run.save(
+                update_fields=[
+                    "status",
+                    "attempts",
+                    "claim_token",
+                    "started_at",
+                    "processing_started_at",
+                    "lease_expires_at",
+                    "next_retry_at",
+                    "error_code",
+                    "safe_error",
+                    "updated_at",
+                ]
+            )
+            Document.objects.filter(pk=run.document_id).update(processing_status=Document.ProcessingStatus.PROCESSING)
+
+    for exhausted_run in exhausted:
+        dispatch_processing_consumers(exhausted_run)
+    if run:
         dispatch_processing_consumers(run)
-        return run
+    return run
 
 
 def renew_lease(run, *, now=None, lease_seconds=LEASE_SECONDS):
@@ -169,6 +169,7 @@ def _owns_claim(locked, claimed):
 
 
 def finish_run(run, result, *, needs_review=True):
+    """Persist generic extraction atomically; domain projection is separate."""
     now = timezone.now()
     status = DocumentProcessingRun.Status.REVIEW if needs_review else DocumentProcessingRun.Status.READY
     document_status = Document.ProcessingStatus.REVIEW if needs_review else Document.ProcessingStatus.READY
@@ -228,7 +229,6 @@ def finish_run(run, result, *, needs_review=True):
             ]
         )
         Document.objects.filter(pk=locked.document_id).update(processing_status=document_status)
-        dispatch_processing_consumers(locked)
         return locked
 
 
@@ -274,5 +274,4 @@ def fail_run(run, *, error_code, safe_error, retryable=True, now=None):
             ]
         )
         Document.objects.filter(pk=locked.document_id).update(processing_status=document_status)
-        dispatch_processing_consumers(locked)
         return locked
