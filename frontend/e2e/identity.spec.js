@@ -3,15 +3,18 @@ import {installApiMocks} from './mock-api.js';
 
 const fulfillJson=(route,body,status=200)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)});
 
-test('email verification requires an explicit user click',async({page})=>{
+test('email verification requires an explicit user click and scrubs token from browser state',async({page})=>{
  let verifyCalls=0;
  await page.route('**/api/auth/email/verify/',async route=>{
   verifyCalls+=1;
   expect(route.request().method()).toBe('POST');
   expect(route.request().postDataJSON()).toEqual({token:'signed-token'});
+  expect(route.request().headers()['accept-language']).toBe('de');
+  expect(route.request().headers().referer||'').not.toContain('signed-token');
   await fulfillJson(route,{verified:true,changed:true,kind:'primary'});
  });
  await page.goto('/verify-email/signed-token');
+ await expect(page).toHaveURL(/\/verify-email\/$/);
  await expect(page.getByRole('heading',{name:'E-Mail-Adresse bestätigen'})).toBeVisible();
  expect(verifyCalls).toBe(0);
  await page.getByRole('button',{name:'E-Mail bestätigen'}).click();
@@ -56,7 +59,11 @@ test('legacy account path remains explicit for migration accounts',async({page})
  await installApiMocks(page,{authenticated:false});
  const loginRequest=page.waitForRequest(request=>request.url().includes('/api/auth/login/')&&request.method()==='POST');
  await page.goto('/');
- await page.getByLabel(/E-Mail-Adresse/).fill('alex');
+ await expect(page.getByLabel('E-Mail-Adresse')).toBeVisible();
+ await expect(page.getByLabel('Benutzername')).toHaveCount(0);
+ await page.getByRole('button',{name:'Bestandskonto / Superadmin'}).click();
+ await expect(page.getByLabel('Benutzername')).toBeVisible();
+ await page.getByLabel('Benutzername').fill('alex');
  await page.getByLabel('Passwort').fill('legacy-password');
  await page.getByRole('button',{name:'Anmelden',exact:true}).click();
  const request=await loginRequest;

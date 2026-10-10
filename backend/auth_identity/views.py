@@ -106,7 +106,10 @@ def change_email(request):
 @permission_classes([permissions.AllowAny])
 def verify_email(request):
     try:
-        identity, changed = verify_email_token(request.data.get("token") or "")
+        identity, changed = verify_email_token(
+            request.data.get("token") or "",
+            locale=_locale(request),
+        )
     except EmailVerificationError:
         return Response(
             {"detail": "Bestätigungslink ist ungültig oder abgelaufen."},

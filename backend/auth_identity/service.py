@@ -229,7 +229,8 @@ def queue_verification(identity: EmailIdentity, *, locale="de") -> EmailIdentity
         return locked
 
 
-def verify_email_token(token: str) -> tuple[EmailIdentity, bool]:
+def verify_email_token(token: str, *, locale="de") -> tuple[EmailIdentity, bool]:
+    locale = "en" if str(locale or "").lower().startswith("en") else "de"
     try:
         payload = _signer().unsign_object(
             token,
@@ -277,7 +278,7 @@ def verify_email_token(token: str) -> tuple[EmailIdentity, bool]:
                 message_key=f"email-change:{user.pk}:{identity.pk}:v{identity.verification_version}",
                 template_key="email.changed",
                 recipient=old_email,
-                locale="de",
+                locale=locale,
                 context={},
             )
         return identity, True

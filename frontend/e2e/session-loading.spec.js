@@ -46,7 +46,7 @@ test('expired session is shown once and restores the previous route after login'
  await expect(page.locator('.toast')).toHaveCount(0);
  await expect(page).toHaveURL(/\?page=tasks$/);
 
- await page.getByLabel('Benutzername').fill('alex');
+ await page.getByLabel('E-Mail-Adresse').fill('alex@example.test');
  await page.getByLabel('Passwort').fill('secret');
  await page.getByRole('button',{name:'Anmelden',exact:true}).click();
  await expect(page.getByRole('heading',{name:'Aufgaben',exact:true})).toBeVisible();

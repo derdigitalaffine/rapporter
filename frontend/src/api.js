@@ -3,12 +3,14 @@ import {loadFamilyShell,offlineApiFallback,saveFamilyShell,saveShoppingSnapshot}
 const API_BASE = import.meta.env.VITE_API_BASE || '/api';
 const SESSION_MARKER='famuhle-session';
 const SESSION_EXPIRED_EVENT='famuhle:session-expired';
+export const AUTH_CHANGED_EVENT='famuhle:auth-changed';
 const jsonHeaders = () => ({'Content-Type':'application/json'});
 let refreshPromise=null;
 let sessionExpiredSent=false;
 
 export function markAuthenticated(value=true){
  if(value)localStorage.setItem(SESSION_MARKER,'1');else localStorage.removeItem(SESSION_MARKER);
+ window.dispatchEvent(new CustomEvent(AUTH_CHANGED_EVENT,{detail:{authenticated:Boolean(value)}}));
 }
 function resetSessionExpiry(){sessionExpiredSent=false}
 function notifySessionExpired(){
@@ -19,7 +21,7 @@ function notifySessionExpired(){
 }
 export async function login(identifier,password,{legacy=false}={}){
  const value=String(identifier||'').trim();
- const useLegacy=legacy||!value.includes('@');
+ const useLegacy=Boolean(legacy);
  const payload=useLegacy?{username:value,password,legacy:true}:{email:value,password};
  const response=await fetch(`${API_BASE}/auth/login/`,{method:'POST',credentials:'include',headers:jsonHeaders(),body:JSON.stringify(payload)});
  if(!response.ok)throw new Error('login_failed');
