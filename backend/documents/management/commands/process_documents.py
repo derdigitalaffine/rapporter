@@ -1,6 +1,7 @@
 import time
 
 from django.core.management.base import BaseCommand
+from django.db import close_old_connections
 
 from documents.processing import claim_next_run
 from documents.worker import process_claimed_run
@@ -18,6 +19,9 @@ class Command(BaseCommand):
         processed = 0
         max_jobs = max(0, options["max_jobs"])
         while True:
+            # This command owns the long-lived process boundary. Recycle stale
+            # connections between jobs, never inside a claimed unit of work.
+            close_old_connections()
             run = claim_next_run()
             if run is None:
                 if not options["loop"]:
@@ -26,6 +30,7 @@ class Command(BaseCommand):
                 continue
 
             process_claimed_run(run)
+            close_old_connections()
             processed += 1
             if max_jobs and processed >= max_jobs:
                 break
