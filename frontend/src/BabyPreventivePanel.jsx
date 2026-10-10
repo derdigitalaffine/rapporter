@@ -1,0 +1,13 @@
+import {useEffect,useState} from 'react';
+import {api} from './api';
+import {Icon} from './icons';
+import {toast} from './feedback';
+
+export default function BabyPreventivePanel({baby,t,language='de'}){
+ const [appointments,setAppointments]=useState([]);const [selected,setSelected]=useState('');const [question,setQuestion]=useState('');const [busy,setBusy]=useState(false);
+ async function load(){const data=await api(`/baby/profiles/${baby.id}/development/?language=${language}`);const rows=data.preventive_appointments||[];setAppointments(rows);setSelected(current=>current&&rows.some(row=>row.id===current)?current:(rows[0]?.id||''))}
+ useEffect(()=>{load().catch(()=>{})},[baby.id,language]);
+ async function plan(){setBusy(true);try{await api(`/baby/profiles/${baby.id}/preventive-events/`,{method:'POST',body:'{}'});await load();toast(t('babyUi.created'),{type:'success'})}catch(error){toast(error.message||t('babyUi.error'),{type:'error'})}finally{setBusy(false)}}
+ async function addQuestion(){if(!selected||!question.trim())return;setBusy(true);try{await api(`/baby/profiles/${baby.id}/appointment-questions/`,{method:'POST',body:JSON.stringify({event:selected,text:question.trim()})});setQuestion('');await load();toast(t('babyUi.saved'),{type:'success'})}catch(error){toast(error.message||t('babyUi.error'),{type:'error'})}finally{setBusy(false)}}
+ return <section className="baby-preventive"><div className="baby-section-head"><div><small>{t('babyUi.preventiveSource')}</small><h3>{t('babyUi.preventiveCare')}</h3></div><button className="secondary compact" disabled={busy} onClick={plan}><Icon name="calendar"/>{appointments.length?t('babyUi.refreshPreventive'):t('babyUi.preventive')}</button></div><p className="baby-reference-note">{t('babyUi.preventiveHint')}</p>{appointments.length>0&&<><div className="baby-preventive-list">{appointments.map(row=><article key={row.id} className="baby-preventive-item"><div><strong>{row.exam}</strong><small>{row.window} · {new Date(row.starts_at).toLocaleDateString()}</small></div>{(row.questions||[]).length>0&&<ul>{row.questions.map(item=><li key={item.id}>{item.text}</li>)}</ul>}</article>)}</div><div className="baby-question-form"><label>{t('babyUi.questionForAppointment')}<select value={selected} onChange={e=>setSelected(e.target.value)}>{appointments.map(row=><option key={row.id} value={row.id}>{row.exam} · {new Date(row.starts_at).toLocaleDateString()}</option>)}</select></label><label>{t('babyUi.question')}<input value={question} onChange={e=>setQuestion(e.target.value)} placeholder={t('babyUi.questionPlaceholder')}/></label><button className="secondary" disabled={busy||!selected||!question.trim()} onClick={addQuestion}>{t('babyUi.addQuestion')}</button></div></>}</section>;
+}
