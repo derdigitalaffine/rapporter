@@ -16,6 +16,18 @@ CALENDAR_APPEARANCE_COLORS = {"blue", "teal", "green", "amber", "orange", "red",
 CALENDAR_APPEARANCE_ICONS = {"calendar", "school", "waste", "weather", "transit", "members", "user", "heart", "pet", "baby", "location", "clock", "tags", "info"}
 
 
+def _validate_member_marker(serializer):
+    payload = serializer.validated_data.get("payload")
+    if payload is None:
+        return
+    member_id = payload.get("member_id") if isinstance(payload, dict) else None
+    if not member_id:
+        return
+    family = serializer.validated_data.get("family") or getattr(serializer.instance, "family", None)
+    if not family or not Membership.objects.filter(family=family, id=member_id).exists():
+        raise ValidationError({"payload": {"member_id": "Person gehört nicht zu dieser Familie."}})
+
+
 @api_view(["PATCH"])
 def calendar_source_appearance(request, source_id):
     source = IntegrationSource.objects.filter(id=source_id, family__memberships__user=request.user).first()
@@ -79,6 +91,7 @@ class FamilyEventViewSet(BaseFamilyEventViewSet):
             raise PermissionDenied("Externe Kalendertermine werden ausschließlich durch ihre Quelle synchronisiert.")
         if serializer.validated_data.get("type") in READ_ONLY_EVENT_TYPES:
             raise PermissionDenied("Dieser Termin wird von seinem Fachbereich verwaltet.")
+        _validate_member_marker(serializer)
         super().perform_create(serializer)
 
     def perform_update(self, serializer):
@@ -86,6 +99,7 @@ class FamilyEventViewSet(BaseFamilyEventViewSet):
             raise PermissionDenied("Externe Kalendertermine sind schreibgeschützt.")
         if serializer.instance.type in READ_ONLY_EVENT_TYPES or serializer.validated_data.get("type") in READ_ONLY_EVENT_TYPES:
             raise PermissionDenied("Dieser Termin ist hier schreibgeschützt.")
+        _validate_member_marker(serializer)
         super().perform_update(serializer)
 
     def perform_destroy(self, instance):
