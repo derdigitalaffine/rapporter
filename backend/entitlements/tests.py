@@ -1,17 +1,20 @@
 from datetime import timedelta
 from importlib import import_module
+from io import StringIO
 
 from django.apps import apps as global_apps
 from django.contrib.auth import get_user_model
 from django.core.exceptions import PermissionDenied, ValidationError
+from django.core.management import call_command
+from django.core.management.base import CommandError
 from django.test import TestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
 
 from family.models import Family, Membership
 
-from .catalog import LEGACY_SOURCE_REF
-from .models import CapabilityDefinition, EntitlementGrant, EntitlementGrantAudit
+from .catalog import COMMERCIAL_CUTOVER_KEY, LEGACY_SOURCE_REF
+from .models import CapabilityDefinition, EntitlementCutover, EntitlementGrant, EntitlementGrantAudit
 from .services import create_admin_grant, require_capability, resolve_entitlements, revoke_admin_grant
 
 
@@ -167,22 +170,87 @@ class EntitlementCoreTests(TestCase):
                 metadata={"payload": "x" * 5000},
             )
 
-    def test_legacy_backfill_is_idempotent_and_grants_existing_family_full_access(self):
+    def test_commercial_cutover_grandfathers_before_and_between_but_not_after(self):
         migration = import_module("entitlements.migrations.0001_initial")
-        migration.seed_capabilities_and_legacy(global_apps, None)
-        migration.seed_capabilities_and_legacy(global_apps, None)
+        before_core = self.family
 
-        grants = EntitlementGrant.objects.filter(
-            family=self.family,
-            origin=EntitlementGrant.Origin.LEGACY_GRANDFATHERED,
-            source_ref=LEGACY_SOURCE_REF,
+        migration.seed_capabilities(global_apps, None)
+        self.assertFalse(
+            EntitlementGrant.objects.filter(
+                family=before_core,
+                origin=EntitlementGrant.Origin.LEGACY_GRANDFATHERED,
+            ).exists()
         )
-        self.assertEqual(grants.count(), 1)
-        snapshot = resolve_entitlements(self.family, at=timezone.now())
-        expected = set(CapabilityDefinition.objects.filter(deprecated=False).values_list("key", flat=True))
-        self.assertEqual(snapshot.tier, "vip")
-        self.assertEqual(snapshot.origin_summary, EntitlementGrant.Origin.LEGACY_GRANDFATHERED)
-        self.assertEqual(set(snapshot.capabilities), expected)
+
+        between_core_and_cutover = Family.objects.create(name="Between Core And Cutover", slug="between-core-cutover")
+        cutover_at = timezone.now()
+        after_cutover = Family.objects.create(name="After Commercial Cutover", slug="after-commercial-cutover")
+
+        out = StringIO()
+        call_command(
+            "apply_entitlement_commercial_cutover",
+            cutover_at=cutover_at.isoformat(),
+            stdout=out,
+        )
+
+        marker = EntitlementCutover.objects.get(pk=COMMERCIAL_CUTOVER_KEY)
+        self.assertEqual(marker.cutover_at, cutover_at)
+        self.assertEqual(marker.eligible_family_count, Family.objects.filter(created_at__lte=cutover_at).count())
+
+        for family in (before_core, between_core_and_cutover):
+            grants = EntitlementGrant.objects.filter(
+                family=family,
+                origin=EntitlementGrant.Origin.LEGACY_GRANDFATHERED,
+                source_ref=LEGACY_SOURCE_REF,
+            )
+            self.assertEqual(grants.count(), 1)
+            grant = grants.get()
+            self.assertEqual(grant.starts_at, cutover_at)
+            self.assertEqual(EntitlementGrantAudit.objects.filter(grant=grant).count(), 1)
+            self.assertEqual(resolve_entitlements(family, at=cutover_at - timedelta(microseconds=1)).tier, "light")
+            self.assertEqual(resolve_entitlements(family, at=cutover_at).tier, "vip")
+
+        self.assertFalse(
+            EntitlementGrant.objects.filter(
+                family=after_cutover,
+                origin=EntitlementGrant.Origin.LEGACY_GRANDFATHERED,
+            ).exists()
+        )
+        self.assertEqual(resolve_entitlements(after_cutover, at=timezone.now()).tier, "light")
+
+        call_command(
+            "apply_entitlement_commercial_cutover",
+            cutover_at=cutover_at.isoformat(),
+            stdout=StringIO(),
+        )
+        for family in (before_core, between_core_and_cutover):
+            grant = EntitlementGrant.objects.get(
+                family=family,
+                origin=EntitlementGrant.Origin.LEGACY_GRANDFATHERED,
+                source_ref=LEGACY_SOURCE_REF,
+            )
+            self.assertEqual(EntitlementGrantAudit.objects.filter(grant=grant).count(), 1)
+
+        with self.assertRaises(CommandError):
+            call_command(
+                "apply_entitlement_commercial_cutover",
+                cutover_at=(cutover_at - timedelta(seconds=1)).isoformat(),
+                stdout=StringIO(),
+            )
+
+    def test_commercial_cutover_command_rejects_ambiguous_or_future_timestamps(self):
+        with self.assertRaises(CommandError):
+            call_command(
+                "apply_entitlement_commercial_cutover",
+                cutover_at=timezone.now().replace(tzinfo=None).isoformat(),
+                stdout=StringIO(),
+            )
+        with self.assertRaises(CommandError):
+            call_command(
+                "apply_entitlement_commercial_cutover",
+                cutover_at=(timezone.now() + timedelta(days=1)).isoformat(),
+                stdout=StringIO(),
+            )
 
     def test_snapshot_api_is_read_only_and_cross_family_safe(self):
         client = APIClient()
