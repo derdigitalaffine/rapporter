@@ -7,7 +7,7 @@ import {
   faArrowTrendUp, faFire, faGrip, faCopy, faShareNodes, faLink, faGear, faCirclePlus, faCheckDouble, faBarsProgress,
   faLocationDot, faTags, faGaugeHigh, faRobot, faEnvelope, faArrowDownShortWide, faBus, faGraduationCap, faLightbulb,
   faDownload, faPlay, faHeart, faBoxArchive, faSliders, faRoute, faReceipt, faCamera, faUpload, faEuroSign, faLock,
-  faMoneyBillTransfer
+  faMoneyBillTransfer, faBaby, faPaw
 } from '@fortawesome/free-solid-svg-icons';
 
 export const icons = {
@@ -21,7 +21,7 @@ export const icons = {
   progress:faBarsProgress, location:faLocationDot, tags:faTags, priority:faGaugeHigh, robot:faRobot, email:faEnvelope,
   sort:faArrowDownShortWide, transit:faBus, school:faGraduationCap, light:faLightbulb, install:faDownload, play:faPlay,
   heart:faHeart, archive:faBoxArchive, sliders:faSliders, route:faRoute, receipt:faReceipt, camera:faCamera, upload:faUpload,
-  euro:faEuroSign, lock:faLock, settle:faMoneyBillTransfer,
+  euro:faEuroSign, lock:faLock, settle:faMoneyBillTransfer, baby:faBaby, pet:faPaw,
 };
 
 export function Icon({name, size=18, className='', title}){

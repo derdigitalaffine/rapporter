@@ -15,7 +15,7 @@ def seed_pinboard(apps, schema_editor):
 
 
 class Migration(migrations.Migration):
-    dependencies = [('family', '0207_shopping_templates_stores')]
+    dependencies = [('family', '0208_notification_badge_state')]
 
     operations = [
         migrations.AddField(

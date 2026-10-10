@@ -20,3 +20,25 @@ test('Today surfaces accessible loyalty cards and unread family inbox',async({pa
   await expect(dialog).toBeVisible();
   await expect(dialog.getByRole('heading',{name:'REWE Bonus'}).first()).toBeVisible();
 });
+
+test('Today routines prioritize overdue and due work instead of recently completed items',async({page})=>{
+  const state=await installApiMocks(page);
+  const future=new Date(Date.now()+5*86400000).toISOString();
+  state.routines=[
+    {id:'routine-recent',family:state.family.id,name:'Gerade erledigt',icon:'history',active:true,last_done_at:new Date().toISOString(),prediction:{status:'upcoming',expected_at:future}},
+    {id:'routine-upcoming',family:state.family.id,name:'Demnächst',icon:'bed',active:true,last_done_at:null,prediction:{status:'upcoming',expected_at:future}},
+    {id:'routine-due',family:state.family.id,name:'Heute fällig',icon:'droplets',active:true,last_done_at:null,prediction:{status:'due',expected_at:new Date().toISOString()}},
+    {id:'routine-overdue',family:state.family.id,name:'Längst überfällig',icon:'sparkles',active:true,last_done_at:null,prediction:{status:'overdue',expected_at:new Date(Date.now()-86400000).toISOString()}},
+  ];
+  await page.goto('/');
+  await page.waitForLoadState('networkidle');
+  const widget=page.getByTestId('today-routines');
+  await expect(widget).toContainText('2 fällig');
+  const rows=widget.locator('.today-routine-row');
+  await expect(rows).toHaveCount(4);
+  await expect(rows.nth(0)).toContainText('Längst überfällig');
+  await expect(rows.nth(0)).toContainText('Überfällig');
+  await expect(rows.nth(1)).toContainText('Heute fällig');
+  await expect(rows.nth(1)).toContainText('Jetzt fällig');
+  await expect(rows.nth(2)).toContainText('Demnächst');
+});

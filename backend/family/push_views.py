@@ -2,6 +2,7 @@ from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
+from .badges import badge_count, clear_badge
 from .models import PushSubscription
 from .push import public_key, push_configured, send_to_subscription
 
@@ -14,6 +15,14 @@ def push_config(request):
         "public_key": public_key() if configured else "",
         "devices": PushSubscription.objects.filter(user=request.user, active=True).count(),
     })
+
+
+@api_view(["GET", "POST"])
+def push_badge(request):
+    if request.method == "POST":
+        clear_badge(request.user)
+        return Response({"unread_count": 0})
+    return Response({"unread_count": badge_count(request.user)})
 
 
 @api_view(["POST"])
