@@ -77,3 +77,9 @@ class NotificationBatch(TimestampedModel):
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=["membership", "bucket"], name="notification_member_bucket_unique")]
+
+
+class NotificationBadgeState(TimestampedModel):
+    """Account-wide unread activity count mirrored to supported PWA launchers."""
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="familyos_badge_state")
+    unread_count = models.PositiveIntegerField(default=0)

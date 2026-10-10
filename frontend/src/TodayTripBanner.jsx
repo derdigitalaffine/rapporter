@@ -34,5 +34,4 @@ export default function TodayTripBanner({family,open,language='de',widgetSize='f
  </div>;
 }
 
-TodayTripBanner.todayWidgetId='trip';
 TodayTripBanner.todayWidgetSelfManaged=true;
