@@ -30,6 +30,23 @@ test('Today shows the next trip with civil-date countdown and opens trips',async
  await expect(page.getByRole('heading',{name:'Reisen',exact:true})).toBeVisible();
 });
 
+test('travel widget can be configured as a half-width square',async({page})=>{
+ await page.setViewportSize({width:390,height:844});
+ await freezeToday(page);await installApiMocks(page,{dismissOnboarding:true});
+ await mockTrips(page,[trip('next','Herbstferien','2026-10-13','2026-10-17')]);
+ await page.goto('/');
+ await page.getByRole('button',{name:'Raster bearbeiten'}).click();
+ const editor=page.getByRole('region',{name:'Raster bearbeiten'});
+ await editor.getByRole('combobox',{name:'Reise · Größe'}).selectOption('square');
+ const widget=page.locator('[data-today-widget="trip"]');
+ await expect(widget).toHaveAttribute('data-widget-size','square');
+ const box=await widget.boundingBox();
+ expect(box).not.toBeNull();
+ expect(Math.abs(box.width-box.height)).toBeLessThanOrEqual(2);
+ expect(box.width).toBeLessThan(190);
+ await expect(page.getByTestId('today-trip-banner')).toContainText('Noch 3 Tage');
+});
+
 test('active trip wins over future trips and uses the in-trip countdown',async({page})=>{
  await freezeToday(page);await installApiMocks(page,{dismissOnboarding:true});
  await mockTrips(page,[

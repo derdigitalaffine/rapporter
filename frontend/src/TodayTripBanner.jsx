@@ -10,7 +10,7 @@ const words={
  en:{label:'Next trip',inDays:'{{count}} days to go',tomorrow:'Leaving tomorrow',today:'Leaving today',tripDay:'Day {{day}} of {{total}}',finished:'Trip finished'},
 };
 
-export default function TodayTripBanner({family,open,language='de'}){
+export default function TodayTripBanner({family,open,language='de',widgetSize='full'}){
  const [trips,setTrips]=useState([]);
  useEffect(()=>{
   let current=true;
@@ -24,10 +24,15 @@ export default function TodayTripBanner({family,open,language='de'}){
  const trip=nextRelevantTrip(trips);
  if(!trip)return null;
  const countdown=tripCountdown(trip,copy);
- return <button className="today-trip-banner" data-testid="today-trip-banner" onClick={()=>open('trips')} aria-label={`${copy.label}: ${trip.title}. ${countdown}`}>
-  <span className="today-trip-banner-icon" aria-hidden="true"><Icon name="route" size={18}/></span>
-  <span className="today-trip-banner-copy"><small>{copy.label}</small><strong>{trip.title}</strong>{trip.destination&&<span>{trip.destination}</span>}</span>
-  <span className="today-trip-banner-countdown">{countdown}</span>
-  <Icon name="next" size={16}/>
- </button>;
+ return <div className={`app-widget today-widget today-widget-${widgetSize} today-trip-widget`} data-today-widget="trip" data-widget-size={widgetSize}>
+  <button type="button" className="today-trip-banner" data-testid="today-trip-banner" onClick={()=>open('trips')} aria-label={`${copy.label}: ${trip.title}. ${countdown}`}>
+   <span className="today-trip-banner-icon" aria-hidden="true"><Icon name="route" size={20}/></span>
+   <span className="today-trip-banner-copy"><small>{copy.label}</small><strong>{trip.title}</strong>{trip.destination&&<span>{trip.destination}</span>}</span>
+   <span className="today-trip-banner-countdown">{countdown}</span>
+   <Icon name="next" size={16}/>
+  </button>
+ </div>;
 }
+
+TodayTripBanner.todayWidgetId='trip';
+TodayTripBanner.todayWidgetSelfManaged=true;
