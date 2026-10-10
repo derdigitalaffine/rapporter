@@ -12,19 +12,25 @@ async function mockTrips(page,rows){
 
 const trip=(id,title,starts_on,ends_on,extra={})=>({id,family:'family-1',title,destination:'Berlin',starts_on,ends_on,notes:'',archived:false,photos:[],...extra});
 
-test('Today shows the next trip with civil-date countdown and opens trips',async({page})=>{
- await freezeToday(page);await installApiMocks(page,{dismissOnboarding:true});
+test('legacy Today layout restores next trip as a real grid widget',async({page})=>{
+ await freezeToday(page);const state=await installApiMocks(page,{dismissOnboarding:true});
+ expect(state.todayLayout.widgets.some(widget=>widget.id==='trip')).toBe(false);
  await mockTrips(page,[
   trip('later','Sommerferien','2026-10-20','2026-10-25'),
   trip('next','Herbstferien','2026-10-13','2026-10-17'),
  ]);
  await page.goto('/');
+ const widget=page.locator('.today-widget-grid > [data-today-widget="trip"]');
+ await expect(widget).toBeVisible();
  const banner=page.getByTestId('today-trip-banner');
  await expect(banner).toBeVisible();
  await expect(banner).toContainText('Nächste Reise');
  await expect(banner).toContainText('Herbstferien');
  await expect(banner).toContainText('Berlin');
  await expect(banner).toContainText('Noch 3 Tage');
+ await page.getByRole('button',{name:'Raster bearbeiten'}).click();
+ await expect(page.getByRole('region',{name:'Raster bearbeiten'}).getByLabel('Reise',{exact:true})).toBeChecked();
+ await page.getByRole('button',{name:'Abbrechen',exact:true}).click();
  await banner.click();
  await expect(page).toHaveURL(/page=trips/);
  await expect(page.getByRole('heading',{name:'Reisen',exact:true})).toBeVisible();
