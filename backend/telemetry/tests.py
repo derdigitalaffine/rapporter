@@ -56,15 +56,43 @@ class TelemetryCoreTests(TestCase):
             )
         self.assertEqual(AuditEvent.objects.count(), 0)
 
-    def test_best_effort_audit_wrapper_does_not_break_business_flow(self):
-        result = try_record_audit_event(
-            "unknown.event",
+    def test_audit_target_id_must_be_opaque_not_content(self):
+        with self.assertRaises(TelemetrySchemaError):
+            record_audit_event(
+                "invite.revoked",
+                actor=self.user,
+                actor_class="user",
+                outcome="success",
+                target_type="invite",
+                target_id="private.person@example.com",
+                occurred_at=self.now,
+            )
+        event = record_audit_event(
+            "invite.revoked",
             actor=self.user,
             actor_class="user",
-            outcome="failed",
+            outcome="success",
+            target_type="invite",
+            target_id="5b84e6d0-13de-478f-a9d3-b225e52c33f3",
+            occurred_at=self.now,
         )
+        self.assertEqual(event.target_type, "invite")
+        self.assertEqual(event.target_id, "5b84e6d0-13de-478f-a9d3-b225e52c33f3")
+
+    def test_best_effort_audit_wrapper_does_not_break_or_log_unknown_key(self):
+        secret_like_key = "private.person@example.com"
+        with self.assertLogs("telemetry", level="ERROR") as captured:
+            result = try_record_audit_event(
+                secret_like_key,
+                actor=self.user,
+                actor_class="user",
+                outcome="failed",
+            )
         self.assertIsNone(result)
         self.assertEqual(AuditEvent.objects.count(), 0)
+        output = "\n".join(captured.output)
+        self.assertIn("event_key=<unknown>", output)
+        self.assertNotIn(secret_like_key, output)
 
     def test_audit_event_is_append_only(self):
         event = record_audit_event(
