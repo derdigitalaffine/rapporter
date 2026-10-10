@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import extra_views, views
+from . import extra_views, media_views, views
 
 
 urlpatterns = [
@@ -28,4 +28,6 @@ urlpatterns = [
     path("baby/handover/<uuid:handover_id>/", views.baby_handover_detail),
     path("baby/profiles/<uuid:baby_id>/cockpit/", views.baby_cockpit),
     path("baby/profiles/<uuid:baby_id>/report/", views.baby_report),
+    path("baby/media/", media_views.private_media_upload),
+    path("baby/media/<uuid:media_id>/", media_views.private_media_detail),
 ]
