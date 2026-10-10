@@ -107,12 +107,22 @@ def _visible_events(batch, pref):
     return result
 
 
+def _shopping_event_order(event):
+    """JSONB object keys are unordered; item ids restore a stable creation order."""
+    item_id = event.get("context", {}).get("item_id")
+    try:
+        return (0, int(item_id))
+    except (TypeError, ValueError):
+        return (1, str(item_id or ""))
+
+
 def _render(batch, events):
     from .domain_notifications import EVENT_SPECS, _SafeContext, _target_url
     family = batch.membership.family
     lang = "en" if family.locale.startswith("en") else "de"
-    first = events[0]
     if batch.bucket.startswith("shopping:"):
+        events = sorted(events, key=_shopping_event_order)
+        first = events[0]
         overflow = any(e["context"].get("overflow") for e in events)
         events = [e for e in events if not e["context"].get("overflow")]
         names = list(dict.fromkeys(e["context"].get("item", "") for e in events if e["context"].get("item")))
@@ -132,6 +142,7 @@ def _render(batch, events):
         ctx = dict(first["context"])
         ctx.pop("item_id", None)
         return title[:160], body[:300], _target_url("shopping.items.cleared", ctx)
+    first = events[0]
     spec = EVENT_SPECS[first["event_type"]]
     ctx = _SafeContext(first["context"])
     title = spec["title"][lang].format_map(ctx)
