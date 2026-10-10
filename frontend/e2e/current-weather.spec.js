@@ -34,7 +34,7 @@ test('Today shows current weather conditions separately from upcoming events',as
   await expect(weather).toContainText('Wind 8.2 km/h');
   await expect(weather).toContainText('Open-Meteo');
 
-  const next=page.getByRole('heading',{name:'Als Nächstes'}).locator('..').locator('..');
+  const next=page.getByTestId('today-context');
   await expect(next).toContainText('Kinderarzt');
   await expect(next).not.toContainText('13.4 °C');
 });
