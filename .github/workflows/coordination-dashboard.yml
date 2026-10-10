@@ -35,6 +35,17 @@ jobs:
             const claimMarker = '<!-- coordination:claim:v1 -->';
             const researchMarker = '<!-- external-research:v1 -->';
 
+            // Public issue/PR metadata is untrusted input. Keep the privileged
+            // #223 dashboard free from mentions and Markdown injection.
+            const safeText = (value) => String(value ?? '')
+              .replace(/[\r\n]+/g, ' ')
+              .replace(/@/g, '@\u200b')
+              .replace(/([\\`*_{}\[\]()<>#+.!|])/g, '\\$1');
+            const safeCode = (value) => String(value ?? '')
+              .replace(/[\r\n]+/g, ' ')
+              .replace(/@/g, '@\u200b')
+              .replace(/`/g, 'ˋ');
+
             const allIssueLike = await github.paginate(github.rest.issues.listForRepo, {
               owner,
               repo,
@@ -208,8 +219,8 @@ jobs:
                 const prs = row.linkedPrs.length
                   ? row.linkedPrs.map((pr) => `#${pr.number}`).join(', ')
                   : 'noch kein referenzierender offener PR';
-                const keys = row.keys.length ? row.keys.map((key) => `\`${key}\``).join(', ') : 'keine';
-                lines.push(`- #${row.issue.number} ${row.issue.title} · Claim: ${row.hasClaim ? '✅' : '⚠️ fehlt'} · Keys: ${keys} · PR: ${prs}`);
+                const keys = row.keys.length ? row.keys.map((key) => `\`${safeCode(key)}\``).join(', ') : 'keine';
+                lines.push(`- #${row.issue.number} ${safeText(row.issue.title)} · Claim: ${row.hasClaim ? '✅' : '⚠️ fehlt'} · Keys: ${keys} · PR: ${prs}`);
               }
             }
 
@@ -218,13 +229,13 @@ jobs:
               lines.push('- ✅ Keine semantischen Claim-, parallelen Closing-PR- oder exakten Dateikollisionen erkannt.');
             }
             for (const collision of semanticCollisions.slice(0, 40)) {
-              lines.push(`- ⚠️ Coordination Key \`${collision.key}\` wird parallel von ${collision.owners.map((issue) => `#${issue.number}`).join(', ')} beansprucht. Vertrag/Split im Thread klären.`);
+              lines.push(`- ⚠️ Coordination Key \`${safeCode(collision.key)}\` wird parallel von ${collision.owners.map((issue) => `#${issue.number}`).join(', ')} beansprucht. Vertrag/Split im Thread klären.`);
             }
             for (const collision of sameIssueCollisions.slice(0, 25)) {
               lines.push(`- ⚠️ Issue #${collision.issueNumber} wird gleichzeitig von ${collision.list.map((pr) => `#${pr.number}`).join(', ')} geschlossen. Split/Reihenfolge im Thread dokumentieren.`);
             }
             for (const overlap of fileOverlaps.slice(0, 40)) {
-              const shown = overlap.shared.slice(0, 5).map((file) => `\`${file}\``).join(', ');
+              const shown = overlap.shared.slice(0, 5).map((file) => `\`${safeCode(file)}\``).join(', ');
               const extra = overlap.shared.length > 5 ? ` +${overlap.shared.length - 5} weitere` : '';
               lines.push(`- ⚠️ PR #${overlap.left.number} ↔ #${overlap.right.number}: ${overlap.shared.length} gemeinsame Datei(en): ${shown}${extra}`);
             }
@@ -246,7 +257,7 @@ jobs:
               lines.push('- ✅ Für erkannte offene externe Feature-Issues fehlt kein `external-research:v1`-Block.');
             } else {
               for (const issue of missingResearch.slice(0, 30)) {
-                lines.push(`- 🔎 #${issue.number} ${issue.title}: aktueller Konkurrenz-/Web-Research-Block fehlt.`);
+                lines.push(`- 🔎 #${issue.number} ${safeText(issue.title)}: aktueller Konkurrenz-/Web-Research-Block fehlt.`);
               }
             }
 
