@@ -1,6 +1,39 @@
+import ipaddress
 import os
+import socket
 from pathlib import Path
 from datetime import timedelta
+
+
+class _TrustedProxyCidrs:
+    """Yield configured CIDRs plus exact, freshly resolved trusted proxy hosts.
+
+    Host resolution stays dynamic so a restarted Compose proxy can receive a new
+    container IP without forcing a backend restart. Resolution failure is
+    fail-closed: only the explicitly configured CIDRs remain trusted.
+    """
+
+    def __init__(self, cidrs, hosts):
+        self.cidrs = tuple(cidrs)
+        self.hosts = tuple(hosts)
+
+    def __iter__(self):
+        yield from self.cidrs
+        resolved = set()
+        for host in self.hosts:
+            try:
+                addresses = socket.getaddrinfo(host, None, type=socket.SOCK_STREAM)
+            except (socket.gaierror, OSError):
+                continue
+            for info in addresses:
+                try:
+                    address = ipaddress.ip_address(info[4][0])
+                except (ValueError, IndexError, TypeError):
+                    continue
+                resolved.add(f"{address}/{address.max_prefixlen}")
+        yield from sorted(resolved)
+
+
 BASE_DIR=Path(__file__).resolve().parent.parent
 SECRET_KEY=os.getenv("DJANGO_SECRET_KEY","dev-only-change-me");DEBUG=os.getenv("DJANGO_DEBUG","false").lower()=="true";ALLOWED_HOSTS=[h.strip() for h in os.getenv("DJANGO_ALLOWED_HOSTS","localhost,127.0.0.1").split(",") if h.strip()];CSRF_TRUSTED_ORIGINS=[u.strip() for u in os.getenv("CSRF_TRUSTED_ORIGINS","").split(",") if u.strip()]
 INSTALLED_APPS=["django.contrib.admin","django.contrib.auth","django.contrib.contenttypes","django.contrib.sessions","django.contrib.messages","django.contrib.staticfiles","corsheaders","rest_framework","auth_abuse.apps.AuthAbuseConfig","family","expenses","baby.apps.BabyConfig","pets.apps.PetsConfig","documents.apps.DocumentsConfig"]
@@ -12,5 +45,9 @@ LANGUAGE_CODE="de";LANGUAGES=[("de","Deutsch"),("en","English")];TIME_ZONE=os.ge
 STATIC_URL="/static/";STATIC_ROOT=BASE_DIR/"staticfiles";MEDIA_ROOT=Path(os.getenv("MEDIA_ROOT",BASE_DIR/"media"));DEFAULT_AUTO_FIELD="django.db.models.BigAutoField"
 REST_FRAMEWORK={"DEFAULT_AUTHENTICATION_CLASSES":("family.authentication.CookieJWTAuthentication",),"DEFAULT_PERMISSION_CLASSES":("family.permissions.ActiveTenantAccess",),"DEFAULT_FILTER_BACKENDS":("family.filters.ActiveTenantFilterBackend",),"DEFAULT_PAGINATION_CLASS":"rest_framework.pagination.PageNumberPagination","PAGE_SIZE":100}
 SIMPLE_JWT={"ACCESS_TOKEN_LIFETIME":timedelta(minutes=30),"REFRESH_TOKEN_LIFETIME":timedelta(days=30),"ROTATE_REFRESH_TOKENS":True,"BLACKLIST_AFTER_ROTATION":False}
-AUTH_ABUSE_HMAC_KEY=os.getenv("AUTH_ABUSE_HMAC_KEY") or SECRET_KEY;AUTH_TRUSTED_PROXY_CIDRS=[value.strip() for value in os.getenv("AUTH_TRUSTED_PROXY_CIDRS","").split(",") if value.strip()];AUTH_ABUSE_IPV4_PREFIX=int(os.getenv("AUTH_ABUSE_IPV4_PREFIX","32"));AUTH_ABUSE_IPV6_PREFIX=int(os.getenv("AUTH_ABUSE_IPV6_PREFIX","64"));AUTH_ABUSE_RETENTION_SECONDS=int(os.getenv("AUTH_ABUSE_RETENTION_SECONDS","86400"))
+AUTH_ABUSE_HMAC_KEY=os.getenv("AUTH_ABUSE_HMAC_KEY") or SECRET_KEY
+_AUTH_TRUSTED_PROXY_CIDRS=[value.strip() for value in os.getenv("AUTH_TRUSTED_PROXY_CIDRS","").split(",") if value.strip()]
+_AUTH_TRUSTED_PROXY_HOSTS=[value.strip() for value in os.getenv("AUTH_TRUSTED_PROXY_HOSTS","").split(",") if value.strip()]
+AUTH_TRUSTED_PROXY_CIDRS=_TrustedProxyCidrs(_AUTH_TRUSTED_PROXY_CIDRS,_AUTH_TRUSTED_PROXY_HOSTS)
+AUTH_ABUSE_IPV4_PREFIX=int(os.getenv("AUTH_ABUSE_IPV4_PREFIX","32"));AUTH_ABUSE_IPV6_PREFIX=int(os.getenv("AUTH_ABUSE_IPV6_PREFIX","64"));AUTH_ABUSE_RETENTION_SECONDS=int(os.getenv("AUTH_ABUSE_RETENTION_SECONDS","86400"))
 CORS_ALLOWED_ORIGINS=[u.strip() for u in os.getenv("CORS_ALLOWED_ORIGINS","http://localhost:5173").split(",") if u.strip()];CORS_ALLOW_CREDENTIALS=True;SECURE_PROXY_SSL_HEADER=("HTTP_X_FORWARDED_PROTO","https");SESSION_COOKIE_SECURE=not DEBUG;SESSION_COOKIE_HTTPONLY=True;SESSION_COOKIE_SAMESITE="Lax";CSRF_COOKIE_SECURE=not DEBUG;CSRF_COOKIE_SAMESITE="Lax";SECURE_HSTS_SECONDS=0 if DEBUG else 31536000;SECURE_HSTS_INCLUDE_SUBDOMAINS=not DEBUG;SECURE_HSTS_PRELOAD=not DEBUG;SECURE_CONTENT_TYPE_NOSNIFF=True;SECURE_REFERRER_POLICY="same-origin";X_FRAME_OPTIONS="DENY"
