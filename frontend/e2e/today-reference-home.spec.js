@@ -45,6 +45,33 @@ test('Today reference structure uses real family, week, weather, alerts and dire
   await expect(page.getByRole('dialog').getByRole('textbox',{name:/Artikel|Item/,exact:true})).toBeFocused();
 });
 
+test('Today customize action is integrated in the hero and stays usable across viewports',async({page})=>{
+  await bootReference(page,{width:390,height:844});
+  const hero=page.locator('.today-hero');
+  const action=hero.getByTestId('today-layout-edit');
+  await expect(action).toBeVisible();
+  await expect(action).toHaveAccessibleName(/Anpassen|Customize/);
+  await expect(page.locator('.today-layout-toolbar')).toHaveCount(0);
+
+  for(const width of [320,390,900]){
+    await page.setViewportSize({width,height:900});
+    const metrics=await page.evaluate(()=>{
+      const button=document.querySelector('[data-testid="today-layout-edit"]');
+      const greeting=document.querySelector('.today-hero-heading-row .today-greeting');
+      const buttonBox=button.getBoundingClientRect();
+      const greetingBox=greeting.getBoundingClientRect();
+      const overlap=!(buttonBox.left>=greetingBox.right||buttonBox.right<=greetingBox.left||buttonBox.top>=greetingBox.bottom||buttonBox.bottom<=greetingBox.top);
+      return {height:buttonBox.height,overlap,overflow:document.documentElement.scrollWidth>window.innerWidth};
+    });
+    expect(metrics.height).toBeGreaterThanOrEqual(44);
+    expect(metrics.overlap).toBeFalsy();
+    expect(metrics.overflow).toBeFalsy();
+  }
+
+  await action.click();
+  await expect(page.getByRole('heading',{name:/Dein Heute-Raster|Your Today grid/})).toBeFocused();
+});
+
 test('Today reference modules navigate to waste calendar, routines and concrete inbox message without overflow',async({page})=>{
   await bootReference(page,{width:390,height:844});
   await expect(page.getByTestId('today-routines')).toContainText('Pflanzen gießen');
