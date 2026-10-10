@@ -54,7 +54,10 @@ def _create_receipt_document(expense, canonical, *, owner_membership, created_by
         family=expense.family,
         kind="expense_receipt",
         title="Beleg",
-        visibility=Document.Visibility.PRIVATE,
+        # Expenses are family-scoped today. The hidden backing Document mirrors
+        # that effective visibility so the domain endpoint never broadens the
+        # Document ACL, while library_visible keeps it out of the generic DMS UI.
+        visibility=Document.Visibility.FAMILY,
         library_visible=False,
         owner_membership=owner_membership,
         canonical_file="",
@@ -84,7 +87,7 @@ def _create_receipt_document(expense, canonical, *, owner_membership, created_by
 
 
 def create_receipt_draft(*, family, paid_by, owner_membership, created_by, canonical, quality_warnings):
-    """Create an Expense draft and its hidden private Document atomically."""
+    """Create an Expense draft and its hidden family-scoped Document atomically."""
     stored_key = None
     try:
         with transaction.atomic():
