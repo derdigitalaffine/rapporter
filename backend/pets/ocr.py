@@ -2,11 +2,14 @@ import hashlib
 import io
 import re
 from datetime import datetime
+from decimal import Decimal, InvalidOperation
 
 from django.utils import timezone
 from pypdf import PdfReader
 
-from expenses.ocr import _ocr_image, normalize_receipt_upload, parse_receipt_text
+from documents.extraction import ExtractionResult
+from documents.intelligence import extract_invoice
+from documents.legacy_image import canonicalize_legacy_image, extract_legacy_image_text
 
 from .models import PetDocument
 
@@ -60,6 +63,45 @@ def _line_with_keywords(lines, keywords):
     return ""
 
 
+def _decimal_text(value):
+    try:
+        normalized = str(value or "").replace("EUR", "").replace("€", "").replace(" ", "").strip()
+        if "," in normalized and "." in normalized:
+            decimal_separator = "," if normalized.rfind(",") > normalized.rfind(".") else "."
+            thousands_separator = "." if decimal_separator == "," else ","
+            normalized = normalized.replace(thousands_separator, "").replace(decimal_separator, ".")
+        else:
+            normalized = normalized.replace(",", ".")
+        return str(Decimal(normalized).quantize(Decimal("0.01")))
+    except (InvalidOperation, TypeError, ValueError):
+        return None
+
+
+def _generic_invoice_suggestions(text):
+    """Consume shared labelled invoice fields without depending on Expense code."""
+    result = ExtractionResult(text=text or "", extractor="pet-legacy-adapter")
+    fields = {field["key"]: field for field in extract_invoice(result)}
+    data = {}
+    confidence = {}
+    total_field = fields.get("amount.total")
+    if total_field:
+        total = _decimal_text((total_field.get("value_json") or {}).get("value"))
+        if total is not None:
+            data["total"] = total
+            data["currency"] = "EUR"
+            confidence["total"] = float(total_field.get("confidence") or 0)
+            confidence["currency"] = 0.96 if ("€" in (text or "") or "eur" in (text or "").casefold()) else 0.55
+    date_field = fields.get("document.date")
+    if date_field:
+        raw_date = str((date_field.get("value_json") or {}).get("value") or "")
+        match = ISO_DATE_RE.search(raw_date) or DATE_RE.search(raw_date)
+        value = _parse_date(match)
+        if value:
+            data["occurred_at"] = value
+            confidence["occurred_at"] = float(date_field.get("confidence") or 0)
+    return data, confidence
+
+
 def extract_pet_fields(text, filename=""):
     text = (text or "")[:MAX_DOCUMENT_TEXT]
     lines = [re.sub(r"\s+", " ", line).strip() for line in text.splitlines() if line.strip()]
@@ -68,16 +110,11 @@ def extract_pet_fields(text, filename=""):
     confidence = {}
     kind = PetDocument.Kind.OTHER
 
-    receipt = parse_receipt_text(text)
-    if any(key in lower for key in ("rechnung", "invoice", "gesamt", "total", "zu zahlen")) and receipt.get("total") is not None:
+    invoice_fields, invoice_confidence = _generic_invoice_suggestions(text)
+    if any(key in lower for key in ("rechnung", "invoice", "gesamt", "total", "zu zahlen")) and invoice_fields.get("total") is not None:
         kind = PetDocument.Kind.INVOICE
-        data.update({
-            "provider_name": receipt.get("merchant") or "",
-            "occurred_at": receipt.get("date").isoformat() if receipt.get("date") else None,
-            "total": str(receipt.get("total")),
-            "currency": receipt.get("currency") or "EUR",
-        })
-        confidence.update(receipt.get("field_confidences") or {})
+        data.update(invoice_fields)
+        confidence.update(invoice_confidence)
 
     vaccine_line = _line_with_keywords(lines, ("impfung", "impfstoff", "vaccin", "rabies", "tollwut"))
     if vaccine_line:
@@ -153,13 +190,14 @@ class UploadAdapter:
         self._stream = io.BytesIO(content)
         self.name = name
         self.content_type = content_type
+        self.size = len(content)
 
     def read(self, *args, **kwargs):
         return self._stream.read(*args, **kwargs)
 
 
 def prepare_pet_upload(upload):
-    """Validate/normalize a private pet document without running OCR in the request."""
+    """Validate a legacy private PetDocument through shared Document primitives."""
     raw = upload.read()
     if not raw:
         raise ValueError("Die Datei ist leer.")
@@ -177,7 +215,9 @@ def prepare_pet_upload(upload):
             raise ValueError("Das PDF konnte nicht gelesen werden.") from exc
         stored, stored_type, warnings = raw, "application/pdf", []
     else:
-        stored, stored_type, warnings = normalize_receipt_upload(upload=UploadAdapter(raw, filename, content_type))
+        stored, stored_type, warnings = canonicalize_legacy_image(
+            UploadAdapter(raw, filename, content_type)
+        )
     return {
         "content": stored,
         "content_type": stored_type,
@@ -185,6 +225,11 @@ def prepare_pet_upload(upload):
         "sha256": hashlib.sha256(stored).hexdigest(),
         "warnings": warnings,
     }
+
+
+def _ocr_image(content):
+    """Compatibility name used by Pet tests; implementation is Document Core."""
+    return extract_legacy_image_text(content)
 
 
 def _extract_text(document):
@@ -207,7 +252,7 @@ def _extract_text(document):
 
 
 def process_pet_document(document_id):
-    """Run queued extraction in the receipt OCR worker. Review remains mandatory."""
+    """Run legacy PetDocument review using shared generic OCR primitives."""
     document = PetDocument.objects.filter(pk=document_id).first()
     if not document:
         return None
@@ -234,8 +279,10 @@ def process_pet_document(document_id):
         document.extraction_error = ""
         document.save()
         return document
-    except Exception as exc:
+    except Exception:
+        # Keep legacy Pet failures redacted; raw OCR/library exceptions may carry
+        # file paths or extracted content.
         document.extraction_status = PetDocument.ExtractionStatus.FAILED
-        document.extraction_error = str(exc)[:1000]
+        document.extraction_error = "Dokument konnte nicht verarbeitet werden."
         document.save(update_fields=["extraction_status", "extraction_error", "updated_at"])
         return document
