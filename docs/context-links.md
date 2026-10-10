@@ -17,6 +17,46 @@ The initial allowlist is deliberately small:
 
 The initial `context` relation treats Task, Note or BoardPost as the source and Trip as the context. Guests can view visible links but cannot create/remove them. New domains extend the registry explicitly; they must not accept client-provided model names or raw content types.
 
+## HTTP API
+
+The authenticated API is a thin transport layer over the same registry/services; it does not implement a second ACL path.
+
+### Create
+
+`POST /api/context-links/`
+
+```json
+{
+  "family": "<family-uuid>",
+  "source": {"type": "task", "id": "<task-uuid>"},
+  "context": {"type": "trip", "id": "<trip-uuid>"},
+  "relation": "context"
+}
+```
+
+Creation is idempotent. A new link returns `201` with `created: true`; an identical existing link returns `200` with `created: false` and the same link id.
+
+### List around an object
+
+`GET /api/context-links/?family=<family-uuid>&anchor_type=trip&anchor_id=<trip-uuid>&limit=50`
+
+The response contains only links whose source and context are both still visible to the caller. `limit` is bounded to `1..100`; resolution remains batched by registered type.
+
+### Remove metadata
+
+`DELETE /api/context-links/<link-uuid>/?family=<family-uuid>`
+
+Removal deletes only the ContextLink row. The source and context objects are never deleted. A stale/missing context can still be cleaned up if the caller retains permission to manage the source link.
+
+### Error contract
+
+- malformed family/ref/limit input: `400`
+- unsupported type or relation allowlist entry: `400`
+- inaccessible/missing family, endpoint or link: neutral `404` with `context_object_unavailable`
+- visible but non-mutable relation/source (for example Guest or read-only Note share): `403` with `context_link_forbidden`
+
+The API intentionally does not reveal whether a neutral `404` was caused by a missing UUID, another family, or revoked object visibility.
+
 ## Security and lifecycle
 
 - Both endpoints are resolved inside the requested active family. A guessed UUID from another family is indistinguishable from an inaccessible/missing object.
