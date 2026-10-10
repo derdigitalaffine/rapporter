@@ -48,17 +48,17 @@ class AuthAbuseServiceTests(TestCase):
         )
         self.assertEqual(str(client_ip(request)), "198.51.100.25")
 
-    @override_settings(AUTH_TRUSTED_PROXY_CIDRS=["172.31.254.2/32"])
+    @override_settings(AUTH_TRUSTED_PROXY_CIDRS=["172.28.254.14/32"])
     def test_standard_compose_caddy_peer_preserves_client_network_identity(self):
         request = self.factory.get(
             "/",
-            REMOTE_ADDR="172.31.254.2",
+            REMOTE_ADDR="172.28.254.14",
             HTTP_X_FORWARDED_FOR="198.51.100.77",
         )
         self.assertEqual(str(client_ip(request)), "198.51.100.77")
         self.assertEqual(network_identity(request), "198.51.100.77/32")
 
-    @override_settings(AUTH_TRUSTED_PROXY_CIDRS=["172.31.254.2/32"])
+    @override_settings(AUTH_TRUSTED_PROXY_CIDRS=["172.28.254.14/32"])
     def test_direct_untrusted_peer_cannot_spoof_compose_proxy_header(self):
         request = self.factory.get(
             "/",
@@ -89,7 +89,7 @@ class AuthAbuseServiceTests(TestCase):
             enforce("login.password", request=request, identifier="victim@example.com")
             for _ in range(POLICIES["login.password"].burst.limit + 1)
         ]
-        self.assertTrue(all(decision.allowed for decision in decisions[:-1]))
+        self.assertTrue(all(decision.allowed for decision in decisions[:-1])
         self.assertFalse(decisions[-1].allowed)
         self.assertGreater(decisions[-1].retry_after, 0)
 
