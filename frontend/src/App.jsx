@@ -33,11 +33,11 @@ import {APP_PAGES,pageFromLocation,pageHref} from './navigation';
 import './family-context.css';
 import './create-fab.css';
 
-const demo={tasks:[],task_lists:[],events:[],routines:[],shopping_lists:[],inbox_count:0,automation_count:0};
+const demo={tasks:[],task_lists:[],events:[],routines:[],shopping_lists:[],inbox:[],inbox_count:0,automation_count:0};
 const ACTIVE_FAMILY_KEY='famuhle-active-family';
 const unwrap=x=>x?.results||x||[];
 const sameFamily=(row,familyId)=>String(row?.family||'')===String(familyId||'');
-function scopedDashboard(raw,familyId,inboxRows=[],rules=[]){return {...raw,tasks:(raw.tasks||[]).filter(row=>sameFamily(row,familyId)),task_lists:(raw.task_lists||[]).filter(row=>sameFamily(row,familyId)),events:(raw.events||[]).filter(row=>sameFamily(row,familyId)),routines:(raw.routines||[]).filter(row=>sameFamily(row,familyId)),shopping_lists:(raw.shopping_lists||[]).filter(row=>sameFamily(row,familyId)),inbox_count:inboxRows.filter(row=>sameFamily(row,familyId)&&row.status==='new').length,automation_count:rules.filter(row=>sameFamily(row,familyId)&&row.enabled).length}}
+function scopedDashboard(raw,familyId,inboxRows=[],rules=[]){const familyInbox=inboxRows.filter(row=>sameFamily(row,familyId));return {...raw,tasks:(raw.tasks||[]).filter(row=>sameFamily(row,familyId)),task_lists:(raw.task_lists||[]).filter(row=>sameFamily(row,familyId)),events:(raw.events||[]).filter(row=>sameFamily(row,familyId)),routines:(raw.routines||[]).filter(row=>sameFamily(row,familyId)),shopping_lists:(raw.shopping_lists||[]).filter(row=>sameFamily(row,familyId)),inbox:familyInbox,inbox_count:familyInbox.filter(row=>row.status==='new'||row.unread).length,automation_count:rules.filter(row=>sameFamily(row,familyId)&&row.enabled).length}}
 function Card({children,className=''}){return <section className={`card ${className}`}>{children}</section>}
 function Empty({text}){return <div className="empty">{text}</div>}
 function PageHead({title}){return <div className="page-head"><h1>{title}</h1></div>}
