@@ -201,6 +201,7 @@ def invitation_register(request, token):
             )
             identity = create_primary_identity(user, email)
         except (EmailConflictError, EmailIdentityError):
+            transaction.set_rollback(True)
             return Response({"detail": "E-Mail-Adresse kann nicht verwendet werden."}, status=status.HTTP_409_CONFLICT)
         membership = accept_for_user(invite, user, visible_name)
         queue_verification(identity, locale=invite.family.locale)
