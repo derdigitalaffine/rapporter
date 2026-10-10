@@ -7,9 +7,10 @@ test('delivery detail and quiet hours persist independently of device permission
  await page.route('**/api/push/preferences/**',async route=>{if(route.request().method()==='PATCH')Object.assign(prefs,route.request().postDataJSON());await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(prefs)})});
  await page.goto('/?page=notifications');
  await expect(page.getByRole('radio',{name:/Zusammengefasst/})).toBeChecked();
- await page.getByRole('radio',{name:/Nur Wichtiges/}).check();
- await expect.poll(()=>prefs.detail_level).toBe('important');
- await page.getByRole('checkbox',{name:'Ruhezeiten',exact:true}).check();
+ const important=page.getByRole('radio',{name:/Nur Wichtiges/});await important.click();
+ await expect.poll(()=>prefs.detail_level).toBe('important');await expect(important).toBeChecked();
+ const quiet=page.getByRole('checkbox',{name:'Ruhezeiten',exact:true});await quiet.click();
+ await expect.poll(()=>prefs.quiet_hours_enabled).toBe(true);await expect(quiet).toBeChecked();
  await expect(page.getByLabel('Von',{exact:true})).toBeVisible();
  await page.getByLabel('Von',{exact:true}).fill('21:00');
  await expect.poll(()=>prefs.quiet_start).toBe('21:00');
