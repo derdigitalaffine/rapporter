@@ -64,6 +64,10 @@ TEMPLATE_SPECS = {
 _REFERENCE_RESOLVERS = {}
 
 
+class IdempotencyConflict(ValueError):
+    """The same message key was reused for a different immutable mail request."""
+
+
 def register_reference_resolver(reference_type, resolver):
     _REFERENCE_RESOLVERS[reference_type] = resolver
 
@@ -99,20 +103,39 @@ def enqueue_transactional_email(*, message_key, template_key, recipient, locale=
     context = context or {}
     _validate_context(context)
     locale = "en" if str(locale).lower().startswith("en") else "de"
+    recipient_hash = _recipient_hash(normalized_recipient)
+    reference_id = str(reference_id or "")
     now = timezone.now()
-    row, _ = TransactionalEmail.objects.get_or_create(
+    row, created = TransactionalEmail.objects.get_or_create(
         message_key=message_key,
         defaults={
             "template_key": template_key,
             "locale": locale,
             "recipient": normalized_recipient,
-            "recipient_hash": _recipient_hash(normalized_recipient),
+            "recipient_hash": recipient_hash,
             "context": context,
             "reference_type": reference_type,
-            "reference_id": str(reference_id or ""),
+            "reference_id": reference_id,
             "next_attempt_at": now,
         },
     )
+    if not created:
+        immutable_request = (
+            template_key,
+            recipient_hash,
+            locale,
+            reference_type,
+            reference_id,
+        )
+        immutable_existing = (
+            row.template_key,
+            row.recipient_hash,
+            row.locale,
+            row.reference_type,
+            row.reference_id,
+        )
+        if immutable_request != immutable_existing:
+            raise IdempotencyConflict("message_key is already bound to a different mail request")
     return row
 
 
@@ -165,8 +188,23 @@ def _message_id(row):
 def claim_due_email(now=None):
     now = now or timezone.now()
     due = Q(status__in=[TransactionalEmail.Status.QUEUED, TransactionalEmail.Status.RETRY], next_attempt_at__lte=now)
-    expired_lease = Q(status=TransactionalEmail.Status.SENDING, lease_expires_at__lte=now)
+    expired_lease = Q(
+        status=TransactionalEmail.Status.SENDING,
+        lease_expires_at__lte=now,
+        attempt_count__lt=MAX_ATTEMPTS,
+    )
     with transaction.atomic():
+        TransactionalEmail.objects.filter(
+            status=TransactionalEmail.Status.SENDING,
+            lease_expires_at__lte=now,
+            attempt_count__gte=MAX_ATTEMPTS,
+        ).update(
+            status=TransactionalEmail.Status.FAILED,
+            last_error_code="lease_expired",
+            lease_token=None,
+            lease_expires_at=None,
+            updated_at=now,
+        )
         row = (
             TransactionalEmail.objects.select_for_update(skip_locked=True)
             .filter(due | expired_lease)
