@@ -72,9 +72,18 @@ def register_reference_resolver(reference_type, resolver):
     _REFERENCE_RESOLVERS[reference_type] = resolver
 
 
+def _normalize_recipient(recipient):
+    value = str(recipient or "").strip()
+    if "@" not in value:
+        return value
+    local, domain = value.rsplit("@", 1)
+    return f"{local}@{domain.casefold()}"
+
+
 def _recipient_hash(recipient):
+    normalized = _normalize_recipient(recipient)
     return hmac.new(
-        settings.SECRET_KEY.encode("utf-8"), recipient.strip().lower().encode("utf-8"), hashlib.sha256
+        settings.SECRET_KEY.encode("utf-8"), normalized.encode("utf-8"), hashlib.sha256
     ).hexdigest()
 
 
@@ -116,7 +125,7 @@ def enqueue_transactional_email(*, message_key, template_key, recipient, locale=
                                 reference_type="", reference_id=""):
     if template_key not in TEMPLATE_SPECS:
         raise ValueError(f"Unknown transactional mail template: {template_key}")
-    normalized_recipient = recipient.strip().lower()
+    normalized_recipient = _normalize_recipient(recipient)
     if not normalized_recipient:
         raise ValueError("Recipient is required.")
     context = context or {}
