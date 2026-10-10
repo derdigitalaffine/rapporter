@@ -19,11 +19,12 @@ test('visible signed-in PWA clears and acknowledges unread launcher badge',async
  await expect.poll(()=>page.evaluate(()=>window.__badgeCalls.some(call=>call[0]==='clear'))).toBe(true);
 });
 
-test('deployed service worker applies numeric badge from push payload when supported',async({request})=>{
+test('deployed service worker applies numeric badge through WorkerNavigator',async({request})=>{
  const response=await request.get('/sw.js');
  expect(response.ok()).toBe(true);
  const source=await response.text();
- expect(source).toContain('self.registration.setAppBadge(value)');
+ expect(source).toContain('self.navigator.setAppBadge(value)');
+ expect(source).toContain('self.navigator.clearAppBadge()');
  expect(source).toContain('data.badge_count');
  expect(source).toContain("type:'FAMILYOS_BADGE'");
 });
