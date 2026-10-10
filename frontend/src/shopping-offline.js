@@ -25,6 +25,13 @@ export async function queueShoppingDelete(familyId,targetId){
   const mutation={id:uuid(),familyId:String(familyId),type:'delete',targetId:target,createdAt:Date.now(),attempts:0,status:'pending'};
   await putShoppingMutation(mutation);return mutation;
 }
+export async function queueShoppingTemplateApply(familyId,templateId,shoppingListId){
+  const rows=await listShoppingMutations(familyId);
+  const duplicate=rows.find(row=>row.type==='template_apply'&&String(row.templateId)===String(templateId)&&String(row.shoppingListId)===String(shoppingListId)&&row.status!=='failed');
+  if(duplicate)return duplicate;
+  const mutation={id:uuid(),familyId:String(familyId),type:'template_apply',templateId:String(templateId),shoppingListId:String(shoppingListId),createdAt:Date.now(),attempts:0,status:'pending'};
+  await putShoppingMutation(mutation);return mutation;
+}
 
 export function applyShoppingMutations(lists,mutations){
   const next=structuredClone(lists||[]);
@@ -72,6 +79,9 @@ export async function flushShoppingMutations(familyId){
         const target=resolved.get(mutation.targetId)||mutation.targetId;
         if(String(target).startsWith('offline-'))throw new Error('offline_target_unresolved');
         await api(`/shopping-items/${target}/`,{method:'DELETE'});synced++;
+      }else if(mutation.type==='template_apply'){
+        if(String(mutation.shoppingListId).startsWith('offline-'))throw new Error('offline_target_unresolved');
+        await api(`/shopping-templates/${mutation.templateId}/apply/`,{method:'POST',body:JSON.stringify({shopping_list:mutation.shoppingListId})});synced++;
       }
     }
     await Promise.all(all.map(mutation=>deleteShoppingMutation(mutation.id)));
