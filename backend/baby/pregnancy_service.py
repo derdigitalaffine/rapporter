@@ -1,6 +1,9 @@
+import hashlib
+import hmac
 from datetime import datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.utils import timezone
@@ -9,7 +12,7 @@ from rest_framework.exceptions import ValidationError
 from family.models import FamilyEvent, Membership, ShoppingItem, ShoppingList, Task, TaskList, UserProfile
 
 from .family_modules import care_access, require_manager, require_module
-from .models import BabyGrowthReferenceSetting, BabyProfile, CareCircleAccess, ManagedChildGuardian, PregnancyBaby, PregnancyJourney
+from .models import BabyGrowthReferenceSetting, BabyProfile, CareCircleAccess, ManagedChildGuardian, PregnancyBaby, PregnancyJournalEntry, PregnancyJourney
 
 
 User = get_user_model()
@@ -100,7 +103,7 @@ def _sync_birth_profile(user, membership, *, display_name, birth_date):
 
 
 def _ensure_guardians(baby):
-    guardian_access = CareCircleAccess.objects.filter(family=baby.family, is_guardian=True).select_related("membership")
+    guardian_access = CareCircleAccess.objects.filter(family=baby.family, is_guardian=True, membership__role__in=[Membership.Role.OWNER, Membership.Role.ADULT]).select_related("membership")
     for access in guardian_access:
         ManagedChildGuardian.objects.get_or_create(baby=baby, membership=access.membership, defaults={"can_manage_account": True})
 
@@ -245,16 +248,34 @@ def pregnancy_template_items(user, pregnancy, *, include_tasks=True, include_sho
     return created
 
 
+def _private_prenatal_token(pregnancy, starts_at, event_type):
+    raw = f"pregnancy-event:{pregnancy.id}:{event_type}:{starts_at.isoformat()}".encode()
+    digest = hmac.new(settings.SECRET_KEY.encode(), raw, hashlib.sha256).hexdigest()[:32]
+    return f"familyos-private:{digest}"
+
+
 def prenatal_calendar_event(user, pregnancy, *, title, starts_at, ends_at=None, event_type="baby.prenatal", payload=None):
     require_module(pregnancy.family)
     care_access(user, pregnancy.family, "pregnancy")
+    private_note = str((payload or {}).get("note") or "").strip()
+    private_title = str(title or "").strip()
+    if private_title or private_note:
+        note = private_title
+        if private_note:
+            note = f"{note}\n{private_note}" if note else private_note
+        PregnancyJournalEntry.objects.create(
+            pregnancy=pregnancy,
+            entry_date=starts_at.astimezone(ZoneInfo(pregnancy.family.timezone)).date(),
+            note=note[:12000],
+            created_by=user,
+        )
     return FamilyEvent.objects.create(
         family=pregnancy.family,
-        type=event_type,
-        title=title,
+        type="family.appointment",
+        title="Termin" if pregnancy.family.locale.startswith("de") else "Appointment",
         starts_at=starts_at,
         ends_at=ends_at,
         actionable=True,
-        payload={"pregnancy_id": str(pregnancy.id), **(payload or {})},
-        external_id=f"pregnancy:{pregnancy.id}:{event_type}:{starts_at.isoformat()}",
+        payload={"deep_link": "/?page=baby&view=pregnancy", "private_context": True},
+        external_id=_private_prenatal_token(pregnancy, starts_at, event_type),
     )
