@@ -28,8 +28,8 @@ test('legacy Today layout restores next trip as a real grid widget',async({page}
  await expect(banner).toContainText('Herbstferien');
  await expect(banner).toContainText('Berlin');
  await expect(banner).toContainText('Noch 3 Tage');
- await page.getByRole('button',{name:'Raster bearbeiten'}).click();
- await expect(page.getByRole('region',{name:'Raster bearbeiten'}).getByLabel('Reise',{exact:true})).toBeChecked();
+ await page.getByRole('button',{name:'Anpassen'}).click();
+ await expect(page.getByRole('region',{name:'Anpassen'}).getByLabel('Reise',{exact:true})).toBeChecked();
  await page.getByRole('button',{name:'Abbrechen',exact:true}).click();
  await banner.click();
  await expect(page).toHaveURL(/page=trips/);
@@ -41,8 +41,8 @@ test('travel widget can be configured as a half-width square',async({page})=>{
  await freezeToday(page);await installApiMocks(page,{dismissOnboarding:true});
  await mockTrips(page,[trip('next','Herbstferien','2026-10-13','2026-10-17')]);
  await page.goto('/');
- await page.getByRole('button',{name:'Raster bearbeiten'}).click();
- const editor=page.getByRole('region',{name:'Raster bearbeiten'});
+ await page.getByRole('button',{name:'Anpassen'}).click();
+ const editor=page.getByRole('region',{name:'Anpassen'});
  await editor.getByRole('combobox',{name:'Reise · Größe'}).selectOption('square');
  const widget=page.locator('[data-today-widget="trip"]');
  await expect(widget).toHaveAttribute('data-widget-size','square');
