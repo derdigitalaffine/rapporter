@@ -41,6 +41,20 @@ class InvitationSecurityTests(TestCase):
             expires_at=timezone.now() + timedelta(days=7),
         )
 
+    def test_member_invite_requires_delivery_email(self):
+        client = APIClient()
+        client.force_authenticate(self.owner)
+
+        response = client.post(
+            "/api/invitations/",
+            {"family": str(self.family.pk), "role": Membership.Role.ADULT, "email": ""},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("email", response.data)
+        self.assertEqual(FamilyInvitation.objects.count(), 0)
+
     def test_plaintext_token_is_never_kept_at_rest(self):
         invite, token = self.issue()
         invite.refresh_from_db()
