@@ -46,9 +46,9 @@ async function installTemplateMocks(page,state){
 
 async function openTools(page){
  await page.goto('/?page=shopping');
- const buttons=page.locator('.shopping-toolbar button');
- await expect(buttons).toHaveCount(2);
- await buttons.nth(1).click();
+ const editListButton=page.locator('.shopping-toolbar button').nth(1);
+ await expect(editListButton).toBeVisible();
+ await editListButton.click();
  await expect(page.getByTestId('shopping-template-tools')).toBeVisible();
 }
 async function waitForOfflineShell(page){
@@ -92,7 +92,9 @@ test('store profile assigns legacy store label and exposes safe offers link in s
  await tools.getByLabel('Geschäft dieser Liste zuordnen').selectOption({label:'REWE · Innenstadt'});
  await tools.getByRole('button',{name:'Zuordnen'}).click();
  await expect(page.locator('.shopping-session-title small')).toContainText('REWE · Innenstadt');
- await page.getByRole('button',{name:'Im Geschäft'}).click();
+ await page.locator('.sheet-close').click();
+ await expect(tools).not.toBeVisible();
+ await page.locator('.shopping-mode-toggle button').nth(1).click();
  const offers=page.getByRole('link',{name:'Angebote ansehen'});
  await expect(offers).toHaveAttribute('href','https://offers.example.test/rewe');
  await expect(offers).toHaveAttribute('target','_blank');
@@ -112,7 +114,7 @@ test('loaded template can be queued offline and is applied once after reconnect'
  await expect(tools.getByText(/Geladene Vorlagen bleiben offline verfügbar/)).toBeVisible();
  await tools.getByRole('button',{name:'Vorlage verwenden'}).click();
  await tools.getByRole('button',{name:'Vorlage verwenden'}).click();
- await expect(page.getByText(/Vorlage vorgemerkt/)).toBeVisible();
+ await expect(page.getByText(/Vorlage vorgemerkt/)).toHaveCount(1);
  expect(state.shoppingLists[0].items.some(item=>item.name==='Brot offline')).toBe(false);
  await context.setOffline(false);
  await expect.poll(()=>state.shoppingLists[0].items.filter(item=>item.name==='Brot offline').length,{timeout:10000}).toBe(1);
