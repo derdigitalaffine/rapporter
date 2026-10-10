@@ -92,7 +92,6 @@ test('store profile assigns legacy store label and exposes safe offers link in s
  await tools.getByLabel('Geschäft dieser Liste zuordnen').selectOption({label:'REWE · Innenstadt'});
  await tools.getByRole('button',{name:'Zuordnen'}).click();
  await expect(page.locator('.shopping-session-title small')).toContainText('REWE · Innenstadt');
- await page.locator('.sheet-close').click();
  await expect(tools).not.toBeVisible();
  await page.locator('.shopping-mode-toggle button').nth(1).click();
  const offers=page.getByRole('link',{name:'Angebote ansehen'});
