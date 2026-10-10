@@ -41,7 +41,9 @@ test('returning from integration hub refreshes completion without manual reload'
   await expect(page).toHaveURL(/page=integrations/);
 
   state.integrations.push({id:'integration-new',family:'family-1',name:'Open-Meteo',kind:'weather',enabled:true,endpoint:'',config:{adapter:'open_meteo'},last_sync_status:'success',last_sync_error:'',last_success_at:new Date().toISOString(),last_synced_at:new Date().toISOString(),next_sync_at:null});
+  const refreshed=page.waitForResponse(response=>response.url().includes('/api/integrations/')&&response.request().method()==='GET');
   await page.goBack();
+  await refreshed;
 
   await expect(page).toHaveURL(/\/$/);
   await expect(integrationStep(page)).toContainText('Erledigt');

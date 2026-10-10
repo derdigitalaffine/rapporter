@@ -15,7 +15,7 @@ function wasteEvent(id,title,hours,payload={}){
   };
 }
 
-test('Today shows exactly the next two waste collections with detected colors',async({page})=>{
+test('Today shows exactly the next two waste collections with large semantic icons',async({page})=>{
   const state=await installApiMocks(page,{authenticated:true,language:'de',dismissOnboarding:true});
   state.events.push(
     wasteEvent('waste-rest','Restafall Bezirk 3',24),
@@ -32,8 +32,15 @@ test('Today shows exactly the next two waste collections with detected colors',a
   await expect(section).toContainText('Restafall Bezirk 3');
   await expect(section).toContainText('Abfuhr Verpackungen');
   await expect(section).not.toContainText('Altpapier');
-  await expect(section.locator('.today-event-icon.waste-rest')).toHaveCount(1);
-  await expect(section.locator('.today-event-icon.waste-yellow')).toHaveCount(1);
+  const rest=section.locator('.today-event-icon.waste-rest');
+  const yellow=section.locator('.today-event-icon.waste-yellow');
+  await expect(rest).toHaveCount(1);
+  await expect(yellow).toHaveCount(1);
+  await expect(rest).toHaveCSS('display','grid');
+  await expect(rest).toHaveCSS('color','rgb(38, 50, 56)');
+  await expect(yellow).toHaveCSS('color','rgb(111, 87, 0)');
+  await expect(rest.locator('svg')).toHaveCSS('font-size','26px');
+  await expect(yellow.locator('svg')).toHaveCSS('font-size','26px');
 });
 
 test('Calendar maps rest, yellow, bio and paper collections to their semantic icon colors',async({page})=>{
