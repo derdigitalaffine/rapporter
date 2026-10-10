@@ -38,11 +38,30 @@ Bei einem privaten Kalender-Link gilt: Behandle ihn wie ein Passwort.
 
 Gib ihn nur in der vorgesehenen Integrationsmaske ein und teile ihn nicht in Mitteilungen oder Screenshots.
 
+Nach einer erfolgreichen Synchronisierung erscheinen die Termine im gemeinsamen **Kalender**. FamilyOS verarbeitet dabei auch wiederkehrende ICS-Termine, ausgelassene oder verschobene Einzeltermine und abgesagte Vorkommen. Entfernt die Quelle einen Termin, verschwindet dessen FamilyOS-Projektion nach der nächsten erfolgreichen Synchronisierung ebenfalls.
+
+Ganztägige ICS-Einträge bleiben an ihrem Kalendertag verankert. Externe Kalendertermine sind in FamilyOS schreibgeschützt; ändere sie in der Originalquelle.
+
 ## Google oder Microsoft
 
-Wenn OAuth für eure Installation eingerichtet ist, führt dich FamilyOS durch die Verbindung. Der Kalenderzugriff ist für die unterstützten Kalenderintegrationen auf Lesen ausgerichtet.
+Wenn OAuth für eure Installation eingerichtet ist, führt dich FamilyOS durch die Verbindung. Alternativ können – je nach Anbieter und Einrichtung – iCal/ICS-Links genutzt werden.
 
-Termine aus solchen externen Quellen bearbeitest du normalerweise in der Originalanwendung.
+Der Kalenderzugriff ist für die unterstützten externen Kalenderintegrationen auf Lesen ausgerichtet. Termine aus solchen Quellen bearbeitest du in der Originalanwendung.
+
+## Darstellung einer Kalenderquelle anpassen
+
+Owner und Erwachsene können im **Kalender** unter **Quellen anpassen** eine Farbe und ein unterstütztes Font-Awesome-Symbol für eine verbundene Kalenderquelle auswählen.
+
+Das ändert nur die Darstellung. Die Verbindung, der private Link und andere Zugangsdaten werden dadurch nicht überschrieben.
+
+## Wenn Termine fehlen oder falsch wirken
+
+1. Öffne **Mehr → Integrationen** und prüfe den Status der betroffenen Kalenderquelle.
+2. Starte eine erneute Synchronisierung, wenn die Aktion angeboten wird.
+3. Öffne danach den **Kalender** und prüfe, ob die Quelle dort eingeblendet ist.
+4. Bei wiederkehrenden Terminen: Prüfe auch in der Originalquelle, ob ein einzelnes Vorkommen verschoben, ausgelassen oder abgesagt wurde.
+
+Eine erfolgreiche Neusynchronisierung gleicht den aktuellen Feed mit den vorhandenen Projektionen ab. Veraltete ICS-Projektionen werden dabei entfernt.
 
 ## Wenn eine Integration rot oder fehlerhaft ist
 

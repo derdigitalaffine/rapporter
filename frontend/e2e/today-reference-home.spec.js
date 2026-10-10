@@ -31,8 +31,11 @@ async function bootReference(page,viewport={width:390,height:844}){
 test('Today reference structure uses real family, week, weather, alerts and direct actions',async({page})=>{
   await bootReference(page);
   await expect(page.getByRole('heading',{name:/Musterfamilie/})).toBeVisible();
-  await expect(page.locator('.today-week li')).toHaveCount(7);
-  await expect(page.locator('.today-week [aria-current="date"]')).toHaveCount(1);
+  const compass=page.getByTestId('week-compass');
+  await expect(compass.locator('.week-compass-days li')).toHaveCount(7);
+  await expect(compass.locator('[aria-current="date"]')).toHaveCount(1);
+  await expect(compass.getByRole('button',{name:'Vorherige Woche'})).toBeVisible();
+  await expect(compass.getByRole('button',{name:'Nächste Woche'})).toBeVisible();
   await expect(page.getByTestId('current-weather')).toContainText('17 °C');
   await expect(page.getByText('Sturmwarnung',{exact:true}).first()).toBeVisible();
   await expect(page.getByText('Paket abholen',{exact:true}).last()).toBeVisible();

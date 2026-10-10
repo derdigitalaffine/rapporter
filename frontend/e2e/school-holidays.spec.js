@@ -15,6 +15,7 @@ test('official school holidays connect without credentials and render as a read-
  const setup=page.getByRole('dialog');await expect(setup).toContainText('Keine Zugangsdaten nötig');await expect(setup.locator('input')).toHaveCount(0);await setup.getByRole('button',{name:'Verbinden',exact:true}).click();
  await expect(card.getByRole('button',{name:'Verbunden',exact:true})).toBeDisabled();
  await page.goto('/?page=calendar');
+ await page.getByRole('button',{name:'Liste',exact:true}).click();
  const holiday=page.locator('.agenda-holiday').filter({hasText:'Sommerferien RLP'});
  await expect(holiday).toBeVisible();await expect(holiday).toContainText('FERIEN');await expect(holiday).toContainText('3. Juli – 11. August');await expect(holiday.locator('.special-rail')).toHaveCount(1);await holiday.click();
  const detail=page.getByRole('dialog');await expect(detail).toContainText('3. Juli');await expect(detail).toContainText('11. August 2028');await expect(detail).toContainText('Bewegliche Ferientage');await expect(detail.getByRole('link',{name:'Amtliche Ferientermine'})).toHaveAttribute('href',catalog.help_url);await expect(detail.getByRole('button',{name:'Termin bearbeiten'})).toHaveCount(0);
