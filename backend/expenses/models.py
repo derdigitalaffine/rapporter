@@ -31,6 +31,15 @@ class Expense(TimestampedModel):
     paid_by = models.ForeignKey(Membership, on_delete=models.PROTECT, related_name="expenses_paid")
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name="family_expenses_created")
     client_request_id = models.UUIDField(null=True, blank=True)
+    # Expand/migrate/cutover: legacy binary fields remain available for rollback
+    # and lazy backfill while all new receipt uploads use the Document Core.
+    receipt_document = models.OneToOneField(
+        "documents.Document",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="expense_receipt",
+    )
     receipt_content = models.BinaryField(null=True, blank=True, editable=False)
     receipt_mime = models.CharField(max_length=64, blank=True)
     receipt_status = models.CharField(max_length=16, choices=ReceiptStatus.choices, default=ReceiptStatus.NONE)
@@ -80,6 +89,13 @@ class ReceiptExtraction(TimestampedModel):
         FAILED = "failed", "Failed"
 
     expense = models.OneToOneField(Expense, on_delete=models.CASCADE, related_name="extraction")
+    processing_run = models.ForeignKey(
+        "documents.DocumentProcessingRun",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="receipt_extractions",
+    )
     status = models.CharField(max_length=16, choices=Status.choices, default=Status.QUEUED, db_index=True)
     merchant = models.CharField(max_length=180, blank=True)
     date = models.DateField(null=True, blank=True)

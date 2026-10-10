@@ -1,4 +1,5 @@
 """Non-destructive local image quality assessment for document OCR."""
+import io
 from math import sqrt
 
 from PIL import Image, ImageFilter, ImageOps, ImageStat
@@ -34,6 +35,15 @@ def assess_image(image):
         "sharpness": round(sharpness, 2),
         "warnings": warnings,
     }
+
+
+def assess_canonical_image(canonical):
+    """Assess already-validated canonical image bytes without domain duplication."""
+    if not canonical.mime_type.startswith("image/"):
+        return {"warnings": []}
+    with Image.open(io.BytesIO(canonical.content)) as image:
+        image.load()
+        return assess_image(image)
 
 
 def _projection_score(binary):
