@@ -40,7 +40,6 @@
   --color-focus:#277f86;
   --color-selected:var(--color-positive);
   --color-disabled:#aeb8b6;
-  --transition-fast:140ms;
 
   /* Spacing */
   --space-1:4px;
@@ -107,11 +106,6 @@ button:disabled,[aria-disabled="true"]{cursor:not-allowed;opacity:.52}
 
 .status-pill,.role-pill,.chip,.sync-badge{border-radius:var(--radius-pill)}
 
-/* Page switches stay perceptually connected without a heavy animation. */
-.page-transition{animation:page-enter var(--transition-fast) ease-out both}
-@keyframes page-enter{from{opacity:.76;transform:translateY(2px)}to{opacity:1;transform:none}}
-
 @media(prefers-reduced-motion:reduce){
   *,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
-  .page-transition{animation:none}
 }
