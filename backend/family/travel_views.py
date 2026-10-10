@@ -155,7 +155,7 @@ class TripSerializer(serializers.ModelSerializer):
         super().__init__(*args, **kwargs)
         request = self.context.get("request")
         if request and request.user.is_authenticated:
-            self.fields["participants"].queryset = Membership.objects.filter(
+            self.fields["participants"].child_relation.queryset = Membership.objects.filter(
                 family__memberships__user=request.user,
                 family__status="active",
             ).distinct()
