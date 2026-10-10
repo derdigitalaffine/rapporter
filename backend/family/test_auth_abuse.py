@@ -101,3 +101,27 @@ class AuthAbuseIntegrationTests(TestCase):
         self.assertEqual([response.status_code for response in responses[:5]], [201] * 5)
         self.assertEqual(responses[5].status_code, 429)
         self.assertEqual(responses[5].data["code"], "rate_limited")
+
+    def test_superadmin_sensitive_mutations_are_rate_limited(self):
+        User = get_user_model()
+        admin = User.objects.create_superuser(
+            username="root",
+            email="root@example.com",
+            password="super-secure-123",
+        )
+        client = APIClient()
+        client.force_authenticate(admin)
+        responses = []
+        for index in range(6):
+            requested = Family.Status.SUSPENDED if index % 2 == 0 else Family.Status.ACTIVE
+            responses.append(
+                client.patch(
+                    f"/api/superadmin/families/{self.family.id}/",
+                    {"status": requested},
+                    format="json",
+                    REMOTE_ADDR="198.51.100.55",
+                )
+            )
+        self.assertEqual([response.status_code for response in responses[:5]], [200] * 5)
+        self.assertEqual(responses[5].status_code, 429)
+        self.assertEqual(responses[5].data["code"], "rate_limited")
