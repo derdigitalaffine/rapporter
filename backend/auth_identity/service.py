@@ -208,8 +208,12 @@ def verification_path(reference_id: str) -> str:
     return f"/verify-email/{quote(token, safe='')}"
 
 
+def _normalize_locale(locale) -> str:
+    return "en" if str(locale or "").lower().startswith("en") else "de"
+
+
 def queue_verification(identity: EmailIdentity, *, locale="de") -> EmailIdentity:
-    locale = "en" if str(locale or "").lower().startswith("en") else "de"
+    locale = _normalize_locale(locale)
     with transaction.atomic():
         locked = EmailIdentity.objects.select_for_update().get(pk=identity.pk)
         if locked.verified_at:
@@ -229,7 +233,8 @@ def queue_verification(identity: EmailIdentity, *, locale="de") -> EmailIdentity
         return locked
 
 
-def verify_email_token(token: str) -> tuple[EmailIdentity, bool]:
+def verify_email_token(token: str, *, locale="de") -> tuple[EmailIdentity, bool]:
+    locale = _normalize_locale(locale)
     try:
         payload = _signer().unsign_object(
             token,
@@ -277,7 +282,7 @@ def verify_email_token(token: str) -> tuple[EmailIdentity, bool]:
                 message_key=f"email-change:{user.pk}:{identity.pk}:v{identity.verification_version}",
                 template_key="email.changed",
                 recipient=old_email,
-                locale="de",
+                locale=locale,
                 context={},
             )
         return identity, True
