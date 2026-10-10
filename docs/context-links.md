@@ -6,16 +6,18 @@
 
 A stored link contains only `family`, typed source/context UUIDs, `relation_key`, creator and timestamps. The source domains remain authoritative for content, lifecycle and permissions. Every read resolves both endpoints through their current adapters; a deleted object or revoked ACL therefore becomes unavailable without leaking a stale title or preview.
 
-The initial allowlist is deliberately small:
+The allowlist is deliberately explicit:
 
 | Type | Visibility reused | Deep link |
 | --- | --- | --- |
 | `task` | family + `hidden_from_user` | object-level Tasks link |
 | `note` | author or `NoteShare` | object-level Notes link |
 | `trip` | active family membership | Trips hub (object focus is a later UI slice) |
+| `shopping_list` | active family membership | object-level Shopping list link |
+| `shopping_item` | family + `hidden_from_user` | object-level Shopping item link |
 | `board_post` | active family membership | object-level Pinboard link |
 
-The initial `context` relation treats Task, Note or BoardPost as the source and Trip as the context. Guests can view visible links but cannot create/remove them. New domains extend the registry explicitly; they must not accept client-provided model names or raw content types.
+The `context` relation currently treats Task, Note, ShoppingList, ShoppingItem or BoardPost as the source and Trip as the context. Guests can view visible links but cannot create/remove them. New domains extend the registry explicitly; they must not accept client-provided model names or raw content types.
 
 ## HTTP API
 
@@ -60,10 +62,10 @@ The API intentionally does not reveal whether a neutral `404` was caused by a mi
 ## Security and lifecycle
 
 - Both endpoints are resolved inside the requested active family. A guessed UUID from another family is indistinguishable from an inaccessible/missing object.
-- A link never grants visibility. Note shares and hidden-task rules are evaluated again on every resolution.
+- A link never grants visibility. Note shares plus hidden Task and ShoppingItem gift rules are evaluated again on every resolution.
 - Source-domain mutation rights remain authoritative too. In particular, a read-only `NoteShare` may view a visible link but cannot create or remove one; `edit` or note ownership is required.
 - `list_context_links()` batches by adapter type and caps scans; it never performs one object query per link.
-- Deleting or archiving a domain object does not mutate another domain. Missing/revoked endpoints are filtered from reads; an archived Trip resolves with lifecycle `archived`.
+- Deleting or archiving a domain object does not mutate another domain. Missing/revoked endpoints are filtered from reads; archived Trips and ShoppingLists resolve with lifecycle `archived`.
 - `remove_context_link()` deletes metadata only. It requires the source to remain visible and link-manageable, but deliberately allows cleanup when the context disappeared or its ACL was revoked.
 
 ## Adding a type or relation

@@ -283,6 +283,10 @@ def _trip_lifecycle(trip):
     return "archived" if trip.archived else "available"
 
 
+def _shopping_list_lifecycle(shopping_list):
+    return "archived" if shopping_list.archived else "available"
+
+
 def _note_can_link(user, note):
     return note.author_id == user.id or note.shares.filter(user=user, permission="edit").exists()
 
@@ -291,7 +295,7 @@ def _note_can_link(user, note):
 def default_context_registry():
     """Canonical registry. New domains extend this allowlist explicitly."""
     from .board_models import BoardPost
-    from .models import Task
+    from .models import ShoppingItem, ShoppingList, Task
     from .notes_models import Note
     from .travel_models import Trip
 
@@ -326,6 +330,25 @@ def default_context_registry():
     )
     registry.register_type(
         ContextTypeAdapter(
+            key="shopping_list",
+            visible_queryset=lambda user, family: ShoppingList.objects.filter(family=family),
+            family_id=lambda obj: obj.family_id,
+            deep_link=lambda obj: f"/?page=shopping&list={obj.id}",
+            lifecycle=_shopping_list_lifecycle,
+        )
+    )
+    registry.register_type(
+        ContextTypeAdapter(
+            key="shopping_item",
+            visible_queryset=lambda user, family: ShoppingItem.objects.filter(shopping_list__family=family)
+            .exclude(hidden_from_user=user)
+            .select_related("shopping_list"),
+            family_id=lambda obj: obj.shopping_list.family_id,
+            deep_link=lambda obj: f"/?page=shopping&item={obj.id}",
+        )
+    )
+    registry.register_type(
+        ContextTypeAdapter(
             key="board_post",
             visible_queryset=lambda user, family: BoardPost.objects.filter(family=family),
             family_id=lambda obj: obj.family_id,
@@ -339,6 +362,8 @@ def default_context_registry():
                 {
                     ("task", "trip"),
                     ("note", "trip"),
+                    ("shopping_list", "trip"),
+                    ("shopping_item", "trip"),
                     ("board_post", "trip"),
                 }
             ),
