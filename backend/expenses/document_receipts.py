@@ -185,7 +185,7 @@ def migrate_legacy_receipt(expense, *, enqueue_pending=True):
     try:
         with transaction.atomic():
             locked = (
-                Expense.objects.select_for_update()
+                Expense.objects.select_for_update(of=("self",))
                 .select_related("paid_by", "receipt_document")
                 .get(pk=expense.pk)
             )
@@ -239,7 +239,7 @@ def queue_receipt_processing(expense):
     try:
         with transaction.atomic():
             locked = (
-                Expense.objects.select_for_update()
+                Expense.objects.select_for_update(of=("self",))
                 .select_related("paid_by", "receipt_document")
                 .get(pk=expense.pk)
             )
