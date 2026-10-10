@@ -31,6 +31,8 @@ The current application enforces:
 
 Password-login failures use the same generic response for known and unknown identifiers. A rate-limited login keeps that same generic detail and adds HTTP `429`, `Retry-After`, `code=rate_limited` and a numeric `retry_after`. Successful logins forgive identifier-specific counters, while network/global pressure remains.
 
+Invitation creation resolves and authorizes the requested family before consuming a family-scoped bucket. A user therefore cannot spend another tenant's invitation budget by submitting a guessed family UUID.
+
 ## Persistent multi-worker store
 
 Counters are stored in PostgreSQL through `AuthAbuseBucket`. A bucket is unique by scope, HMAC key and window kind. Enforcement uses transactions plus `SELECT ... FOR UPDATE`; concurrent first writers are reconciled through the database uniqueness constraint. This makes the budget shared across Gunicorn workers and across application replicas using the same database.
@@ -47,13 +49,17 @@ IPv4 defaults to `/32`; IPv6 defaults to `/64` so temporary IPv6 interface addre
 
 `X-Forwarded-For` is ignored unless the direct peer (`REMOTE_ADDR`) belongs to an explicitly configured `AUTH_TRUSTED_PROXY_CIDRS` network. When trusted, the chain is walked from right to left and only configured trusted proxy hops are discarded. This prevents blindly trusting a client-supplied forwarding header.
 
-Example for an installation whose application is reachable only from a known reverse-proxy network:
+The official Docker Compose topology creates a dedicated `edge` bridge. Caddy has a fixed address on that bridge (default `172.30.255.2`) and the backend automatically trusts only that exact `/32`. This matters because leaving the Caddy hop untrusted would collapse all network rate limits onto Caddy's container address instead of the actual client network.
+
+If another reverse proxy sits in front of FamilyOS, add only that proxy/network to `AUTH_TRUSTED_PROXY_CIDRS`; Compose appends it to the built-in Caddy `/32`:
 
 ```env
-AUTH_TRUSTED_PROXY_CIDRS=172.20.0.0/16
+AUTH_TRUSTED_PROXY_CIDRS=10.0.0.10/32
 ```
 
-Use the actual proxy/network CIDR for the deployment. Leaving this setting empty is safe: forwarded addresses are ignored and the direct peer is used.
+Do not configure broad private ranges merely because containers use private addressing. If the default isolated edge subnet conflicts with a host route, change `AUTH_PROXY_NETWORK_CIDR` and `AUTH_PROXY_IPV4` together; the backend's trusted Caddy `/32` follows `AUTH_PROXY_IPV4` automatically.
+
+For installations that run Django outside the supplied Compose topology, `AUTH_TRUSTED_PROXY_CIDRS` remains the explicit trust list. Leaving it empty is safe in that case: forwarded addresses are ignored and the direct peer is used.
 
 ## Configuration
 
@@ -62,10 +68,14 @@ Optional environment variables:
 ```env
 # Recommended as a separate random secret; unset/blank falls back to DJANGO_SECRET_KEY.
 AUTH_ABUSE_HMAC_KEY=
+# Extra trusted upstream proxies; official Compose adds its Caddy /32 automatically.
 AUTH_TRUSTED_PROXY_CIDRS=
 AUTH_ABUSE_IPV4_PREFIX=32
 AUTH_ABUSE_IPV6_PREFIX=64
 AUTH_ABUSE_RETENTION_SECONDS=86400
+# Official Compose edge-network defaults; normally no change is needed.
+AUTH_PROXY_NETWORK_CIDR=172.30.255.0/29
+AUTH_PROXY_IPV4=172.30.255.2
 ```
 
 Changing the HMAC key intentionally invalidates the link to existing buckets; old hashed rows age out and can be cleaned up.
