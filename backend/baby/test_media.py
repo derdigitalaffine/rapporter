@@ -13,7 +13,6 @@ from family.models import Family,Membership
 from .family_modules import set_care_circle,set_module
 from .media_service import get_private_media_for_user,save_private_media
 from .middleware import PrivateBabyNoStoreMiddleware
-from .models import PregnancyJourney
 from .pregnancy_service import create_pregnancy
 
 
@@ -55,6 +54,15 @@ class BabyPrivateMediaTests(TestCase):
         with self.assertRaises(PermissionDenied):
             get_private_media_for_user(user=self.denied,media_id=row.id)
         path.unlink(missing_ok=True)
+
+    @override_settings(MEDIA_ROOT='/tmp/familyos-test-media')
+    def test_cascade_delete_removes_private_file_from_storage(self):
+        upload=SimpleUploadedFile('photo.jpg',jpeg_with_exif(),content_type='image/jpeg')
+        row=save_private_media(user=self.owner,family=self.family,upload=upload,scope='pregnancy',pregnancy=self.pregnancy)
+        _,path=get_private_media_for_user(user=self.owner,media_id=row.id)
+        self.assertTrue(path.exists())
+        self.pregnancy.delete()
+        self.assertFalse(path.exists())
 
     def test_private_api_middleware_disables_caching(self):
         middleware=PrivateBabyNoStoreMiddleware(lambda request:HttpResponse('ok'))
