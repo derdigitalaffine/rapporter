@@ -125,7 +125,7 @@ class AuthSessionApiTests(TestCase):
         self.assertEqual(blocked.status_code, 403)
 
         wrong = client.post("/api/auth/reauth/password/", {"password": "wrong"}, format="json", REMOTE_ADDR="198.51.100.75")
-        self.assertEqual(wrong.status_code, 401)
+        self.assertEqual(wrong.status_code, 400)
         ok = client.post("/api/auth/reauth/password/", {"password": "session-pass-123"}, format="json", REMOTE_ADDR="198.51.100.75")
         self.assertEqual(ok.status_code, 200, ok.data)
         session = AuthSession.objects.get(pk=sid)
