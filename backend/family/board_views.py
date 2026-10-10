@@ -9,6 +9,7 @@ from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 
+from .board_reorder import plan_board_positions
 from .models import BoardPost, BoardImage, Membership
 from .domain_notifications import notify_domain_event
 from .pin_adapters import resolve_pin_target, resolve_pin_targets, validate_pin_target
@@ -173,10 +174,15 @@ class BoardViewSet(viewsets.ModelViewSet):
             by_id = {row.id: row for row in current}
             if any(value not in by_id for value in wanted):
                 raise ValidationError({'ids': 'Pins gehören nicht zu dieser Familie.'})
-            ordered = [by_id[value] for value in wanted] + [row for row in current if row.id not in set(wanted)]
-            for index, row in enumerate(ordered):
-                row.position = index * 1000
-            BoardPost.objects.bulk_update(ordered, ['position'])
+            wanted_set = set(wanted)
+            ordered = [by_id[value] for value in wanted] + [row for row in current if row.id not in wanted_set]
+            planned = plan_board_positions(current, ordered)
+            changed = []
+            for row, position in planned:
+                row.position = position
+                changed.append(row)
+            if changed:
+                BoardPost.objects.bulk_update(changed, ['position'])
         return Response({'ids': [str(row.id) for row in ordered]})
 
 
