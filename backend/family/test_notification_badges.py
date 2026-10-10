@@ -41,7 +41,7 @@ class NotificationBadgeTests(TestCase):
         self.assertEqual(sender.call_args_list[1].kwargs["badge_count"], 2)
 
     @patch("family.domain_notifications.send_user_push", return_value={"sent": 1, "errors": 0})
-    def test_actor_does_not_count_own_event(self, sender):
+    def test_actor_does_not_count_own_event_but_other_members_do(self, sender):
         notify_domain_event(
             self.family,
             "calendar.event.created",
@@ -49,7 +49,9 @@ class NotificationBadgeTests(TestCase):
             context={"item": "Eigener Termin", "event_id": "event-2"},
         )
         self.assertFalse(NotificationBadgeState.objects.filter(user=self.user).exists())
-        sender.assert_not_called()
+        self.assertTrue(NotificationBadgeState.objects.filter(user=self.actor).exists())
+        self.assertEqual(sender.call_count, 1)
+        self.assertEqual(sender.call_args.args[0], self.actor)
 
     def test_badge_endpoint_reads_and_acknowledges_all_unread_activity(self):
         NotificationBadgeState.objects.create(user=self.user, unread_count=4)
