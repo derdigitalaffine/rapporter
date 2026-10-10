@@ -40,7 +40,7 @@ def normalize_email(value: object) -> str:
     if not raw or "@" not in raw:
         raise EmailIdentityError("Ungültige E-Mail-Adresse.")
     local, domain = raw.rsplit("@", 1)
-    normalized = f"{local.casefold()}@{domain.casefold()}"
+    normalized = f"{local}@{domain.casefold()}"
     try:
         validate_email(normalized)
     except ValidationError as exc:
