@@ -2,6 +2,8 @@
 
 Im Kalender siehst du eigene FamilyOS-Termine und – wenn eingerichtet – Termine aus verbundenen Quellen.
 
+![Kalenderansicht von FamilyOS](assets/calendar.svg)
+
 ## Überblick behalten
 
 Öffne **Kalender**. Die Agenda gruppiert Termine nach Datum.
