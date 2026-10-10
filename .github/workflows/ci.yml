@@ -90,6 +90,11 @@ jobs:
           cache: pip
           cache-dependency-path: backend/requirements.txt
       - run: pip install -r backend/requirements.txt
+      - name: Emit Pregnancy & Baby initial migration
+        working-directory: backend
+        run: |
+          python manage.py makemigrations baby --dry-run --verbosity 3
+          exit 1
       - working-directory: backend
         run: python manage.py makemigrations family expenses --check --dry-run
       - working-directory: backend
