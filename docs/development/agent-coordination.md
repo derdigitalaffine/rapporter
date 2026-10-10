@@ -41,6 +41,10 @@ Bad claim:
 
 > Work on auth.
 
+Each claim also carries narrow **Coordination Keys** such as `domain:calendar`, `model:FamilyEvent`, `api:calendar-events`, `ui:today`, `worker:document-processing` or `policy:permissions`. Keys are machine-readable collision identifiers for contracts that may be changed by the work. Use the same spelling for the same shared contract and avoid broad keys such as `domain:backend`.
+
+This catches semantic collisions that file overlap alone misses: two agents can change the same API or model contract in different files.
+
 ### C. Handshake
 
 If another claim or PR overlaps, communicate in the most local shared place:
@@ -69,24 +73,28 @@ A handoff comment should be enough for another contributor to continue without p
 It shows:
 
 - all open issues carrying `in progress`;
-- all open PRs and their closing issue references;
-- PRs that target the same issue simultaneously;
+- their latest structured claim and Coordination Keys;
+- open PRs that reference the active issue via closing keywords, `Refs`, or `Part of`;
+- active claims with identical Coordination Keys;
+- PRs that simultaneously try to close the same issue;
 - exact changed-file overlap between open PRs;
-- active claims with no visible PR yet;
+- active claims with no visible referencing PR yet;
 - open external feature requests still missing the mandatory research block;
 - stale-looking claims with no visible issue/linked-PR activity for 72 hours.
 
-The dashboard refreshes after issue/PR state changes, manually, and on an hourly schedule.
+The dashboard refreshes after issue/PR/comment state changes, manually, and on an hourly schedule.
 
 ### What warnings mean
 
 A warning is a request for human/agent judgment, not an automatic rejection:
 
-- **same issue, several PRs**: verify that scopes are intentionally split;
+- **same Coordination Key**: verify whether the shared contract has an explicit owner/split;
+- **same issue, several closing PRs**: verify that scopes are intentionally split or ordered;
 - **same file touched**: coordinate sequencing or ownership before both PRs grow;
-- **no linked issue**: add a work issue unless the PR is genuinely trivial;
 - **claim without PR**: valid during exploration, but should not stay invisible for long;
 - **research missing**: an external product-feature issue must be enriched before merge.
+
+A partial PR can use `Refs #123` or `Part of #123` without falsely claiming that it closes the issue. The dashboard treats those as work links but reserves the “several PRs close the same issue” collision for actual closing keywords.
 
 ## 4. External issue research
 
@@ -143,7 +151,7 @@ Before merging a non-trivial PR:
 
 - linked issue is clear;
 - active claim and handshakes are reflected in comments;
-- no unresolved overlap warning is ignored;
+- no unresolved semantic/file-overlap warning is ignored;
 - tests and relevant CI are green;
 - migration/rollback and negative permission tests satisfy #223 where applicable;
 - user-facing docs are updated or linked;
