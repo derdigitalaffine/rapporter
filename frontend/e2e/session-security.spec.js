@@ -46,8 +46,8 @@ test('security center revokes sessions and gates revoke-all behind reauth',async
  await expect(card.getByText('Keine weiteren aktiven Sitzungen.')).toBeVisible();
 });
 
-test('revoking a second browser context makes its next auth request fail',async({browser})=>{
- const contextA=await browser.newContext();const contextB=await browser.newContext();
+test('revoking a second browser context makes its next auth request fail',async({browser,baseURL})=>{
+ const contextA=await browser.newContext({baseURL});const contextB=await browser.newContext({baseURL});
  const pageA=await contextA.newPage();const pageB=await contextB.newPage();
  await installApiMocks(pageA);await installApiMocks(pageB);
  const sidA='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';const sidB='bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';const revoked=new Set();
