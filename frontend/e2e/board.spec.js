@@ -28,7 +28,7 @@ test('pin note, edit, reload and remove it from the family pinboard',async({page
  const pin=page.locator('.pin-card').first();await expect(pin).toContainText('Wir treffen uns im Garten.');
  await pin.getByRole('button',{name:'Bearbeiten',exact:true}).click();
  form=page.locator('.pin-composer');await expect(form).toBeVisible();
- const editor=form.getByLabel('Notizzettel',{exact:true});await expect(editor).toBeFocused();
+ const editor=form.getByRole('textbox',{name:'Notizzettel',exact:true});await expect(editor).toBeFocused();
  await editor.fill('Wir treffen uns um 16 Uhr.');
  await form.getByRole('button',{name:'Speichern',exact:true}).click();
  await page.reload();await expect(page.locator('.pin-card')).toContainText('16 Uhr');
