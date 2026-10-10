@@ -25,6 +25,13 @@ services:
         condition: service_healthy
     environment:
       POSTGRES_HOST: db
+      # The backend only accepts forwarded client addresses from the Caddy hop
+      # shipped in this compose topology, plus explicitly configured upstream
+      # proxies. Do not widen this to all RFC1918/container networks.
+      AUTH_TRUSTED_PROXY_CIDRS: "${AUTH_PROXY_IPV4:-172.30.255.2}/32,${AUTH_TRUSTED_PROXY_CIDRS:-}"
+    networks:
+      - default
+      - edge
     volumes:
       - avatar_media:/app/media
     healthcheck:
@@ -90,12 +97,22 @@ services:
       DOMAIN: ${DOMAIN:-localhost}
       PUBLIC_SCHEME: ${PUBLIC_SCHEME:-https}
       PUBLIC_HOST: ${PUBLIC_HOST:-localhost}
+    networks:
+      edge:
+        ipv4_address: ${AUTH_PROXY_IPV4:-172.30.255.2}
     ports:
       - "${HTTP_BIND:-0.0.0.0}:${HTTP_PORT:-80}:80"
     volumes:
       - ./${CADDYFILE:-Caddyfile.selfsigned}:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
+
+networks:
+  edge:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: ${AUTH_PROXY_NETWORK_CIDR:-172.30.255.0/29}
 
 volumes:
   postgres_data:
