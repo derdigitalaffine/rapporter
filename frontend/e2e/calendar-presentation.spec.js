@@ -7,6 +7,13 @@ async function bootCalendar(page,{mobile=false}={}){
  await page.goto('/?page=calendar');
 }
 
+function berlinDayKey(value=new Date()){
+ const parts=new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/Berlin',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(value);
+ const part=type=>parts.find(item=>item.type===type)?.value;
+ return `${part('year')}-${part('month')}-${part('day')}`;
+}
+function addCivilDay(key,amount){const [year,month,day]=key.split('-').map(Number);const value=new Date(Date.UTC(year,month-1,day+amount,12));return value.toISOString().slice(0,10)}
+
 test('calendar defaults to week and switches week month list without horizontal overflow',async({page})=>{
  await bootCalendar(page,{mobile:true});
  await expect(page.getByRole('button',{name:'Woche',exact:true})).toHaveAttribute('aria-pressed','true');
@@ -46,4 +53,32 @@ test('Today week compass navigates weeks, resets to today and opens tapped day i
  await compass.locator('.week-compass-days button').first().click();
  await expect(page).toHaveURL(/page=calendar&day=\d{4}-\d{2}-\d{2}/);
  await expect(page.getByRole('button',{name:'Woche',exact:true})).toHaveAttribute('aria-pressed','true');
+});
+
+test('Today and mobile calendar distinguish appointments, waste, birthdays and school holidays',async({page})=>{
+ await page.setViewportSize({width:390,height:844});
+ const state=await installApiMocks(page);
+ const day=berlinDayKey();const next=addCivilDay(day,1);
+ const appointment=state.events.find(event=>event.id==='event-1');
+ Object.assign(appointment,{starts_at:`${day}T04:00:00Z`,ends_at:`${day}T05:00:00Z`});
+ state.events.push(
+  {id:'marker-waste',family:state.family.id,source:'waste-source',type:'waste.collection',title:'Papiertonne',starts_at:`${day}T06:00:00Z`,ends_at:`${day}T07:00:00Z`,actionable:true,payload:{waste_kind:'paper'}},
+  {id:'marker-birthday',family:state.family.id,source:null,type:'birthday',title:'Mia: Geburtstag',starts_at:`${day}T12:00:00Z`,ends_at:`${day}T13:00:00Z`,actionable:true,payload:{all_day:true}},
+  {id:'marker-holiday',family:state.family.id,source:'school-source',type:'school.holiday',title:'Herbstferien',starts_at:`${day}T00:00:00Z`,ends_at:`${next}T00:00:00Z`,actionable:false,payload:{all_day:true,date_start:day,date_end_exclusive:next}},
+ );
+ await page.goto('/');
+ const compass=page.getByTestId('week-compass');
+ await expect(compass.locator('.week-marker.marker-event').first()).toBeVisible();
+ await expect(compass.locator('.week-marker.marker-waste.waste-paper')).toBeVisible();
+ await expect(compass.locator('.week-marker.marker-birthday')).toBeVisible();
+ await expect(compass.locator('.week-compass-days li.has-holiday')).toBeVisible();
+
+ await page.goto('/?page=calendar');
+ const strip=page.locator('.calendar-mobile-daystrip');
+ await expect(strip).toBeVisible();
+ await expect(strip.locator('.calendar-mobile-marker.marker-event').first()).toBeVisible();
+ await expect(strip.locator('.calendar-mobile-marker.marker-waste.waste-paper')).toBeVisible();
+ await expect(strip.locator('.calendar-mobile-marker.marker-birthday')).toBeVisible();
+ await expect(strip.locator('button.has-holiday')).toBeVisible();
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
 });

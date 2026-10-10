@@ -1,41 +1,92 @@
-from .models import FamilyEvent
-from .views import FamilyEventViewSet as BaseFamilyEventViewSet
-from datetime import date, timedelta
-from rest_framework.exceptions import ValidationError, PermissionDenied
+from datetime import date, datetime, time, timedelta
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+from django.db.models import Q
+from rest_framework.exceptions import PermissionDenied, ValidationError
+
 from .birthdays import calendar_projection, local_now
-from .models import Family
+from .models import Family, FamilyEvent
+from .views import FamilyEventViewSet as BaseFamilyEventViewSet
 
 
 READ_ONLY_EVENT_TYPES = {"school.holiday", "travel.trip"}
+MAX_CALENDAR_RANGE_DAYS = 732
+
+
+def _visible_families(request):
+    families = Family.objects.filter(memberships__user=request.user, status="active").distinct()
+    family_id = request.query_params.get("family")
+    if family_id:
+        families = [family for family in families if str(family.id) == family_id]
+    else:
+        families = list(families)
+    return families
+
+
+def _parse_range(request, default_start):
+    try:
+        start = date.fromisoformat(request.query_params["start"]) if request.query_params.get("start") else default_start
+        end = date.fromisoformat(request.query_params["end"]) if request.query_params.get("end") else start + timedelta(days=366)
+        if end < start or (end - start).days > MAX_CALENDAR_RANGE_DAYS:
+            raise ValueError()
+    except ValueError as exc:
+        raise ValidationError("Use a calendar range of at most two years.") from exc
+    return start, end
+
+
+def _family_zone(family):
+    try:
+        return ZoneInfo(family.timezone or "UTC")
+    except ZoneInfoNotFoundError:
+        return ZoneInfo("UTC")
 
 
 class FamilyEventViewSet(BaseFamilyEventViewSet):
     """Calendar contract: forecasts/current conditions are weather data, not appointments."""
-    queryset=FamilyEvent.objects.exclude(type__in=["weather.current","weather.forecast"]).all().order_by("starts_at")
+
+    queryset = FamilyEvent.objects.exclude(type__in=["weather.current", "weather.forecast"]).all().order_by("starts_at")
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        families = _visible_families(self.request)
+        queryset = queryset.filter(family_id__in=[family.id for family in families])
+        start_raw = self.request.query_params.get("start")
+        end_raw = self.request.query_params.get("end")
+        # Range filtering is additive. Legacy clients historically supplied zero or
+        # one bound and must keep the old paginated-list behavior.
+        if not start_raw or not end_raw:
+            return queryset
+        start, end = _parse_range(self.request, date.today())
+        include_undated = self.request.query_params.get("include_undated") == "1"
+        overlap = None
+        for family in families:
+            zone = _family_zone(family)
+            starts_at = datetime.combine(start, time.min, zone)
+            ends_before = datetime.combine(end + timedelta(days=1), time.min, zone)
+            family_overlap = Q(family=family, starts_at__lt=ends_before) & (
+                Q(ends_at__gt=starts_at) | Q(ends_at__isnull=True, starts_at__gte=starts_at)
+            )
+            if include_undated:
+                family_overlap |= Q(family=family, starts_at__isnull=True)
+            overlap = family_overlap if overlap is None else overlap | family_overlap
+        return queryset.filter(overlap) if overlap is not None else queryset.none()
 
     def list(self, request, *args, **kwargs):
-        response = super().list(request,*args,**kwargs)
-        if request.query_params.get("birthdays")=="0":
+        response = super().list(request, *args, **kwargs)
+        if request.query_params.get("birthdays") == "0":
             return response
-        families=Family.objects.filter(memberships__user=request.user,status="active").distinct()
-        if request.query_params.get("family"):
-            families=families.filter(pk=request.query_params["family"])
-        virtual=[]
+        families = _visible_families(request)
+        virtual = []
         # Occurrences are included once, on the first page. They are projections,
         # not persisted duplicate FamilyEvent records.
-        if request.query_params.get("page","1")=="1":
+        if request.query_params.get("page", "1") == "1":
             for family in families:
-                try:
-                    start=date.fromisoformat(request.query_params["start"]) if request.query_params.get("start") else local_now(family).date()
-                    end=date.fromisoformat(request.query_params["end"]) if request.query_params.get("end") else start+timedelta(days=366)
-                    if end<start or (end-start).days>732:raise ValueError()
-                except ValueError:
-                    raise ValidationError("Use a calendar range of at most two years.")
-                virtual.extend(calendar_projection(family,request.user,start,end))
-        if isinstance(response.data,dict):
+                start, end = _parse_range(request, local_now(family).date())
+                virtual.extend(calendar_projection(family, request.user, start, end))
+        if isinstance(response.data, dict):
             response.data["results"].extend(virtual)
-            response.data["results"].sort(key=lambda row:row.get("starts_at") or "9999")
-            response.data["count"]+=len(virtual)
+            response.data["results"].sort(key=lambda row: row.get("starts_at") or "9999")
+            response.data["count"] += len(virtual)
         else:
             response.data.extend(virtual)
         return response
