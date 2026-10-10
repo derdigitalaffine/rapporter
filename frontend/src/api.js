@@ -19,8 +19,7 @@ function notifySessionExpired(){
 }
 export async function login(identifier,password,{legacy=false}={}){
  const value=String(identifier||'').trim();
- const useLegacy=legacy||!value.includes('@');
- const payload=useLegacy?{username:value,password,legacy:true}:{email:value,password};
+ const payload=legacy?{username:value,password,legacy:true}:{email:value,password};
  const response=await fetch(`${API_BASE}/auth/login/`,{method:'POST',credentials:'include',headers:jsonHeaders(),body:JSON.stringify(payload)});
  if(!response.ok)throw new Error('login_failed');
  markAuthenticated(true);resetSessionExpiry();return response.json();
