@@ -67,7 +67,7 @@ class ShoppingTemplateApiTests(TestCase):
         self.assertEqual(assigned.status_code, 200, assigned.data)
         self.shopping.refresh_from_db()
         self.assertEqual(self.shopping.store, "REWE · Innenstadt")
-        self.assertEqual(ShoppingListStoreProfile.objects.get(shopping_list=self.shopping).store_id, store["id"])
+        self.assertEqual(str(ShoppingListStoreProfile.objects.get(shopping_list=self.shopping).store_id), store["id"])
 
         renamed = self.client.patch(
             f"/api/shopping-stores/{store['id']}/",
@@ -203,7 +203,7 @@ class ShoppingTemplateApiTests(TestCase):
         self.assertEqual(created.name, "Samstag")
         self.assertEqual(created.store, "dm · Zentrum")
         self.assertEqual(created.items.count(), 3)
-        self.assertEqual(ShoppingListStoreProfile.objects.get(shopping_list=created).store_id, store["id"])
+        self.assertEqual(str(ShoppingListStoreProfile.objects.get(shopping_list=created).store_id), store["id"])
         self.assertEqual(EntryMemory.objects.filter(family=self.family, kind=EntryMemory.Kind.SHOPPING).count(), before_memory)
 
     def test_cross_family_template_and_target_list_are_not_usable(self):
