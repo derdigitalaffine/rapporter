@@ -69,17 +69,15 @@ class DocumentCoreTests(TestCase):
 
     def test_private_family_and_selected_acl_are_enforced_server_side(self):
         private = self.upload(visibility="private")
-        self.assertEqual(private.status_code, 201)
+        self.assertEqual(private.status_code, 202)
         private_id = private.data["id"]
 
         self.auth(self.bob)
         self.assertEqual(self.client.get(f"/api/documents/{private_id}/").status_code, 404)
         self.assertEqual(self.client.get(f"/api/documents/{private_id}/file/").status_code, 404)
 
-        # This test exercises ACL semantics, not dedupe; identical fixture bytes are
-        # therefore explicitly accepted as separate documents.
         family_doc = self.upload(visibility="family", title="Familie", allow_duplicate="true")
-        self.assertEqual(family_doc.status_code, 201)
+        self.assertEqual(family_doc.status_code, 202)
         self.auth(self.bob)
         self.assertEqual(self.client.get(f"/api/documents/{family_doc.data['id']}/").status_code, 200)
 
@@ -89,7 +87,7 @@ class DocumentCoreTests(TestCase):
             allow_duplicate="true",
             access=json.dumps([{"membership": str(self.bob_member.id), "can_view": True}]),
         )
-        self.assertEqual(selected.status_code, 201)
+        self.assertEqual(selected.status_code, 202)
         self.auth(self.bob)
         self.assertEqual(self.client.get(f"/api/documents/{selected.data['id']}/").status_code, 200)
         self.auth(self.cara)
@@ -104,8 +102,9 @@ class DocumentCoreTests(TestCase):
     def test_content_detection_ignores_extension_and_private_download_is_no_store(self):
         raw = self.pdf_bytes()
         response = self.upload(content=raw, name="looks-like-an-image.jpg", visibility="family")
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 202)
         self.assertEqual(response.data["mime_type"], "application/pdf")
+        self.assertEqual(response.data["processing_status"], "queued")
         self.assertNotIn("looks-like-an-image", Document.objects.get(id=response.data["id"]).canonical_file)
 
         file_response = self.client.get(f"/api/documents/{response.data['id']}/file/")
@@ -117,13 +116,13 @@ class DocumentCoreTests(TestCase):
     def test_pdf_is_preserved_byte_for_byte_so_existing_signatures_are_not_broken(self):
         raw = self.pdf_bytes()
         response = self.upload(content=raw, name="signed.pdf")
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 202)
         file_response = self.client.get(f"/api/documents/{response.data['id']}/file/")
         self.assertEqual(b"".join(file_response.streaming_content), raw)
 
     def test_images_are_normalized_to_metadata_free_webp(self):
         response = self.upload(content=self.image_bytes(), name="camera.jpg")
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 202)
         self.assertEqual(response.data["mime_type"], "image/webp")
         document = Document.objects.get(id=response.data["id"])
         self.assertTrue(document.canonical_file.endswith(".webp"))
@@ -142,13 +141,11 @@ class DocumentCoreTests(TestCase):
         self.assertEqual(duplicate.data["existing_document_id"], first.data["id"])
 
         allowed = self.upload(content=raw, allow_duplicate="true")
-        self.assertEqual(allowed.status_code, 201)
+        self.assertEqual(allowed.status_code, 202)
         self.assertNotEqual(allowed.data["id"], first.data["id"])
 
-        # Bob possesses identical bytes but cannot see Alice's private document.
-        # Creating his own copy must not reveal that Alice already stored it.
         bob_copy = self.upload(user=self.bob, content=raw)
-        self.assertEqual(bob_copy.status_code, 201)
+        self.assertEqual(bob_copy.status_code, 202)
 
     def test_archive_restore_and_purge_have_explicit_lifecycle(self):
         response = self.upload(visibility="family")
@@ -177,7 +174,7 @@ class DocumentCoreTests(TestCase):
             access=json.dumps([{"membership": str(self.bob_member.id), "can_manage": True}]),
             links=json.dumps([{"domain_type": "expense", "object_id": object_id, "relationship": "receipt"}]),
         )
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 202)
         self.assertEqual(response.data["links"][0]["domain_type"], "expense")
         self.assertEqual(response.data["links"][0]["object_id"], object_id)
 

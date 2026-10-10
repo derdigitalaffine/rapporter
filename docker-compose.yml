@@ -85,6 +85,22 @@ services:
     entrypoint: ["/bin/sh", "-c"]
     command: ["python manage.py process_receipts --loop"]
 
+  document-worker:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      backend:
+        condition: service_healthy
+    environment:
+      POSTGRES_HOST: db
+    volumes:
+      - avatar_media:/app/media
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["python manage.py process_documents --loop"]
+
   caddy:
     build:
       context: .
