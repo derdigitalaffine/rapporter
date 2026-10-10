@@ -34,6 +34,22 @@ jobs:
             const dashboardMarker = '<!-- coordination-dashboard:v1 -->';
             const claimMarker = '<!-- coordination:claim:v1 -->';
             const researchMarker = '<!-- external-research:v1 -->';
+            const internalAssociations = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);
+            const trustedMaintainerComment = (comment) => internalAssociations.has(comment.author_association || 'NONE');
+            const isDashboardComment = (comment) => comment?.user?.login === 'github-actions[bot]'
+              && String(comment.body || '').trimStart().startsWith(dashboardMarker);
+
+            // Updating our own sticky emits issue_comment events. Ignore only
+            // created/edited events from that bot comment; a deleted sticky must
+            // still trigger this job so it can be recreated.
+            const ownDashboardEvent = context.eventName === 'issue_comment'
+              && context.payload.action !== 'deleted'
+              && Number(context.payload.issue?.number) === controlIssue
+              && isDashboardComment(context.payload.comment);
+            if (ownDashboardEvent) {
+              core.info('Ignoring self-generated dashboard comment event.');
+              return;
+            }
 
             // Public issue/PR metadata is untrusted input. Keep the privileged
             // #223 dashboard free from mentions and Markdown injection.
@@ -45,6 +61,13 @@ jobs:
               .replace(/[\r\n]+/g, ' ')
               .replace(/@/g, '@\u200b')
               .replace(/`/g, 'ˋ');
+            const semanticDashboard = (value) => String(value || '')
+              .split('\n')
+              .map((line) => line.startsWith('Automatisch aktualisiert: ')
+                ? 'Automatisch aktualisiert: <timestamp>'
+                : line)
+              .join('\n')
+              .trim();
 
             const allIssueLike = await github.paginate(github.rest.issues.listForRepo, {
               owner,
@@ -136,7 +159,8 @@ jobs:
 
             for (const issue of activeIssues) {
               const comments = await commentsFor(issue.number);
-              const claimComments = comments.filter((comment) => (comment.body || '').includes(claimMarker));
+              const claimComments = comments.filter((comment) => trustedMaintainerComment(comment)
+                && (comment.body || '').includes(claimMarker));
               const latestClaim = claimComments.at(-1);
               const keys = latestClaim ? coordinationKeys(latestClaim.body) : [];
               const linkedPrs = prData.filter((pr) => pr.linkedRefs.has(issue.number));
@@ -183,7 +207,6 @@ jobs:
               }
             }
 
-            const internalAssociations = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);
             const externalFeatureCandidates = issues.filter((issue) => {
               if (internalAssociations.has(issue.author_association || 'NONE')) return false;
               const labels = labelsOf(issue);
@@ -196,7 +219,8 @@ jobs:
             const missingResearch = [];
             for (const issue of externalFeatureCandidates) {
               const comments = await commentsFor(issue.number);
-              if (!comments.some((comment) => (comment.body || '').includes(researchMarker))) {
+              if (!comments.some((comment) => trustedMaintainerComment(comment)
+                && (comment.body || '').includes(researchMarker))) {
                 missingResearch.push(issue);
               }
             }
@@ -276,7 +300,12 @@ jobs:
               issue_number: controlIssue,
               per_page: 100,
             });
-            const existing = controlComments.find((comment) => (comment.body || '').includes(dashboardMarker));
+            const existing = controlComments.find(isDashboardComment);
+
+            if (existing && semanticDashboard(existing.body) === semanticDashboard(body)) {
+              core.info('Coordination dashboard content is unchanged; skipping sticky comment update.');
+              return;
+            }
 
             if (existing) {
               await github.rest.issues.updateComment({
