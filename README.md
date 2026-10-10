@@ -25,6 +25,14 @@ Der `dialog`/`whiptail`-Wizard erzeugt `.env`, sichert vorhandene Konfiguratione
 
 Das Setup führt außerdem durch Betriebsmodus, Domain/IP, Ports, Zeitzone, Sprache, erste Familie, PostgreSQL, Scheduler-Intervall sowie optional Google-/Microsoft-Kalender-OAuth. Die serverseitige Web-Push-Infrastruktur wird automatisch vorbereitet; die Benachrichtigungsberechtigung bleibt weiterhin eine bewusste Browser-/Benutzerentscheidung.
 
+Transaktionale E-Mail ist bei neuen Installationen absichtlich deaktiviert (`dummy`-Backend). Für SMTP kann anschließend der sichere Helper verwendet werden; das Passwort wird dabei nicht ausgegeben:
+
+```bash
+bash scripts/configure-mail.sh
+```
+
+Details zu SMTP, Worker, Retry/Idempotenz sowie SPF/DKIM/DMARC stehen in **[docs/operator/email.md](docs/operator/email.md)**.
+
 ### Betriebsmodi
 
 - `internal`: internes HTTPS mit Caddys lokaler CA
@@ -138,7 +146,7 @@ cp .env.example .env
 docker compose up -d --build
 ```
 
-Compose enthält PostgreSQL, Django, Integrations-/Regel-Scheduler und Caddy. Im `internal`/`public`-Betrieb wird `docker-compose.override.yml` für HTTPS verwendet. Im `proxy`-Betrieb veröffentlicht der Basis-Compose nur den konfigurierten HTTP-Upstream.
+Compose enthält PostgreSQL, Django, Integrations-/Regel-Scheduler, Notification-/Mail-/Receipt-Worker und Caddy. Im `internal`/`public`-Betrieb wird `docker-compose.override.yml` für HTTPS verwendet. Im `proxy`-Betrieb veröffentlicht der Basis-Compose nur den konfigurierten HTTP-Upstream.
 
 ## CI
 
@@ -148,7 +156,7 @@ GitHub Actions prüft unter anderem:
 - Django `makemigrations --check --dry-run`, Migrationen und System Check
 - Backend-Regressionstests
 - Playwright-E2E inkl. visueller Regressionen
-- Setup-/TLS-Shell-Syntax und automatische/idempotente VAPID-Erzeugung
+- Setup-/TLS-/Mail-Shell-Syntax und automatische/idempotente VAPID-Erzeugung
 - Caddy- und Compose-Konfiguration
 - vollständigen Docker-Build
 
@@ -158,10 +166,12 @@ GitHub Actions prüft unter anderem:
 backend/                     Django REST API, Tenants, Regeln, Integrationen, Tests
 frontend/                    React PWA, Superadmin UI, Brand/PWA Assets
 scripts/setup.sh             interaktiver Setup-Wizard
+scripts/configure-mail.sh    SMTP-Konfiguration ohne Secret-Ausgabe
 scripts/ensure-vapid.sh      idempotente VAPID-Prüfung/Reparatur
 scripts/tls-mode.sh          Betriebsmodus internal/public/proxy
 scripts/backup.sh            PostgreSQL-Backup
 scripts/restore.sh           PostgreSQL-Restore
+docs/operator/email.md       Transaktionale Mail: Betrieb, Retry und Zustellbarkeit
 docker-compose.yml           Basisstack
 .github/workflows/           CI
 ```
