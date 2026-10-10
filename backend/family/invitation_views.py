@@ -91,16 +91,27 @@ class FamilyInvitationViewSet(viewsets.ModelViewSet):
         return FamilyInvitation.objects.filter(family_id__in=family_ids).select_related("family", "invited_by", "accepted_by").order_by("-created_at")
 
     def create(self, request, *args, **kwargs):
-        family_id = request.data.get("family")
+        # Validate and authorize the target family before consuming its shared
+        # abuse budget. Otherwise any authenticated non-member could submit a
+        # guessed family UUID and rate-limit legitimate owners/adults.
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        family = serializer.validated_data["family"]
+        if not can_invite(request.user, family):
+            raise PermissionDenied("Nur Owner/Erwachsene können einladen.")
+
         decision = enforce(
             "invite.create",
             request=request,
             user=request.user,
-            family_id=family_id,
+            family_id=family.pk,
         )
         if not decision.allowed:
             return _rate_limited_response(decision)
-        return super().create(request, *args, **kwargs)
+
+        self.perform_create(serializer)
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
     def perform_create(self, serializer):
         family = serializer.validated_data["family"]
