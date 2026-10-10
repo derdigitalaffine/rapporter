@@ -35,3 +35,11 @@ class FamilyConfig(AppConfig):
         from . import signals  # noqa: F401
         from . import travel_signals  # noqa: F401
         from . import waste_calendar  # noqa: F401
+
+        # Invitation links are rendered lazily by the mailer. The reference ID contains
+        # only invite UUID + a non-secret generation nonce; the raw bearer token is
+        # reconstructed in memory and is never persisted in either invite or outbox rows.
+        from mailing.service import register_reference_resolver
+        from .invitation_service import invitation_path
+
+        register_reference_resolver("family.invitation", invitation_path)
