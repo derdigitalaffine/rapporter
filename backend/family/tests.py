@@ -10,6 +10,7 @@ from rest_framework.test import APIClient
 from .automation import run_rule
 from .integration_health import sync_with_health
 from .integrations import sync_ics
+from .invitation_service import issue_invitation
 from .models import (
     AutomationRule,
     EntryMemory,
@@ -263,31 +264,59 @@ class FamilyApiTests(TestCase):
         self.assertEqual(membership.role, "child")
         self.assertEqual(membership.display_name, "Kid")
 
-    def test_owner_creates_invitation_and_public_info_is_readable(self):
+    def test_owner_creates_invitation_without_exposing_secret_and_public_info_works(self):
         expires = (timezone.now() + timedelta(days=7)).isoformat()
         response = self.client.post("/api/invitations/", {"family": str(self.family.id), "role": "adult", "email": "new@example.com", "expires_at": expires}, format="json")
         self.assertEqual(response.status_code, 201)
-        token = response.data["token"]
+        self.assertNotIn("token", response.data)
+        invite = FamilyInvitation.objects.get(pk=response.data["id"])
+        self.assertRegex(invite.token, r"^[0-9a-f]{64}$")
+
+        public_invite, token = issue_invitation(
+            family=self.family,
+            invited_by=self.alice,
+            role="adult",
+            email="public@example.com",
+            expires_at=timezone.now() + timedelta(days=7),
+        )
         public = APIClient().get(f"/api/invite/{token}/")
         self.assertEqual(public.status_code, 200)
         self.assertEqual(public.data["family_name"], "Alice Family")
+        self.assertNotIn("email", public.data)
+        self.assertEqual(public.data["email_hint"], "p•••@example.com")
+        public_invite.refresh_from_db()
+        self.assertNotEqual(public_invite.token, token)
 
     def test_invite_registers_user_sets_http_only_cookies_and_is_single_use(self):
-        invite = FamilyInvitation.objects.create(family=self.family, role="adult", email="new@example.com", invited_by=self.alice, expires_at=timezone.now() + timedelta(days=7))
+        invite, token = issue_invitation(
+            family=self.family,
+            invited_by=self.alice,
+            role="adult",
+            email="new@example.com",
+            expires_at=timezone.now() + timedelta(days=7),
+        )
         anon = APIClient()
-        response = anon.post(f"/api/invite/{invite.token}/register/", {"username": "newperson", "email": "new@example.com", "password": "very-secure-123", "display_name": "New Person"}, format="json")
+        response = anon.post(f"/api/invite/{token}/register/", {"username": "newperson", "email": "new@example.com", "password": "very-secure-123", "display_name": "New Person"}, format="json")
         self.assertEqual(response.status_code, 201)
         self.assertNotIn("access", response.data)
         self.assertTrue(response.cookies["famuhle_access"]["httponly"])
         self.assertTrue(response.cookies["famuhle_refresh"]["httponly"])
         user = get_user_model().objects.get(username="newperson")
         self.assertTrue(Membership.objects.filter(family=self.family, user=user, role="adult").exists())
-        second = APIClient().post(f"/api/invite/{invite.token}/register/", {"username": "another", "email": "new@example.com", "password": "very-secure-123"}, format="json")
-        self.assertEqual(second.status_code, 400)
+        second = APIClient().post(f"/api/invite/{token}/register/", {"username": "another", "email": "new@example.com", "password": "very-secure-123"}, format="json")
+        self.assertEqual(second.status_code, 404)
+        invite.refresh_from_db()
+        self.assertIsNotNone(invite.accepted_at)
 
     def test_email_bound_invite_rejects_wrong_email(self):
-        invite = FamilyInvitation.objects.create(family=self.family, role="adult", email="target@example.com", invited_by=self.alice, expires_at=timezone.now() + timedelta(days=7))
-        response = APIClient().post(f"/api/invite/{invite.token}/register/", {"username": "wronguser", "email": "wrong@example.com", "password": "very-secure-123"}, format="json")
+        _invite, token = issue_invitation(
+            family=self.family,
+            invited_by=self.alice,
+            role="adult",
+            email="target@example.com",
+            expires_at=timezone.now() + timedelta(days=7),
+        )
+        response = APIClient().post(f"/api/invite/{token}/register/", {"username": "wronguser", "email": "wrong@example.com", "password": "very-secure-123"}, format="json")
         self.assertEqual(response.status_code, 403)
 
     def test_cookie_login_session_refresh_and_logout(self):
