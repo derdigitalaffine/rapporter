@@ -19,6 +19,15 @@ class CapabilityDefinition(models.Model):
         ordering = ["key"]
 
 
+class EntitlementCutover(models.Model):
+    key = models.SlugField(max_length=64, primary_key=True)
+    cutover_at = models.DateTimeField()
+    applied_at = models.DateTimeField()
+    eligible_family_count = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+
 class EntitlementGrant(models.Model):
     class Origin(models.TextChoices):
         PURCHASED_LIFETIME = "purchased_lifetime", "Purchased lifetime"
