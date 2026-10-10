@@ -180,3 +180,38 @@ class TravelV2LifecycleTests(TestCase):
         trip.refresh_from_db()
         resolved = registry.resolve_many(self.owner, self.family, [ref])
         self.assertEqual(resolved[ref].lifecycle, "available")
+
+    def test_expected_updated_at_rejects_stale_update_without_overwrite(self):
+        created = self.post_trip(stage="planning", date_precision="unknown")
+        self.assertEqual(created.status_code, 201, created.data)
+        trip_id = created.data["id"]
+        original_token = created.data["updated_at"]
+
+        first = self.client.patch(
+            f"/api/trips/{trip_id}/",
+            {"title": "Japan gemeinsam", "expected_updated_at": original_token},
+            format="json",
+        )
+        self.assertEqual(first.status_code, 200, first.data)
+        self.assertEqual(first.data["title"], "Japan gemeinsam")
+        self.assertNotEqual(first.data["updated_at"], original_token)
+
+        stale = self.client.patch(
+            f"/api/trips/{trip_id}/",
+            {"destination": "Kyoto", "expected_updated_at": original_token},
+            format="json",
+        )
+        self.assertEqual(stale.status_code, 409, stale.data)
+        self.assertEqual(stale.data["code"], "trip_conflict")
+
+        trip = Trip.objects.get(id=trip_id)
+        self.assertEqual(trip.title, "Japan gemeinsam")
+        self.assertEqual(trip.destination, "Tokyo")
+
+        fresh = self.client.patch(
+            f"/api/trips/{trip_id}/",
+            {"destination": "Kyoto", "expected_updated_at": first.data["updated_at"]},
+            format="json",
+        )
+        self.assertEqual(fresh.status_code, 200, fresh.data)
+        self.assertEqual(fresh.data["destination"], "Kyoto")

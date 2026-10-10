@@ -5,7 +5,7 @@ from django.db import transaction
 from django.http import FileResponse, Http404
 from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action, api_view
-from rest_framework.exceptions import PermissionDenied, ValidationError
+from rest_framework.exceptions import APIException, PermissionDenied, ValidationError
 from rest_framework.response import Response
 
 from .models import FamilyEvent, Membership
@@ -16,6 +16,15 @@ from .travel_models import Trip, TripPhoto
 CONCRETE_DATE_PRECISIONS = frozenset(
     {Trip.DatePrecision.RANGE, Trip.DatePrecision.EXACT}
 )
+
+
+class TripConflict(APIException):
+    status_code = status.HTTP_409_CONFLICT
+    default_code = "trip_conflict"
+    default_detail = {
+        "code": "trip_conflict",
+        "detail": "Die Reise wurde zwischenzeitlich geändert. Bitte den aktuellen Stand neu laden.",
+    }
 
 
 def _can_manage(user, family_id):
@@ -106,6 +115,7 @@ class TripSerializer(serializers.ModelSerializer):
     can_add_photos = serializers.SerializerMethodField()
     creator_name = serializers.SerializerMethodField()
     calendar_event_id = serializers.UUIDField(source="calendar_event.id", read_only=True)
+    expected_updated_at = serializers.DateTimeField(write_only=True, required=False)
 
     class Meta:
         model = Trip
@@ -131,6 +141,7 @@ class TripSerializer(serializers.ModelSerializer):
             "can_add_photos",
             "created_at",
             "updated_at",
+            "expected_updated_at",
         ]
         read_only_fields = ["created_by", "created_at", "updated_at", "calendar_event_id"]
 
@@ -352,14 +363,18 @@ class TripViewSet(viewsets.ModelViewSet):
         family = serializer.validated_data["family"]
         if not _can_manage(self.request.user, family.id):
             raise PermissionDenied("Nur Erwachsene dürfen Reisen anlegen.")
+        serializer.validated_data.pop("expected_updated_at", None)
         trip = serializer.save(created_by=self.request.user)
         sync_trip_event(trip)
 
     @transaction.atomic
     def perform_update(self, serializer):
+        expected_updated_at = serializer.validated_data.pop("expected_updated_at", None)
         trip = Trip.objects.select_for_update().select_related("family").get(pk=serializer.instance.pk)
         if not _can_manage(self.request.user, trip.family_id):
             raise PermissionDenied("Nur Erwachsene dürfen Reisen ändern.")
+        if expected_updated_at is not None and expected_updated_at != trip.updated_at:
+            raise TripConflict()
         serializer.instance = trip
         trip = serializer.save()
         sync_trip_event(trip)
