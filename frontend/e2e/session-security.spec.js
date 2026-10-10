@@ -45,3 +45,33 @@ test('security center revokes sessions and gates revoke-all behind reauth',async
  await expect(card.getByText('Firefox · Linux')).toHaveCount(0);
  await expect(card.getByText('Keine weiteren aktiven Sitzungen.')).toBeVisible();
 });
+
+test('revoking a second browser context makes its next auth request fail',async({browser})=>{
+ const contextA=await browser.newContext();const contextB=await browser.newContext();
+ const pageA=await contextA.newPage();const pageB=await contextB.newPage();
+ await installApiMocks(pageA);await installApiMocks(pageB);
+ const sidA='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';const sidB='bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';const revoked=new Set();
+ const rows=()=>[
+  {id:sidA,current:true,client:'Chrome · Desktop A',auth_method:'password',created_at:earlier,last_seen_at:now,last_reauthenticated_at:now,fresh_until:now,absolute_expires_at:now},
+  {id:sidB,current:false,client:'Chrome · Desktop B',auth_method:'password',created_at:earlier,last_seen_at:now,last_reauthenticated_at:now,fresh_until:now,absolute_expires_at:now},
+ ].filter(item=>!revoked.has(item.id));
+ async function bindSessionRoutes(page,currentSid){
+  await page.route('**/api/auth/session/',route=>revoked.has(currentSid)?json(route,{detail:'Sitzung abgelaufen.'},401):json(route,{authenticated:true,user:{id:1,username:'alex',email:'alex@example.test'},session:{id:currentSid}}));
+  await page.route('**/api/auth/refresh/',route=>revoked.has(currentSid)?json(route,{detail:'Sitzung abgelaufen.'},401):json(route,{authenticated:true}));
+ }
+ await bindSessionRoutes(pageA,sidA);await bindSessionRoutes(pageB,sidB);
+ await pageA.route('**/api/auth/sessions/**',async route=>{
+  const request=route.request();const path=new URL(request.url()).pathname;
+  if(path==='/api/auth/sessions/'&&request.method()==='GET')return json(route,{sessions:rows(),fresh:true});
+  if(request.method()==='DELETE'){const sid=path.split('/').filter(Boolean).at(-1);revoked.add(sid);return route.fulfill({status:204,body:''})}
+  return json(route,{});
+ });
+ try{
+  await Promise.all([pageA.goto('/?page=profile'),pageB.goto('/')]);await Promise.all([pageA.waitForLoadState('networkidle'),pageB.waitForLoadState('networkidle')]);
+  const card=pageA.getByTestId('security-sessions');await expect(card.getByText('Chrome · Desktop B')).toBeVisible();
+  await card.locator('.security-session-row').filter({hasText:'Chrome · Desktop B'}).getByRole('button',{name:'Abmelden'}).click();
+  await expect(card.getByText('Chrome · Desktop B')).toHaveCount(0);
+  await pageB.reload();await pageB.waitForLoadState('networkidle');
+  await expect(pageB.getByRole('heading',{name:'Anmelden'})).toBeVisible();
+ }finally{await contextA.close();await contextB.close()}
+});
