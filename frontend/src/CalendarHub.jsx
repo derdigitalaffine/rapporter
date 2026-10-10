@@ -8,6 +8,7 @@ import {toast} from './feedback';
 import {formatDateTime} from './locale';
 import {isWasteEvent,wasteClass,wasteKind,wasteKindLabel} from './waste-ui';
 import {eventSourceKey,isHolidayEvent,isNativeCalendarEvent} from './calendar-event-ui';
+import CalendarPresentation,{calendarViewFromLocation} from './CalendarPresentation';
 import EventEditor from './EventEditor';
 import './calendar-hub.css';
 
@@ -17,8 +18,8 @@ const sourceIcons={birthday:'calendar',family:'members',warning:'warning',waste:
 const sourceLabel=(key,t)=>key==='birthday'?t('birthdayUi.title'):t(`calendarUi.${sourceLabelKey[key]||'sourceCalendar'}`);
 
 export default function CalendarHub({family,onBack,t}){
- const [events,setEvents]=useState([]);const [edit,setEdit]=useState(null);const [detail,setDetail]=useState(null);const [filter,setFilter]=useState('all');const [showPast,setShowPast]=useState(false);
- const targetDay=new URLSearchParams(location.search).get('day');
+ const [events,setEvents]=useState([]);const [edit,setEdit]=useState(null);const [detail,setDetail]=useState(null);const [filter,setFilter]=useState('all');const [showPast,setShowPast]=useState(false);const [view,setView]=useState(calendarViewFromLocation);
+ const targetDay=new URLSearchParams(window.location.search).get('day');
  const load=async()=>{const rows=unwrap(await api('/events/'));setEvents(rows.filter(x=>!family||String(x.family)===String(family.id)).sort((a,b)=>eventTime(a)-eventTime(b)))};
  useEffect(()=>{setShowPast(Boolean(targetDay&&targetDay<dayKey(new Date())));load().catch(e=>toast(e.message||t('saveFailed'),{type:'error'}))},[family?.id]);
  const filters=useMemo(()=>[...new Set(events.map(eventSourceKey))],[events]);
@@ -26,13 +27,22 @@ export default function CalendarHub({family,onBack,t}){
  const hasPast=useMemo(()=>sourceFiltered.some(eventIsPast),[sourceFiltered]);
  const visible=useMemo(()=>showPast?sourceFiltered:sourceFiltered.filter(e=>!eventIsPast(e)),[sourceFiltered,showPast]);
  const grouped=useMemo(()=>groupByDay(visible),[visible]);
- useEffect(()=>{if(!targetDay)return;const timer=setTimeout(()=>document.getElementById(`calendar-day-${targetDay}`)?.scrollIntoView({block:'start',behavior:'smooth'}),60);return()=>clearTimeout(timer)},[targetDay,grouped.length,showPast]);
+ useEffect(()=>{if(view!=='list'||!targetDay)return;const timer=setTimeout(()=>document.getElementById(`calendar-day-${targetDay}`)?.scrollIntoView({block:'start',behavior:'smooth'}),60);return()=>clearTimeout(timer)},[targetDay,grouped.length,showPast,view]);
  function editEvent(e){setDetail(null);setEdit(e)}
+ function openEvent(e){if(e.type==='birthday'&&e.payload?.url){window.location.assign(e.payload.url);return}setDetail(e)}
+ function changeView(next){
+  if(!['week','month','list'].includes(next))return;
+  setView(next);
+  const url=new URL(window.location.href);
+  if(next==='week')url.searchParams.delete('view');else url.searchParams.set('view',next);
+  window.history.replaceState(window.history.state,'',`${url.pathname}${url.search}${url.hash}`);
+ }
  const language=i18n.language;
- return <div className="smart-page calendar-agenda"><div className="page-head"><button className="back-button" onClick={onBack} aria-label={t('back')}><Icon name="back"/></button><div className="grow"><small>{t('calendarUi.agenda')}</small><h1>{t('calendar')}</h1></div></div><p className="page-intro">{t('calendarHint')}</p>
+ const listContent=<>{hasPast&&<div className="calendar-history-toggle"><button className="secondary compact" aria-pressed={showPast} onClick={()=>setShowPast(value=>!value)}><Icon name="calendar"/>{t(showPast?'calendarUi.hidePast':'calendarUi.showPast')}</button></div>}
+ <div className="agenda-days">{grouped.length?grouped.map(([day,rows])=><section className={`agenda-day ${targetDay===day?'agenda-day-target':''}`} id={`calendar-day-${day}`} key={day}><div className="agenda-day-head"><div><small>{dayRelativeLabel(day,t,language)}</small><h2>{dayLongLabel(day,t,language)}</h2></div><span>{rows.length}</span></div><div className="agenda-list">{rows.map(e=><CalendarEventRow key={e.id} event={e} family={family} t={t} language={language} onOpen={()=>openEvent(e)}/>)}</div></section>):<div className="smart-empty"><Icon name="calendar" size={34}/><strong>{t('noUpcoming')}</strong><span>{filter==='all'?t('calendarAddHint'):t('calendarUi.noSourceEntries')}</span>{filter!=='all'&&<button className="secondary compact" onClick={()=>setFilter('all')}>{t('calendarUi.showAllSources')}</button>}</div>}</div></>;
+ return <div className="smart-page calendar-agenda"><div className="page-head"><button className="back-button" onClick={onBack} aria-label={t('back')}><Icon name="back"/></button><div className="grow"><small>{t('calendarUi.familyCalendar')}</small><h1>{t('calendar')}</h1></div></div><p className="page-intro">{t('calendarUi.calendarIntro')}</p>
  {filters.length>1&&<div className="calendar-filters" aria-label={t('calendarUi.sources')}><button className={filter==='all'?'active':''} onClick={()=>setFilter('all')}><Icon name="calendar"/> {t('all')}</button>{filters.map(key=><button key={key} className={filter===key?'active':''} onClick={()=>setFilter(key)}><Icon name={sourceIcons[key]||'calendar'}/>{key==='family'?(family?.name||sourceLabel(key,t)):sourceLabel(key,t)}</button>)}</div>}
- {hasPast&&<div className="calendar-history-toggle"><button className="secondary compact" aria-pressed={showPast} onClick={()=>setShowPast(value=>!value)}><Icon name="calendar"/>{t(showPast?'calendarUi.hidePast':'calendarUi.showPast')}</button></div>}
- <div className="agenda-days">{grouped.length?grouped.map(([day,rows])=><section className={`agenda-day ${targetDay===day?'agenda-day-target':''}`} id={`calendar-day-${day}`} key={day}><div className="agenda-day-head"><div><small>{dayRelativeLabel(day,t,language)}</small><h2>{dayLongLabel(day,t,language)}</h2></div><span>{rows.length}</span></div><div className="agenda-list">{rows.map(e=><CalendarEventRow key={e.id} event={e} family={family} t={t} language={language} onOpen={()=>e.type==='birthday'?window.location.assign(e.payload.url):setDetail(e)}/>)}</div></section>):<div className="smart-empty"><Icon name="calendar" size={34}/><strong>{t('noUpcoming')}</strong><span>{filter==='all'?t('calendarAddHint'):t('calendarUi.noSourceEntries')}</span>{filter!=='all'&&<button className="secondary compact" onClick={()=>setFilter('all')}>{t('calendarUi.showAllSources')}</button>}</div>}</div>
+ <CalendarPresentation view={view} onViewChange={changeView} events={sourceFiltered} family={family} t={t} language={language} onOpen={openEvent} targetDay={targetDay} listContent={listContent}/>
  {detail&&<EventDetail event={detail} family={family} t={t} language={language} onClose={()=>setDetail(null)} onEdit={isNativeCalendarEvent(detail)?()=>editEvent(detail):null}/>} 
  {edit&&<EventEditor family={family} event={edit.id?edit:null} onClose={()=>setEdit(null)} onSaved={async()=>{setEdit(null);await load()}}/>}</div>
 }
