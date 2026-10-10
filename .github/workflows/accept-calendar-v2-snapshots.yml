@@ -30,10 +30,10 @@ jobs:
         run: npx playwright install --with-deps chromium
       - name: Update desktop calendar snapshots
         working-directory: frontend
-        run: npm run e2e -- --project=desktop-chromium --update-snapshots e2e/visual-regression.spec.js -g 'visual · (Calendar|Event editor dialog)'
+        run: npx playwright test e2e/visual-regression.spec.js --project=desktop-chromium --update-snapshots=changed --grep 'visual · (Calendar|Event editor dialog)'
       - name: Update mobile calendar snapshots
         working-directory: frontend
-        run: npm run e2e -- --project=mobile-chromium --update-snapshots e2e/visual-regression.spec.js -g 'visual · (Calendar|Event editor dialog)'
+        run: npx playwright test e2e/visual-regression.spec.js --project=mobile-chromium --update-snapshots=changed --grep 'visual · (Calendar|Event editor dialog)'
       - name: Commit visual references
         run: |
           git config user.name 'github-actions[bot]'
