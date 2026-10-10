@@ -59,6 +59,8 @@ test('Today and mobile calendar distinguish appointments, waste, birthdays and s
  await page.setViewportSize({width:390,height:844});
  const state=await installApiMocks(page);
  const day=berlinDayKey();const next=addCivilDay(day,1);
+ const appointment=state.events.find(event=>event.id==='event-1');
+ Object.assign(appointment,{starts_at:`${day}T04:00:00Z`,ends_at:`${day}T05:00:00Z`});
  state.events.push(
   {id:'marker-waste',family:state.family.id,source:'waste-source',type:'waste.collection',title:'Papiertonne',starts_at:`${day}T06:00:00Z`,ends_at:`${day}T07:00:00Z`,actionable:true,payload:{waste_kind:'paper'}},
   {id:'marker-birthday',family:state.family.id,source:null,type:'birthday',title:'Mia: Geburtstag',starts_at:`${day}T12:00:00Z`,ends_at:`${day}T13:00:00Z`,actionable:true,payload:{all_day:true}},
