@@ -187,6 +187,7 @@ class EmailIdentityTests(TestCase):
             "/api/auth/email/verify/",
             {"token": verification_token(pending)},
             format="json",
+            HTTP_ACCEPT_LANGUAGE="en",
         )
         self.assertEqual(verify.status_code, 200, verify.data)
         current = primary_identity(self.user)
@@ -194,12 +195,11 @@ class EmailIdentityTests(TestCase):
         self.assertIsNotNone(current.verified_at)
         self.user.refresh_from_db()
         self.assertEqual(self.user.email, "new@example.com")
-        self.assertTrue(
-            TransactionalEmail.objects.filter(
-                template_key="email.changed",
-                recipient="alice@example.com",
-            ).exists()
+        notice = TransactionalEmail.objects.get(
+            template_key="email.changed",
+            recipient="alice@example.com",
         )
+        self.assertEqual(notice.locale, "en")
 
     def test_email_change_rejects_address_owned_by_another_account(self):
         create_primary_identity(self.user, "alice@example.com", verified=True)
@@ -259,3 +259,51 @@ class EmailIdentityTests(TestCase):
                 recipient="new.member@example.com",
             ).exists()
         )
+
+    def test_invite_email_collision_rolls_back_generated_user_membership_and_identity(self):
+        User = get_user_model()
+        owner = User.objects.create_user(
+            username="collision-owner",
+            email="owner-collision@example.com",
+            password="test-pass-123",
+        )
+        existing = User.objects.create_user(
+            username="existing-account",
+            email="taken@example.com",
+            password="test-pass-123",
+        )
+        create_primary_identity(existing, "taken@example.com", verified=True)
+        family = Family.objects.create(name="Collision Family", slug="identity-collision-family", locale="de")
+        Membership.objects.create(family=family, user=owner, role=Membership.Role.OWNER)
+        invite = FamilyInvitation.objects.create(
+            family=family,
+            invited_by=owner,
+            role=Membership.Role.ADULT,
+            email="taken@example.com",
+            display_name="Collision Attempt",
+            expires_at=timezone.now() + timedelta(days=7),
+        )
+        before = (
+            User.objects.count(),
+            Membership.objects.count(),
+            EmailIdentity.objects.count(),
+        )
+
+        response = self.client.post(
+            f"/api/invite/{invite.token}/register/",
+            {
+                "email": "taken@example.com",
+                "password": "new-member-pass-123",
+                "display_name": "Collision Attempt",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 409, response.data)
+        self.assertEqual(
+            (User.objects.count(), Membership.objects.count(), EmailIdentity.objects.count()),
+            before,
+        )
+        self.assertFalse(User.objects.filter(username__startswith="user_").exists())
+        invite.refresh_from_db()
+        self.assertIsNone(invite.accepted_at)
