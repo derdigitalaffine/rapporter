@@ -60,3 +60,15 @@ test('Today reference modules navigate to waste calendar, routines and concrete 
   await page.getByTestId('today-inbox').getByRole('button',{name:/Bitte Brotdose mitnehmen/}).click();
   await expect(page).toHaveURL(/page=inbox.*message=message-1/);
 });
+
+test('Today shows a waste collection only in the waste widget, not again in Up next',async({page})=>{
+  const {dashboard}=await bootReference(page);
+  dashboard.events=dashboard.events.filter(event=>event.id!=='warn-1');
+  await page.reload();
+  await page.waitForLoadState('networkidle');
+
+  await expect(page.getByTestId('today-context')).toContainText('Kinderarzt');
+  await expect(page.getByTestId('today-context')).not.toContainText('Papiertonne');
+  await expect(page.getByTestId('next-waste')).toContainText('Papiertonne');
+  await expect(page.getByText('Papiertonne',{exact:true})).toHaveCount(1);
+});
