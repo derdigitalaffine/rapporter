@@ -107,7 +107,7 @@ def login_view(request):
             "email_action_required": summary["email_action_required"],
         }
     )
-    return set_user_cookies(response, RefreshToken.for_user(user).access_token, RefreshToken.for_user(user))
+    return set_user_cookies(response, user)
 
 
 @api_view(["POST"])
