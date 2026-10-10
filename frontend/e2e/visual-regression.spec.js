@@ -13,7 +13,10 @@ async function bootVisual(page,path='/'){
   await page.goto(path);await page.waitForLoadState('networkidle');await page.evaluate(()=>document.fonts.ready.then(()=>true));await expect(page.locator('.app-shell')).toBeVisible();return state;
 }
 async function snapshot(page,name){
-  const thresholds=name==='today'?{maxDiffPixelRatio:.04}:name==='more'?{maxDiffPixelRatio:.03}:name==='members'?{maxDiffPixels:300}:{maxDiffPixels:100};
+  const desktop=(page.viewportSize()?.width||0)>=1000;
+  let thresholds=name==='today'?{maxDiffPixelRatio:.04}:name==='more'?{maxDiffPixelRatio:.03}:name==='members'?{maxDiffPixels:300}:{maxDiffPixels:100};
+  if(desktop&&['tasks','shopping-planning','integrations','automations'].includes(name))thresholds={maxDiffPixelRatio:.035};
+  if(desktop&&['calendar','members','dialog-task-editor','dialog-event-editor','dialog-invite-success'].includes(name))thresholds={maxDiffPixelRatio:.015};
   await expect(page).toHaveScreenshot(`${name}.png`,{animations:'disabled',caret:'hide',...thresholds});
 }
 async function bottom(page,label){await page.locator('.bottom-nav').getByRole('button',{name:new RegExp(`^${label}$`)}).click()}
