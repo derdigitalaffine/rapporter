@@ -1,22 +1,31 @@
 import {useEffect,useMemo,useRef,useState} from 'react';
 import {useTranslation} from 'react-i18next';
 import './create-i18n';
+import {api} from './api';
 import {Icon} from './icons';
 import {availableCreateActions,CREATE_PAGES,createActionById,directCreateAction} from './create-actions';
 import {CREATE_REQUEST_EVENT} from './create-request';
 
 const CAPABILITIES={loyalty:true,messages:false};
+const EMPTY_MODULES={baby:null,pets:null};
 
 export default function GlobalCreate({page,family,role,context={},onCreate,suppressed=false}){
   const {t}=useTranslation();
   const fabRef=useRef(null);const firstActionRef=useRef(null);const pendingAction=useRef(null);const previousSuppressed=useRef(suppressed);
-  const [paletteOpen,setPaletteOpen]=useState(false);const [keyboardOpen,setKeyboardOpen]=useState(false);const [externalDialog,setExternalDialog]=useState(false);const [restoreFocus,setRestoreFocus]=useState(false);
-  const options=useMemo(()=>({role,capabilities:CAPABILITIES}),[role]);
+  const [paletteOpen,setPaletteOpen]=useState(false);const [keyboardOpen,setKeyboardOpen]=useState(false);const [externalDialog,setExternalDialog]=useState(false);const [restoreFocus,setRestoreFocus]=useState(false);const [moduleState,setModuleState]=useState({familyId:null,...EMPTY_MODULES});
+  useEffect(()=>{let live=true;const familyId=family?.id||null;if(!familyId){setModuleState({familyId:null,...EMPTY_MODULES});return()=>{live=false}};Promise.all([
+    api(`/baby/module/?family=${encodeURIComponent(familyId)}`).catch(()=>null),
+    api(`/pets/module/?family=${encodeURIComponent(familyId)}`).catch(()=>null),
+  ]).then(([baby,pets])=>{if(live)setModuleState({familyId,baby,pets})});return()=>{live=false}},[family?.id]);
+  const modules=moduleState.familyId===family?.id?moduleState:EMPTY_MODULES;
+  const options=useMemo(()=>({role,capabilities:CAPABILITIES,modules}),[role,modules]);
   const actions=useMemo(()=>availableCreateActions(options),[options]);
   const direct=useMemo(()=>directCreateAction(page,options),[page,options]);
   const primary=actions.filter(action=>action.group==='primary');const secondary=actions.filter(action=>action.group==='secondary');
   const mounted=Boolean(family);
-  const eligible=Boolean(family&&role&&CREATE_PAGES.has(page));
+  const modulePage=page==='baby'?'baby':page==='pets'?'pets':null;
+  const modulePageAvailable=!modulePage||Boolean(modules[modulePage]?.enabled&&modules[modulePage]?.authorized);
+  const eligible=Boolean(family&&role&&CREATE_PAGES.has(page)&&modulePageAvailable);
   const visible=eligible&&!suppressed&&!keyboardOpen&&!externalDialog&&!paletteOpen;
 
   useEffect(()=>{
