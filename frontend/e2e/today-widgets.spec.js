@@ -13,31 +13,31 @@ async function boot(page,{language='de',failSave=false,conflict=false,routines=[
   }
   return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(layout)});
  });
- await page.goto('/');await expect(page.getByRole('button',{name:language==='de'?'Raster bearbeiten':'Edit grid'})).toBeEnabled();
+ await page.goto('/');await expect(page.getByRole('button',{name:language==='de'?'Anpassen':'Customize'})).toBeEnabled();
 }
 test('personal Today preview cancels and saves hidden widgets across reload',async({page})=>{
- await boot(page);await page.getByRole('button',{name:'Raster bearbeiten'}).click();
- const editor=page.getByRole('region',{name:'Raster bearbeiten'});
+ await boot(page);await page.getByRole('button',{name:'Anpassen'}).click();
+ const editor=page.getByRole('region',{name:'Anpassen'});
  await editor.getByLabel('Aufgaben',{exact:true}).uncheck();
  await expect(page.locator('[data-today-widget="tasks"]')).toHaveCount(0);
  await editor.getByRole('button',{name:'Abbrechen',exact:true}).click();
  await expect(page.locator('[data-today-widget="tasks"]')).toBeVisible();
- await page.getByRole('button',{name:'Raster bearbeiten'}).click();
+ await page.getByRole('button',{name:'Anpassen'}).click();
  await editor.getByLabel('Aufgaben',{exact:true}).uncheck();
  await editor.getByRole('button',{name:'Einkauf · Nach oben',exact:true}).click();
  await editor.getByRole('combobox',{name:'Einkauf · Größe'}).selectOption('compact');
  await editor.getByRole('button',{name:'Speichern',exact:true}).click();await expect(editor).toHaveCount(0);
- await page.reload();await expect(page.getByRole('button',{name:'Raster bearbeiten'})).toBeEnabled();
+ await page.reload();await expect(page.getByRole('button',{name:'Anpassen'})).toBeEnabled();
  await expect(page.locator('[data-today-widget="tasks"]')).toHaveCount(0);
  await expect(page.locator('[data-today-widget="shopping"]')).toHaveClass(/today-widget-compact/);
- await page.getByRole('button',{name:'Raster bearbeiten'}).click();
+ await page.getByRole('button',{name:'Anpassen'}).click();
  await editor.getByRole('button',{name:'Standard wiederherstellen'}).click();
  await editor.getByRole('button',{name:'Speichern',exact:true}).click();
  await expect(page.locator('[data-today-widget="tasks"]')).toBeVisible();
 });
 test('square size is offered for suitable widgets but not dense task lists',async({page})=>{
- await boot(page);await page.getByRole('button',{name:'Raster bearbeiten'}).click();
- const editor=page.getByRole('region',{name:'Raster bearbeiten'});
+ await boot(page);await page.getByRole('button',{name:'Anpassen'}).click();
+ const editor=page.getByRole('region',{name:'Anpassen'});
  const routineSize=editor.getByRole('combobox',{name:'Zuletzt gemacht · Größe'});
  await expect(routineSize.locator('option[value="square"]')).toHaveCount(1);
  await routineSize.selectOption('square');
@@ -53,8 +53,8 @@ test('routines widget remains available as an empty entry point',async({page})=>
  await boot(page);const widget=page.locator('[data-today-widget="routines"]');await expect(widget).toBeVisible();await expect(widget.getByTestId('today-routines')).toBeVisible();
 });
 test('failed save preserves draft and concurrent edits require reload',async({page})=>{
- await boot(page,{conflict:true});await page.getByRole('button',{name:'Raster bearbeiten'}).click();
- const editor=page.getByRole('region',{name:'Raster bearbeiten'});await editor.getByLabel('Einkauf',{exact:true}).uncheck();
+ await boot(page,{conflict:true});await page.getByRole('button',{name:'Anpassen'}).click();
+ const editor=page.getByRole('region',{name:'Anpassen'});await editor.getByLabel('Einkauf',{exact:true}).uncheck();
  await editor.getByRole('button',{name:'Speichern',exact:true}).click();
  await expect(page.getByRole('alert')).toContainText('anderen Gerät');
  await expect(editor).toBeVisible();await expect(editor.getByRole('button',{name:'Speichern',exact:true})).toBeDisabled();
@@ -62,15 +62,15 @@ test('failed save preserves draft and concurrent edits require reload',async({pa
 });
 test('English grid editor fits narrow view and is keyboard operable',async({page})=>{
  await page.setViewportSize({width:360,height:800});await boot(page,{language:'en'});
- await page.getByRole('button',{name:'Edit grid'}).click();
- const editor=page.getByRole('region',{name:'Edit grid'});
+ await page.getByRole('button',{name:'Customize'}).click();
+ const editor=page.getByRole('region',{name:'Customize'});
  const checkbox=editor.getByLabel('Tasks',{exact:true});await checkbox.focus();await page.keyboard.press('Space');await expect(checkbox).not.toBeChecked();
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
  await editor.getByRole('button',{name:'Cancel',exact:true}).click();await expect(page.locator('[data-today-widget="tasks"]')).toBeVisible();
 });
 test('temporary save error keeps edited visibility for retry',async({page})=>{
- await boot(page,{failSave:true});await page.getByRole('button',{name:'Raster bearbeiten'}).click();
- const editor=page.getByRole('region',{name:'Raster bearbeiten'});await editor.getByLabel('Einkauf',{exact:true}).uncheck();
+ await boot(page,{failSave:true});await page.getByRole('button',{name:'Anpassen'}).click();
+ const editor=page.getByRole('region',{name:'Anpassen'});await editor.getByLabel('Einkauf',{exact:true}).uncheck();
  await editor.getByRole('button',{name:'Speichern',exact:true}).click();
  await expect(page.getByRole('alert')).toContainText('Entwurf bleibt erhalten');
  await expect(editor.getByLabel('Einkauf',{exact:true})).not.toBeChecked();
