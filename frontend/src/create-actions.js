@@ -9,6 +9,8 @@ export const CREATE_ACTIONS=[
   {id:'event',labelKey:'createUi.event',icon:'calendar',group:'primary',permission:'createContent',contextMatcher:matches('calendar'),open:({open,context})=>open('event',context)},
   {id:'expense',labelKey:'createUi.expense',icon:'receipt',group:'primary',permission:'createContent',contextMatcher:matches('expenses'),open:({open,context})=>open('expense',context)},
   {id:'birthday',labelKey:'birthdayUi.add',icon:'calendar',group:'secondary',permission:'manageSettings',contextMatcher:matches('birthdays'),open:({open,context})=>open('birthday',context)},
+  {id:'baby',labelKey:'createUi.baby',icon:'baby',group:'secondary',permission:'createContent',module:'baby',contextMatcher:matches('baby'),open:({open,context})=>open('baby',context)},
+  {id:'pets',labelKey:'createUi.pets',icon:'pet',group:'secondary',permission:'createContent',module:'pets',contextMatcher:matches('pets'),open:({open,context})=>open('pets',context)},
   {id:'taskList',labelKey:'createUi.taskList',icon:'lists',group:'secondary',permission:'createContent',contextMatcher:nowhere,open:({open,context})=>open('taskList',context)},
   {id:'shoppingList',labelKey:'createUi.shoppingList',icon:'shopping',group:'secondary',permission:'createContent',contextMatcher:nowhere,open:({open,context})=>open('shoppingList',context)},
   {id:'routine',labelKey:'createUi.routine',icon:'history',group:'secondary',permission:'createContent',contextMatcher:matches('routines'),open:({open,context})=>open('routine',context)},
@@ -16,11 +18,16 @@ export const CREATE_ACTIONS=[
   {id:'loyalty',labelKey:'createUi.loyalty',icon:'store',group:'secondary',permission:'createContent',contextMatcher:matches('loyalty'),capability:'loyalty',open:({open,context})=>open('loyalty',context)},
 ];
 
-export const CREATE_PAGES=new Set(['birthdays','home','tasks','shopping','routines','more','calendar','expenses','inbox','loyalty']);
+export const CREATE_PAGES=new Set(['birthdays','home','tasks','shopping','routines','more','calendar','expenses','inbox','loyalty','baby','pets']);
 
-export function availableCreateActions({role,capabilities={}}){
+export function availableCreateActions({role,capabilities={},modules={}}){
   const permissions=permissionsForRole(role);
-  return CREATE_ACTIONS.filter(action=>permissions[action.permission]&&(!action.capability||capabilities[action.capability]));
+  return CREATE_ACTIONS.filter(action=>{
+    if(!permissions[action.permission])return false;
+    if(action.capability&&!capabilities[action.capability])return false;
+    if(action.module){const state=modules[action.module];if(!state?.enabled||!state?.authorized)return false}
+    return true;
+  });
 }
 
 export function directCreateAction(page,options){
