@@ -4,10 +4,17 @@ from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from documents.processing import enqueue_document
+from documents.storage import remove_canonical
 from family.models import Family, Membership
 from .models import Expense, ReceiptExtraction, Settlement
 from .money import balance_summary, simplify_balances
-from .ocr import enqueue_receipt_extraction, normalize_receipt_upload
+from .receipt_documents import (
+    build_receipt_document,
+    canonicalize_receipt_upload,
+    link_receipt_document,
+    migrate_legacy_receipt,
+)
 from .serializers import ExpenseSerializer, SettlementSerializer
 
 
@@ -31,7 +38,7 @@ class ExpenseViewSet(viewsets.ModelViewSet):
         user = self.request.user
         queryset = (
             Expense.objects.defer("receipt_content")
-            .select_related("family", "paid_by", "paid_by__user", "created_by", "extraction")
+            .select_related("family", "paid_by", "paid_by__user", "created_by", "extraction", "receipt_document")
             .prefetch_related("shares", "shares__member", "shares__member__user")
         )
         if not user.is_superuser:
@@ -86,7 +93,7 @@ class ExpenseViewSet(viewsets.ModelViewSet):
         if not upload:
             return Response({"receipt": ["Belegfoto ist erforderlich."]}, status=status.HTTP_400_BAD_REQUEST)
         try:
-            content, mime, quality_warnings = normalize_receipt_upload(upload)
+            canonical = canonicalize_receipt_upload(upload)
         except ValueError as exc:
             return Response({"receipt": [str(exc)]}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -99,42 +106,67 @@ class ExpenseViewSet(viewsets.ModelViewSet):
                 return Response({"paid_by": ["Zahler gehört nicht zu dieser Familie."]}, status=status.HTTP_400_BAD_REQUEST)
         if not paid_by:
             return Response({"paid_by": ["Zahler ist erforderlich."]}, status=status.HTTP_400_BAD_REQUEST)
+        owner_membership = membership or paid_by
 
-        with transaction.atomic():
-            expense = Expense.objects.create(
-                family=family,
-                paid_by=paid_by,
-                created_by=request.user,
-                source=Expense.Source.RECEIPT,
-                status=Expense.Status.DRAFT,
-                receipt_status=Expense.ReceiptStatus.QUEUED,
-                receipt_content=content,
-                receipt_mime=mime,
-                currency="EUR",
-            )
-            extraction = ReceiptExtraction.objects.create(
-                expense=expense,
-                status=ReceiptExtraction.Status.QUEUED,
-                structured_data={"quality_warnings": quality_warnings},
-            )
-            transaction.on_commit(lambda: enqueue_receipt_extraction(extraction.id))
+        expense = Expense(
+            family=family,
+            paid_by=paid_by,
+            created_by=request.user,
+            source=Expense.Source.RECEIPT,
+            status=Expense.Status.DRAFT,
+            receipt_status=Expense.ReceiptStatus.QUEUED,
+            receipt_mime=canonical.mime_type,
+            currency="EUR",
+        )
+        document, key = build_receipt_document(
+            expense,
+            canonical,
+            owner_membership=owner_membership,
+            created_by=request.user,
+        )
+        try:
+            with transaction.atomic():
+                expense.save(force_insert=True)
+                document.save(force_insert=True)
+                link_receipt_document(expense, document)
+                run, _ = enqueue_document(document)
+                expense.receipt_document = document
+                expense.save(update_fields=["receipt_document", "updated_at"])
+                ReceiptExtraction.objects.create(
+                    expense=expense,
+                    processing_run=run,
+                    status=ReceiptExtraction.Status.QUEUED,
+                    structured_data={"quality_warnings": []},
+                )
+        except Exception:
+            remove_canonical(key)
+            raise
         data = ExpenseSerializer(expense, context={"request": request}).data
-        data["quality_warnings"] = quality_warnings
+        data["quality_warnings"] = []
         return Response(data, status=status.HTTP_202_ACCEPTED)
 
     @action(detail=True, methods=["post"], url_path="retry-receipt")
     def retry_receipt(self, request, pk=None):
         expense = self.get_object()
-        if not expense.receipt_mime:
+        document = expense.receipt_document
+        if not document and expense.receipt_content:
+            try:
+                document, _ = migrate_legacy_receipt(expense)
+            except ValueError as exc:
+                return Response({"receipt": [str(exc)]}, status=status.HTTP_400_BAD_REQUEST)
+            expense.refresh_from_db(fields=["receipt_document", "receipt_mime", "receipt_status"])
+        if not document:
             return Response({"receipt": ["Kein Beleg vorhanden."]}, status=status.HTTP_400_BAD_REQUEST)
+
+        run, _ = enqueue_document(document)
         extraction, _ = ReceiptExtraction.objects.get_or_create(expense=expense)
+        extraction.processing_run = run
         extraction.status = ReceiptExtraction.Status.QUEUED
         extraction.error = ""
         extraction.processed_at = None
-        extraction.save(update_fields=["status", "error", "processed_at", "updated_at"])
+        extraction.save(update_fields=["processing_run", "status", "error", "processed_at", "updated_at"])
         expense.receipt_status = Expense.ReceiptStatus.QUEUED
         expense.save(update_fields=["receipt_status", "updated_at"])
-        transaction.on_commit(lambda: enqueue_receipt_extraction(extraction.id))
         return Response({"status": "queued"}, status=status.HTTP_202_ACCEPTED)
 
     def _family(self, request, from_body=False):
