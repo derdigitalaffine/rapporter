@@ -65,14 +65,21 @@ def _create_receipt_document(expense, canonical, *, owner_membership, created_by
         created_by=created_by,
     )
     key = store_canonical(document.id, canonical)
-    document.canonical_file = key
-    document.save(force_insert=True)
-    DocumentLink.objects.create(
-        document=document,
-        domain_type=DocumentLink.DomainType.EXPENSE,
-        object_id=expense.id,
-        relationship="receipt",
-    )
+    try:
+        document.canonical_file = key
+        document.save(force_insert=True)
+        DocumentLink.objects.create(
+            document=document,
+            domain_type=DocumentLink.DomainType.EXPENSE,
+            object_id=expense.id,
+            relationship="receipt",
+        )
+    except Exception:
+        # The file write happens before the DB row can reference it. If that row
+        # cannot be persisted, clean the private object immediately; callers
+        # handle later transaction failures after this helper has returned.
+        remove_canonical(key)
+        raise
     return document, key
 
 
@@ -139,14 +146,14 @@ def _owner_for_legacy(expense):
 def migrate_legacy_receipt(expense, *, enqueue_pending=True):
     """Idempotently attach a legacy BinaryField receipt to Document Core.
 
-    Legacy bytes remain in place for rollback/dual-read. REVIEW/READY/FAILED
-    receipts keep their current domain state; only jobs that were QUEUED or
-    PROCESSING are recovered onto the durable Document worker.
+    Legacy bytes and their original MIME value remain in place for rollback /
+    dual-read. REVIEW/READY/FAILED receipts keep their current domain state;
+    only jobs that were QUEUED or PROCESSING are recovered onto the durable
+    Document worker.
     """
     if expense.receipt_document_id:
         return expense.receipt_document, False, False
-    canonical = _legacy_canonical(expense)
-    if canonical is None:
+    if not expense.receipt_content:
         return None, False, False
 
     stored_key = None
@@ -159,6 +166,9 @@ def migrate_legacy_receipt(expense, *, enqueue_pending=True):
             )
             if locked.receipt_document_id:
                 return locked.receipt_document, False, False
+            canonical = _legacy_canonical(locked)
+            if canonical is None:
+                return None, False, False
             owner = _owner_for_legacy(locked)
             document, stored_key = _create_receipt_document(
                 locked,
@@ -167,8 +177,11 @@ def migrate_legacy_receipt(expense, *, enqueue_pending=True):
                 created_by=locked.created_by,
             )
             locked.receipt_document = document
-            locked.receipt_mime = canonical.mime_type
-            locked.save(update_fields=["receipt_document", "receipt_mime", "updated_at"])
+            # Keep receipt_mime paired with the retained BinaryField bytes. The
+            # Document endpoint uses document.mime_type while attached, and a
+            # rollback to legacy fallback still serves the original bytes with
+            # their original MIME correctly.
+            locked.save(update_fields=["receipt_document", "updated_at"])
 
             enqueued = False
             if enqueue_pending and locked.receipt_status in {
@@ -216,8 +229,9 @@ def queue_receipt_processing(expense):
                     created_by=locked.created_by,
                 )
                 locked.receipt_document = document
-                locked.receipt_mime = canonical.mime_type
-                locked.save(update_fields=["receipt_document", "receipt_mime", "updated_at"])
+                # Same dual-read invariant as the batch backfill: legacy MIME
+                # remains paired with legacy bytes until the contract phase.
+                locked.save(update_fields=["receipt_document", "updated_at"])
 
             run, _ = enqueue_document(document)
             extraction, _ = ReceiptExtraction.objects.get_or_create(expense=locked)
