@@ -119,13 +119,13 @@ class BabyDomainTests(TestCase):
         self.assertEqual(BabyCareLog.objects.filter(baby=baby).count(), 1)
 
     def test_corrected_age_and_growth_reference_are_explicit_and_non_diagnostic(self):
+        measured = timezone.now()
         baby = self.create_baby(
-            birth_date=date.today() - timedelta(days=70),
+            birth_date=measured.date() - timedelta(days=70),
             gestational_age_weeks=32,
             gestational_age_days=0,
             growth_reference_sex="unspecified",
         )
-        measured = timezone.now()
         self.assertEqual(corrected_age_days(baby, measured), 14)
         payload = growth_payload(self.owner, baby.id)
         self.assertEqual(payload["reference"]["key"], "who_2006_corrected")
