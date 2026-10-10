@@ -3,10 +3,11 @@ from rest_framework.decorators import api_view
 from rest_framework.exceptions import NotFound, PermissionDenied
 from rest_framework.response import Response
 
+from .development_service import development_payload, record_observation
 from .family_modules import active_membership, care_access, require_manager, require_module
-from .models import BabyProfile, CareCircleAccess, PregnancyJourney
+from .models import BabyProfile, CareCircleAccess, DevelopmentObservation, PregnancyJourney
 from .pregnancy_service import archive_pregnancy, complete_birth, create_managed_child
-from .views import AlreadyBornInput, BirthBabyInput, _serialize_baby, _serialize_pregnancy, requested_family
+from .views import AlreadyBornInput, BirthBabyInput, ObservationInput, _serialize_baby, _serialize_pregnancy, requested_family
 
 
 def _guardian_access(user, family):
@@ -68,3 +69,34 @@ def baby_profiles(request):
         baby = create_managed_child(request.user, family, **serializer.validated_data)
         return Response(_serialize_baby(baby), status=201)
     return Response({"babies": [_serialize_baby(row) for row in BabyProfile.objects.filter(family=family, active=True).order_by("birth_date", "created_at")]})
+
+
+@api_view(["GET", "POST"])
+def baby_development(request, baby_id):
+    if request.method == "POST":
+        serializer = ObservationInput(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        row = record_observation(request.user, baby_id, **serializer.validated_data)
+        return Response({
+            "id": str(row.id),
+            "state": row.state,
+            "milestone_key": row.milestone_key,
+            "title": row.title,
+            "media_key": row.media_key,
+        }, status=201)
+
+    payload = development_payload(request.user, baby_id, language=request.query_params.get("language", "de"))
+    custom = DevelopmentObservation.objects.filter(baby_id=baby_id, milestone_key="").order_by("-observed_at", "-created_at")[:100]
+    payload["custom_observations"] = [
+        {
+            "id": str(row.id),
+            "title": row.title,
+            "state": row.state,
+            "observed_at": row.observed_at.isoformat() if row.observed_at else None,
+            "note": row.note,
+            "media_key": row.media_key,
+            "media_url": f"/api/baby/media/{row.media_key}/" if row.media_key else None,
+        }
+        for row in custom
+    ]
+    return Response(payload)
