@@ -24,7 +24,7 @@ def _truthy(value):
 
 
 def _date(value):
-    if value in {None, ""}:
+    if value is None or value == "":
         return None
     parsed = parse_date(str(value))
     if not parsed:
@@ -33,7 +33,7 @@ def _date(value):
 
 
 def _json_list(value, field):
-    if value in {None, ""}:
+    if value is None or value == "":
         return []
     if isinstance(value, list):
         return value
