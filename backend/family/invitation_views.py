@@ -19,11 +19,19 @@ from auth_identity.service import (
 )
 
 from .auth_views import set_user_cookies
-from .models import Family, FamilyInvitation, Membership
-from .serializers import FamilyInvitationSerializer, MembershipSerializer
+from .invitation_serializers import SafeFamilyInvitationSerializer
+from .invitation_service import (
+    invitation_token_digest,
+    issue_invitation,
+    resolve_invitation,
+    rotate_invitation,
+)
+from .models import FamilyInvitation, Membership
+from .serializers import MembershipSerializer
 
 
 RATE_LIMIT_DETAIL = "Zu viele Anfragen. Bitte später erneut versuchen."
+INVITE_UNAVAILABLE_DETAIL = "Einladung nicht verfügbar."
 
 
 def _rate_limited_response(decision):
@@ -39,6 +47,15 @@ def _rate_limited_response(decision):
     return response
 
 
+def _public_decision(scope, request, token, *, user=None):
+    return enforce(
+        scope,
+        request=request,
+        user=user,
+        identifier=invitation_token_digest(token),
+    )
+
+
 def can_invite(user, family):
     return Membership.objects.filter(
         family=family,
@@ -47,15 +64,23 @@ def can_invite(user, family):
     ).exists()
 
 
+def _masked_email(value):
+    value = str(value or "")
+    if "@" not in value:
+        return ""
+    local, domain = value.rsplit("@", 1)
+    return f"{local[:1]}•••@{domain}" if local else f"•••@{domain}"
+
+
 def public_invite(invite):
     return {
         "family": str(invite.family_id),
         "family_name": invite.family.name,
         "role": invite.role,
         "display_name": invite.display_name,
-        "email_hint": invite.email if invite.email else "",
+        "email_hint": _masked_email(invite.email),
         "expires_at": invite.expires_at,
-        "active": invite.is_active,
+        "active": True,
     }
 
 
@@ -70,14 +95,17 @@ def validate_invite_email(invite, email):
 
 def accept_for_user(invite, user, display_name=""):
     if not invite.is_active:
-        raise ValueError("Diese Einladung ist abgelaufen, widerrufen oder bereits verwendet.")
+        raise ValueError(INVITE_UNAVAILABLE_DETAIL)
     if not validate_invite_email(invite, user.email):
         raise ValueError("Diese Einladung ist für eine andere E-Mail-Adresse bestimmt.")
     fallback_name = (user.email or "").split("@", 1)[0] or "Mitglied"
     membership, created = Membership.objects.get_or_create(
         family=invite.family,
         user=user,
-        defaults={"role": invite.role, "display_name": display_name or invite.display_name or user.get_short_name() or fallback_name},
+        defaults={
+            "role": invite.role,
+            "display_name": display_name or invite.display_name or user.get_short_name() or fallback_name,
+        },
     )
     if not created:
         membership.role = invite.role if membership.role == Membership.Role.GUEST else membership.role
@@ -91,7 +119,7 @@ def accept_for_user(invite, user, display_name=""):
 
 
 class FamilyInvitationViewSet(viewsets.ModelViewSet):
-    serializer_class = FamilyInvitationSerializer
+    serializer_class = SafeFamilyInvitationSerializer
     permission_classes = [permissions.IsAuthenticated]
     http_method_names = ["get", "post", "delete", "head", "options"]
 
@@ -100,7 +128,11 @@ class FamilyInvitationViewSet(viewsets.ModelViewSet):
             user=self.request.user,
             role__in=[Membership.Role.OWNER, Membership.Role.ADULT],
         ).values_list("family_id", flat=True)
-        return FamilyInvitation.objects.filter(family_id__in=family_ids).select_related("family", "invited_by", "accepted_by").order_by("-created_at")
+        return (
+            FamilyInvitation.objects.filter(family_id__in=family_ids)
+            .select_related("family", "invited_by", "accepted_by")
+            .order_by("-created_at")
+        )
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
@@ -108,34 +140,24 @@ class FamilyInvitationViewSet(viewsets.ModelViewSet):
         family = serializer.validated_data["family"]
         if not can_invite(request.user, family):
             raise PermissionDenied("Nur Owner/Erwachsene können einladen.")
-
-        decision = enforce(
-            "invite.create",
-            request=request,
-            user=request.user,
-            family_id=family.id,
-        )
+        decision = enforce("invite.create", request=request, user=request.user, family_id=family.id)
         if not decision.allowed:
             return _rate_limited_response(decision)
-
-        self.perform_create(serializer)
-        headers = self.get_success_headers(serializer.data)
-        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
-
-    def perform_create(self, serializer):
-        family = serializer.validated_data["family"]
-        if not can_invite(self.request.user, family):
-            raise PermissionDenied("Nur Owner/Erwachsene können einladen.")
         role = serializer.validated_data.get("role", Membership.Role.ADULT)
         if role == Membership.Role.OWNER:
             raise PermissionDenied("Owner-Rolle kann nicht per Einladung vergeben werden.")
-        expires_at = serializer.validated_data.get("expires_at")
-        if not expires_at:
-            expires_at = timezone.now() + timedelta(days=7)
-        max_expiry = timezone.now() + timedelta(days=30)
-        if expires_at > max_expiry:
-            expires_at = max_expiry
-        serializer.save(invited_by=self.request.user, expires_at=expires_at)
+        expires_at = serializer.validated_data.get("expires_at") or (timezone.now() + timedelta(days=7))
+        expires_at = min(expires_at, timezone.now() + timedelta(days=30))
+        invite, _token = issue_invitation(
+            family=family,
+            invited_by=request.user,
+            role=role,
+            email=serializer.validated_data.get("email", ""),
+            display_name=serializer.validated_data.get("display_name", ""),
+            expires_at=expires_at,
+        )
+        output = self.get_serializer(invite)
+        return Response(output.data, status=status.HTTP_201_CREATED, headers=self.get_success_headers(output.data))
 
     def destroy(self, request, *args, **kwargs):
         invite = self.get_object()
@@ -148,39 +170,39 @@ class FamilyInvitationViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["post"])
     def renew(self, request, pk=None):
         invite = self.get_object()
-        decision = enforce(
-            "invite.resend",
-            request=request,
-            user=request.user,
-            family_id=invite.family_id,
-        )
+        decision = enforce("invite.resend", request=request, user=request.user, family_id=invite.family_id)
         if not decision.allowed:
             return _rate_limited_response(decision)
-        if invite.accepted_at:
-            return Response({"detail": "Bereits angenommen."}, status=status.HTTP_400_BAD_REQUEST)
-        invite.revoked_at = None
-        invite.expires_at = timezone.now() + timedelta(days=7)
-        invite.save(update_fields=["revoked_at", "expires_at", "updated_at"])
+        try:
+            invite, _token = rotate_invitation(invite)
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(self.get_serializer(invite).data)
 
 
 @api_view(["GET"])
 @permission_classes([permissions.AllowAny])
 def invitation_info(request, token):
-    invite = FamilyInvitation.objects.select_related("family").filter(token=token).first()
-    if not invite:
-        return Response({"detail": "Einladung nicht gefunden."}, status=status.HTTP_404_NOT_FOUND)
+    decision = _public_decision("invite.resolve", request, token)
+    if not decision.allowed:
+        return _rate_limited_response(decision)
+    invite = resolve_invitation(token)
+    if not invite or not invite.is_active:
+        return Response({"detail": INVITE_UNAVAILABLE_DETAIL}, status=status.HTTP_404_NOT_FOUND)
     return Response(public_invite(invite))
 
 
 @api_view(["POST"])
 @permission_classes([permissions.AllowAny])
 def invitation_register(request, token):
+    decision = _public_decision("invite.consume", request, token)
+    if not decision.allowed:
+        return _rate_limited_response(decision)
     User = get_user_model()
     with transaction.atomic():
-        invite = FamilyInvitation.objects.select_for_update().select_related("family").filter(token=token).first()
+        invite = resolve_invitation(token, for_update=True)
         if not invite or not invite.is_active:
-            return Response({"detail": "Diese Einladung ist nicht mehr gültig."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": INVITE_UNAVAILABLE_DETAIL}, status=status.HTTP_404_NOT_FOUND)
         password = request.data.get("password") or ""
         display_name = (request.data.get("display_name") or invite.display_name or "").strip()
         legacy_username = (request.data.get("username") or "").strip()
@@ -211,24 +233,35 @@ def invitation_register(request, token):
             return Response({"detail": "E-Mail-Adresse kann nicht verwendet werden."}, status=status.HTTP_409_CONFLICT)
         membership = accept_for_user(invite, user, visible_name)
         queue_verification(identity, locale=invite.family.locale)
-        response = Response({
-            "authenticated": True,
-            "email_verification_required": True,
-            "membership": MembershipSerializer(membership).data,
-            "family": {"id": str(invite.family_id), "name": invite.family.name},
-        }, status=status.HTTP_201_CREATED)
+        response = Response(
+            {
+                "authenticated": True,
+                "email_verification_required": True,
+                "membership": MembershipSerializer(membership).data,
+                "family": {"id": str(invite.family_id), "name": invite.family.name},
+            },
+            status=status.HTTP_201_CREATED,
+        )
         return set_user_cookies(response, user, request=request)
 
 
 @api_view(["POST"])
 @permission_classes([permissions.IsAuthenticated])
 def invitation_accept(request, token):
+    decision = _public_decision("invite.consume", request, token, user=request.user)
+    if not decision.allowed:
+        return _rate_limited_response(decision)
     with transaction.atomic():
-        invite = FamilyInvitation.objects.select_for_update().select_related("family").filter(token=token).first()
+        invite = resolve_invitation(token, for_update=True)
         if not invite or not invite.is_active:
-            return Response({"detail": "Diese Einladung ist nicht mehr gültig."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": INVITE_UNAVAILABLE_DETAIL}, status=status.HTTP_404_NOT_FOUND)
         try:
             membership = accept_for_user(invite, request.user, (request.data.get("display_name") or "").strip())
         except ValueError as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_403_FORBIDDEN)
-        return Response({"membership": MembershipSerializer(membership).data, "family": {"id": str(invite.family_id), "name": invite.family.name}})
+        return Response(
+            {
+                "membership": MembershipSerializer(membership).data,
+                "family": {"id": str(invite.family_id), "name": invite.family.name},
+            }
+        )
