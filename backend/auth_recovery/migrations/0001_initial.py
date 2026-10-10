@@ -17,6 +17,7 @@ class Migration(migrations.Migration):
             fields=[
                 ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
                 ("version", models.PositiveBigIntegerField(default=0)),
+                ("locale", models.CharField(default="de", max_length=8)),
                 ("requested_at", models.DateTimeField(blank=True, null=True)),
                 ("consumed_at", models.DateTimeField(blank=True, null=True)),
                 ("created_at", models.DateTimeField(auto_now_add=True)),
