@@ -184,23 +184,25 @@ class ExpenseApiTests(TestCase):
         response = self.client.get(f"/api/expenses/{foreign.id}/")
         self.assertEqual(response.status_code, 404)
 
-    @patch("expenses.views.enqueue_receipt_extraction")
-    def test_receipt_upload_creates_private_queued_draft(self, enqueue):
+    @patch("expenses.document_receipts.store_canonical", return_value="private-documents/test/receipt.webp")
+    def test_receipt_upload_creates_private_queued_draft(self, _store):
         image = Image.new("RGB", (900, 1200), "white")
         buffer = io.BytesIO()
         image.save(buffer, format="PNG")
         upload = SimpleUploadedFile("receipt.png", buffer.getvalue(), content_type="image/png")
-        with self.captureOnCommitCallbacks(execute=True):
-            response = self.client.post("/api/expenses/receipt/", {"family": str(self.family.id), "receipt": upload}, format="multipart")
+        response = self.client.post("/api/expenses/receipt/", {"family": str(self.family.id), "receipt": upload}, format="multipart")
         self.assertEqual(response.status_code, 202, response.data)
-        expense = Expense.objects.get(id=response.data["id"])
+        expense = Expense.objects.select_related("receipt_document").get(id=response.data["id"])
         self.assertEqual(expense.status, Expense.Status.DRAFT)
         self.assertEqual(expense.receipt_status, Expense.ReceiptStatus.QUEUED)
-        self.assertEqual(expense.receipt_mime, "image/jpeg")
-        self.assertTrue(expense.receipt_content)
+        self.assertEqual(expense.receipt_mime, "image/webp")
+        self.assertIsNone(expense.receipt_content)
+        self.assertIsNotNone(expense.receipt_document_id)
+        self.assertFalse(expense.receipt_document.library_visible)
+        self.assertEqual(expense.receipt_document.kind, "expense_receipt")
         extraction = ReceiptExtraction.objects.get(expense=expense)
         self.assertEqual(extraction.status, ReceiptExtraction.Status.QUEUED)
-        enqueue.assert_called_once_with(extraction.id)
+        self.assertIsNotNone(extraction.processing_run_id)
 
     def test_receipt_api_exposes_quality_hints_but_not_raw_ocr_evidence(self):
         expense = Expense.objects.create(
