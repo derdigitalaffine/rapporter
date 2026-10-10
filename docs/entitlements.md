@@ -34,15 +34,26 @@ A grant is effective only when all of the following are true:
 
 The resolver always starts with the Light baseline, then unions effective grants. `premium` and `vip` currently mean full access to all non-deprecated capability definitions; `vip` is the UI/display tier used for full legacy access. Origins remain visible separately in the snapshot.
 
-## Legacy migration
+## Schema deploy vs. commercial cutover
 
-Migration `entitlements.0001_initial` captures families that exist **at the migration run** and adds exactly one:
+Migration `entitlements.0001_initial` is deliberately **commercial-cutover neutral**. It creates the entitlement schema and seeds the capability registry, but it does not grandfather any family. Deploying the technical core therefore does not decide who is legacy/VIP.
+
+The later product/commercial release must invoke an explicit one-time cutover command with the approved timestamp:
+
+```bash
+python manage.py apply_entitlement_commercial_cutover --cutover-at '2026-10-10T20:00:00+02:00'
+```
+
+The timestamp must be timezone-aware and must not be in the future. The command persists an `EntitlementCutover` marker under `commercial-v1`. On first application it grants exactly one legacy entitlement to every family whose canonical `Family.created_at` is at or before the commercial timestamp:
 
 - origin: `legacy_grandfathered`
 - plan: `vip`
-- source ref: `migration:legacy-vip-v1`
+- source ref: `commercial-cutover:legacy-vip-v1`
+- `starts_at`: the persisted commercial cutover timestamp
 
-The seed uses `get_or_create`, so retrying the data step is idempotent. New families created after the migration do not run through this backfill and therefore begin with the Light baseline unless another grant is created.
+This means families created before the Entitlement Core deploy **and** families created between the Core deploy and the later commercial cutover are grandfathered. Families created after the persisted timestamp start with the Light baseline unless another grant applies.
+
+The operation is transactional and idempotent. Re-running the command with the same timestamp does not duplicate grants or audit rows. Re-running `commercial-v1` with a different timestamp fails closed, so the historical boundary cannot silently move after it has been recorded. Each newly created legacy grant also receives an audit event with no arbitrary provider payload.
 
 No family/task/document/travel data is copied or deleted by entitlement changes.
 
@@ -50,7 +61,7 @@ No family/task/document/travel data is copied or deleted by entitlement changes.
 
 Use `entitlements.services.require_capability(user, family, key)` in write/API/service paths that become premium-gated. The helper checks active tenant membership before checking entitlement state. Frontend capability display is never authorization.
 
-This issue intentionally does **not** gate existing modules yet: existing installations have legacy VIP and feature cutovers can migrate one domain at a time without creating a flag day.
+This issue intentionally does **not** gate existing modules yet. Feature cutovers can migrate one domain at a time after the commercial boundary is explicitly approved; the Entitlement Core deploy itself creates no legacy/VIP flag day.
 
 ## Snapshot API
 
@@ -79,7 +90,7 @@ The family parameter is a selector, not trusted authority: the server verifies M
 
 Metadata accepted by the service is an object capped at 4 KiB, and capability lists are allowlisted and bounded. Administrative revocation only revokes `admin_grant` records and never deletes family data.
 
-A future Superadmin UI/API may call these services; it must not bypass them or infer entitlement state directly from `source_ref`.
+A future Superadmin UI/API may call these services; it must not bypass them or infer entitlement state directly from `source_ref`. Any stronger identity/audit requirements from the Superadmin/identity roadmap remain prerequisites for exposing such mutation endpoints; this core does not weaken them.
 
 ## Adding a capability
 
@@ -93,4 +104,4 @@ Do not add provider- or tariff-specific checks to a Fachmodul.
 
 ## Rollback
 
-The initial migration is additive. No existing domain data is rewritten. Before any future feature cutover, rollback is simply removal/disablement of the gate and snapshot usage; entitlement rows can remain without affecting canonical domain data.
+The initial migration is additive and does not assign legacy status. Before a commercial cutover, rollback is simply removal/disablement of the gate and snapshot usage. After a cutover, the persisted marker and legacy grants form audit/history data and should not be rewritten merely to roll back a UI or module gate; canonical family/domain data remains untouched.
