@@ -6,6 +6,12 @@
 
 FamilyOS ist ein self-hosted, mobile-first Family Operating System als installierbare PWA. Aufgaben, Einkäufe, Routinen, Kalender, Familien-Inbox, Bonuskarten, Einladungen, öffentliche Daten, Smart-Home-/Mobilitätsdaten und Wenn→Dann-Automationen laufen in einer gemeinsamen Oberfläche. Deutsch und Englisch sind integriert.
 
+## Anwenderhandbuch
+
+Du möchtest FamilyOS im Alltag nutzen? Im **[Anwenderhandbuch](docs/user-guide/README.md)** findest du kurze Schritt-für-Schritt-Anleitungen im Du-Ton – inklusive Screenshots für die wichtigsten Abläufe.
+
+Dort geht es unter anderem um **Heute**, Aufgaben, Einkauf, Kalender, Routinen, Familie und Rechte, Mitteilungen, Integrationen, Automationen, Bonuskarten sowie PWA- und Offline-Nutzung.
+
 ## Schnellstart
 
 ```bash
