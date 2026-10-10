@@ -65,7 +65,9 @@ def set_module(user, family, *, enabled, show_in_main_navigation=None):
     now = timezone.now()
     setting.enabled = bool(enabled)
     if show_in_main_navigation is not None:
-        setting.show_in_main_navigation = bool(show_in_main_navigation)
+        setting.show_in_main_navigation = bool(show_in_main_navigation) if enabled else False
+    elif not enabled:
+        setting.show_in_main_navigation = False
     setting.enabled_by = user if enabled else setting.enabled_by
     if enabled:
         setting.enabled_at = setting.enabled_at or now
@@ -99,6 +101,9 @@ def set_care_circle(user, family, rows):
         membership = memberships.get(membership_id)
         if not membership:
             raise ValidationError({"membership": "Membership does not belong to this family."})
+        guardian = bool(row.get("is_guardian", False))
+        if guardian and membership.role not in MANAGER_ROLES:
+            raise ValidationError({"is_guardian": "Only owner/adult memberships can manage a child account."})
         seen.add(membership_id)
         access, _ = CareCircleAccess.objects.update_or_create(
             family=family,
@@ -107,7 +112,7 @@ def set_care_circle(user, family, rows):
                 "can_view_pregnancy": bool(row.get("can_view_pregnancy", False)),
                 "can_log_care": bool(row.get("can_log_care", False)),
                 "can_view_growth_development": bool(row.get("can_view_growth_development", False)),
-                "is_guardian": bool(row.get("is_guardian", False)),
+                "is_guardian": guardian,
             },
         )
         result.append(access)
