@@ -72,6 +72,13 @@ function errorMessage(payload){
  }
  return'';
 }
+function apiError(response,payload){
+ const error=new Error(errorMessage(payload)||`api_${response.status}`);
+ error.status=response.status;
+ error.code=payload&&typeof payload==='object'?payload.code:undefined;
+ error.payload=payload;
+ return error;
+}
 export async function api(path,options={}){
  let result=await requestOrOffline(path,options);
  if('fallback' in result)return result.fallback;
@@ -80,7 +87,7 @@ export async function api(path,options={}){
   result=await requestOrOffline(path,options);if('fallback' in result)return result.fallback;response=result.response;
  }
  if(response.status===401){notifySessionExpired();throw new Error('unauthorized')}
- if(!response.ok){let detail='';try{detail=errorMessage(await response.json())}catch{}throw new Error(detail||`api_${response.status}`)}
+ if(!response.ok){let payload=null;try{payload=await response.json()}catch{}throw apiError(response,payload)}
  if(response.status===204)return null;
  const data=await response.json();await rememberOfflineData(path,data,options);return data;
 }
