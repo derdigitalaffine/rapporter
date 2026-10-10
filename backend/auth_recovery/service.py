@@ -8,7 +8,7 @@ from django.conf import settings
 from django.contrib.auth.password_validation import validate_password
 from django.core import signing
 from django.db import transaction
-from django.utils import timezone
+from django.utils import timezone, translation
 from django.utils.crypto import salted_hmac
 
 from auth_identity.models import EmailIdentity
@@ -105,6 +105,7 @@ def request_password_reset(email, *, locale="de"):
         return "ineligible"
 
     now = timezone.now()
+    language = _locale(locale)
     cooldown = max(0, int(getattr(settings, "PASSWORD_RESET_REQUEST_COOLDOWN_SECONDS", 60)))
     with transaction.atomic():
         state, _created = PasswordResetState.objects.get_or_create(user=user)
@@ -113,10 +114,10 @@ def request_password_reset(email, *, locale="de"):
             return "cooldown"
         state.identity = identity
         state.version += 1
+        state.locale = language
         state.requested_at = now
         state.consumed_at = None
-        state.save(update_fields=["identity", "version", "requested_at", "consumed_at", "updated_at"])
-        language = _locale(locale)
+        state.save(update_fields=["identity", "version", "locale", "requested_at", "consumed_at", "updated_at"])
         enqueue_transactional_email(
             message_key=f"password-reset:{state.pk}:v{state.version}",
             template_key="password.reset",
@@ -198,7 +199,9 @@ def complete_password_reset(token, new_password):
         state = _validate_state(state, payload)
         user = state.user
         identity = state.identity
-        validate_password(new_password, user=user)
+        language = _locale(state.locale)
+        with translation.override(language):
+            validate_password(new_password, user=user)
 
         used_version = state.version
         user.set_password(new_password)
@@ -212,10 +215,14 @@ def complete_password_reset(token, new_password):
             message_key=f"password-changed:{user.pk}:reset-v{used_version}",
             template_key="password.changed",
             recipient=identity.email,
-            locale="de",
+            locale=language,
             context={
-                "action_label": "Sicherheit prüfen",
-                "support_text": "Wenn du das nicht warst, prüfe bitte sofort deine Konto-Sicherheit.",
+                "action_label": "Sicherheit prüfen" if language == "de" else "Review security",
+                "support_text": (
+                    "Wenn du das nicht warst, prüfe bitte sofort deine Konto-Sicherheit."
+                    if language == "de"
+                    else "If this was not you, review your account security immediately."
+                ),
             },
             reference_type="auth_recovery.security_center",
             reference_id="profile",
