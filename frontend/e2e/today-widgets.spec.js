@@ -1,8 +1,8 @@
 import {test,expect} from '@playwright/test';
 import {installApiMocks} from './mock-api.js';
 const ids=['weather','priority','waste','next','tasks','shopping','routines','birthdays','notes'];
-async function boot(page,{language='de',failSave=false,conflict=false}={}){
- await installApiMocks(page,{language});
+async function boot(page,{language='de',failSave=false,conflict=false,routines=[]}={}){
+ const state=await installApiMocks(page,{language});state.routines=routines;
  let layout={version:1,revision:0,widgets:ids.map(id=>({id,visible:true,size:'full'}))};
  await page.route('**/api/today-layout/**',async route=>{
   const method=route.request().method();
@@ -34,6 +34,13 @@ test('personal Today preview cancels and saves hidden widgets across reload',asy
  await editor.getByRole('button',{name:'Standard wiederherstellen'}).click();
  await editor.getByRole('button',{name:'Speichern',exact:true}).click();
  await expect(page.locator('[data-today-widget="tasks"]')).toBeVisible();
+});
+test('routines stay visible on Today even while prediction is still learning',async({page})=>{
+ await boot(page,{routines:[{id:'routine-1',family:'family-1',name:'Spülmaschine',active:true,last_done_at:new Date().toISOString(),prediction:{status:'learning'}}]});
+ const widget=page.locator('[data-today-widget="routines"]');await expect(widget).toBeVisible();await expect(widget.getByText('Spülmaschine',{exact:true})).toBeVisible();
+});
+test('routines widget remains available as an empty entry point',async({page})=>{
+ await boot(page);const widget=page.locator('[data-today-widget="routines"]');await expect(widget).toBeVisible();await expect(widget.getByTestId('today-routines')).toBeVisible();
 });
 test('failed save preserves draft and concurrent edits require reload',async({page})=>{
  await boot(page,{conflict:true});await page.getByRole('button',{name:'Heute bearbeiten'}).click();
