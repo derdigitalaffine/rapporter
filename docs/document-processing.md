@@ -9,7 +9,7 @@ Issue: #180, roadmap: #223. Receipt consumer migration: #184.
 - `DocumentProcessingRun` is the durable execution record. New uploads are queued and handled by `process_documents --loop`; request processes never spawn OCR threads.
 - Worker claims are atomic PostgreSQL row leases with a unique `claim_token`. Expired claims can be recovered while attempts remain; stale workers are fenced from publishing. Long-running page/OCR work heartbeats the lease.
 - `MAX_ATTEMPTS` bounds normal failures and hard-crash reclaim loops. Exhausted stale leases become terminal failures without touching the canonical file.
-- Domain consumers may project a processing transition into their canonical domain in the same DB transaction. They do not own storage, OCR, retries or another queue.
+- Generic queue/OCR state commits before domain consumers run. A bug in Expense/Pet/School interpretation can never roll back a successful generic extraction or spend OCR CPU again. Each domain owns a redacted review/fallback state for its own projection errors.
 
 ## Extraction flow
 
@@ -20,6 +20,7 @@ Issue: #180, roadmap: #223. Receipt consumer migration: #184.
 5. Page text, confidence, page number, bounding boxes/evidence and quality data are stored on the processing run / extracted fields.
 6. A deterministic classifier chooses `receipt`, `contract`, `official_letter`, `invoice`, `warranty`, `school`, `medical`, `pet`, `identity` or `generic`.
 7. The typed extractor registry only emits conservative, labelled suggestions. Every typed suggestion stores page/evidence, confidence, source type and extractor version. Domain actions are never executed by the OCR core.
+8. Registered domain consumers project the committed run into their existing review models. Projection is fenced by the domain's current processing-run reference.
 
 ## Domain-managed attachments
 
@@ -37,12 +38,15 @@ POST /api/expenses/receipt/
 → hidden family-scoped Document + expense:receipt link
 → DocumentProcessingRun QUEUED
 → process_documents --loop
-→ local OCR/classification
+→ local OCR/classification + generic quality assessment
+→ committed DocumentProcessingRun
 → Expense receipt parser (merchant/date/total)
 → existing Expense review UX
 ```
 
-`expenses` no longer contains generic image normalization, Tesseract calls or a receipt worker. It keeps only receipt-domain parsing/scoring. Worker state is projected into `ReceiptExtraction.processing_run` transactionally, so a consumer failure rolls the core finish back and follows the same durable retry policy instead of creating a half-completed state.
+`expenses` no longer contains generic image normalization, Tesseract calls, quality detection or a receipt worker. It keeps only receipt-domain parsing/scoring. Worker quality warnings are projected from `DocumentProcessingRun.quality_data`; the upload request does not run its own quality pass.
+
+Domain projection is deliberately downstream of generic processing. If the Expense parser itself fails, the successful `DocumentProcessingRun` remains `REVIEW/READY`; the receipt falls back to a redacted manual-review state with normalized text rather than retrying OCR. This preserves the architecture boundary and avoids duplicate CPU work.
 
 Retry is idempotent against the current active Document run: retrying while OCR is already `PROCESSING` reuses that run and preserves the visible `PROCESSING` state instead of moving the UI state machine backwards to `QUEUED`.
 
@@ -65,7 +69,7 @@ For privacy and signature safety the canonical PDF is not rewritten merely to ad
 
 ## Review boundary
 
-OCR/classifier output is a proposal layer. Domain consumers such as receipt → expense consume OCR output through the shared document core but keep their existing domain review semantics. They must not reimplement OCR, queueing, retry or canonical storage and must not create domain actions automatically.
+OCR/classifier output is a proposal layer. Domain consumers such as receipt → expense consume committed OCR output through the shared document core but keep their existing domain review semantics. They must not reimplement OCR, quality detection, queueing, retry or canonical storage and must not create domain actions automatically.
 
 ## Quality gates
 
@@ -83,8 +87,8 @@ The backend suite covers:
 - receipt upload → hidden Document → shared worker → Expense review;
 - hidden receipt Documents are inaccessible through generic Document detail/file endpoints;
 - receipt failure/retry without a second queue, including retry during active OCR;
-- consumer failure rolls back generic completion and follows the durable retry path;
-- tenant-scoped receipt files and deletion lifecycle;
+- Expense parser failure leaves generic OCR successful and falls back to manual review without reprocessing;
+- tenant-scoped receipt files and deletion lifecycle, including deletion during active processing;
 - idempotent legacy receipt backfill, missing-MIME backfill, and rollback-byte preservation.
 
 When changing OCR/preprocessing rules, add a fixture that demonstrates the regression. Avoid broad heuristics that turn unlabeled numbers/dates into high-confidence domain fields.
