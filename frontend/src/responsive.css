@@ -107,7 +107,7 @@ html,body,#root{max-width:100%;overflow-x:hidden}
 
 @media (min-width:960px) and (min-height:621px){
   .app-shell{max-width:1480px;padding-left:40px;padding-right:40px}
-  .content{max-width:var(--content-wide);margin-inline:auto}
+  .app-shell .content{max-width:var(--content-wide);margin-inline:auto}
 
   .today-main-grid{grid-template-columns:minmax(0,1.2fr) minmax(320px,.8fr);gap:20px}
   .today-important-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
@@ -121,7 +121,7 @@ html,body,#root{max-width:100%;overflow-x:hidden}
 
 @media (min-width:1180px) and (min-height:621px){
   .app-shell{max-width:var(--shell-max);padding-left:52px;padding-right:52px}
-  .content{max-width:var(--content-max)}
+  .app-shell .content{max-width:var(--content-max)}
   .today-main-grid{grid-template-columns:minmax(0,1.25fr) minmax(360px,.75fr);gap:22px}
   .shopping-page .shopping-groups{gap:18px}
   .integration-group>.stack{grid-template-columns:repeat(2,minmax(0,1fr))}
