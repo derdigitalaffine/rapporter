@@ -21,9 +21,8 @@ logger = logging.getLogger("security.auth_identity")
 
 
 def set_user_cookies(response, user, request=None, *, auth_method=AuthSession.AuthMethod.PASSWORD):
-    session, access, refresh = create_session(user, request, auth_method=auth_method)
-    set_token_cookies(response, access, refresh)
-    return response, session
+    _session, access, refresh = create_session(user, request, auth_method=auth_method)
+    return set_token_cookies(response, access, refresh)
 
 
 def _login_payload(request):
@@ -72,16 +71,16 @@ def login_view(request):
         "legacy" if legacy else "email",
         user.pk,
     )
+    session, access, refresh = create_session(user, request)
     response = Response(
         {
             "authenticated": True,
             "email_verified": summary["email_verified"],
             "email_action_required": summary["email_action_required"],
+            "session": serialize_session(session, current_sid=session.pk),
         }
     )
-    response, session = set_user_cookies(response, user, request=request)
-    response.data["session"] = serialize_session(session, current_sid=session.pk)
-    return response
+    return set_token_cookies(response, access, refresh)
 
 
 @api_view(["POST"])
