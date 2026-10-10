@@ -59,7 +59,7 @@ jobs:
           cache-dependency-path: backend/requirements.txt
       - run: pip install -r backend/requirements.txt
       - working-directory: backend
-        run: python manage.py makemigrations auth_abuse family expenses baby pets documents --check --dry-run
+        run: python manage.py makemigrations auth_abuse family expenses baby pets documents mailing --check --dry-run
       - working-directory: backend
         run: python manage.py migrate && python manage.py check
       - working-directory: backend
@@ -142,7 +142,7 @@ jobs:
           pull_official "node:22-alpine"
           pull_official "caddy:2-alpine"
       - name: Validate shell setup tools
-        run: bash -n scripts/setup.sh scripts/ensure-vapid.sh scripts/test-vapid-setup.sh scripts/tls-mode.sh scripts/export-caddy-ca.sh
+        run: bash -n scripts/setup.sh scripts/ensure-vapid.sh scripts/test-vapid-setup.sh scripts/tls-mode.sh scripts/export-caddy-ca.sh scripts/configure-mail.sh
       - name: Verify automatic VAPID provisioning
         run: bash scripts/test-vapid-setup.sh
       - name: Validate public Caddy config
