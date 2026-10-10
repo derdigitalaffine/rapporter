@@ -76,7 +76,9 @@ class DocumentCoreTests(TestCase):
         self.assertEqual(self.client.get(f"/api/documents/{private_id}/").status_code, 404)
         self.assertEqual(self.client.get(f"/api/documents/{private_id}/file/").status_code, 404)
 
-        family_doc = self.upload(visibility="family", title="Familie")
+        # This test exercises ACL semantics, not dedupe; identical fixture bytes are
+        # therefore explicitly accepted as separate documents.
+        family_doc = self.upload(visibility="family", title="Familie", allow_duplicate="true")
         self.assertEqual(family_doc.status_code, 201)
         self.auth(self.bob)
         self.assertEqual(self.client.get(f"/api/documents/{family_doc.data['id']}/").status_code, 200)
@@ -84,6 +86,7 @@ class DocumentCoreTests(TestCase):
         selected = self.upload(
             visibility="selected",
             title="Ausgewählt",
+            allow_duplicate="true",
             access=json.dumps([{"membership": str(self.bob_member.id), "can_view": True}]),
         )
         self.assertEqual(selected.status_code, 201)
