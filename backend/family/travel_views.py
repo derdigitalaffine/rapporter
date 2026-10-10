@@ -154,7 +154,7 @@ class TripViewSet(viewsets.ModelViewSet):
 
     @transaction.atomic
     def perform_update(self, serializer):
-        trip = Trip.objects.select_for_update().select_related("family", "calendar_event").get(pk=serializer.instance.pk)
+        trip = Trip.objects.select_for_update().select_related("family").get(pk=serializer.instance.pk)
         if not _can_manage(self.request.user, trip.family_id):
             raise PermissionDenied("Nur Erwachsene dürfen Reisen ändern.")
         serializer.instance = trip
@@ -163,7 +163,7 @@ class TripViewSet(viewsets.ModelViewSet):
 
     @transaction.atomic
     def perform_destroy(self, instance):
-        trip = Trip.objects.select_for_update().select_related("calendar_event", "family").get(pk=instance.pk)
+        trip = Trip.objects.select_for_update().select_related("family").get(pk=instance.pk)
         if not _can_manage(self.request.user, trip.family_id):
             raise PermissionDenied("Nur Erwachsene dürfen Reisen löschen.")
         event_id = trip.calendar_event_id
