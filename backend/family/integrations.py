@@ -87,42 +87,11 @@ def normalize_ics_upload(content):
 
 
 def sync_ics(source: IntegrationSource):
-    config = source.config or {}
-    snapshot = config.get("ics_content")
-    if snapshot:
-        raw = snapshot.encode("utf-8")
-    else:
-        if not source.endpoint:
-            raise ValueError("Bitte eine öffentliche HTTPS-iCal/ICS-URL oder eine ICS-Datei angeben.")
-        raw = _get(source.endpoint).content
-    calendar = validate_ics_bytes(raw)
-    count = 0
-    for component in calendar.walk("VEVENT"):
-        uid = str(component.get("uid", ""))
-        title = str(component.get("summary", "Termin"))
-        start = _aware(component.decoded("dtstart", None))
-        end = _aware(component.decoded("dtend", None))
-        external_id = uid or f"{title}:{start}"
-        event_type = "waste.collection" if source.kind == IntegrationSource.Kind.WASTE else config.get("event_type", "calendar.event")
-        FamilyEvent.objects.update_or_create(
-            family=source.family,
-            source=source,
-            external_id=external_id,
-            defaults={
-                "type": event_type,
-                "title": title,
-                "starts_at": start,
-                "ends_at": end,
-                "actionable": source.kind == IntegrationSource.Kind.WASTE,
-                "payload": {
-                    "location": str(component.get("location", "")),
-                    "description": str(component.get("description", "")),
-                    "provider": config.get("provider", "ICS/iCal"),
-                },
-            },
-        )
-        count += 1
-    return _finish(source, count)
+    # Keep this legacy/public entry point stable; all callers get the same
+    # canonical projection semantics without changing adapter dispatch.
+    from .ics_projection import sync_ics_projection
+
+    return sync_ics_projection(source)
 
 
 def sync_dwd(source: IntegrationSource):
