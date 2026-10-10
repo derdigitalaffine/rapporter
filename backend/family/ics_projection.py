@@ -13,6 +13,8 @@ from .models import FamilyEvent, IntegrationSource
 
 ICS_LOOKBACK_DAYS = 366
 ICS_LOOKAHEAD_DAYS = 1095
+MAX_ICS_OCCURRENCES_PER_SERIES = 10_000
+MAX_ICS_PROJECTED_EVENTS = 20_000
 VALID_RRULE_FREQUENCIES = {
     "SECONDLY",
     "MINUTELY",
@@ -153,11 +155,20 @@ def _rrule_occurrences(component, start_raw, zone, window_start, window_end):
         if not rule_text.strip():
             raise ValueError("Leere Wiederholungsregel")
         rule = rrulestr(rule_text, dtstart=rule_start)
-        values = list(
-            rule.between(rule_window_start, rule_window_end, inc=True)
-        )
+        values = []
+        for value in rule.xafter(
+            rule_window_start,
+            count=MAX_ICS_OCCURRENCES_PER_SERIES + 1,
+            inc=True,
+        ):
+            if value > rule_window_end:
+                break
+            values.append(value)
     except (TypeError, ValueError, OverflowError) as exc:
         raise ValueError("Die ICS-Wiederholungsregel ist ungültig.") from exc
+
+    if len(values) > MAX_ICS_OCCURRENCES_PER_SERIES:
+        raise ValueError("Die ICS-Wiederholungsregel erzeugt zu viele Termine.")
 
     if not local_rule:
         return values
@@ -438,6 +449,8 @@ def sync_ics_projection(source: IntegrationSource):
             zone,
         ):
             rows[external_id] = defaults
+            if len(rows) > MAX_ICS_PROJECTED_EVENTS:
+                raise ValueError("Der ICS-Kalender erzeugt zu viele Termine.")
 
     active_ids = list(rows)
     with transaction.atomic():
