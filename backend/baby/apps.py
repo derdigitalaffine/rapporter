@@ -6,6 +6,7 @@ class BabyConfig(AppConfig):
     name = "baby"
 
     def ready(self):
-        # Kept in a separate module so the large domain model file remains
-        # readable; importing here registers it with Django's app registry.
+        # Kept in separate modules so the large domain model file remains
+        # readable; importing here registers the model and cleanup signals.
         from . import media_models  # noqa: F401
+        from . import media_signals  # noqa: F401
