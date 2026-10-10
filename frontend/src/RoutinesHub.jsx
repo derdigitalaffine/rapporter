@@ -38,7 +38,7 @@ export default function RoutinesHub({family,userId,onChanged}){
   <div className="routine-grid">{visible.map(row=>{const status=routineStatusKey(row);const progress=row.target_count?Math.min(100,Math.round(((row.period_count||0)/row.target_count)*100)):null;return <article className={`routine-card routine-card-${status}`} key={row.id}>
    <div className="routine-card-top">
     <span className={`routine-icon routine-icon-${status}`} aria-hidden="true"><Icon name={routineIconName(row.icon)}/></span>
-    <button className="routine-card-main" onClick={()=>openEditor(row)}><strong>{row.name}</strong><span>{row.last_done_at?t('routineUi.last',{date:date(row.last_done_at)}):t('routineUi.never')}</span></button>
+    <button className="routine-card-main row-main-button" onClick={()=>openEditor(row)}><strong>{row.name}</strong><span>{row.last_done_at?t('routineUi.last',{date:date(row.last_done_at)}):t('routineUi.never')}</span></button>
     <span className={`routine-status routine-status-${status}`}>{t(`routineUi.${status}`)}</span>
    </div>
    <div className="routine-card-detail">
