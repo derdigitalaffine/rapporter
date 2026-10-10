@@ -6,7 +6,6 @@ import django.db.models.deletion
 from django.db.models import Q
 
 
-LEGACY_SOURCE_REF = "migration:legacy-vip-v1"
 CAPABILITIES = (
     ("family_management", "family", "Familien- und Mitgliederverwaltung", True, False),
     ("calendar", "calendar", "Gemeinsamer Familienkalender", True, False),
@@ -25,11 +24,8 @@ CAPABILITIES = (
 )
 
 
-def seed_capabilities_and_legacy(apps, schema_editor):
+def seed_capabilities(apps, schema_editor):
     CapabilityDefinition = apps.get_model("entitlements", "CapabilityDefinition")
-    EntitlementGrant = apps.get_model("entitlements", "EntitlementGrant")
-    Family = apps.get_model("family", "Family")
-
     for key, domain, description, default_light, premium in CAPABILITIES:
         CapabilityDefinition.objects.update_or_create(
             key=key,
@@ -39,20 +35,6 @@ def seed_capabilities_and_legacy(apps, schema_editor):
                 "default_light": default_light,
                 "premium": premium,
                 "deprecated": False,
-            },
-        )
-
-    for family_id in Family.objects.order_by().values_list("id", flat=True):
-        EntitlementGrant.objects.get_or_create(
-            family_id=family_id,
-            origin="legacy_grandfathered",
-            source_ref=LEGACY_SOURCE_REF,
-            defaults={
-                "plan_key": "vip",
-                "capability_set": [],
-                "active": True,
-                "reason": "Bestandsfamilie beim Entitlement-Cutover",
-                "metadata": {"migration": "legacy-vip-v1"},
             },
         )
 
@@ -78,6 +60,17 @@ class Migration(migrations.Migration):
                 ("updated_at", models.DateTimeField(auto_now=True)),
             ],
             options={"ordering": ["key"]},
+        ),
+        migrations.CreateModel(
+            name="EntitlementCutover",
+            fields=[
+                ("key", models.SlugField(max_length=64, primary_key=True, serialize=False)),
+                ("cutover_at", models.DateTimeField()),
+                ("applied_at", models.DateTimeField()),
+                ("eligible_family_count", models.PositiveIntegerField(default=0)),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+            ],
         ),
         migrations.CreateModel(
             name="EntitlementGrant",
@@ -123,5 +116,5 @@ class Migration(migrations.Migration):
                 "indexes": [models.Index(fields=["family", "-created_at"], name="ent_audit_family_created")],
             },
         ),
-        migrations.RunPython(seed_capabilities_and_legacy, migrations.RunPython.noop),
+        migrations.RunPython(seed_capabilities, migrations.RunPython.noop),
     ]
