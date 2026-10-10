@@ -1,3 +1,4 @@
+import uuid
 from datetime import timedelta
 
 from django.db import transaction
@@ -48,11 +49,12 @@ def _claimable(now):
 
 
 def claim_next_run(*, now=None, lease_seconds=LEASE_SECONDS):
-    """Atomically claim one due job.
+    """Atomically claim one due job with a unique lease ownership token.
 
     `select_for_update(skip_locked=True)` lets multiple PostgreSQL workers poll the
     same queue without processing the same run. Expired processing leases are
-    claimable, which makes a killed worker restart-safe.
+    claimable, which makes a killed worker restart-safe. The fresh claim token
+    prevents a stale worker from publishing after another worker reclaimed it.
     """
     now = now or timezone.now()
     with transaction.atomic():
@@ -67,6 +69,7 @@ def claim_next_run(*, now=None, lease_seconds=LEASE_SECONDS):
             return None
         run.status = DocumentProcessingRun.Status.PROCESSING
         run.attempts += 1
+        run.claim_token = uuid.uuid4()
         run.started_at = run.started_at or now
         run.processing_started_at = now
         run.lease_expires_at = now + timedelta(seconds=lease_seconds)
@@ -77,6 +80,7 @@ def claim_next_run(*, now=None, lease_seconds=LEASE_SECONDS):
             update_fields=[
                 "status",
                 "attempts",
+                "claim_token",
                 "started_at",
                 "processing_started_at",
                 "lease_expires_at",
@@ -90,13 +94,21 @@ def claim_next_run(*, now=None, lease_seconds=LEASE_SECONDS):
         return run
 
 
+def _owns_claim(locked, claimed):
+    return (
+        locked.status == DocumentProcessingRun.Status.PROCESSING
+        and locked.claim_token is not None
+        and locked.claim_token == claimed.claim_token
+    )
+
+
 def finish_run(run, result, *, needs_review=True):
     now = timezone.now()
     status = DocumentProcessingRun.Status.REVIEW if needs_review else DocumentProcessingRun.Status.READY
     document_status = Document.ProcessingStatus.REVIEW if needs_review else Document.ProcessingStatus.READY
     with transaction.atomic():
         locked = DocumentProcessingRun.objects.select_for_update().get(pk=run.pk)
-        if locked.status != DocumentProcessingRun.Status.PROCESSING:
+        if not _owns_claim(locked, run):
             return locked
         locked.extracted_fields.all().delete()
         ExtractedField.objects.bulk_create(
@@ -121,6 +133,7 @@ def finish_run(run, result, *, needs_review=True):
         locked.normalized_text = result.text
         locked.quality_data = result.quality_data
         locked.processed_at = now
+        locked.claim_token = None
         locked.lease_expires_at = None
         locked.next_retry_at = None
         locked.error_code = ""
@@ -133,6 +146,7 @@ def finish_run(run, result, *, needs_review=True):
                 "normalized_text",
                 "quality_data",
                 "processed_at",
+                "claim_token",
                 "lease_expires_at",
                 "next_retry_at",
                 "error_code",
@@ -149,7 +163,7 @@ def fail_run(run, *, error_code, safe_error, retryable=True, now=None):
     now = now or timezone.now()
     with transaction.atomic():
         locked = DocumentProcessingRun.objects.select_for_update().get(pk=run.pk)
-        if locked.status != DocumentProcessingRun.Status.PROCESSING:
+        if not _owns_claim(locked, run):
             return locked
         should_retry = retryable and locked.attempts < MAX_ATTEMPTS
         if should_retry:
@@ -162,6 +176,7 @@ def fail_run(run, *, error_code, safe_error, retryable=True, now=None):
             locked.next_retry_at = None
             locked.processed_at = now
             document_status = Document.ProcessingStatus.FAILED
+        locked.claim_token = None
         locked.lease_expires_at = None
         locked.error_code = str(error_code)[:64]
         locked.safe_error = str(safe_error)[:240]
@@ -170,6 +185,7 @@ def fail_run(run, *, error_code, safe_error, retryable=True, now=None):
                 "status",
                 "next_retry_at",
                 "processed_at",
+                "claim_token",
                 "lease_expires_at",
                 "error_code",
                 "safe_error",
