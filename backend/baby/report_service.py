@@ -2,14 +2,15 @@ import csv
 import html
 import io
 from collections import Counter
-from datetime import timedelta
+from datetime import datetime, timedelta
 
+from django.db.models import Q
 from django.utils import timezone
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import PermissionDenied, ValidationError
 
 from .care_service import _baby_for_user as care_baby_for_user, care_summary
-from .growth_service import growth_payload
 from .development_service import development_payload
+from .growth_service import growth_payload
 from .models import BabyCareLog, DevelopmentObservation, ReportExportAudit
 
 
@@ -27,12 +28,16 @@ def _range(start=None, end=None):
 
 
 def report_payload(user, baby_id, *, start=None, end=None, sections=None, language="de"):
-    baby, membership, _ = care_baby_for_user(user, baby_id, "report")
+    baby, membership, access = care_baby_for_user(user, baby_id, "report")
     start, end = _range(start, end)
     selected = set(sections or ALLOWED_SECTIONS)
     unknown = selected - ALLOWED_SECTIONS
     if unknown:
         raise ValidationError({"sections": f"Unknown report sections: {', '.join(sorted(unknown))}"})
+    if selected & {"care", "handover"} and not access.can_log_care:
+        raise PermissionDenied("Care and handover sections are not permitted for this Care Circle member.")
+    if selected & {"growth", "development"} and not access.can_view_growth_development:
+        raise PermissionDenied("Growth and development sections are not permitted for this Care Circle member.")
     payload = {
         "baby": {"id": str(baby.id), "display_name": baby.display_name, "birth_date": baby.birth_date.isoformat()},
         "range": {"start": start.isoformat(), "end": end.isoformat()},
@@ -57,11 +62,12 @@ def report_payload(user, baby_id, *, start=None, end=None, sections=None, langua
         }
     if "growth" in selected:
         growth_data = growth_payload(user, baby.id)
-        growth_data["points"] = [point for point in growth_data["points"] if start <= timezone.datetime.fromisoformat(point["measured_at"]) <= end]
+        growth_data["points"] = [point for point in growth_data["points"] if start <= datetime.fromisoformat(point["measured_at"]) <= end]
         payload["growth"] = growth_data
     if "development" in selected:
         observations = DevelopmentObservation.objects.filter(baby=baby).filter(
-            timezone.models.Q(observed_at__gte=start, observed_at__lte=end) | timezone.models.Q(observed_at__isnull=True, created_at__gte=start, created_at__lte=end)
+            Q(observed_at__gte=start, observed_at__lte=end)
+            | Q(observed_at__isnull=True, created_at__gte=start, created_at__lte=end)
         ).order_by("created_at")
         payload["development"] = {
             "current_checklist": development_payload(user, baby.id, language=language),
@@ -132,8 +138,8 @@ def audited_export(user, baby_id, *, export_format="json", start=None, end=None,
     baby, membership, payload = report_payload(user, baby_id, start=start, end=end, sections=sections, language=language)
     if export_format not in {"json", "csv", "html"}:
         raise ValidationError({"format": "Use json, csv or html."})
-    start_dt = timezone.datetime.fromisoformat(payload["range"]["start"])
-    end_dt = timezone.datetime.fromisoformat(payload["range"]["end"])
+    start_dt = datetime.fromisoformat(payload["range"]["start"])
+    end_dt = datetime.fromisoformat(payload["range"]["end"])
     ReportExportAudit.objects.create(
         baby=baby,
         membership=membership,
