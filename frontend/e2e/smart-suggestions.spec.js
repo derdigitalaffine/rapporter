@@ -21,7 +21,7 @@ test('remembered task suggestion adds immediately with learned defaults',async({
   await suggestion.click();
   const row=page.locator('.smart-row').filter({hasText:'Pflanzen gießen'});
   await expect(row).toBeVisible();
-  await expect(row).toContainText('Wichtig');
+  await expect(row.locator('.priority-high')).toContainText(/wichtig/i);
   await expect(row).toContainText('15 min');
   await expect(input).toHaveValue('');
   expect(creates).toBe(1);
