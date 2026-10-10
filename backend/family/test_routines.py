@@ -3,6 +3,7 @@ from unittest.mock import patch
 from uuid import uuid4
 
 from django.contrib.auth import get_user_model
+from django.core.management import call_command
 from django.test import TestCase
 from rest_framework.test import APIClient
 
@@ -30,6 +31,38 @@ class RoutineTests(TestCase):
         self.assertEqual(self.client.patch(path,{'target_count':3,'target_period_days':7},format='json').status_code,200)
         for payload in [{'target_count':0},{'target_count':101},{'target_period_days':0},{'target_count':100,'target_period_days':1}]:
             self.assertEqual(self.client.patch(path,payload,format='json').status_code,400)
+
+    def test_routines_are_editable_and_deletable(self):
+        row=Routine.objects.create(family=self.family,name='Bad putzen',suggested_interval_days=7,icon='sparkles')
+        path=f'/api/routines/{row.id}/'
+        changed=self.client.patch(path,{'name':'Bad komplett reinigen','active':False},format='json')
+        self.assertEqual(changed.status_code,200)
+        row.refresh_from_db();self.assertEqual(row.name,'Bad komplett reinigen');self.assertFalse(row.active)
+        self.assertEqual(self.client.delete(path).status_code,204)
+        self.assertFalse(Routine.objects.filter(pk=row.pk).exists())
+
+    @patch.dict('os.environ',{
+        'DJANGO_SUPERUSER_USERNAME':'routine-bootstrap-admin',
+        'DJANGO_SUPERUSER_PASSWORD':'routine-bootstrap-admin-password',
+        'INITIAL_OWNER_USERNAME':'routine-bootstrap-owner',
+        'INITIAL_OWNER_PASSWORD':'routine-bootstrap-owner-password',
+        'INITIAL_FAMILY_NAME':'Bootstrap Familie',
+        'TIME_ZONE':'Europe/Berlin',
+    },clear=False)
+    def test_bootstrap_does_not_restore_changed_or_deleted_starter_routines(self):
+        Family.objects.filter(slug='meine-familie').delete()
+        call_command('bootstrap_famuhle')
+        family=Family.objects.get(slug='meine-familie')
+        starters=Routine.objects.filter(family=family)
+        self.assertEqual(starters.count(),4)
+        deleted=starters.get(name='Bad putzen');deleted.delete()
+        renamed=starters.get(name='Bettwäsche wechseln');renamed.name='Bettwäsche frisch beziehen';renamed.save(update_fields=['name','updated_at'])
+        call_command('bootstrap_famuhle')
+        names=set(Routine.objects.filter(family=family).values_list('name',flat=True))
+        self.assertNotIn('Bad putzen',names)
+        self.assertNotIn('Bettwäsche wechseln',names)
+        self.assertIn('Bettwäsche frisch beziehen',names)
+        self.assertEqual(len(names),3)
 
     def test_goal_and_history_never_delay_wish(self):
         row=Routine.objects.create(family=self.family,name='Bettwäsche',target_count=1,target_period_days=7)
