@@ -9,6 +9,7 @@ class TelemetrySchemaError(ValueError):
 SAFE_SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9_.:-]{0,63}$")
 HEX_DIGEST_RE = re.compile(r"^[0-9a-f]{64}$")
 REQUEST_ID_RE = re.compile(r"^[A-Za-z0-9._:-]{1,64}$")
+OPAQUE_TARGET_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 
 ACTOR_CLASSES = frozenset({"user", "superadmin", "system"})
 OUTCOMES = frozenset({"success", "denied", "failed"})
@@ -128,7 +129,7 @@ def validate_target(target_type, target_id):
         return "", ""
     target_type = str(target_type or "")
     target_id = str(target_id or "")
-    if target_type not in TARGET_TYPES or not target_id or len(target_id) > 128:
+    if target_type not in TARGET_TYPES or not OPAQUE_TARGET_RE.fullmatch(target_id):
         raise TelemetrySchemaError("invalid_target")
     return target_type, target_id
 
