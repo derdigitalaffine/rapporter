@@ -4,7 +4,7 @@ from collections import defaultdict
 from django.db.models import Q
 from rest_framework.exceptions import ValidationError
 
-from .models import BoardPost, FamilyEvent, Note, ShoppingItem, Task
+from .models import BoardPost, FamilyEvent, Note, Routine, ShoppingItem, ShoppingList, Task
 
 
 class PinAdapter:
@@ -91,6 +91,31 @@ class TaskPinAdapter(PinAdapter):
         }
 
 
+class RoutinePinAdapter(PinAdapter):
+    key = BoardPost.Kind.ROUTINE
+
+    def queryset(self, user):
+        # Keep inactive routines resolvable for an existing pin so the board can
+        # render an explicit archived lifecycle instead of leaking a stale snapshot.
+        return Routine.objects.all()
+
+    def can_pin(self, user, family_id, target_id):
+        return self.queryset(user).filter(id=target_id, family_id=family_id, active=True).exists()
+
+    def lifecycle_state(self, target):
+        return 'available' if target.active else 'archived'
+
+    def preview(self, row):
+        return {
+            'id': str(row.id),
+            'kind': 'routine',
+            'title': row.name,
+            'subtitle': None,
+            'lifecycle': self.lifecycle_state(row),
+            'url': f'/?page=tasks&routine={row.id}',
+        }
+
+
 class NotePinAdapter(PinAdapter):
     key = BoardPost.Kind.NOTE_REF
 
@@ -130,6 +155,30 @@ class ShoppingItemPinAdapter(PinAdapter):
         }
 
 
+class ShoppingListPinAdapter(PinAdapter):
+    key = BoardPost.Kind.SHOPPING_LIST
+
+    def queryset(self, user):
+        # Archived lists remain resolvable for existing pins but cannot be newly pinned.
+        return ShoppingList.objects.all()
+
+    def can_pin(self, user, family_id, target_id):
+        return self.queryset(user).filter(id=target_id, family_id=family_id, archived=False).exists()
+
+    def lifecycle_state(self, target):
+        return 'archived' if target.archived else 'available'
+
+    def preview(self, row):
+        return {
+            'id': str(row.id),
+            'kind': 'shopping_list',
+            'title': row.name,
+            'subtitle': row.store or None,
+            'lifecycle': self.lifecycle_state(row),
+            'url': f'/?page=shopping&list={row.id}',
+        }
+
+
 PIN_ADAPTERS = {}
 
 
@@ -143,8 +192,10 @@ def register_pin_adapter(adapter):
 for adapter in (
     CalendarEventPinAdapter(),
     TaskPinAdapter(),
+    RoutinePinAdapter(),
     NotePinAdapter(),
     ShoppingItemPinAdapter(),
+    ShoppingListPinAdapter(),
 ):
     register_pin_adapter(adapter)
 

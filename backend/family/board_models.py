@@ -9,8 +9,10 @@ class BoardPost(TimestampedModel):
         PHOTO = 'photo', 'Photo'
         EVENT = 'event', 'Calendar event'
         TASK = 'task', 'Task'
+        ROUTINE = 'routine', 'Routine'
         NOTE_REF = 'note_ref', 'Note reference'
         SHOPPING = 'shopping', 'Shopping item'
+        SHOPPING_LIST = 'shopping_list', 'Shopping list'
 
     family = models.ForeignKey(Family, on_delete=models.CASCADE, related_name='board_posts')
     author = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, related_name='board_posts')
