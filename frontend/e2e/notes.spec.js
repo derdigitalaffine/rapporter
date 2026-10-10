@@ -19,3 +19,7 @@ test('drawing pointer strokes autosave and undo safely',async({page})=>{
 test('conflict keeps local content and English editor is usable',async({page})=>{
  await setup(page,{language:'en',conflict:true});await page.getByRole('button',{name:'New note'}).click();await page.getByRole('textbox',{name:'Text',exact:true}).fill('Never lose this');await expect(page.getByRole('alert')).toContainText('changed elsewhere');await expect(page.getByRole('textbox',{name:'Text',exact:true})).toHaveValue('Never lose this');await expect(page.getByRole('button',{name:'Save my changes as a private copy'})).toBeVisible();
 });
+
+test('unsaved conflict blocks shell navigation without losing the local note',async({page})=>{
+ await setup(page,{language:'en',conflict:true});await page.getByRole('button',{name:'New note'}).click();await page.getByRole('textbox',{name:'Text',exact:true}).fill('Keep my draft');await expect(page.getByRole('alert')).toContainText('changed elsewhere');await page.locator('.bottom-nav').getByRole('button',{name:'Today',exact:true}).click();await expect(page.getByRole('textbox',{name:'Text',exact:true})).toHaveValue('Keep my draft');await expect(page).toHaveURL(/page=notes/);
+});

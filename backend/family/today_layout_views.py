@@ -1,19 +1,32 @@
 """Private, versioned Today layouts. Layouts contain presentation settings only."""
 from copy import deepcopy
-from django.db import transaction
+
 from django.core.exceptions import ValidationError
+from django.db import transaction
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+
 from .models import Family, Membership, TodayLayout
 
-WIDGET_IDS = ('weather', 'priority', 'waste', 'next', 'tasks', 'shopping', 'routines', 'birthdays', 'notes')
+LEGACY_WIDGET_IDS = ('weather', 'priority', 'waste', 'next', 'tasks', 'shopping', 'routines', 'birthdays', 'notes')
+WIDGET_IDS = LEGACY_WIDGET_IDS + ('loyalty', 'inbox')
 DEFAULT_WIDGETS = [{'id': key, 'visible': True, 'size': 'full'} for key in WIDGET_IDS]
 
 
+def _expanded_widgets(widgets):
+    """Keep a user's saved order/settings and append newly introduced widgets hidden."""
+    rows = deepcopy(widgets)
+    seen = {row.get('id') for row in rows if isinstance(row, dict)}
+    for key in WIDGET_IDS:
+        if key not in seen:
+            rows.append({'id': key, 'visible': False, 'size': 'full'})
+    return rows
+
+
 def payload(layout=None):
-    return {'version': 1, 'revision': layout.revision if layout else 0,
-            'widgets': deepcopy(layout.widgets if layout else DEFAULT_WIDGETS)}
+    widgets = _expanded_widgets(layout.widgets) if layout else deepcopy(DEFAULT_WIDGETS)
+    return {'version': 1, 'revision': layout.revision if layout else 0, 'widgets': widgets}
 
 
 @api_view(['GET', 'PUT'])

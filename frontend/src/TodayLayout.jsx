@@ -2,21 +2,33 @@ import {useEffect,useState,useRef} from 'react';
 import {api} from './api';
 import i18n from './i18n';
 import './today-layout.css';
-const ids=['weather','priority','waste','next','tasks','shopping','routines','birthdays','notes'];
+
+const legacyIds=['weather','priority','waste','next','tasks','shopping','routines','birthdays','notes'];
+const ids=[...legacyIds,'loyalty','inbox'];
 const defaults=()=>ids.map(id=>({id,visible:true,size:'full'}));
-const validLayout=value=>value?.version===1&&Number.isInteger(value.revision)&&value.revision>=0&&Array.isArray(value.widgets)&&value.widgets.length===ids.length&&new Set(value.widgets.map(w=>w.id)).size===ids.length&&value.widgets.every(w=>ids.includes(w.id)&&typeof w.visible==='boolean'&&['full','compact'].includes(w.size));
-const strings={de:{edit:'Heute bearbeiten',heading:'Dein Heute',hint:'Nur für dich in dieser Familie. Die Vorschau aktualisiert sich sofort.',save:'Speichern',cancel:'Abbrechen',reset:'Standard wiederherstellen',up:'Nach oben',down:'Nach unten',compact:'Kompakt',full:'Ausführlich',visible:'Anzeigen',empty:'Alle Widgets sind ausgeblendet. Bearbeite Heute, um sie einzublenden.',error:'Die Ansicht konnte nicht gespeichert werden. Dein Entwurf bleibt erhalten.',loadError:'Deine gespeicherte Ansicht konnte nicht geladen werden.',reload:'Erneut laden',conflict:'Die Ansicht wurde auf einem anderen Gerät geändert. Lade sie erneut, bevor du weiter bearbeitest.',preview:'Vorschau',waste:'Müllabfuhr',weather:'Wetter',priority:'Prioritäten',next:'Nächster Termin',tasks:'Aufgaben',shopping:'Einkauf',routines:'Routinen',birthdays:'Geburtstage',notes:'Notizzettel'},en:{edit:'Edit Today',heading:'Your Today',hint:'Only for you in this family. The preview updates immediately.',save:'Save',cancel:'Cancel',reset:'Restore defaults',up:'Move up',down:'Move down',compact:'Compact',full:'Detailed',visible:'Show',empty:'All widgets are hidden. Edit Today to show them.',error:'Could not save your layout. Your draft has been kept.',loadError:'Your saved layout could not be loaded.',reload:'Reload',conflict:'This layout changed on another device. Reload it before continuing to edit.',preview:'Preview',waste:'Waste collection',weather:'Weather',priority:'Priorities',next:'Next event',tasks:'Tasks',shopping:'Shopping',routines:'Routines',birthdays:'Birthdays',notes:'Notes'}};
+function normalizeLayout(value){
+ if(value?.version!==1||!Number.isInteger(value.revision)||value.revision<0||!Array.isArray(value.widgets))return null;
+ const widgets=[];const seen=new Set();
+ for(const widget of value.widgets){
+  if(!widget||typeof widget!=='object'||!ids.includes(widget.id)||seen.has(widget.id)||typeof widget.visible!=='boolean'||!['full','compact'].includes(widget.size))return null;
+  seen.add(widget.id);widgets.push({...widget});
+ }
+ if(legacyIds.some(id=>!seen.has(id)))return null;
+ ids.forEach(id=>{if(!seen.has(id))widgets.push({id,visible:false,size:'full'})});
+ return {...value,widgets};
+}
+const strings={de:{edit:'Heute bearbeiten',heading:'Dein Heute',hint:'Nur für dich in dieser Familie. Die Vorschau aktualisiert sich sofort.',save:'Speichern',cancel:'Abbrechen',reset:'Standard wiederherstellen',up:'Nach oben',down:'Nach unten',compact:'Kompakt',full:'Ausführlich',visible:'Anzeigen',empty:'Alle Widgets sind ausgeblendet. Bearbeite Heute, um sie einzublenden.',error:'Die Ansicht konnte nicht gespeichert werden. Dein Entwurf bleibt erhalten.',loadError:'Deine gespeicherte Ansicht konnte nicht geladen werden.',reload:'Erneut laden',conflict:'Die Ansicht wurde auf einem anderen Gerät geändert. Lade sie erneut, bevor du weiter bearbeitest.',preview:'Vorschau',waste:'Müllabfuhr',weather:'Wetter',priority:'Prioritäten',next:'Nächster Termin',tasks:'Aufgaben',shopping:'Einkauf',routines:'Routinen',birthdays:'Geburtstage',notes:'Notizzettel',loyalty:'Bonuskarten',inbox:'Posteingang'},en:{edit:'Edit Today',heading:'Your Today',hint:'Only for you in this family. The preview updates immediately.',save:'Save',cancel:'Cancel',reset:'Restore defaults',up:'Move up',down:'Move down',compact:'Compact',full:'Detailed',visible:'Show',empty:'All widgets are hidden. Edit Today to show them.',error:'Could not save your layout. Your draft has been kept.',loadError:'Your saved layout could not be loaded.',reload:'Reload',conflict:'This layout changed on another device. Reload it before continuing to edit.',preview:'Preview',waste:'Waste collection',weather:'Weather',priority:'Priorities',next:'Next event',tasks:'Tasks',shopping:'Shopping',routines:'Routines',birthdays:'Birthdays',notes:'Notes',loyalty:'Loyalty cards',inbox:'Inbox'}};
 export default function TodayLayout({family,header,onboarding,widgets}){
  const s=strings[i18n.language.startsWith('de')?'de':'en'];
  const editButton=useRef(null);const editorHeading=useRef(null);
  const [saved,setSaved]=useState({version:1,revision:0,widgets:defaults()});const [draft,setDraft]=useState(null);const [busy,setBusy]=useState(false);const [error,setError]=useState('');const [loaded,setLoaded]=useState(false);const [conflict,setConflict]=useState(false);
- const load=async()=>{setBusy(true);try{const result=await api(`/today-layout/?family=${family.id}`);if(!validLayout(result))throw new Error('layout');setSaved(result);setDraft(null);setError('');setConflict(false);setLoaded(true)}catch{setError(s.loadError);setLoaded(false)}finally{setBusy(false)}};
- useEffect(()=>{let current=true;setLoaded(false);setDraft(null);setError('');setSaved({version:1,revision:0,widgets:defaults()});api(`/today-layout/?family=${family.id}`).then(result=>{if(current){if(!validLayout(result))throw new Error('layout');setSaved(result);setLoaded(true)}}).catch(()=>{if(current)setError(s.loadError)});return()=>{current=false}},[family.id]);
+ const load=async()=>{setBusy(true);try{const result=normalizeLayout(await api(`/today-layout/?family=${family.id}`));if(!result)throw new Error('layout');setSaved(result);setDraft(null);setError('');setConflict(false);setLoaded(true)}catch{setError(s.loadError);setLoaded(false)}finally{setBusy(false)}};
+ useEffect(()=>{let current=true;setLoaded(false);setDraft(null);setError('');setSaved({version:1,revision:0,widgets:defaults()});api(`/today-layout/?family=${family.id}`).then(result=>{if(current){const normalized=normalizeLayout(result);if(!normalized)throw new Error('layout');setSaved(normalized);setLoaded(true)}}).catch(()=>{if(current)setError(s.loadError)});return()=>{current=false}},[family.id]);
  useEffect(()=>{if(draft)editorHeading.current?.focus()},[Boolean(draft)]);
  const finish=()=>{setDraft(null);editButton.current?.focus()};
  const change=(index,patch)=>setDraft(draft.map((widget,i)=>i===index?{...widget,...patch}:widget));
  const move=(index,delta)=>{const next=[...draft];[next[index],next[index+delta]]=[next[index+delta],next[index]];setDraft(next)};
- const save=async()=>{setBusy(true);setError('');try{const result=await api(`/today-layout/?family=${family.id}`,{method:'PUT',body:JSON.stringify({...saved,widgets:draft})});setSaved(result);finish()}catch(e){const stale=e.message.includes('another device');setConflict(stale);setError(stale?s.conflict:s.error)}finally{setBusy(false)}};
+ const save=async()=>{setBusy(true);setError('');try{const result=normalizeLayout(await api(`/today-layout/?family=${family.id}`,{method:'PUT',body:JSON.stringify({...saved,widgets:draft})}));if(!result)throw new Error('layout');setSaved(result);finish()}catch(e){const stale=e.message.includes('another device');setConflict(stale);setError(stale?s.conflict:s.error)}finally{setBusy(false)}};
  const active=(draft||saved.widgets).filter(w=>w.visible&&widgets[w.id]);
  const render=widget=><div key={widget.id} data-today-widget={widget.id} className={`today-widget ${widget.size==='compact'?'today-widget-compact':''}`}>{widgets[widget.id]}</div>;
  // Preserve the familiar adjacent task/shopping columns in the default order.

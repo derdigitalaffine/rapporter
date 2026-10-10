@@ -52,8 +52,6 @@ def enqueue_notification(membership, event_type, context, *, url=None):
             batch.attempts = 0
         context = {k: str(v) if v is not None else None for k, v in context.items()}
         prior = events.get(key)
-        # JSONB does not preserve object-key insertion order, so keep an explicit sequence.
-        sequence = max((event.get("sequence", 0) for event in events.values()), default=0) + 1
         # Checking and undoing in the same burst cancel, while a new item remains an addition.
         if prior and prior["event_type"] == "shopping.item.completed" and event_type == "shopping.item.reopened":
             events.pop(key, None)
@@ -63,9 +61,9 @@ def enqueue_notification(membership, event_type, context, *, url=None):
             if prior and prior["event_type"] == "shopping.item.created":
                 event_type = "shopping.item.created"
             if key in events or len(events) < MAX_EVENTS:
-                events[key] = {"event_type": event_type, "context": context, "url": url, "sequence": prior.get("sequence", sequence) if prior else sequence}
+                events[key] = {"event_type": event_type, "context": context, "url": url, "queued_at": now.isoformat()}
             else:
-                events["overflow"] = {"event_type": "shopping.item.updated" if shopping else event_type, "context": {"list_id": context.get("list_id"), "list": context.get("list"), "overflow": True}, "url": url, "sequence": sequence}
+                events["overflow"] = {"event_type": "shopping.item.updated" if shopping else event_type, "context": {"list_id": context.get("list_id"), "list": context.get("list"), "overflow": True}, "url": url, "queued_at": now.isoformat()}
         batch.events = events
         batch.delivered_at = None
         batch.save(update_fields=["events", "due_at", "attempts", "delivered_at", "updated_at"])
@@ -106,7 +104,8 @@ def _visible_events(batch, pref):
                 if not receipt or receipt.read_at:
                     continue
         result.append(event)
-    return sorted(result, key=lambda event: event.get("sequence", 0))
+    result.sort(key=lambda event: event.get("queued_at") or "")
+    return result
 
 
 def _render(batch, events):
