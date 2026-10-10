@@ -6,9 +6,21 @@ Im Kalender siehst du eigene FamilyOS-Termine und – wenn eingerichtet – Term
 
 ## Überblick behalten
 
-Öffne **Kalender**. Die Agenda gruppiert Termine nach Datum.
+Öffne **Kalender**. Standardmäßig startet FamilyOS in der **Wochenansicht**. Oben wechselst du zwischen **Woche**, **Monat** und **Liste**.
+
+- **Woche** zeigt die sieben Tage kompakt und darunter den ausgewählten Tag.
+- **Monat** hilft bei der längerfristigen Orientierung; ein Tag lässt sich direkt auswählen.
+- **Liste** behält die bisherige Agenda bei und gruppiert Termine nach Datum. Dort kannst du bei Bedarf auch vergangene Termine einblenden.
+
+Mit **Heute** springst du zurück zum aktuellen Zeitraum. In Woche und Monat wechselst du mit den Pfeilen zum vorherigen oder nächsten Zeitraum. Die gewählte Ansicht bleibt in der URL erhalten, sodass Neu laden und Browser-Navigation nicht unerwartet auf eine andere Ansicht zurückspringen.
 
 Du kannst Quellen filtern. Das ist praktisch, wenn zum Beispiel Familienkalender, Abfalltermine oder externe Kalender gleichzeitig sichtbar sind.
+
+## Wochenkompass auf Heute
+
+Der **Wochenkompass** auf **Heute** zeigt die aktuelle Kalenderwoche mit relevanten Markierungen. Mit den Pfeilen kannst du eine Woche vor- oder zurückgehen. Sobald du die aktuelle Woche verlassen hast, bringt **Heute** dich mit einem Tipp wieder zurück.
+
+Ein Tipp auf einen Wochentag öffnet den Kalender direkt auf diesem Datum. Der Kalender startet dabei weiterhin in der Wochenansicht.
 
 ## Eigenen Termin anlegen
 
@@ -28,7 +40,7 @@ Solche Einträge sind in FamilyOS in der Regel **nur lesbar**. Änderungen nimms
 
 ## Vergangene Termine
 
-Wenn du ältere Einträge brauchst, kannst du vergangene Termine einblenden. Im Alltag bleiben sie sonst im Hintergrund.
+Wenn du ältere Einträge brauchst, wechsle in die **Liste** und blende vergangene Termine ein. Im Alltag bleiben sie sonst im Hintergrund.
 
 ## Externe Kalender verbinden
 
