@@ -6,7 +6,8 @@ async function boot(page,path='/'){
   await installApiMocks(page,{dismissOnboarding:true});
   await page.goto(path);
   await page.waitForLoadState('networkidle');
-  await expect(path.includes('page=tasks')?page.getByRole('heading',{name:'Aufgaben',exact:true}):page.locator('.today-hero h1')).toBeVisible();
+  if(path.includes('page=todo'))await expect(page.getByRole('heading',{name:'To-dos',exact:true})).toBeVisible();
+  else await expect(page.locator('.today-hero h1')).toBeVisible();
 }
 
 async function announceUpdate(page){
@@ -17,7 +18,7 @@ async function announceUpdate(page){
 }
 
 test('PWA update waits while a task editor has unsaved input and activates only on request',async({page})=>{
-  await boot(page,'/?page=tasks');
+  await boot(page,'/?page=todo');
   await page.locator('.global-create-fab').click();
   const title=page.getByLabel('Titel');
   await expect(title).toBeFocused();
@@ -42,7 +43,7 @@ test('PWA update waits while a task editor has unsaved input and activates only 
   await expect.poll(()=>page.evaluate(()=>window.__pwaActivationRequests)).toBe(1);
 });
 
-test('service worker exposes controlled activation and still excludes private API responses',async({page})=>{
+test('service worker is build-versioned, exposes controlled activation and excludes private API responses',async({page})=>{
   await boot(page);
   const result=await page.evaluate(async()=>{
     if(!('serviceWorker' in navigator))return {supported:false};
@@ -59,11 +60,13 @@ test('service worker exposes controlled activation and still excludes private AP
       supported:true,
       active:Boolean(registration.active),
       controlledActivation:source.includes("event.data?.type==='SKIP_WAITING'")&&!source.includes('self.skipWaiting();\n  event.waitUntil(cacheAppShell())'),
+      stampedBuild:/familyos-build-[0-9a-f]{12}/.test(source)&&!source.includes('__BUILD_ID__'),
       privateCached:urls.some(path=>path.startsWith('/api/')),
     };
   });
   expect(result.supported).toBe(true);
   expect(result.active).toBe(true);
   expect(result.controlledActivation).toBe(true);
+  expect(result.stampedBuild).toBe(true);
   expect(result.privateCached).toBe(false);
 });
