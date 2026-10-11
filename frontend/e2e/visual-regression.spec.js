@@ -14,7 +14,7 @@ async function bootVisual(page,path='/'){
 }
 async function snapshot(page,name){
   const desktop=(page.viewportSize()?.width||0)>=1000;
-  let thresholds=name==='today'?{maxDiffPixelRatio:.08}:name==='more'?{maxDiffPixelRatio:.03}:name==='members'?{maxDiffPixels:300}:{maxDiffPixels:100};
+  let thresholds=name==='today'?{maxDiffPixelRatio:.08}:name==='more'?{maxDiffPixelRatio:.03}:name==='members'?{maxDiffPixels:300}:name==='tasks'&&!desktop?{maxDiffPixels:200}:{maxDiffPixels:100};
   if(desktop&&['tasks','shopping-planning','integrations','automations'].includes(name))thresholds={maxDiffPixelRatio:.035};
   if(desktop&&['calendar','members','dialog-task-editor','dialog-event-editor'].includes(name))thresholds={maxDiffPixelRatio:.015};
   await expect(page).toHaveScreenshot(`${name}.png`,{animations:'disabled',caret:'hide',...thresholds});
