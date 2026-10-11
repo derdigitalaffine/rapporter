@@ -80,8 +80,10 @@ A `(source_key, source_version, locale)` tuple is unique.
 
 Validation rejects malformed/non-JSON payloads, duplicate stable keys, empty vaccination dose sequences, duplicate or non-increasing dose numbers, implausible negative/reversed age windows, target dates outside a window, and implausible minimum intervals.
 
-## Historical reproducibility
+## Historical reproducibility and calendar privacy
 
-New preventive appointment events copy the exact package ID, source key/version, checksum, rule key and age window into their private event payload. Existing events use `get_or_create` and are therefore not silently rewritten when a newer reference package is published. Appointment-question validation accepts stable exam keys from published and superseded history.
+Family-wide calendar events remain deliberately generic: they contain no child identity, U-exam key, medical age window or pediatric source payload. Exact provenance is stored instead in the baby-scoped, immutable `PediatricPreventiveEventReference` relation linking the baby and generic event to the package ID, source key/version/checksum, stable rule key and exact age window.
+
+New events bind that private record to the package version active when the event is first created. Existing events and their private provenance are not silently rewritten when a newer reference package is published. Legacy preventive events that predate the reference-package feature are bound to the explicit bundled fallback rather than retroactively attributed to a newer package. Appointment-question validation accepts stable exam keys from published and superseded history.
 
 Until the first reviewed `de_pediatric_standard` package is published, the existing server-side U-exam schedule remains available as an explicitly marked `bundled_fallback`. This preserves current behavior without pretending the fallback is a reviewed/published database package. Vaccination rules are not fabricated in the fallback; they enter production only through the reviewed publish workflow.
