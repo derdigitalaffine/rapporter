@@ -7,6 +7,9 @@ const LEGACY_BRAND_ICON='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 25
 async function bootVisual(page,path='/'){
   await page.addInitScript(now=>{const RealDate=Date;globalThis.Date=class extends RealDate{constructor(...args){super(...(args.length?args:[now]))}static now(){return new RealDate(now).getTime()} }},FIXED_NOW);
   const state=await installApiMocks(page,{dismissOnboarding:true});
+  // Historical page baselines intentionally exercise the entitlement fail-open
+  // shell. The tier/lock presentation has focused functional coverage of its own.
+  await page.route('**/api/entitlements/**',route=>route.fulfill({status:503,contentType:'application/json',body:'{}'}));
   state.tasks[0].due_at='2026-10-09T15:00:00.000Z';
   state.events[0].starts_at='2026-10-08T10:00:00.000Z';state.events[0].ends_at='2026-10-08T11:00:00.000Z';
   state.events[1].starts_at='2026-10-09T17:00:00.000Z';state.events[1].ends_at='2026-10-09T18:00:00.000Z';

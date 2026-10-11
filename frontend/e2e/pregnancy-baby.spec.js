@@ -6,6 +6,7 @@ async function installBabyMocks(page,{enabled=true,authorized=true,canManage=tru
     key:'pregnancy_baby',enabled,authorized,can_manage:canManage,show_in_main_navigation:showInNav,
     permissions:authorized?{can_view_pregnancy:true,can_log_care:true,can_view_growth_development:true,is_guardian:canManage}:null,
   };
+  await page.route('**/api/entitlements/**',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({family:'family-1',tier:'premium',display_name:'Premium',capabilities:['family_management','calendar','todo','shopping','pinboard','notes','pregnancy_baby'],origin_summary:'test',origins:['test']})}));
   await page.route('**/api/baby/**',async route=>{
     const request=route.request();const url=new URL(request.url());const path=url.pathname.replace(/^\/api/,'');const method=request.method();
     if(path==='/baby/module/'){
