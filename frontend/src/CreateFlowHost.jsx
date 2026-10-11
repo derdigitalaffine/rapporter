@@ -1,5 +1,5 @@
 import BirthdayEditor from './BirthdayEditor';
-import {useState} from 'react';
+import {useEffect,useRef,useState} from 'react';
 import {TaskEditor,ShoppingEditor} from './SmartEditors';
 import ListEditor from './ListEditor';
 import EventEditor from './EventEditor';
@@ -15,6 +15,8 @@ import {pageHref} from './navigation';
 
 export default function CreateFlowHost({action,family,data,context={},onClose,onRefresh,onNavigate}){
  const [createdShoppingList,setCreatedShoppingList]=useState(null);
+ const learnedModuleKey=useRef('');
+ useEffect(()=>{learnedModuleKey.current=''},[action,family?.id]);
  if(!action||!family)return null;
  const taskLists=(data?.task_lists||[]).filter(list=>!list.archived);
  const shoppingLists=[...(data?.shopping_lists||[]).filter(list=>!list.archived),...(createdShoppingList?[createdShoppingList]:[])].filter((list,index,all)=>all.findIndex(row=>String(row.id)===String(list.id))===index);
@@ -23,7 +25,11 @@ export default function CreateFlowHost({action,family,data,context={},onClose,on
  const taskListId=selectedTaskList?.id||(context.taskListId&&context.taskListId!=='all'?context.taskListId:taskLists[0]?.id||'');
  const shoppingList=selectedShoppingList||(context.shoppingListId&&context.shoppingListId!=='all'?shoppingLists.find(list=>String(list.id)===String(context.shoppingListId)):shoppingLists[0]);
  function learnSuccessfulCreate(){
-  if(action==='baby'||action==='pets')return;
+  if(action==='baby'||action==='pets'){
+   const key=`${family.id}:${action}`;
+   if(learnedModuleKey.current===key)return;
+   learnedModuleKey.current=key;
+  }
   const origin=typeof context.origin==='string'?context.origin:'';
   recordCreateUsage({familyId:family.id,actionId:action,originPage:origin,contextBucket:origin}).catch(()=>{});
  }
@@ -36,8 +42,8 @@ export default function CreateFlowHost({action,family,data,context={},onClose,on
   window.dispatchEvent(new PopStateEvent('popstate',{state}));
  }
  if(action==='birthday')return <BirthdayEditor family={family} onClose={onClose} onSaved={saved}/>;
- if(action==='baby')return <BabyCreateSheet family={family} onClose={onClose} onOpenPage={openModule}/>;
- if(action==='pets')return <PetCreateSheet family={family} onClose={onClose} onOpenPage={openModule}/>;
+ if(action==='baby')return <BabyCreateSheet family={family} onClose={onClose} onOpenPage={openModule} onSuccessfulCreate={learnSuccessfulCreate}/>;
+ if(action==='pets')return <PetCreateSheet family={family} onClose={onClose} onOpenPage={openModule} onSuccessfulCreate={learnSuccessfulCreate}/>;
  if(action==='task')return <TaskEditor family={family} lists={taskLists} members={family.memberships||[]} defaultListId={taskListId} onClose={onClose} onSaved={saved}/>;
  if(action==='shoppingItem'){
   if(!shoppingLists.length)return <ListEditor type="shopping" family={family} onClose={onClose} onSaved={async list=>{setCreatedShoppingList(list);await onRefresh?.()}}/>;
