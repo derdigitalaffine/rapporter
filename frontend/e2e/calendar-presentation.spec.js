@@ -70,13 +70,19 @@ test('timed end is exclusive at midnight while real cross-midnight spans keep ev
  await expect(october9.locator('.calendar-event-chip').filter({hasText:'Mehrtag bis Mitternacht'})).toHaveCount(0);
 });
 
-test('calendar grids use roving keyboard focus and announce period changes',async({page})=>{
+test('calendar grids use roving keyboard focus and announce period changes',async({page},testInfo)=>{
  await installApiMocks(page);
  await page.goto('/?page=calendar&day=2026-10-07');
 
  const period=page.locator('.calendar-period-title');
  await expect(period).toHaveAttribute('aria-live','polite');
  await expect(period).toHaveAttribute('aria-atomic','true');
+
+ if(testInfo.project.name==='mobile-chromium'){
+  await expect(page.locator('.calendar-week-mobile')).toBeVisible();
+  await expect(page.locator('.calendar-week-grid')).toBeHidden();
+  return;
+ }
 
  const weekGrid=page.locator('.calendar-week-grid');
  await expect(weekGrid.locator('.calendar-day-head[tabindex="0"]')).toHaveCount(1);
