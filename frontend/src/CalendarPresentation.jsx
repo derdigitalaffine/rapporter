@@ -1,4 +1,4 @@
-import {useEffect,useMemo,useState} from 'react';
+import {useEffect,useMemo,useRef,useState} from 'react';
 import {Icon} from './icons';
 import {formatDateTime} from './locale';
 import {eventDayKeys,eventMarker,eventSourceDescriptor,eventSourceStyle,isoWeekNumber,isHolidayEvent,zonedDateKey} from './calendar-event-ui';
@@ -17,12 +17,36 @@ export default function CalendarPresentation({view,onViewChange,onRangeChange,ev
  const today=zonedDateKey(new Date(),timeZone);
  const [anchor,setAnchor]=useState(targetDay||today);
  const [selectedDay,setSelectedDay]=useState(targetDay||today);
+ const pendingDayFocus=useRef(null);
  useEffect(()=>{if(targetDay){setAnchor(targetDay);setSelectedDay(targetDay)}},[targetDay]);
  const weekDays=useMemo(()=>weekKeys(anchor),[anchor]);
  const monthDays=useMemo(()=>monthGrid(anchor),[anchor]);
  const visibleRange=useMemo(()=>rangeForView(view,anchor),[view,anchor]);
  useEffect(()=>{onRangeChange?.(visibleRange)},[onRangeChange,visibleRange]);
+ useEffect(()=>{
+  const day=pendingDayFocus.current;
+  if(!day)return;
+  const candidates=[...document.querySelectorAll(`[data-calendar-day="${day}"]`)];
+  const target=candidates.find(element=>element.offsetParent!==null);
+  if(target){target.focus();pendingDayFocus.current=null}
+ },[anchor,selectedDay,view]);
  const eventsFor=day=>eventsForDay(events,day,timeZone);
+ function selectDay(day,{focus=false}={}){
+  if(focus)pendingDayFocus.current=day;
+  setSelectedDay(day);setAnchor(day);
+ }
+ function navigateDay(day,key){
+  let target='';
+  if(key==='ArrowLeft')target=addDays(day,-1);
+  else if(key==='ArrowRight')target=addDays(day,1);
+  else if(key==='ArrowUp')target=addDays(day,-7);
+  else if(key==='ArrowDown')target=addDays(day,7);
+  else if(key==='Home')target=weekKeys(day)[0];
+  else if(key==='End')target=weekKeys(day)[6];
+  if(!target)return false;
+  selectDay(target,{focus:true});return true;
+ }
+ function handleDayKeyDown(event,day){if(navigateDay(day,event.key))event.preventDefault()}
  function movePeriod(direction){
   if(view==='month'){const next=addMonths(anchor,direction);setAnchor(next);setSelectedDay(next);return}
   const next=addDays(anchor,direction*7);setAnchor(next);setSelectedDay(next);
@@ -34,31 +58,31 @@ export default function CalendarPresentation({view,onViewChange,onRangeChange,ev
     {view!=='list'&&<button className="calendar-icon-button" onClick={()=>movePeriod(-1)} aria-label={t('calendarUi.previousPeriod')}><Icon name="back"/></button>}
     <button className={`secondary compact calendar-today ${anchor===today?'is-current':''}`} onClick={goToday}>{t('calendarUi.today')}</button>
     {view!=='list'&&<button className="calendar-icon-button" onClick={()=>movePeriod(1)} aria-label={t('calendarUi.nextPeriod')}><Icon name="next"/></button>}
-    <div className="calendar-period-title"><strong>{periodTitle(view,anchor,language)}</strong>{view==='week'&&<span>{weekLabel(anchor,t)}</span>}</div>
+    <div className="calendar-period-title" aria-live="polite" aria-atomic="true"><strong>{periodTitle(view,anchor,language)}</strong>{view==='week'&&<span>{weekLabel(anchor,t)}</span>}</div>
    </div>
    <div className="calendar-view-switch" role="group" aria-label={t('calendarUi.chooseView')}>
     {VIEW_VALUES.map(value=><button key={value} aria-pressed={view===value} className={view===value?'active':''} onClick={()=>onViewChange(value)}>{t(`calendarUi.view${capitalize(value)}`)}</button>)}
    </div>
   </section>
-  {view==='week'&&<WeekView days={weekDays} selectedDay={selectedDay} today={today} eventsFor={eventsFor} onSelect={day=>{setSelectedDay(day);setAnchor(day)}} onOpen={onOpen} t={t} language={language}/>} 
-  {view==='month'&&<MonthView days={monthDays} anchor={anchor} selectedDay={selectedDay} today={today} eventsFor={eventsFor} onSelect={day=>{setSelectedDay(day);setAnchor(day)}} onOpen={onOpen} t={t} language={language}/>} 
+  {view==='week'&&<WeekView days={weekDays} selectedDay={selectedDay} today={today} eventsFor={eventsFor} onSelect={selectDay} onDayKeyDown={handleDayKeyDown} onOpen={onOpen} t={t} language={language}/>} 
+  {view==='month'&&<MonthView days={monthDays} anchor={anchor} selectedDay={selectedDay} today={today} eventsFor={eventsFor} onSelect={selectDay} onDayKeyDown={handleDayKeyDown} onOpen={onOpen} t={t} language={language}/>} 
   {view==='list'&&listContent}
  </>
 }
 
-function WeekView({days,selectedDay,today,eventsFor,onSelect,onOpen,t,language}){
+function WeekView({days,selectedDay,today,eventsFor,onSelect,onDayKeyDown,onOpen,t,language}){
  return <section className="calendar-view calendar-week-view" aria-label={t('calendarUi.viewWeek')}>
-  <div className="calendar-week-grid">{days.map(day=>{const rows=eventsFor(day);const holiday=rows.some(isHolidayEvent);return <article key={day} className={`calendar-week-day ${day===today?'is-today':''} ${day===selectedDay?'is-selected':''} ${holiday?'has-holiday':''}`}><button className="calendar-day-head" onClick={()=>onSelect(day)} aria-current={day===today?'date':undefined}><span>{weekdayLabel(day,language,'short')}</span><strong>{Number(day.slice(-2))}</strong></button><div className="calendar-day-events">{rows.length?rows.slice(0,5).map(event=><EventChip key={`${event.id}-${day}`} event={event} onOpen={()=>onOpen(event)} t={t} language={language}/>):<span className="calendar-day-empty">{t('calendarUi.free')}</span>}{rows.length>5&&<button className="calendar-more" onClick={()=>onSelect(day)}>+{rows.length-5}</button>}</div></article>})}</div>
+  <div className="calendar-week-grid">{days.map(day=>{const rows=eventsFor(day);const holiday=rows.some(isHolidayEvent);return <article key={day} className={`calendar-week-day ${day===today?'is-today':''} ${day===selectedDay?'is-selected':''} ${holiday?'has-holiday':''}`}><button className="calendar-day-head" data-calendar-day={day} tabIndex={day===selectedDay?0:-1} onKeyDown={event=>onDayKeyDown(event,day)} onClick={()=>onSelect(day)} aria-current={day===today?'date':undefined}><span>{weekdayLabel(day,language,'short')}</span><strong>{Number(day.slice(-2))}</strong></button><div className="calendar-day-events">{rows.length?rows.slice(0,5).map(event=><EventChip key={`${event.id}-${day}`} event={event} onOpen={()=>onOpen(event)} t={t} language={language}/>):<span className="calendar-day-empty">{t('calendarUi.free')}</span>}{rows.length>5&&<button className="calendar-more" onClick={()=>onSelect(day)}>+{rows.length-5}</button>}</div></article>})}</div>
   <div className="calendar-week-mobile"><div className="calendar-mobile-daystrip">{days.map(day=>{const rows=eventsFor(day);const holiday=rows.find(isHolidayEvent);const markerRows=rows.filter(event=>!isHolidayEvent(event));const visible=markerRows.slice(0,3);const hidden=Math.max(0,markerRows.length-visible.length);const description=rows.map(event=>event.title).join(', ');return <button key={day} className={`${day===selectedDay?'active':''} ${day===today?'is-today':''} ${holiday?'has-holiday':''}`} aria-current={day===today?'date':undefined} aria-label={`${longDayLabel(day,language)}${description?`. ${description}`:''}`} onClick={()=>onSelect(day)}><span className="calendar-mobile-weekday">{weekdayLabel(day,language,'narrow')}</span><strong>{Number(day.slice(-2))}</strong>{holiday&&<span className="calendar-mobile-holiday-mark" aria-hidden="true"><Icon name="school" size={8}/></span>}<span className="calendar-mobile-markers" aria-hidden="true">{visible.map((event,index)=>{const marker=eventMarker(event);return <i key={`${event.id}-${index}`} className={`calendar-mobile-marker ${marker.className}`}><Icon name={marker.icon} size={6}/></i>})}{hidden>0&&<em>+{hidden}</em>}</span></button>})}</div></div>
   <SelectedDay day={selectedDay} events={eventsFor(selectedDay)} onOpen={onOpen} t={t} language={language}/>
  </section>
 }
 
-function MonthView({days,anchor,selectedDay,today,eventsFor,onSelect,onOpen,t,language}){
+function MonthView({days,anchor,selectedDay,today,eventsFor,onSelect,onDayKeyDown,onOpen,t,language}){
  const month=anchor.slice(0,7);
  return <section className="calendar-view calendar-month-view" aria-label={t('calendarUi.viewMonth')}>
   <div className="calendar-month-weekdays" aria-hidden="true">{weekKeys('2026-06-01').map(day=><span key={day}>{weekdayLabel(day,language,'short')}</span>)}</div>
-  <div className="calendar-month-grid">{days.map(day=>{const rows=eventsFor(day);const holiday=rows.some(isHolidayEvent);return <article key={day} className={`calendar-month-day ${day.slice(0,7)!==month?'outside':''} ${day===today?'is-today':''} ${day===selectedDay?'is-selected':''} ${holiday?'has-holiday':''}`}><button className="calendar-month-date" onClick={()=>onSelect(day)} aria-label={longDayLabel(day,language)} aria-current={day===today?'date':undefined}>{Number(day.slice(-2))}</button><div className="calendar-month-events">{rows.slice(0,3).map(event=><EventChip compact key={`${event.id}-${day}`} event={event} onOpen={()=>onOpen(event)} t={t} language={language}/>)}{rows.length>3&&<button className="calendar-more" onClick={()=>onSelect(day)}>+{rows.length-3}</button>}</div></article>})}</div>
+  <div className="calendar-month-grid">{days.map(day=>{const rows=eventsFor(day);const holiday=rows.some(isHolidayEvent);return <article key={day} className={`calendar-month-day ${day.slice(0,7)!==month?'outside':''} ${day===today?'is-today':''} ${day===selectedDay?'is-selected':''} ${holiday?'has-holiday':''}`}><button className="calendar-month-date" data-calendar-day={day} tabIndex={day===selectedDay?0:-1} onKeyDown={event=>onDayKeyDown(event,day)} onClick={()=>onSelect(day)} aria-label={longDayLabel(day,language)} aria-current={day===today?'date':undefined}>{Number(day.slice(-2))}</button><div className="calendar-month-events">{rows.slice(0,3).map(event=><EventChip compact key={`${event.id}-${day}`} event={event} onOpen={()=>onOpen(event)} t={t} language={language}/>)}{rows.length>3&&<button className="calendar-more" onClick={()=>onSelect(day)}>+{rows.length-3}</button>}</div></article>})}</div>
   <SelectedDay day={selectedDay} events={eventsFor(selectedDay)} onOpen={onOpen} t={t} language={language}/>
  </section>
 }
