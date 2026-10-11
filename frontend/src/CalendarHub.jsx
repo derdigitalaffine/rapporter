@@ -12,9 +12,11 @@ import CalendarPresentation,{calendarViewFromLocation} from './CalendarPresentat
 import EventEditor from './EventEditor';
 import './calendar-hub.css';
 
+const CALENDAR_SOURCE_FILTERS=new Set(['birthday','family','warning','waste','weather','transit','school','calendar']);
+
 export default function CalendarHub({family,onBack,t}){
- const [events,setEvents]=useState([]);const [edit,setEdit]=useState(null);const [detail,setDetail]=useState(null);const [filter,setFilter]=useState('all');const [showPast,setShowPast]=useState(false);const [view,setView]=useState(calendarViewFromLocation);
- const loadSequence=useRef(0);const lastRange=useRef(null);
+ const [events,setEvents]=useState([]);const [edit,setEdit]=useState(null);const [detail,setDetail]=useState(null);const [filter,setFilter]=useState(calendarSourceFilterFromLocation);const [showPast,setShowPast]=useState(false);const [view,setView]=useState(calendarViewFromLocation);
+ const loadSequence=useRef(0);const lastRange=useRef(null);const previousFamilyId=useRef(family?.id);
  const targetDay=new URLSearchParams(window.location.search).get('day');
  const load=useCallback(async(range={})=>{
   lastRange.current=range;const sequence=++loadSequence.current;
@@ -24,7 +26,13 @@ export default function CalendarHub({family,onBack,t}){
    setEvents(rows.filter(x=>!family||String(x.family)===String(family.id)).sort((a,b)=>eventTime(a)-eventTime(b)));
   }catch(e){if(sequence===loadSequence.current){setEvents([]);toast(e.message||t('saveFailed'),{type:'error'})}}
  },[family?.id,t]);
- useEffect(()=>{setEvents([]);setFilter('all');setShowPast(Boolean(targetDay&&targetDay<dayKey(new Date())))},[family?.id,targetDay]);
+ useEffect(()=>{
+  const familyChanged=previousFamilyId.current!=null&&family?.id!=null&&String(previousFamilyId.current)!==String(family.id);
+  previousFamilyId.current=family?.id;
+  setEvents([]);
+  if(familyChanged){setFilter('all');replaceCalendarQuery('source',null)}else setFilter(calendarSourceFilterFromLocation());
+  setShowPast(Boolean(targetDay&&targetDay<dayKey(new Date())));
+ },[family?.id,targetDay]);
  const filters=useMemo(()=>{const map=new Map();events.forEach(event=>{const source=eventSourceDescriptor(event,t);if(!map.has(source.filterKey))map.set(source.filterKey,source)});return [...map.values()]},[events,t]);
  const sourceFiltered=useMemo(()=>filter==='all'?events:events.filter(e=>eventSourceFilterKey(e)===filter),[events,filter]);
  const hasPast=useMemo(()=>sourceFiltered.some(eventIsPast),[sourceFiltered]);
@@ -33,12 +41,15 @@ export default function CalendarHub({family,onBack,t}){
  useEffect(()=>{if(view!=='list'||!targetDay)return;const timer=setTimeout(()=>document.getElementById(`calendar-day-${targetDay}`)?.scrollIntoView({block:'start',behavior:'smooth'}),60);return()=>clearTimeout(timer)},[targetDay,grouped.length,showPast,view]);
  function editEvent(e){setDetail(null);setEdit(e)}
  function openEvent(e){if(e.type==='birthday'&&e.payload?.url){window.location.assign(e.payload.url);return}setDetail(e)}
+ function changeFilter(next){
+  const value=next==='all'||isCalendarSourceFilter(next)?next:'all';
+  setFilter(value);
+  replaceCalendarQuery('source',value==='all'?null:value);
+ }
  function changeView(next){
   if(!['week','month','list'].includes(next))return;
   setView(next);
-  const url=new URL(window.location.href);
-  if(next==='week')url.searchParams.delete('view');else url.searchParams.set('view',next);
-  window.history.replaceState(window.history.state,'',`${url.pathname}${url.search}${url.hash}`);
+  replaceCalendarQuery('view',next==='week'?null:next);
  }
  async function eventSaved(saved,{deleted=false}={}){
   const editedId=edit?.id;
@@ -49,9 +60,9 @@ export default function CalendarHub({family,onBack,t}){
  }
  const language=i18n.language;
  const listContent=<>{hasPast&&<div className="calendar-history-toggle"><button className="secondary compact" aria-pressed={showPast} onClick={()=>setShowPast(value=>!value)}><Icon name="calendar"/>{t(showPast?'calendarUi.hidePast':'calendarUi.showPast')}</button></div>}
- <div className="agenda-days">{grouped.length?grouped.map(([day,rows])=><section className={`agenda-day ${targetDay===day?'agenda-day-target':''}`} id={`calendar-day-${day}`} key={day}><div className="agenda-day-head"><div><small>{dayRelativeLabel(day,t,language)}</small><h2>{dayLongLabel(day,t,language)}</h2></div><span>{rows.length}</span></div><div className="agenda-list">{rows.map(e=><CalendarEventRow key={e.id} event={e} family={family} t={t} language={language} onOpen={()=>openEvent(e)}/>)}</div></section>):<div className="smart-empty"><Icon name="calendar" size={34}/><strong>{t('noUpcoming')}</strong><span>{filter==='all'?t('calendarAddHint'):t('calendarUi.noSourceEntries')}</span>{filter!=='all'&&<button className="secondary compact" onClick={()=>setFilter('all')}>{t('calendarUi.showAllSources')}</button>}</div>}</div></>;
+ <div className="agenda-days">{grouped.length?grouped.map(([day,rows])=><section className={`agenda-day ${targetDay===day?'agenda-day-target':''}`} id={`calendar-day-${day}`} key={day}><div className="agenda-day-head"><div><small>{dayRelativeLabel(day,t,language)}</small><h2>{dayLongLabel(day,t,language)}</h2></div><span>{rows.length}</span></div><div className="agenda-list">{rows.map(e=><CalendarEventRow key={e.id} event={e} family={family} t={t} language={language} onOpen={()=>openEvent(e)}/>)}</div></section>):<div className="smart-empty"><Icon name="calendar" size={34}/><strong>{t('noUpcoming')}</strong><span>{filter==='all'?t('calendarAddHint'):t('calendarUi.noSourceEntries')}</span>{filter!=='all'&&<button className="secondary compact" onClick={()=>changeFilter('all')}>{t('calendarUi.showAllSources')}</button>}</div>}</div></>;
  return <div className="smart-page calendar-agenda"><div className="page-head"><button className="back-button" onClick={onBack} aria-label={t('back')}><Icon name="back"/></button><div className="grow"><small>{t('calendarUi.familyCalendar')}</small><h1>{t('calendar')}</h1></div></div><p className="page-intro">{t('calendarUi.calendarIntro')}</p>
- {filters.length>1&&<div className="calendar-filters" aria-label={t('calendarUi.sources')}><button className={filter==='all'?'active':''} onClick={()=>setFilter('all')}><Icon name="calendar"/> {t('all')}</button>{filters.map(source=><button key={source.filterKey} className={filter===source.filterKey?'active':''} onClick={()=>setFilter(source.filterKey)}><Icon name={source.icon}/>{source.key==='family'?(family?.name||source.label):source.label}</button>)}</div>}
+ {(filters.length>1||filter!=='all')&&<div className="calendar-filters" aria-label={t('calendarUi.sources')}><button className={filter==='all'?'active':''} onClick={()=>changeFilter('all')}><Icon name="calendar"/> {t('all')}</button>{filters.map(source=><button key={source.filterKey} className={filter===source.filterKey?'active':''} onClick={()=>changeFilter(source.filterKey)}><Icon name={source.icon}/>{source.key==='family'?(family?.name||source.label):source.label}</button>)}</div>}
  <CalendarPresentation view={view} onViewChange={changeView} onRangeChange={load} events={sourceFiltered} family={family} t={t} language={language} onOpen={openEvent} targetDay={targetDay} listContent={listContent}/>
  {detail&&<EventDetail event={detail} family={family} t={t} language={language} onClose={()=>setDetail(null)} onEdit={isNativeCalendarEvent(detail)?()=>editEvent(detail):null}/>} 
  {edit&&<EventEditor family={family} event={edit.id?edit:null} onClose={()=>setEdit(null)} onSaved={eventSaved}/>}</div>
@@ -68,6 +79,9 @@ function AgendaEvent({event,family,t,language,onOpen}){const source=eventSourceD
 function EventDetail({event,family,t,language,onClose,onEdit}){const source=eventSourceDescriptor(event,t);const displayLabel=isHolidayEvent(event)&&!event.source_meta?(language.startsWith('de')?'Ferien':'School holiday'):source.key==='family'?(family?.name||source.label):source.label;const provider=isNativeCalendarEvent(event)?'FamilyOS':displayLabel;const wasteTone=source.key==='waste'?wasteClass(event):'';const special=isHolidayEvent(event)?'holiday-detail':isWasteEvent(event)?'waste-detail':'';const style=sourceVisualStyle(event);return <div className="sheet-backdrop" onMouseDown={e=>e.target===e.currentTarget&&onClose()}><section className={`quick-sheet calendar-detail ${source.key==='warning'?'warning-detail':''} ${special}`} role="dialog" aria-modal="true"><div className="sheet-handle"/><div className="sheet-head"><div><span className={`source-badge source-${source.key} ${wasteTone}`} style={style}><Icon name={source.icon}/>{displayLabel}</span><h2>{event.title}</h2></div><button className="sheet-close" onClick={onClose} aria-label={t('back')}><Icon name="close"/></button></div><div className="event-detail-body"><div className="event-detail-primary"><span className={`agenda-source-icon source-${source.key} ${wasteTone}`} style={style}><Icon name={source.icon}/></span><div><strong>{formatFullDate(event,t,language)}</strong><span>{formatEventRange(event,t,language)}</span></div></div>{event.payload?.location&&<DetailRow icon="location" label={t('location')} value={event.payload.location}/>} {event.payload?.description&&<DetailRow icon="info" label={t('notes')} value={event.payload.description}/>} {event.payload?.recurrence&&<DetailRow icon="refresh" label={t('recurrence')} value={recurrenceLabel(event.payload.recurrence,t)}/>} {event.payload?.delay_minutes>0&&<DetailRow icon="transit" label={t('calendarUi.delay')} value={`+${event.payload.delay_minutes} ${t('calendarUi.minutes')}`}/>}<DetailRow icon="integrations" label={t('calendarUi.source')} value={provider}/>{event.payload?.source_url==='https://bm.rlp.de/service/ferientermine'&&<a className="text-link" href={event.payload.source_url} target="_blank" rel="noreferrer"><Icon name="link"/>{t('calendarUi.officialSource')}</a>}</div>{onEdit?<button className="primary" onClick={onEdit}><Icon name="edit"/>{t('editEvent')}</button>:<div className="readonly-event-note"><Icon name="info"/><span>{t('calendarUi.readonly')}</span></div>}</section></div>}
 function DetailRow({icon,label,value}){return <div className="event-detail-row"><Icon name={icon}/><div><small>{label}</small><span>{value}</span></div></div>}
 
+function isCalendarSourceFilter(value){return CALENDAR_SOURCE_FILTERS.has(value)||/^integration:[A-Za-z0-9_-]{1,80}$/.test(value||'')}
+function calendarSourceFilterFromLocation(){const value=new URLSearchParams(window.location.search).get('source');return isCalendarSourceFilter(value)?value:'all'}
+function replaceCalendarQuery(name,value){const url=new URL(window.location.href);if(value==null)url.searchParams.delete(name);else url.searchParams.set(name,value);window.history.replaceState(window.history.state,'',`${url.pathname}${url.search}${url.hash}`)}
 function sourceVisualStyle(event){const vars=eventSourceStyle(event);return {...vars,background:vars['--event-soft'],color:vars['--event-tone']}}
 function eventTime(event){return event.starts_at?new Date(event.starts_at).getTime():Number.MAX_SAFE_INTEGER}
 function eventIsPast(event){if(!event.starts_at)return false;const boundary=event.ends_at||event.starts_at;return new Date(boundary).getTime()<Date.now()}
