@@ -7,6 +7,7 @@ import RoutineEditor from './RoutineEditor';
 import LoyaltyCardEditor from './LoyaltyCardEditor';
 import ExpenseEditor from './ExpenseEditor';
 import ContractEditor from './ContractEditor';
+import CorrespondenceEditor from './CorrespondenceEditor';
 
 export default function CreateFlowHost({action,family,data,context={},onClose,onRefresh}){
  const [createdShoppingList,setCreatedShoppingList]=useState(null);
@@ -27,6 +28,7 @@ export default function CreateFlowHost({action,family,data,context={},onClose,on
  if(action==='event')return <EventEditor family={family} onClose={onClose} onSaved={saved}/>;
  if(action==='expense')return <ExpenseEditor family={family} initialMode={context.mode==='receipt'?'receipt':'quick'} onClose={onClose} onSaved={saved} onUndo={onRefresh}/>;
  if(action==='contract')return <ContractEditor family={family} onClose={onClose} onSaved={saved}/>;
+ if(action==='correspondence')return <CorrespondenceEditor family={family} shoppingLists={shoppingLists} onClose={onClose} onSaved={saved}/>;
  if(action==='taskList')return <ListEditor type="task" family={family} onClose={onClose} onSaved={saved}/>;
  if(action==='shoppingList')return <ListEditor type="shopping" family={family} onClose={onClose} onSaved={saved}/>;
  if(action==='routine')return <RoutineEditor family={family} onClose={onClose} onSaved={saved}/>;
