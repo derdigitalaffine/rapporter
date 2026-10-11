@@ -11,6 +11,8 @@ from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+from documents.access import visible_documents
+
 from .context_links import (
     ContextLinkPermissionDenied,
     create_context_link,
@@ -90,6 +92,14 @@ def validate_note_blocks(value):
             text = _text(block['text'], max_length=5000, code='invalid_panel')
             clean = {'type': 'panel', 'tone': block['tone'], 'text': text}
             total_text += len(text)
+        elif block_type == 'document':
+            if set(block) != {'type', 'document_id'}:
+                raise ValidationError('invalid_document_reference')
+            try:
+                document_id = str(uuid.UUID(str(block.get('document_id'))))
+            except (TypeError, ValueError, AttributeError):
+                raise ValidationError('invalid_document_reference') from None
+            clean = {'type': 'document', 'document_id': document_id}
         elif block_type == 'checklist':
             if set(block) != {'type', 'items'} or not isinstance(block.get('items'), list):
                 raise ValidationError('invalid_checklist')
@@ -148,6 +158,14 @@ def _task_links(blocks):
     return result
 
 
+def _document_refs(blocks):
+    return {
+        str(block.get('document_id'))
+        for block in blocks or []
+        if isinstance(block, dict) and block.get('type') == 'document' and block.get('document_id')
+    }
+
+
 class NoteSerializer(serializers.ModelSerializer):
     permission = serializers.SerializerMethodField()
     shares = serializers.SerializerMethodField()
@@ -189,6 +207,21 @@ class NoteSerializer(serializers.ModelSerializer):
         extended_mode = attrs.get('extended_mode', self.instance.extended_mode if self.instance else False)
         if blocks and not extended_mode:
             raise serializers.ValidationError({'blocks': 'extended_mode_required'})
+
+        old_document_ids = _document_refs(self.instance.blocks if self.instance else [])
+        requested_document_ids = _document_refs(blocks)
+        new_document_ids = requested_document_ids - old_document_ids
+        if new_document_ids:
+            if not family:
+                raise serializers.ValidationError({'blocks': 'invalid_document_reference'})
+            visible_ids = {
+                str(value)
+                for value in visible_documents(self.context['request'].user, family.id)
+                .filter(id__in=new_document_ids)
+                .values_list('id', flat=True)
+            }
+            if visible_ids != new_document_ids:
+                raise serializers.ValidationError({'blocks': 'invalid_document_reference'})
 
         old_task_ids = _task_links(self.instance.blocks if self.instance else [])
         for block in blocks or []:
