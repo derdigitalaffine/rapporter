@@ -73,7 +73,7 @@ def superadmin_login(request):
 
     legacy = "@" not in identifier
     user = authenticate_identifier(identifier, password, legacy=legacy)
-    if not user or not user.is_superuser:
+    if not user or not user.is_active or not user.is_superuser:
         logger.info("superadmin_login result=failure")
         return Response({"detail": LOGIN_FAILURE_DETAIL}, status=status.HTTP_401_UNAUTHORIZED)
 
