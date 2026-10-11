@@ -151,7 +151,11 @@ def authenticate_identifier(identifier: str, password: str, *, legacy=False):
     user = None
     if legacy:
         candidate = get_user_model().objects.filter(username__iexact=str(identifier or "").strip()).first()
-        if candidate and (
+        managed_child = bool(
+            candidate
+            and candidate.family_memberships.filter(role="child").exists()
+        )
+        if candidate and not managed_child and (
             candidate.is_superuser
             or not EmailIdentity.objects.filter(user=candidate, kind=EmailIdentity.Kind.PRIMARY).exists()
         ):
