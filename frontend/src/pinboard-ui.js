@@ -1,4 +1,5 @@
 import {isHolidayEvent} from './calendar-event-ui';
+import './pinboard-hotfix.css';
 
 export function pinAuthorHue(value){
  const text=String(value||'');let hash=17;
