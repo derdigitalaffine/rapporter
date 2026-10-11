@@ -1,3 +1,5 @@
+import uuid
+
 from django.conf import settings
 from django.db import models
 
@@ -7,6 +9,7 @@ class CorrespondenceReview(models.Model):
         OPEN = "open", "Open"
         REVIEWED = "reviewed", "Reviewed"
 
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     document = models.OneToOneField("documents.Document", on_delete=models.CASCADE, related_name="correspondence_review")
     family = models.ForeignKey("family.Family", on_delete=models.CASCADE, related_name="correspondence_reviews")
     data = models.JSONField(default=dict, blank=True)
