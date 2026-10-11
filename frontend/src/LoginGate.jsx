@@ -1,6 +1,7 @@
 import {useEffect,useState} from 'react';
 import {useTranslation} from 'react-i18next';
 import App from './App';
+import ProductAnalyticsBridge from './ProductAnalyticsBridge';
 import {AUTH_CHANGED_EVENT,isAuthenticated,login} from './api';
 import {requestPasswordReset} from './password-reset-api';
 import {isPasskeyCancellation,isPasskeySupported,loginWithPasskey} from './passkey-api';
@@ -35,7 +36,7 @@ export default function LoginGate(){
   window.addEventListener('famuhle:session-expired',sessionExpired);
   return()=>{window.removeEventListener(AUTH_CHANGED_EVENT,authChanged);window.removeEventListener('famuhle:session-expired',sessionExpired)};
  },[]);
- if(authed)return <App/>;
+ if(authed)return <><ProductAnalyticsBridge/><App/></>;
  async function submit(event){event.preventDefault();setError(false);setPasskeyError('');setBusy(true);try{await login(identifier,password,{legacy});setExpired(false);setAuthed(true)}catch{setError(true)}finally{setBusy(false)}}
  async function submitPasskey(){setError(false);setPasskeyError('');setBusy(true);try{await loginWithPasskey();setExpired(false);setAuthed(true)}catch(err){if(isPasskeyCancellation(err))setPasskeyError('cancelled');else if(err?.status===503)setPasskeyError('unavailable');else if(err?.status===429)setPasskeyError('rateLimited');else setPasskeyError('failed')}finally{setBusy(false)}}
  function toggleMode(){setLegacy(value=>!value);setIdentifier('');setError(false);setPasskeyError('')}
