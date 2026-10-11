@@ -2,11 +2,11 @@ import {useEffect,useMemo,useState} from 'react';
 import {Icon} from './icons';
 import {formatDateTime} from './locale';
 import {eventDayKeys,eventMarker,eventSourceKey,isoWeekNumber,isHolidayEvent,zonedDateKey} from './calendar-event-ui';
+import {calendarSourceMeta,sourceToneVariables} from './calendar-source-registry';
 import './calendar-v2.css';
 import './calendar-markers.css';
 
 const VIEW_VALUES=['week','month','list'];
-const sourceIcons={birthday:'calendar',family:'members',warning:'warning',waste:'waste',weather:'weather',transit:'transit',school:'school',calendar:'calendar'};
 
 export function calendarViewFromLocation(){
  const value=new URLSearchParams(window.location.search).get('view');
@@ -69,8 +69,8 @@ function SelectedDay({day,events,onOpen,t,language}){
 }
 
 function EventChip({event,onOpen,t,language,compact=false}){
- const source=eventSourceKey(event);const holiday=isHolidayEvent(event);
- return <button className={`calendar-event-chip source-${source} ${holiday?'calendar-holiday-chip':''} ${compact?'compact':''}`} onClick={onOpen} title={event.title}><Icon name={sourceIcons[source]||'calendar'}/><span className="calendar-event-chip-text">{event.payload?.all_day?'':`${formatTime(event.starts_at,language)} `}{event.title}</span>{event.payload?.all_day&&<small>{t('calendarUi.allDay')}</small>}</button>
+ const source=eventSourceKey(event);const meta=calendarSourceMeta(event,{t});const holiday=isHolidayEvent(event);
+ return <button style={sourceToneVariables(meta.color)} className={`calendar-event-chip source-${source} ${holiday?'calendar-holiday-chip':''} ${compact?'compact':''}`} onClick={onOpen} title={event.title}><Icon name={meta.icon}/><span className="calendar-event-chip-text">{event.payload?.all_day?'':`${formatTime(event.starts_at,language)} `}{event.title}</span>{event.payload?.all_day&&<small>{t('calendarUi.allDay')}</small>}</button>
 }
 
 function parseDay(key){const [year,month,day]=String(key).split('-').map(Number);return new Date(Date.UTC(year,month-1,day,12))}
