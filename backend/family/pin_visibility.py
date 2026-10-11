@@ -47,6 +47,41 @@ def source_object_visible(user, pin):
     return adapter.can_view(user, pin.family_id, pin.target_id)
 
 
+def source_scope_for_target(*, user, family_id, adapter_key, target_id):
+    """Classify the source's current audience for safe reference-pin defaults.
+
+    This is intentionally derived through the canonical adapter for each current
+    Membership. It does not mutate source ACLs and therefore cannot widen access.
+    The returned selected Memberships can be copied into the Pin scope when the
+    composer has not made an explicit Pin-visibility choice.
+    """
+    adapter = get_pin_adapter(adapter_key)
+    if adapter is None:
+        return BoardPost.Visibility.PRIVATE, []
+
+    memberships = list(
+        Membership.objects.filter(family_id=family_id, family__status='active').select_related('user')
+    )
+    allowed = [
+        membership
+        for membership in memberships
+        if adapter.can_view(membership.user, family_id, target_id)
+    ]
+    allowed_ids = {membership.id for membership in allowed}
+    family_ids = {membership.id for membership in memberships}
+    if allowed_ids and allowed_ids == family_ids:
+        return BoardPost.Visibility.FAMILY, []
+
+    author_membership = next((membership for membership in memberships if membership.user_id == user.id), None)
+    if author_membership and allowed_ids == {author_membership.id}:
+        return BoardPost.Visibility.PRIVATE, []
+
+    selected = [membership for membership in allowed if not author_membership or membership.id != author_membership.id]
+    if selected:
+        return BoardPost.Visibility.SELECTED, selected
+    return BoardPost.Visibility.PRIVATE, []
+
+
 def can_view_pin(user, pin):
     """Canonical effective visibility: PinVisibility ∩ SourceObjectVisibility."""
     return pin_scope_allows(user, pin) and source_object_visible(user, pin)
