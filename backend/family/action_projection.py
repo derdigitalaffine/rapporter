@@ -127,6 +127,7 @@ def _task_item(task: Task, *, user, family: Family, now):
     actions = [toggle, edit]
     if task.workflow_column_id:
         actions.append(_action("task", "move", "POST", f"/api/tasks/{task.id}/move/"))
+    actions.append(_action("task", "delete", "DELETE", f"/api/tasks/{task.id}/"))
     return {
         "id": f"task:{task.id}",
         "family": str(task.family_id),
