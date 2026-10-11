@@ -4,7 +4,19 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 from rest_framework.test import APIClient
 
-from .models import BoardImage, BoardPost, Family, Membership, Note, NoteShare, Task
+from documents.models import Document, DocumentAccess
+
+from .models import (
+    BoardImage,
+    BoardPost,
+    Family,
+    Membership,
+    Note,
+    NoteShare,
+    ShoppingItem,
+    ShoppingList,
+    Task,
+)
 from .pin_visibility import can_view_pin, effective_scope_for_user, visible_pin_memberships
 
 
@@ -154,6 +166,104 @@ class PinVisibilityTests(TestCase):
         self.assertNotIn('Sensitive pin caption', str(revoked))
         self.assertNotIn('Privatquelle', str(revoked))
         self.assertNotIn('Geheim', str(revoked))
+
+    def test_document_acl_is_canonical_for_reference_pin(self):
+        document = Document.objects.create(
+            family=self.family,
+            title='Selected document',
+            visibility=Document.Visibility.SELECTED,
+            owner_membership=self.owner_membership,
+            canonical_file='documents/test.pdf',
+            mime_type='application/pdf',
+            size=1,
+            sha256='a' * 64,
+            created_by=self.owner,
+        )
+        access = DocumentAccess.objects.create(
+            document=document,
+            membership=self.selected_membership,
+            can_view=True,
+        )
+        created = self.client.post('/api/board/', {
+            'family': str(self.family.id),
+            'kind': 'document',
+            'target_id': str(document.id),
+            'text': 'document caption must follow ACL',
+            'visibility': 'family',
+        }, format='json')
+        self.assertEqual(created.status_code, 201, created.data)
+
+        selected = self._rows(self.selected)[0]
+        self.assertEqual(selected['target']['title'], 'Selected document')
+        self.assertEqual(selected['effective_scope'], 'selected')
+        other = self._rows(self.other)[0]
+        self.assertEqual(other['effective_scope'], 'none')
+        self.assertEqual(other['text'], '')
+        self.assertNotIn('Selected document', str(other))
+        self.assertNotIn('document caption', str(other))
+
+        access.delete()
+        revoked = self._rows(self.selected)[0]
+        self.assertEqual(revoked['effective_scope'], 'none')
+        self.assertEqual(revoked['text'], '')
+        self.assertNotIn('Selected document', str(revoked))
+
+    def test_hidden_birthday_gift_task_and_item_stay_neutral(self):
+        task = Task.objects.create(
+            family=self.family,
+            title='Geheime Geburtstagsaufgabe',
+            created_by=self.owner,
+            hidden_from_user=self.selected,
+        )
+        shopping_list = ShoppingList.objects.create(family=self.family, name='Geschenke')
+        item = ShoppingItem.objects.create(
+            shopping_list=shopping_list,
+            name='Geheimes Geschenk',
+            hidden_from_user=self.selected,
+        )
+        task_pin = BoardPost.objects.create(
+            family=self.family,
+            author=self.owner,
+            kind=BoardPost.Kind.TASK,
+            target_id=task.id,
+            text='task surprise caption',
+            visibility=BoardPost.Visibility.FAMILY,
+        )
+        item_pin = BoardPost.objects.create(
+            family=self.family,
+            author=self.owner,
+            kind=BoardPost.Kind.SHOPPING,
+            target_id=item.id,
+            text='item surprise caption',
+            visibility=BoardPost.Visibility.FAMILY,
+        )
+
+        rows = {row['id']: row for row in self._rows(self.selected)}
+        for pin, secret in ((task_pin, 'Geheime Geburtstagsaufgabe'), (item_pin, 'Geheimes Geschenk')):
+            row = rows[str(pin.id)]
+            self.assertEqual(row['effective_scope'], 'none')
+            self.assertFalse(row['can_interact'])
+            self.assertEqual(row['text'], '')
+            self.assertFalse(row['target'].get('available', True))
+            self.assertNotIn(secret, str(row))
+        self.assertNotIn('task surprise caption', str(rows))
+        self.assertNotIn('item surprise caption', str(rows))
+
+    def test_unregistered_sensitive_domain_adapters_fail_closed(self):
+        # School, Pet/Care and direct CalDAV objects do not have a Pin adapter yet.
+        # They must remain unpinnable instead of falling back to a generic lookup
+        # that could bypass their canonical domain permissions/free-busy rules.
+        for adapter_key in ('school', 'pet', 'care', 'caldav_event'):
+            response = self.client.post('/api/board/', {
+                'family': str(self.family.id),
+                'kind': 'note',
+                'adapter_key': adapter_key,
+                'target_id': str(uuid.uuid4()),
+                'visibility': 'family',
+            }, format='json')
+            self.assertEqual(response.status_code, 400, (adapter_key, response.data))
+            self.assertIn('adapter_key', response.data)
+        self.assertEqual(BoardPost.objects.count(), 0)
 
     def test_pin_scope_can_be_narrower_than_family_visible_source(self):
         task = Task.objects.create(family=self.family, title='Familienaufgabe', created_by=self.owner)
