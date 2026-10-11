@@ -1,5 +1,6 @@
 from rest_framework import serializers, status
 from rest_framework.decorators import api_view
+from rest_framework.exceptions import NotFound
 from rest_framework.response import Response
 
 from auth_abuse.service import enforce
@@ -12,6 +13,7 @@ from .child_identity_service import (
     require_child_guardian,
     serialize_child_identity,
 )
+from .models import BabyProfile
 
 
 class GuardianInput(serializers.Serializer):
@@ -26,6 +28,28 @@ class GuardianListInput(serializers.Serializer):
 class ChildActivationInput(serializers.Serializer):
     email = serializers.EmailField()
     password = serializers.CharField(trim_whitespace=False, write_only=True)
+
+
+def _child_for_visible_membership(user, membership_id):
+    baby = (
+        BabyProfile.objects.select_related("family", "membership__user")
+        .filter(
+            membership_id=membership_id,
+            family__status="active",
+            family__memberships__user=user,
+        )
+        .first()
+    )
+    if not baby:
+        raise NotFound("Child identity not found.")
+    return baby
+
+
+@api_view(["GET"])
+def child_identity_by_membership(request, membership_id):
+    baby = _child_for_visible_membership(request.user, membership_id)
+    require_child_guardian(request.user, baby)
+    return Response(serialize_child_identity(baby))
 
 
 @api_view(["GET"])
