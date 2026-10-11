@@ -33,13 +33,14 @@ function BudgetProgress({summary,ledger,t,locale}){
 
 export default function ExpensesHub({family,onBack}){
  const {t,i18n}=useTranslation();
+ const requestedLedgerId=new URLSearchParams(location.search).get('ledger')||'';
  const [expenses,setExpenses]=useState([]);
  const [balance,setBalance]=useState(null);
  const [plan,setPlan]=useState(null);
  const [settlements,setSettlements]=useState([]);
  const [ledgers,setLedgers]=useState([]);
  const [budgetSummary,setBudgetSummary]=useState(null);
- const [ledgerId,setLedgerId]=useState('');
+ const [ledgerId,setLedgerId]=useState(requestedLedgerId);
  const [currency,setCurrency]=useState('EUR');
  const [editing,setEditing]=useState(null);
  const [loading,setLoading]=useState(true);
@@ -55,8 +56,8 @@ export default function ExpensesHub({family,onBack}){
    if(!live)return;
    const active=unwrap(rows).filter(item=>!item.archived);
    setLedgers(active);
-   const preferred=active.find(item=>item.is_default)||active[0];
-   setLedgerId(current=>active.some(item=>String(item.id)===String(current))?current:String(preferred?.id||''));
+   const preferred=active.find(item=>String(item.id)===String(requestedLedgerId))||active.find(item=>item.is_default)||active[0];
+   setLedgerId(String(preferred?.id||''));
    if(preferred?.base_currency)setCurrency(preferred.base_currency);
   }).catch(()=>{});
   return()=>{live=false};
@@ -88,6 +89,9 @@ export default function ExpensesHub({family,onBack}){
   setBudgetSummary(null);
   const next=ledgers.find(item=>String(item.id)===String(id));
   if(next?.base_currency)setCurrency(next.base_currency);
+  const url=new URL(location.href);
+  url.searchParams.set('ledger',id);
+  history.replaceState(history.state,'',`${url.pathname}${url.search}${url.hash}`);
  }
  async function settle(item){
   setBusyId(`${item.from_member}-${item.to_member}`);
