@@ -270,7 +270,6 @@ def fail_run(run, *, error_code, safe_error, retryable=True, now=None):
                 "processed_at",
                 "claim_token",
                 "lease_expires_at",
-                "next_retry_at",
                 "error_code",
                 "safe_error",
                 "updated_at",
