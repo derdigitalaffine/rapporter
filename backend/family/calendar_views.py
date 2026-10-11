@@ -44,7 +44,7 @@ def _family_zone(family):
 class FamilyEventViewSet(BaseFamilyEventViewSet):
     """Calendar contract: forecasts/current conditions are weather data, not appointments."""
 
-    queryset = FamilyEvent.objects.exclude(type__in=["weather.current", "weather.forecast"]).all().order_by("starts_at")
+    queryset = FamilyEvent.objects.select_related("source").exclude(type__in=["weather.current", "weather.forecast"]).all().order_by("starts_at")
 
     def get_queryset(self):
         queryset = super().get_queryset()

@@ -5,6 +5,26 @@ export const isWarningEvent=event=>Boolean(event?.type?.includes('warning'));
 export const isBirthdayEvent=event=>event?.type==='birthday';
 export const isNativeCalendarEvent=event=>!event?.source&&event?.type==='calendar.event';
 
+export const calendarSourceRegistry={
+ birthday:{icon:'calendar',labelKey:null,tone:'violet'},
+ family:{icon:'members',labelKey:'sourceFamily',tone:'green'},
+ warning:{icon:'warning',labelKey:'sourceWarnings',tone:'orange'},
+ waste:{icon:'waste',labelKey:'sourceWaste',tone:'orange'},
+ weather:{icon:'weather',labelKey:'sourceWeather',tone:'blue'},
+ transit:{icon:'transit',labelKey:'sourceTransit',tone:'violet'},
+ school:{icon:'school',labelKey:'sourceSchool',tone:'violet'},
+ calendar:{icon:'calendar',labelKey:'sourceCalendar',tone:'blue'},
+};
+
+const sourceToneStyles={
+ blue:{'--event-tone':'var(--color-info)','--event-soft':'var(--color-info-soft)'},
+ green:{'--event-tone':'var(--positive)','--event-soft':'var(--green-soft)'},
+ violet:{'--event-tone':'#7655a5','--event-soft':'#f2edff'},
+ orange:{'--event-tone':'var(--color-warning)','--event-soft':'var(--color-warning-soft)'},
+ red:{'--event-tone':'#a83f45','--event-soft':'#fff0f1'},
+ teal:{'--event-tone':'#287b77','--event-soft':'#edf8f7'},
+};
+
 export function eventSourceKey(event){
  if(isBirthdayEvent(event))return 'birthday';
  if(isNativeCalendarEvent(event))return 'family';
@@ -16,16 +36,46 @@ export function eventSourceKey(event){
  return 'calendar';
 }
 
+export function eventSourceFilterKey(event){
+ const sourceId=event?.source_meta?.id;
+ return sourceId?`integration:${sourceId}`:eventSourceKey(event);
+}
+
+export function eventSourceDescriptor(event,t){
+ const key=eventSourceKey(event);
+ const defaults=calendarSourceRegistry[key]||calendarSourceRegistry.calendar;
+ const meta=event?.source_meta;
+ const presentation=meta?.presentation||{};
+ const label=presentation.label||meta?.name||(key==='birthday'?t?.('birthdayUi.title'):t?.(`calendarUi.${defaults.labelKey||'sourceCalendar'}`))||meta?.name||key;
+ return {
+  key,
+  filterKey:eventSourceFilterKey(event),
+  icon:presentation.icon||defaults.icon,
+  tone:presentation.tone||defaults.tone,
+  label,
+  sourceId:meta?.id||null,
+  sourceKind:meta?.kind||null,
+ };
+}
+
+export function eventSourceStyle(event){
+ const key=eventSourceKey(event);
+ const defaults=calendarSourceRegistry[key]||calendarSourceRegistry.calendar;
+ const tone=event?.source_meta?.presentation?.tone||defaults.tone;
+ return sourceToneStyles[tone]||sourceToneStyles[defaults.tone]||sourceToneStyles.blue;
+}
+
 export function eventMarker(event){
- if(isHolidayEvent(event))return {kind:'holiday',icon:'school',className:'marker-holiday'};
- if(isWasteEvent(event))return {kind:'waste',icon:'waste',className:`marker-waste ${wasteClass(event)}`};
- if(isBirthdayEvent(event))return {kind:'birthday',icon:'calendar',className:'marker-birthday'};
- if(isWarningEvent(event))return {kind:'warning',icon:'warning',className:'marker-warning'};
- if(event?.type?.includes('school'))return {kind:'school',icon:'school',className:'marker-school'};
- if(event?.type?.includes('transit'))return {kind:'transit',icon:'transit',className:'marker-transit'};
- if(event?.type?.includes('weather'))return {kind:'weather',icon:'weather',className:'marker-weather'};
- if(event?.type?.startsWith('travel.'))return {kind:'travel',icon:'route',className:'marker-travel'};
- return {kind:'event',icon:'calendar',className:'marker-event'};
+ const customIcon=event?.source_meta?.presentation?.icon;
+ if(isHolidayEvent(event))return {kind:'holiday',icon:customIcon||'school',className:'marker-holiday'};
+ if(isWasteEvent(event))return {kind:'waste',icon:customIcon||'waste',className:`marker-waste ${wasteClass(event)}`};
+ if(isBirthdayEvent(event))return {kind:'birthday',icon:customIcon||'calendar',className:'marker-birthday'};
+ if(isWarningEvent(event))return {kind:'warning',icon:customIcon||'warning',className:'marker-warning'};
+ if(event?.type?.includes('school'))return {kind:'school',icon:customIcon||'school',className:'marker-school'};
+ if(event?.type?.includes('transit'))return {kind:'transit',icon:customIcon||'transit',className:'marker-transit'};
+ if(event?.type?.includes('weather'))return {kind:'weather',icon:customIcon||'weather',className:'marker-weather'};
+ if(event?.type?.startsWith('travel.'))return {kind:'travel',icon:customIcon||'route',className:'marker-travel'};
+ return {kind:'event',icon:customIcon||'calendar',className:'marker-event'};
 }
 
 export function zonedDateKey(value,timeZone='UTC'){
