@@ -37,13 +37,16 @@ def _queue_lifecycle_mail(request, user, *, template_key, message_key):
     recipient = summary.get("email") or ""
     if not recipient:
         return
+    locale = _locale(request)
     try:
         enqueue_transactional_email(
             message_key=message_key,
             template_key=template_key,
             recipient=recipient,
-            locale=_locale(request),
-            context={},
+            locale=locale,
+            context={"action_label": "Open security settings" if locale == "en" else "Sicherheit öffnen"},
+            reference_type="passkey.security",
+            reference_id=str(user.pk),
         )
     except Exception as exc:
         logger.error(
