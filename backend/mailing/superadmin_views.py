@@ -86,6 +86,12 @@ def superadmin_smtp_test(request):
     recipient = _email(request.data.get("recipient"))
     if recipient is None:
         return Response({"detail": "Gültige Testadresse fehlt."}, status=status.HTTP_400_BAD_REQUEST)
+    state = public_config()
+    if not state["configured"]:
+        return Response(
+            {"detail": "Mail-Transport ist nicht konfiguriert.", "code": "mail_not_configured"},
+            status=status.HTTP_409_CONFLICT,
+        )
     cfg = effective_mail_config()
     if not cfg["from_email"]:
         return Response({"detail": "Kein Absender konfiguriert.", "code": "mail_not_configured"}, status=status.HTTP_409_CONFLICT)
