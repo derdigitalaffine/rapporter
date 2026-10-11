@@ -102,6 +102,13 @@ button{touch-action:manipulation}
   color:var(--color-text);
 }
 .ghost,.text-button{min-height:44px;border-radius:var(--radius-md)}
+.ghost{
+  border:0;
+  background:transparent;
+  color:var(--color-muted);
+}
+.ghost:not(:disabled):hover{background:var(--color-neutral-soft);color:var(--color-text)}
+.ghost.icon-button{box-shadow:none}
 
 .small-action,.fab-inline,.icon-button,.back-button,.sheet-close{
   min-width:44px;
@@ -109,6 +116,7 @@ button{touch-action:manipulation}
 }
 
 .ghost-danger,.danger-text{color:var(--color-danger)}
+.ghost-danger:not(:disabled):hover{background:var(--color-danger-soft);color:var(--color-danger)}
 .error{background:var(--color-danger-soft);color:var(--color-danger)}
 
 .card,.smart-row,.automation-builder,.automation-template,.rule-row,.done-items,.agenda-list{
