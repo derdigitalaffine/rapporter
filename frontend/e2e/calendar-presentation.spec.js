@@ -166,3 +166,36 @@ test('Today and mobile calendar distinguish appointments, waste, birthdays and s
  await expect(strip.locator('button.has-holiday')).toBeVisible();
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
 });
+
+test('source filter survives reload while preserving calendar deep-link state',async({page})=>{
+ const state=await installApiMocks(page);
+ const day=addCivilDay(berlinDayKey(),1);
+ state.events.push(
+  {id:'ics-parents',family:state.family.id,source:'source-parents',source_meta:{id:'source-parents',name:'Eltern',kind:'ics',presentation:{icon:'members',tone:'green',label:'Elternkalender'}},type:'calendar.event',title:'Elterntermin',starts_at:`${day}T10:00:00+02:00`,ends_at:`${day}T11:00:00+02:00`,actionable:false,payload:{}},
+  {id:'ics-kids',family:state.family.id,source:'source-kids',source_meta:{id:'source-kids',name:'Kinder',kind:'ics',presentation:{icon:'school',tone:'violet',label:'Kinderkalender'}},type:'calendar.event',title:'Kindertermin',starts_at:`${day}T12:00:00+02:00`,ends_at:`${day}T13:00:00+02:00`,actionable:false,payload:{}},
+ );
+ await page.goto(`/?page=calendar&view=list&day=${day}`);
+ const parents=page.getByRole('button',{name:'Elternkalender',exact:true});
+ await expect(parents).toBeVisible();
+ await expect(page.getByRole('button',{name:'Kinderkalender',exact:true})).toBeVisible();
+ await parents.click();
+ let url=new URL(page.url());
+ expect(url.searchParams.get('view')).toBe('list');
+ expect(url.searchParams.get('day')).toBe(day);
+ expect(url.searchParams.get('source')).toBe('integration:source-parents');
+ await expect(page.getByText('Elterntermin',{exact:true})).toBeVisible();
+ await expect(page.getByText('Kindertermin',{exact:true})).toHaveCount(0);
+
+ await page.reload();
+ await expect(page.getByRole('button',{name:'Elternkalender',exact:true})).toHaveClass(/active/);
+ await expect(page.getByText('Elterntermin',{exact:true})).toBeVisible();
+ await expect(page.getByText('Kindertermin',{exact:true})).toHaveCount(0);
+
+ await page.locator('.calendar-filters button').first().click();
+ url=new URL(page.url());
+ expect(url.searchParams.get('view')).toBe('list');
+ expect(url.searchParams.get('day')).toBe(day);
+ expect(url.searchParams.has('source')).toBe(false);
+ await expect(page.getByText('Elterntermin',{exact:true})).toBeVisible();
+ await expect(page.getByText('Kindertermin',{exact:true})).toBeVisible();
+});
