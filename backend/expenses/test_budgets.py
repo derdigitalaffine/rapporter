@@ -109,6 +109,18 @@ class ExpenseBudgetCoreTests(TestCase):
         self.assertEqual(foreign.status_code, 400, foreign.data)
         self.assertIn("ledger", foreign.data)
 
+    def test_ledger_base_currency_is_locked_after_expense_activity(self):
+        self._expense("10.00")
+        response = self.client.patch(
+            f"/api/expense-ledgers/{self.ledger.id}/",
+            {"base_currency": "USD"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400, response.data)
+        self.assertIn("base_currency", response.data)
+        self.ledger.refresh_from_db()
+        self.assertEqual(self.ledger.base_currency, "EUR")
+
     def test_single_budget_allocation_requires_exact_expense_total(self):
         expense = self._expense("10.00")
         budget = self._budget()

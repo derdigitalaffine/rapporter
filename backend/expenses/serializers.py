@@ -72,6 +72,11 @@ class ExpenseLedgerSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({"family": "Familie ist für diesen Benutzer nicht verfügbar."})
         if self.instance and "family" in attrs and family.id != self.instance.family_id:
             raise serializers.ValidationError({"family": "Die Familie eines Abrechnungskreises kann nicht geändert werden."})
+        if self.instance and "base_currency" in attrs and attrs["base_currency"] != self.instance.base_currency:
+            if self.instance.expenses.exists() or self.instance.budgets.exists():
+                raise serializers.ValidationError({
+                    "base_currency": "Die Basiswährung kann nach der ersten Ausgabe oder Budgetanlage nicht geändert werden."
+                })
         if self.instance and self.instance.is_default and attrs.get("archived") is True:
             raise serializers.ValidationError({"archived": "Der Standard-Abrechnungskreis kann nicht archiviert werden."})
         return attrs
