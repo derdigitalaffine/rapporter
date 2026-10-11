@@ -11,6 +11,7 @@ from auth_abuse.service import enforce
 from auth_identity.service import EmailIdentityError, normalize_email
 from auth_sessions.service import require_fresh_session
 
+from .invitation_delivery import invitation_delivery_summary
 from .invitation_service import issue_invitation
 from .models import Family, Membership
 
@@ -56,6 +57,19 @@ def _family_row(family):
         revoked_at__isnull=True,
         expires_at__gt=timezone.now(),
     ).order_by("-created_at")
+    pending_rows = []
+    for item in pending:
+        delivery = invitation_delivery_summary(item)
+        pending_rows.append(
+            {
+                "id": str(item.id),
+                "email": item.email,
+                "display_name": item.display_name,
+                "expires_at": item.expires_at,
+                "delivery_status": delivery["delivery_status"],
+                "last_sent_at": delivery["last_sent_at"],
+            }
+        )
     return {
         "id": str(family.id),
         "name": family.name,
@@ -68,15 +82,7 @@ def _family_row(family):
             {"username": item.user.username, "email": item.user.email, "display_name": item.display_name}
             for item in owners
         ],
-        "pending_owner_invites": [
-            {
-                "id": str(item.id),
-                "email": item.email,
-                "display_name": item.display_name,
-                "expires_at": item.expires_at,
-            }
-            for item in pending
-        ],
+        "pending_owner_invites": pending_rows,
         "created_at": family.created_at,
         "updated_at": family.updated_at,
     }
@@ -136,7 +142,7 @@ def superadmin_families(request):
         {
             "family": _family_row(family),
             "invite_id": str(invite.id),
-            "delivery": "queued",
+            "delivery": invitation_delivery_summary(invite)["delivery_status"],
         },
         status=status.HTTP_201_CREATED,
     )
@@ -187,7 +193,7 @@ def superadmin_owner_invite(request, family_id):
     return Response(
         {
             "invite_id": str(invite.id),
-            "delivery": "queued",
+            "delivery": invitation_delivery_summary(invite)["delivery_status"],
             "family": _family_row(family),
         },
         status=status.HTTP_201_CREATED,
