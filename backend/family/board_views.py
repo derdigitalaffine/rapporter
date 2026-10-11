@@ -20,7 +20,7 @@ from .pin_adapters import (
     resolve_pin_targets,
     validate_pin_target,
 )
-from .pin_visibility import pin_scope_queryset
+from .pin_visibility import effective_scope_for_user, pin_scope_queryset, source_object_visible
 from .private_images import optimize_image, store_image, remove_image, image_path
 
 
@@ -65,20 +65,74 @@ class BoardSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['author', 'position', 'created_at', 'updated_at']
 
+    def _target_for(self, obj):
+        resolved = self.context.get('pin_targets')
+        if resolved is not None and obj.id in resolved:
+            return resolved[obj.id]
+        cache = self.context.setdefault('_pin_target_cache', {})
+        if obj.id not in cache:
+            cache[obj.id] = resolve_pin_target(obj, self.context['request'].user)
+        return cache[obj.id]
+
+    def _source_unavailable(self, obj):
+        if not obj.target_id:
+            return False
+        target = self._target_for(obj)
+        return isinstance(target, dict) and target.get('available') is False
+
+    def _effective_scope_for(self, obj):
+        cache = self.context.setdefault('_pin_effective_scope_cache', {})
+        if obj.id not in cache:
+            if self._source_unavailable(obj):
+                cache[obj.id] = 'none'
+            else:
+                cache[obj.id] = effective_scope_for_user(self.context['request'].user, obj)
+        return cache[obj.id]
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        if self._source_unavailable(instance):
+            # #219 keeps a neutral unavailable lifecycle shell, but #220 must not
+            # leak pin captions, uploaded media or author/activity metadata once
+            # the canonical source ACL denies the viewer. Keep only lifecycle and
+            # pin-management information needed to render/remove the stale shell.
+            data['author'] = None
+            data['author_name'] = ''
+            data['text'] = ''
+            data['images'] = []
+            data['selected_membership_ids'] = []
+            data['created_at'] = None
+            data['updated_at'] = None
+            data['can_edit'] = False
+            data['can_reorder'] = False
+            data['can_change_pin_visibility'] = False
+            data['can_share_source'] = False
+            data['can_interact'] = False
+            data['effective_scope'] = 'none'
+        return data
+
     def get_images(self, obj):
+        if self._source_unavailable(obj):
+            return []
         return [{'id': str(row.id), 'url': f'/api/board-images/{row.id}/', 'width': row.width, 'height': row.height} for row in obj.images.all()]
 
     def get_author_name(self, obj):
+        if self._source_unavailable(obj):
+            return ''
         names = self.context.get('author_names', {})
         return names.get((obj.family_id, obj.author_id)) or (obj.author.get_short_name() or obj.author.username if obj.author else '–')
 
     def get_can_edit(self, obj):
+        if self._source_unavailable(obj):
+            return False
         return obj.author_id == self.context['request'].user.id
 
     def get_can_delete(self, obj):
-        return self.get_can_edit(obj) or obj.family_id in self.context.get('moderated_families', set())
+        return obj.author_id == self.context['request'].user.id or obj.family_id in self.context.get('moderated_families', set())
 
     def get_can_reorder(self, obj):
+        if self._source_unavailable(obj):
+            return False
         return obj.family_id in self.context.get('reorder_families', set())
 
     def get_can_change_pin_visibility(self, obj):
@@ -89,26 +143,14 @@ class BoardSerializer(serializers.ModelSerializer):
         # them implicitly; domain-specific explicit share actions can opt in later.
         return False
 
-    def _target_for(self, obj):
-        resolved = self.context.get('pin_targets')
-        if resolved is not None and obj.id in resolved:
-            return resolved[obj.id]
-        cache = self.context.setdefault('_pin_target_cache', {})
-        if obj.id not in cache:
-            cache[obj.id] = resolve_pin_target(obj, self.context['request'].user)
-        return cache[obj.id]
-
     def get_target(self, obj):
         return self._target_for(obj)
 
     def get_effective_scope(self, obj):
-        target = self._target_for(obj)
-        if obj.target_id and isinstance(target, dict) and target.get('available') is False:
-            return 'none'
-        return obj.visibility
+        return self._effective_scope_for(obj)
 
     def get_can_interact(self, obj):
-        return self.get_effective_scope(obj) != 'none'
+        return self._effective_scope_for(obj) != 'none'
 
     def validate(self, attrs):
         family = attrs.get('family') or getattr(self.instance, 'family', None)
@@ -225,6 +267,8 @@ class BoardViewSet(viewsets.ModelViewSet):
         if len(uploads) > 4:
             raise ValidationError({'images': 'Maximal vier Bilder pro Pin.'})
         kind = serializer.validated_data.get('kind', BoardPost.Kind.NOTE)
+        if uploads and kind not in (BoardPost.Kind.NOTE, BoardPost.Kind.PHOTO):
+            raise ValidationError({'images': 'Bilder können nur an native Pinnwand-Inhalte angehängt werden.'})
         if uploads and kind == BoardPost.Kind.NOTE:
             kind = BoardPost.Kind.PHOTO
         if kind == BoardPost.Kind.PHOTO and not uploads:
@@ -323,7 +367,7 @@ class BoardViewSet(viewsets.ModelViewSet):
 def board_image(request, image_id):
     visible_posts = pin_scope_queryset(request.user, BoardPost.objects.all()).values_list('id', flat=True)
     row = BoardImage.objects.select_related('post', 'post__family').filter(id=image_id, post_id__in=visible_posts).first()
-    if not row:
+    if not row or (row.post.target_id and not source_object_visible(request.user, row.post)):
         raise Http404()
     if request.method == 'DELETE':
         row.post = BoardPost.objects.select_for_update().get(pk=row.post_id)
