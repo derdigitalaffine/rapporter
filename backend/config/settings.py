@@ -42,3 +42,10 @@ EMAIL_TIMEOUT=float(os.getenv("EMAIL_TIMEOUT","10") or "10")
 DEFAULT_FROM_EMAIL=os.getenv("DEFAULT_FROM_EMAIL","FamilyOS <noreply@localhost>").strip()
 SERVER_EMAIL=os.getenv("SERVER_EMAIL",DEFAULT_FROM_EMAIL).strip()
 EMAIL_REPLY_TO=os.getenv("EMAIL_REPLY_TO","").strip()
+
+# Optional external Matomo reporting integration. The auth token is backend-only
+# and must never be exposed to the Superadmin frontend or browser tracking code.
+MATOMO_BASE_URL=os.getenv("MATOMO_BASE_URL","").strip().rstrip("/")
+MATOMO_SITE_ID=os.getenv("MATOMO_SITE_ID","").strip()
+MATOMO_AUTH_TOKEN=os.getenv("MATOMO_AUTH_TOKEN","").strip()
+MATOMO_API_TIMEOUT=float(os.getenv("MATOMO_API_TIMEOUT","8") or "8")
