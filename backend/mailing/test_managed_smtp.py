@@ -8,7 +8,7 @@ from rest_framework.test import APIClient
 
 from .backends import ManagedRoutingEmailBackend
 from .models import ManagedSmtpConfig
-from .smtp_config import decrypt_password, encrypt_password, public_config
+from .smtp_config import decrypt_password, effective_mail_config, encrypt_password, public_config
 
 
 class ManagedSmtpCoreTests(TestCase):
@@ -31,6 +31,30 @@ class ManagedSmtpCoreTests(TestCase):
         self.assertTrue(payload["password_set"])
         self.assertFalse(payload["configured"])
         self.assertEqual(payload["effective_source"], "superadmin")
+
+    def test_all_managed_security_modes_map_to_django_smtp_flags(self):
+        expected = {"starttls": (True, False), "ssl": (False, True), "plain": (False, False)}
+        for security, flags in expected.items():
+            with self.subTest(security=security):
+                ManagedSmtpConfig.objects.update_or_create(pk=1, defaults={
+                    "enabled": True, "host": "smtp.example.test", "port": 587, "username": "mailer",
+                    "password_encrypted": encrypt_password("secret"), "security": security,
+                    "from_email": "mail@example.test",
+                })
+                cfg = effective_mail_config()
+                self.assertEqual((cfg["use_tls"], cfg["use_ssl"]), flags)
+
+    @override_settings(
+        EMAIL_BACKEND="mailing.backends.ManagedRoutingEmailBackend",
+        EMAIL_ENV_BACKEND="django.core.mail.backends.locmem.EmailBackend",
+        DEFAULT_FROM_EMAIL="env@example.test",
+    )
+    def test_environment_backend_remains_fallback_when_managed_is_disabled(self):
+        ManagedSmtpConfig.objects.create(pk=1, enabled=False, host="managed.example.test", from_email="managed@example.test")
+        cfg = effective_mail_config()
+        self.assertEqual(cfg["source"], "environment")
+        self.assertEqual(cfg["backend"], "django.core.mail.backends.locmem.EmailBackend")
+        self.assertEqual(cfg["from_email"], "env@example.test")
 
     @patch("mailing.backends.get_connection")
     def test_routing_backend_uses_managed_transport_and_sender(self, get_connection):
@@ -76,6 +100,22 @@ class ManagedSmtpApiTests(TestCase):
         row = ManagedSmtpConfig.objects.get(pk=1)
         self.assertEqual(decrypt_password(row.password_encrypted), "keep-me")
         self.assertNotIn("keep-me", str(response.data))
+        _enforce.assert_called_once()
+
+    @patch("mailing.superadmin_views._enforce_sensitive_action", return_value=SimpleNamespace(allowed=True))
+    def test_explicit_clear_removes_stored_password_while_managed_is_disabled(self, _enforce):
+        ManagedSmtpConfig.objects.create(pk=1, enabled=False, host="smtp.example.test", username="mailer",
+            password_encrypted=encrypt_password("remove-me"), from_email="mail@example.test")
+        client = APIClient();client.force_authenticate(self.admin)
+        response = client.put("/api/superadmin/smtp/", {
+            "enabled": False, "host": "smtp.example.test", "port": 587, "username": "mailer", "password": "",
+            "clear_password": True, "security": "starttls", "timeout": 10,
+            "from_email": "mail@example.test", "reply_to": ""
+        }, format="json")
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertFalse(ManagedSmtpConfig.objects.get(pk=1).password_encrypted)
+        self.assertFalse(response.data["password_set"])
+        _enforce.assert_called_once()
 
     @override_settings(
         EMAIL_BACKEND="mailing.backends.ManagedRoutingEmailBackend",
@@ -87,6 +127,7 @@ class ManagedSmtpApiTests(TestCase):
         response = client.post("/api/superadmin/smtp/test/", {"recipient": "target@example.test"}, format="json")
         self.assertEqual(response.status_code, 409, response.data)
         self.assertEqual(response.data["code"], "mail_not_configured")
+        _enforce.assert_called_once()
 
     @patch("mailing.superadmin_views._enforce_sensitive_action", return_value=SimpleNamespace(allowed=True))
     @patch("mailing.superadmin_views.effective_connection")
@@ -106,3 +147,20 @@ class ManagedSmtpApiTests(TestCase):
         self.assertEqual(message.to, ["target@example.test"])
         self.assertEqual(message.reply_to, ["reply@example.test"])
         self.assertNotIn("secret", str(response.data))
+        _enforce.assert_called_once()
+
+    @patch("mailing.superadmin_views._enforce_sensitive_action", return_value=SimpleNamespace(allowed=True))
+    @patch("mailing.superadmin_views.effective_connection")
+    def test_test_send_redacts_transport_exception(self, effective_connection, _enforce):
+        target = Mock();target.send_messages.side_effect = RuntimeError("provider trace contains smtp-password-secret")
+        effective_connection.return_value = target
+        ManagedSmtpConfig.objects.create(pk=1, enabled=True, host="smtp.example.test", port=587,
+            username="mailer", password_encrypted=encrypt_password("secret"), security="starttls",
+            from_email="managed@example.test")
+        client = APIClient();client.force_authenticate(self.admin)
+        response = client.post("/api/superadmin/smtp/test/", {"recipient": "target@example.test"}, format="json")
+        self.assertEqual(response.status_code, 502, response.data)
+        self.assertEqual(response.data["detail"], "SMTP-Test fehlgeschlagen.")
+        self.assertNotIn("smtp-password-secret", str(response.data))
+        self.assertIn("code", response.data)
+        _enforce.assert_called_once()
