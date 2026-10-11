@@ -22,6 +22,12 @@ class NotificationPreference(TimestampedModel):
 
 
 class LoyaltyCard(TimestampedModel):
+    """Backward-compatible persistence model for the generic Cards & Tickets core.
+
+    The historic table and API name intentionally stay stable. `pass_type` broadens the
+    record into the PassItem spectrum without changing barcode payload/symbology or ACLs.
+    """
+
     class BarcodeFormat(models.TextChoices):
         CODE128 = "code128", "Code 128"
         EAN13 = "ean13", "EAN-13"
@@ -35,10 +41,29 @@ class LoyaltyCard(TimestampedModel):
         PDF417 = "pdf417", "PDF417"
         AZTEC = "aztec", "Aztec"
 
+    class PassType(models.TextChoices):
+        LOYALTY_CARD = "loyalty_card", "Loyalty card"
+        VOUCHER = "voucher", "Voucher"
+        COUPON = "coupon", "Coupon"
+        TICKET = "ticket", "Ticket"
+        BOARDING_PASS = "boarding_pass", "Boarding pass"
+
+    class ColorMode(models.TextChoices):
+        CUSTOM = "custom", "Custom"
+        AUTO = "auto", "Auto from icon"
+
+    class ArchiveReason(models.TextChoices):
+        MANUAL = "manual", "Manual"
+        USED = "used", "Used/redeemed"
+        EVENT_ENDED = "event_ended", "Event ended"
+
     family = models.ForeignKey(Family, on_delete=models.CASCADE, related_name="loyalty_cards")
     name = models.CharField(max_length=120)
     logo = models.CharField(max_length=120, blank=True)
+    icon_key = models.CharField(max_length=48, blank=True, default="")
     color = models.CharField(max_length=24, default="#6750A4")
+    color_mode = models.CharField(max_length=12, choices=ColorMode.choices, default=ColorMode.CUSTOM)
+    pass_type = models.CharField(max_length=24, choices=PassType.choices, default=PassType.LOYALTY_CARD)
     holder_name = models.CharField(max_length=120, blank=True)
     holder_membership = models.ForeignKey(
         Membership,
@@ -61,9 +86,19 @@ class LoyaltyCard(TimestampedModel):
     favorite = models.BooleanField(default=False)
     sort_order = models.PositiveIntegerField(default=0)
     archived = models.BooleanField(default=False)
+    archived_at = models.DateTimeField(null=True, blank=True)
+    archive_reason = models.CharField(max_length=24, choices=ArchiveReason.choices, blank=True, default="")
+    used_at = models.DateTimeField(null=True, blank=True)
+    restore_until = models.DateTimeField(null=True, blank=True)
+    undo_window_minutes = models.PositiveSmallIntegerField(default=10)
+    event_ends_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ["-favorite", "sort_order", "name"]
+
+
+# Public domain vocabulary for new code while preserving the historical model/table name.
+PassItem = LoyaltyCard
 
 
 class NotificationBatch(TimestampedModel):

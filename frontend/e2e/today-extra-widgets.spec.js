@@ -19,7 +19,7 @@ test('Today surfaces accessible loyalty cards and unread family inbox',async({pa
   await expect(page.getByTestId('today-inbox')).toContainText('1 ungelesen');
   await Promise.all([
     page.waitForURL(/page=loyalty/),
-    page.getByRole('button',{name:'REWE Bonus · Bonuskarten'}).click(),
+    page.getByRole('button',{name:'REWE Bonus · Karten & Tickets'}).click(),
   ]);
   const dialog=page.getByRole('dialog');
   await expect(dialog).toBeVisible();
