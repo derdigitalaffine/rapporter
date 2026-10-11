@@ -10,7 +10,7 @@ const words={
  en:{label:'Next trip',wishLabel:'Trip wish',planning:'In planning',inDays:'{{count}} days to go',tomorrow:'Leaving tomorrow',today:'Leaving today',tripDay:'Day {{day}} of {{total}}',finished:'Trip finished'},
 };
 
-export default function TodayTripBanner({family,open,language='de',widgetSize='full',widgetSettings={show_wishes:false}}){
+export default function TodayTripBanner({family,open,language='de',widgetSize='wide',widgetSettings={show_wishes:false}}){
  const [trips,setTrips]=useState([]);
  useEffect(()=>{
   let current=true;
@@ -27,7 +27,11 @@ export default function TodayTripBanner({family,open,language='de',widgetSize='f
  const countdown=tripCountdown(trip,copy);
  const detail=countdown||(wish?copy.planning:'');
  const label=wish?copy.wishLabel:copy.label;
- return <div className={`app-widget today-widget today-widget-${widgetSize} today-trip-widget`} data-today-widget="trip" data-widget-size={widgetSize}>
+ // `medium` is the semantic v2 replacement for the former `square` size. Keep
+ // the legacy styling hook during the CSS transition without leaking `square`
+ // back into the persisted layout contract or data attributes.
+ const legacyMediumClass=widgetSize==='medium'?' today-widget-square':'';
+ return <div className={`app-widget today-widget today-widget-${widgetSize}${legacyMediumClass} today-trip-widget`} data-today-widget="trip" data-widget-size={widgetSize}>
   <button type="button" className="today-trip-banner" data-testid="today-trip-banner" onClick={()=>open('trips')} aria-label={[`${label}: ${trip.title}`,detail].filter(Boolean).join('. ')}>
    <span className="today-trip-banner-icon" aria-hidden="true"><Icon name="route" size={20}/></span>
    <span className="today-trip-banner-copy"><small>{label}</small><strong>{trip.title}</strong>{trip.destination&&<span>{trip.destination}</span>}</span>
