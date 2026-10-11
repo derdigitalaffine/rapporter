@@ -170,8 +170,13 @@ export default function TodayLayout({family,header,onboarding,widgets}){
   if(busy||dragState.current||event.button!==0)return;event.preventDefault();event.currentTarget.focus();try{event.currentTarget.setPointerCapture(event.pointerId)}catch{}
   dragState.current={mode:'pointer',id:widget.id,pointerId:event.pointerId,handle:event.currentTarget,position:index,snapshot:(draftRef.current||[]).map(cleanTodayWidget)};setDraggingId(widget.id);setAnnouncement(`${labelFor(widget.id)}: ${s.picked} · ${s.position} ${index+1} / ${placedRowsFrom(draftRef.current).length}`);
  };
+ const editorRowAtPoint=(clientX,clientY)=>{
+  const rows=[...document.querySelectorAll('[data-editor-widget-id]')];
+  const geometric=rows.find(row=>{const rect=row.getBoundingClientRect();return clientX>=rect.left&&clientX<=rect.right&&clientY>=rect.top&&clientY<=rect.bottom});
+  return geometric||document.elementFromPoint(clientX,clientY)?.closest?.('[data-editor-widget-id]')||null;
+ };
  const pointerDragMove=event=>{
-  const current=dragState.current;if(!current||current.mode!=='pointer'||current.pointerId!==event.pointerId)return;edgeAutoScroll(event.clientY);const target=document.elementFromPoint(event.clientX,event.clientY)?.closest?.('[data-editor-widget-id]');if(!target)return;moveToWidget(current.id,target.dataset.editorWidgetId,Number(target.dataset.editorIndex));
+  const current=dragState.current;if(!current||current.mode!=='pointer'||current.pointerId!==event.pointerId)return;edgeAutoScroll(event.clientY);const target=editorRowAtPoint(event.clientX,event.clientY);if(!target)return;moveToWidget(current.id,target.dataset.editorWidgetId,Number(target.dataset.editorIndex));
  };
  const pointerDragEnd=event=>{const current=dragState.current;if(!current||current.mode!=='pointer'||current.pointerId!==event.pointerId)return;dropActiveDrag()};
  const dragKeyDown=(widget,index,event)=>{
