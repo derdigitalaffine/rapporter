@@ -10,6 +10,7 @@ export const CREATE_ACTIONS=[
   {id:'expense',labelKey:'createUi.expense',icon:'receipt',group:'primary',permission:'createContent',contextMatcher:matches('expenses'),open:({open,context})=>open('expense',context)},
   {id:'contract',labelKey:'createUi.contract',icon:'receipt',group:'secondary',permission:'createContent',contextMatcher:matches('contracts'),open:({open,context})=>open('contract',context)},
   {id:'correspondence',labelKey:'createUi.correspondence',icon:'inbox',group:'secondary',permission:'createContent',contextMatcher:nowhere,open:({open,context})=>open('correspondence',context)},
+  {id:'wish',labelKey:'createUi.wish',icon:'heart',group:'secondary',permission:'manageSettings',contextMatcher:matches('wishlists'),open:({open,context})=>open('wish',context)},
   {id:'birthday',labelKey:'birthdayUi.add',icon:'calendar',group:'secondary',permission:'manageSettings',contextMatcher:matches('birthdays'),open:({open,context})=>open('birthday',context)},
   {id:'taskList',labelKey:'createUi.taskList',icon:'lists',group:'secondary',permission:'createContent',contextMatcher:nowhere,open:({open,context})=>open('taskList',context)},
   {id:'shoppingList',labelKey:'createUi.shoppingList',icon:'shopping',group:'secondary',permission:'createContent',contextMatcher:nowhere,open:({open,context})=>open('shoppingList',context)},
@@ -18,7 +19,7 @@ export const CREATE_ACTIONS=[
   {id:'loyalty',labelKey:'createUi.loyalty',icon:'store',group:'secondary',permission:'createContent',contextMatcher:matches('loyalty'),capability:'loyalty',open:({open,context})=>open('loyalty',context)},
 ];
 
-export const CREATE_PAGES=new Set(['birthdays','home','tasks','shopping','routines','more','calendar','expenses','contracts','inbox','loyalty']);
+export const CREATE_PAGES=new Set(['birthdays','home','tasks','shopping','routines','more','calendar','expenses','contracts','wishlists','inbox','loyalty']);
 
 export function availableCreateActions({role,capabilities={}}){
   const permissions=permissionsForRole(role);
