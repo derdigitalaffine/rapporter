@@ -14,7 +14,14 @@ This means no message leaves the instance and message bodies are not printed to 
 
 ## Production SMTP
 
-Example:
+FamilyOS supports two configuration sources:
+
+1. **Superadmin-managed SMTP** in the global Superadmin UI. When enabled, this source takes precedence over the environment fallback.
+2. **Environment SMTP** in `.env` / the deployment secret store. This remains the fallback whenever the managed configuration is disabled.
+
+Both routes use the same transactional mail service and outbox for normal application email.
+
+Environment example:
 
 ```env
 EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend
@@ -31,15 +38,25 @@ EMAIL_REPLY_TO=
 APP_URL=https://family.example.com
 ```
 
-Use either `EMAIL_USE_TLS=true` (usually port 587) or `EMAIL_USE_SSL=true` (usually port 465), never both. `python manage.py check --tag mailing` validates the most important combinations.
+Use either `EMAIL_USE_TLS=true` (usually port 587) or `EMAIL_USE_SSL=true` (usually port 465), never both. `python manage.py check --tag mailing` validates the most important environment combinations.
 
 `APP_URL` is the trusted public origin used to build links. Transactional mail resolvers return only relative application paths; the outbox does not accept arbitrary absolute URLs.
 
+### Superadmin-managed SMTP
+
+The global Superadmin can configure SMTP host, port, username, password, transport security, timeout, From address and optional Reply-To address. Saving changes and sending a test message are sensitive actions and therefore use the existing Superadmin fresh-session and abuse-protection path.
+
+The password is encrypted at rest and is never returned by the API or rendered back into the UI. A blank password field keeps the currently stored secret; the API supports an explicit clear operation rather than treating an empty field as deletion.
+
+The managed SMTP credential is encrypted using key material derived from the Django application secret. Rotating `DJANGO_SECRET_KEY` invalidates the existing managed SMTP ciphertext, so re-enter the SMTP password after such a rotation. Environment-based SMTP is unaffected by this database ciphertext rule.
+
+The Superadmin test mail sends through the currently effective transport and reports success only when a configured backend accepts the message. Dummy or otherwise unconfigured transports return `mail_not_configured`; they are never reported as a successful SMTP test.
+
 ## Secrets
 
-SMTP credentials belong only in `.env` / the deployment secret store. They are never stored in the FamilyOS database, returned by an API, or shown in the frontend.
+For environment SMTP, credentials belong only in `.env` / the deployment secret store. Keep `.env` permission-restricted and do not commit it.
 
-Keep `.env` permission-restricted. Do not commit it.
+For Superadmin-managed SMTP, the password is stored only as encrypted ciphertext in the singleton mail configuration row. API responses expose only a `password_set` state, never the password or ciphertext. SMTP credentials must not be written to logs, telemetry, health endpoints or error responses.
 
 ## Worker
 
@@ -67,7 +84,7 @@ The outbox rejects context keys that look like credentials, tokens, passwords or
 
 After successful delivery acceptance or a terminal delivery failure, FamilyOS immediately clears the recipient address and render context from the outbox row. Retryable failures retain that payload only while another delivery attempt remains necessary. Operational metadata such as recipient HMAC, template key, timestamps and status can remain for diagnostics and idempotency.
 
-`sent` means the configured mail backend accepted the message. It does **not** claim inbox delivery, opening or reading.
+`sent` means the configured mail backend accepted the message. It does **not** claim inbox delivery, opening or reading. The same limitation applies to the Superadmin test mail: it proves transport acceptance, not inbox placement.
 
 ## Development and tests
 
