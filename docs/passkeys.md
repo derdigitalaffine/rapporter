@@ -33,6 +33,18 @@ WEBAUTHN_CHALLENGE_TTL_SECONDS=300
 
 `python manage.py check` reports configuration errors whenever WebAuthn is enabled with an invalid origin/RP relationship.
 
+### Existing installations
+
+After updating an existing installation, configure and enable Passkeys from the already configured public app URL:
+
+```bash
+./scripts/configure-passkeys.sh
+```
+
+The helper reads `APP_URL` (or falls back to `PUBLIC_SCHEME` + `PUBLIC_HOST`), derives the RP ID from its hostname, preserves an already configured compatible parent RP ID plus the RP name/challenge TTL, creates a timestamped `.env.backup.passkeys.*` before changing anything, and writes the five `WEBAUTHN_*` values idempotently. It refuses non-local plain HTTP and IP-address origins because they cannot produce a valid production WebAuthn RP configuration.
+
+For a non-default env path, use `ENV_FILE=/path/to/.env ./scripts/configure-passkeys.sh`. The script prints the `manage.py check` and container restart commands after a successful update.
+
 ## User experience
 
 The normal login screen offers **Mit Passkey anmelden / Sign in with a passkey** before the password form. It is discoverable/passkey-first and does not require an email address. Password login remains available during rollout and legacy login remains a separate migration path.
