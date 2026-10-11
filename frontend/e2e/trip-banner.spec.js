@@ -36,20 +36,40 @@ test('legacy Today layout restores next trip as a real grid widget',async({page}
  await expect(page.getByRole('heading',{name:'Reisen',exact:true})).toBeVisible();
 });
 
-test('travel widget can be configured as a half-width square',async({page})=>{
+test('travel widget medium size stays semantic across breakpoints',async({page})=>{
  await page.setViewportSize({width:390,height:844});
  await freezeToday(page);await installApiMocks(page,{dismissOnboarding:true});
  await mockTrips(page,[trip('next','Herbstferien','2026-10-13','2026-10-17')]);
  await page.goto('/');
  await page.getByRole('button',{name:'Anpassen'}).click();
  const editor=page.getByRole('region',{name:'Anpassen'});
- await editor.getByRole('combobox',{name:'Reise · Größe'}).selectOption('square');
+ const size=editor.getByRole('combobox',{name:'Reise · Größe'});
+ await expect(size.locator('option[value="square"]')).toHaveText('Mittel');
+ await size.selectOption('square');
  const widget=page.locator('[data-today-widget="trip"]');
  await expect(widget).toHaveAttribute('data-widget-size','square');
- const box=await widget.boundingBox();
- expect(box).not.toBeNull();
- expect(Math.abs(box.width-box.height)).toBeLessThanOrEqual(2);
- expect(box.width).toBeLessThan(190);
+
+ const phone=await widget.boundingBox();
+ expect(phone).not.toBeNull();
+ const phoneGrid=await page.locator('.today-widget-grid').boundingBox();
+ expect(phoneGrid).not.toBeNull();
+ expect(phone.width/phoneGrid.width).toBeGreaterThan(.95);
+
+ await page.setViewportSize({width:1024,height:768});
+ const tablet=await widget.boundingBox();
+ const tabletGrid=await page.locator('.today-widget-grid').boundingBox();
+ expect(tablet).not.toBeNull();
+ expect(tabletGrid).not.toBeNull();
+ expect(tablet.width/tabletGrid.width).toBeGreaterThan(.45);
+ expect(tablet.width/tabletGrid.width).toBeLessThan(.55);
+
+ await page.setViewportSize({width:1440,height:900});
+ const desktop=await widget.boundingBox();
+ const desktopGrid=await page.locator('.today-widget-grid').boundingBox();
+ expect(desktop).not.toBeNull();
+ expect(desktopGrid).not.toBeNull();
+ expect(desktop.width/desktopGrid.width).toBeGreaterThan(.45);
+ expect(desktop.width/desktopGrid.width).toBeLessThan(.55);
  await expect(page.getByTestId('today-trip-banner')).toContainText('Noch 3 Tage');
 });
 
