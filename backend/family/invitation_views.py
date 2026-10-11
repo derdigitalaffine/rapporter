@@ -201,6 +201,7 @@ class FamilyInvitationViewSet(viewsets.ModelViewSet):
             request=request,
             user=request.user,
             family_id=invite.family_id,
+            invite_id=invite.pk,
             identifier=invite.email,
         )
         if not decision.allowed:
