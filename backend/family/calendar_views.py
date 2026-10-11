@@ -1,11 +1,12 @@
 from datetime import date, datetime, time, timedelta
+from uuid import UUID
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from django.db.models import Q
 from rest_framework.exceptions import PermissionDenied, ValidationError
 
 from .birthdays import calendar_projection, local_now
-from .models import Family, FamilyEvent
+from .models import Family, FamilyEvent, Membership
 from .views import FamilyEventViewSet as BaseFamilyEventViewSet
 
 
@@ -39,6 +40,30 @@ def _family_zone(family):
         return ZoneInfo(family.timezone or "UTC")
     except ZoneInfoNotFoundError:
         return ZoneInfo("UTC")
+
+
+def _validate_member_marker(serializer):
+    """Validate the optional Membership id stored in a native event payload."""
+    if "payload" not in serializer.validated_data:
+        return
+    payload = serializer.validated_data.get("payload")
+    if not isinstance(payload, dict):
+        return
+    member_id = payload.get("member_id")
+    if member_id in (None, ""):
+        return
+
+    event_type = serializer.validated_data.get("type") or getattr(serializer.instance, "type", None)
+    if event_type != "calendar.event":
+        raise ValidationError({"payload": {"member_id": "Personenzuordnung ist nur für FamilyOS-Kalendertermine verfügbar."}})
+
+    family = serializer.validated_data.get("family") or getattr(serializer.instance, "family", None)
+    try:
+        normalized = UUID(str(member_id))
+    except (TypeError, ValueError, AttributeError) as exc:
+        raise ValidationError({"payload": {"member_id": "Ungültige Personenzuordnung."}}) from exc
+    if not family or not Membership.objects.filter(family=family, id=normalized).exists():
+        raise ValidationError({"payload": {"member_id": "Person gehört nicht zu dieser Familie."}})
 
 
 class FamilyEventViewSet(BaseFamilyEventViewSet):
@@ -96,6 +121,7 @@ class FamilyEventViewSet(BaseFamilyEventViewSet):
             raise PermissionDenied("Externe Kalendertermine werden von ihrer Quelle verwaltet.")
         if serializer.validated_data.get("type") in READ_ONLY_EVENT_TYPES:
             raise PermissionDenied("Dieser Termin wird von seinem Fachbereich verwaltet.")
+        _validate_member_marker(serializer)
         super().perform_create(serializer)
 
     def perform_update(self, serializer):
@@ -103,6 +129,7 @@ class FamilyEventViewSet(BaseFamilyEventViewSet):
             raise PermissionDenied("Externe Kalendertermine sind schreibgeschützt.")
         if serializer.instance.type in READ_ONLY_EVENT_TYPES or serializer.validated_data.get("type") in READ_ONLY_EVENT_TYPES:
             raise PermissionDenied("Dieser Termin ist hier schreibgeschützt.")
+        _validate_member_marker(serializer)
         super().perform_update(serializer)
 
     def perform_destroy(self, instance):
