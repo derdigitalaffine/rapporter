@@ -9,7 +9,7 @@ export class PasskeyUnsupportedError extends Error{
 }
 
 export function isPasskeySupported(){
- return typeof window!=='undefined'&&Boolean(window.isSecureContext)&&typeof window.PublicKeyCredential!=='undefined'&&Boolean(navigator?.credentials);
+ return typeof window!=='undefined'&&Boolean(window.isSecureContext)&&typeof window.PublicKeyCredential!=='undefined'&&typeof navigator!=='undefined'&&Boolean(navigator.credentials);
 }
 
 export function isPasskeyCancellation(error){return error instanceof PasskeyCancelledError||error?.name==='NotAllowedError'||error?.name==='AbortError'}
