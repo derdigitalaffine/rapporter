@@ -5,7 +5,7 @@ from family.context_links import (
     UnsupportedContextType,
     default_context_registry,
 )
-from family.models import Membership
+from family.models import Family, Membership
 
 from .models import ExpenseLedger
 
@@ -16,7 +16,7 @@ def _visible_ledgers(user, family):
     membership = Membership.objects.filter(
         user=user,
         family=family,
-        family__status=family.Status.ACTIVE,
+        family__status=Family.Status.ACTIVE,
     ).first()
     if not membership:
         return ExpenseLedger.objects.none()
@@ -31,7 +31,7 @@ def _can_manage_ledger_link(user, ledger):
     return Membership.objects.filter(
         user=user,
         family_id=ledger.family_id,
-        family__status=ledger.family.Status.ACTIVE,
+        family__status=Family.Status.ACTIVE,
     ).exclude(role=Membership.Role.GUEST).exists()
 
 
