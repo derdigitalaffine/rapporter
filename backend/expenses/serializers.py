@@ -136,6 +136,8 @@ class ExpenseSerializer(serializers.ModelSerializer):
     finalize = serializers.BooleanField(write_only=True, required=False, default=False)
 
     def get_paid_by_name(self, obj):
+        if obj.paid_by_id is None:
+            return None
         return obj.paid_by.display_name or obj.paid_by.user.username
 
     def get_receipt_available(self, obj):
@@ -162,10 +164,21 @@ class ExpenseSerializer(serializers.ModelSerializer):
         membership = Membership.objects.filter(family=family, user=request.user, family__status=Family.Status.ACTIVE).first()
         if not membership and not request.user.is_superuser:
             raise serializers.ValidationError({"family": "Familie ist für diesen Benutzer nicht verfügbar."})
-        paid_by = attrs.get("paid_by") or getattr(self.instance, "paid_by", None) or membership
-        if not paid_by or paid_by.family_id != family.id:
-            raise serializers.ValidationError({"paid_by": "Zahler gehört nicht zu dieser Familie."})
-        attrs["paid_by"] = paid_by
+
+        funding_source = attrs.get(
+            "funding_source",
+            getattr(self.instance, "funding_source", Expense.FundingSource.MEMBER),
+        )
+        explicit_paid_by = "paid_by" in attrs
+        if funding_source == Expense.FundingSource.SHARED:
+            if explicit_paid_by and attrs.get("paid_by") is not None:
+                raise serializers.ValidationError({"paid_by": "Bei gemeinsamer Zahlung darf kein persönlicher Zahler gesetzt sein."})
+            attrs["paid_by"] = None
+        else:
+            paid_by = attrs.get("paid_by") or getattr(self.instance, "paid_by", None) or membership
+            if not paid_by or paid_by.family_id != family.id:
+                raise serializers.ValidationError({"paid_by": "Zahler gehört nicht zu dieser Familie."})
+            attrs["paid_by"] = paid_by
 
         ledger = attrs.get("ledger") or getattr(self.instance, "ledger", None)
         if ledger is None:
@@ -177,7 +190,16 @@ class ExpenseSerializer(serializers.ModelSerializer):
         attrs["ledger"] = ledger
 
         participants = attrs.get("participants")
-        if participants is not None:
+        if funding_source == Expense.FundingSource.SHARED:
+            if participants is not None:
+                raise serializers.ValidationError({
+                    "participants": "Gemeinsam bezahlte Ausgaben erzeugen keine persönliche Schuldaufteilung."
+                })
+            if "split_values" in attrs:
+                raise serializers.ValidationError({
+                    "split_values": "Gemeinsam bezahlte Ausgaben haben keine persönliche Schuldaufteilung."
+                })
+        elif participants is not None:
             unique = {str(value) for value in participants}
             found = set(str(value) for value in Membership.objects.filter(family=family, id__in=participants).values_list("id", flat=True))
             if not unique:
@@ -192,11 +214,17 @@ class ExpenseSerializer(serializers.ModelSerializer):
             total = attrs.get("total_amount", getattr(self.instance, "total_amount", None))
             if total is None:
                 raise serializers.ValidationError({"total_amount": "Gesamtbetrag ist erforderlich."})
-            if self.instance is None and participants is None:
-                raise serializers.ValidationError({"participants": "Beteiligte sind erforderlich."})
-            if finalize and participants is None and not self.instance.shares.exists():
-                raise serializers.ValidationError({"participants": "Beteiligte sind erforderlich."})
-        if self.instance and current_status == Expense.Status.POSTED and "total_amount" in attrs and participants is None:
+            if funding_source == Expense.FundingSource.MEMBER:
+                has_existing_shares = bool(self.instance and self.instance.shares.exists())
+                if participants is None and not has_existing_shares:
+                    raise serializers.ValidationError({"participants": "Beteiligte sind erforderlich."})
+        if (
+            self.instance
+            and current_status == Expense.Status.POSTED
+            and funding_source == Expense.FundingSource.MEMBER
+            and "total_amount" in attrs
+            and participants is None
+        ):
             raise serializers.ValidationError({"participants": "Bei geändertem Gesamtbetrag muss die Aufteilung bestätigt werden."})
         return attrs
 
@@ -257,7 +285,8 @@ class ExpenseSerializer(serializers.ModelSerializer):
                     return existing
             raise
 
-        self._write_shares(expense, participants, split_type, split_values)
+        if expense.funding_source == Expense.FundingSource.MEMBER:
+            self._write_shares(expense, participants, split_type, split_values)
         return expense
 
     @transaction.atomic
@@ -274,7 +303,9 @@ class ExpenseSerializer(serializers.ModelSerializer):
             if instance.receipt_status in {Expense.ReceiptStatus.REVIEW, Expense.ReceiptStatus.FAILED}:
                 instance.receipt_status = Expense.ReceiptStatus.READY
         instance.save()
-        if participants is not None:
+        if instance.funding_source == Expense.FundingSource.SHARED:
+            instance.shares.all().delete()
+        elif participants is not None:
             self._write_shares(instance, participants, split_type or ExpenseShare.SplitType.EQUAL, split_values)
         elif split_type is not None and instance.shares.exists():
             current = [share.member_id for share in instance.shares.all()]
@@ -289,13 +320,13 @@ class ExpenseSerializer(serializers.ModelSerializer):
         model = Expense
         fields = [
             "id", "family", "ledger", "title", "merchant", "occurred_at", "total_amount", "currency",
-            "paid_by", "paid_by_name", "created_by", "client_request_id", "receipt_status", "receipt_available", "source",
-            "status", "notes", "shares", "extraction", "participants", "split_type", "split_values",
-            "finalize", "created_at", "updated_at",
+            "funding_source", "paid_by", "paid_by_name", "created_by", "client_request_id",
+            "receipt_status", "receipt_available", "source", "status", "notes", "shares", "extraction",
+            "participants", "split_type", "split_values", "finalize", "created_at", "updated_at",
         ]
         read_only_fields = ["created_by", "receipt_status", "source", "status"]
         extra_kwargs = {
-            "paid_by": {"required": False},
+            "paid_by": {"required": False, "allow_null": True},
             "ledger": {"required": False, "allow_null": True},
         }
         validators = []
