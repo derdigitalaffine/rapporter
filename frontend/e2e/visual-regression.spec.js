@@ -21,7 +21,7 @@ async function restoreStableSnapshotShell(page){
     image.src=`data:image/svg+xml,${encodeURIComponent(svg)}`;
     if(image.complete)resolve();
   }),LEGACY_BRAND_ICON);
-  const todo=page.locator('.bottom-nav').getByRole('button',{name:'To-dos',exact:true});
+  const todo=page.locator('.bottom-nav button').filter({hasText:'To-dos'});
   await expect(todo).toHaveCount(1);
   await todo.evaluate(button=>{
     const walker=document.createTreeWalker(button,NodeFilter.SHOW_TEXT);
