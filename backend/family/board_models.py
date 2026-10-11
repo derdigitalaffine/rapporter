@@ -21,6 +21,7 @@ class BoardPost(TimestampedModel):
     text = models.TextField(blank=True, max_length=10000)
     kind = models.CharField(max_length=16, choices=Kind.choices, default=Kind.NOTE)
     target_id = models.UUIDField(null=True, blank=True)
+    adapter_key = models.CharField(max_length=32, blank=True, db_index=True)
     position = models.IntegerField(default=0)
 
     class Meta:

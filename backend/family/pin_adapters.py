@@ -8,6 +8,32 @@ from .context_links import ContextRef, default_context_registry
 from .models import BoardPost, FamilyEvent, Note, Routine, ShoppingItem, ShoppingList, Task
 
 
+LEGACY_KIND_TO_ADAPTER_KEY = {
+    BoardPost.Kind.EVENT: 'calendar_event',
+    BoardPost.Kind.TASK: 'task',
+    BoardPost.Kind.NOTE_REF: 'note',
+    BoardPost.Kind.SHOPPING: 'shopping_item',
+    BoardPost.Kind.ROUTINE: 'routine',
+    BoardPost.Kind.SHOPPING_LIST: 'shopping_list',
+    BoardPost.Kind.TRIP: 'trip',
+    BoardPost.Kind.DOCUMENT: 'document',
+}
+ADAPTER_KEY_TO_LEGACY_KIND = {value: key for key, value in LEGACY_KIND_TO_ADAPTER_KEY.items()}
+CANONICAL_ADAPTER_KEYS = frozenset(ADAPTER_KEY_TO_LEGACY_KIND)
+
+
+def canonical_adapter_key(*, adapter_key='', legacy_kind=''):
+    """Return a stable adapter key without confusing native board notes with note refs."""
+    key = str(adapter_key or '').strip()
+    if key:
+        return key if key in CANONICAL_ADAPTER_KEYS else ''
+    return LEGACY_KIND_TO_ADAPTER_KEY.get(legacy_kind, '')
+
+
+def legacy_kind_for_adapter_key(adapter_key):
+    return ADAPTER_KEY_TO_LEGACY_KIND.get(str(adapter_key or '').strip())
+
+
 class PinAdapter:
     """Allow-listed resolver for one canonical FamilyOS object type.
 
@@ -107,7 +133,7 @@ class ContextBackedPinAdapter(PinAdapter):
 
 
 class CalendarEventPinAdapter(PinAdapter):
-    key = BoardPost.Kind.EVENT
+    key = 'calendar_event'
 
     def queryset(self, user):
         return FamilyEvent.objects.all()
@@ -124,7 +150,7 @@ class CalendarEventPinAdapter(PinAdapter):
 
 
 class TaskPinAdapter(PinAdapter):
-    key = BoardPost.Kind.TASK
+    key = 'task'
 
     def queryset(self, user):
         return Task.objects.exclude(hidden_from_user=user)
@@ -141,7 +167,7 @@ class TaskPinAdapter(PinAdapter):
 
 
 class RoutinePinAdapter(PinAdapter):
-    key = BoardPost.Kind.ROUTINE
+    key = 'routine'
 
     def queryset(self, user):
         # Keep inactive routines resolvable for an existing pin so the board can
@@ -166,7 +192,7 @@ class RoutinePinAdapter(PinAdapter):
 
 
 class NotePinAdapter(PinAdapter):
-    key = BoardPost.Kind.NOTE_REF
+    key = 'note'
 
     def queryset(self, user):
         return Note.objects.filter(Q(author=user) | Q(shares__user=user)).distinct()
@@ -183,7 +209,7 @@ class NotePinAdapter(PinAdapter):
 
 
 class ShoppingItemPinAdapter(PinAdapter):
-    key = BoardPost.Kind.SHOPPING
+    key = 'shopping_item'
     family_lookup = 'shopping_list__family_id'
 
     def queryset(self, user):
@@ -205,7 +231,7 @@ class ShoppingItemPinAdapter(PinAdapter):
 
 
 class ShoppingListPinAdapter(PinAdapter):
-    key = BoardPost.Kind.SHOPPING_LIST
+    key = 'shopping_list'
 
     def queryset(self, user):
         # Archived lists remain resolvable for existing pins but cannot be newly pinned.
@@ -229,7 +255,7 @@ class ShoppingListPinAdapter(PinAdapter):
 
 
 class TripPinAdapter(ContextBackedPinAdapter):
-    key = BoardPost.Kind.TRIP
+    key = 'trip'
     context_type = 'trip'
 
     def preview(self, row):
@@ -246,7 +272,7 @@ class TripPinAdapter(ContextBackedPinAdapter):
 
 
 class DocumentPinAdapter(PinAdapter):
-    key = BoardPost.Kind.DOCUMENT
+    key = 'document'
 
     def queryset(self, user):
         raise RuntimeError('Document pin adapters require a family scope.')
@@ -322,11 +348,20 @@ for adapter in (
     register_pin_adapter(adapter)
 
 
-REFERENCE_KINDS = frozenset(PIN_ADAPTERS)
+ADAPTER_KEYS = frozenset(PIN_ADAPTERS)
+REFERENCE_KINDS = frozenset(LEGACY_KIND_TO_ADAPTER_KEY)
 
 
-def get_pin_adapter(kind):
-    return PIN_ADAPTERS.get(kind)
+def get_pin_adapter(key):
+    key = str(key or '').strip()
+    return PIN_ADAPTERS.get(key) or PIN_ADAPTERS.get(LEGACY_KIND_TO_ADAPTER_KEY.get(key, ''))
+
+
+def adapter_key_for_post(post):
+    stored = str(getattr(post, 'adapter_key', '') or '').strip()
+    if stored:
+        return stored if stored in PIN_ADAPTERS else ''
+    return LEGACY_KIND_TO_ADAPTER_KEY.get(post.kind, '')
 
 
 def unavailable_target(post):
@@ -334,7 +369,7 @@ def unavailable_target(post):
 
 
 def resolve_pin_targets(posts, user):
-    """Resolve a board page with at most one target query per adapter type."""
+    """Resolve a board page with at most one target query per canonical adapter type."""
     posts = list(posts)
     result = {
         post.id: (None if not post.target_id else unavailable_target(post))
@@ -342,9 +377,10 @@ def resolve_pin_targets(posts, user):
     }
     grouped = defaultdict(list)
     for post in posts:
-        adapter = get_pin_adapter(post.kind)
+        key = adapter_key_for_post(post)
+        adapter = PIN_ADAPTERS.get(key)
         if adapter and post.target_id:
-            grouped[adapter.key].append(post)
+            grouped[key].append(post)
 
     for key, adapter_posts in grouped.items():
         result.update(PIN_ADAPTERS[key].resolve_many(adapter_posts, user))
@@ -355,8 +391,9 @@ def resolve_pin_target(post, user):
     return resolve_pin_targets([post], user)[post.id]
 
 
-def validate_pin_target(kind, target_id, family_id, user):
-    adapter = get_pin_adapter(kind)
+def validate_pin_target(kind, target_id, family_id, user, *, adapter_key=''):
+    key = canonical_adapter_key(adapter_key=adapter_key, legacy_kind=kind)
+    adapter = PIN_ADAPTERS.get(key)
     if adapter is None:
         if target_id:
             raise ValidationError({'target_id': 'Dieser Pinnwand-Typ darf kein Ziel besitzen.'})
