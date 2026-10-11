@@ -23,6 +23,7 @@ from .pin_adapters import (
 from .pin_visibility import (
     effective_scope_for_user,
     pin_scope_queryset,
+    resolve_pin_page_visibility,
     source_object_visible,
     source_scope_for_target,
 )
@@ -273,7 +274,7 @@ class BoardViewSet(viewsets.ModelViewSet):
         page = self.paginate_queryset(queryset)
         rows = page if page is not None else list(queryset)
         context = self.get_serializer_context()
-        context['pin_targets'] = resolve_pin_targets(rows, request.user)
+        context['pin_targets'], context['_pin_effective_scope_cache'] = resolve_pin_page_visibility(rows, request.user)
         serializer = self.get_serializer(rows, many=True, context=context)
         if page is not None:
             return self.get_paginated_response(serializer.data)
@@ -366,6 +367,16 @@ class BoardViewSet(viewsets.ModelViewSet):
 
         with transaction.atomic():
             current = list(BoardPost.objects.select_for_update().filter(family_id=family_id).order_by('position', '-created_at', '-id'))
+            scoped = [row for row in current if row.id in allowed_ids]
+            targets = resolve_pin_targets(scoped, request.user)
+            allowed_ids = {
+                row.id for row in scoped
+                if not row.target_id or targets[row.id].get('available') is not False
+            }
+            if any(value not in allowed_ids for value in wanted):
+                # Reorder is an interaction: a neutral source-denied lifecycle
+                # shell never grants permission to move that Pin.
+                raise ValidationError({'ids': 'Pins sind für diese Pinnwand nicht verfügbar.'})
             visible_current = [row for row in current if row.id in allowed_ids]
             by_id = {row.id: row for row in visible_current}
             wanted_set = set(wanted)

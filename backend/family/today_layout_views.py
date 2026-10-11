@@ -16,6 +16,7 @@ from .today_layout_registry import (
     DEFAULT_WIDGET_SETTINGS,
     DEFAULT_WIDGETS,
     DEPRECATED_TODO_WIDGET_IDS,
+    LEGACY_CORE_WIDGET_ALIASES,
     LEGACY_SIZE_MAP,
     TODAY_LAYOUT_VERSION,
     TODAY_WIDGET_REGISTRY,
@@ -24,8 +25,8 @@ from .today_layout_registry import (
     default_widget,
 )
 
-# Keep accepting the original split Task/Routine ids so stale clients and stored
-# personal layouts migrate without losing order or visibility choices.
+# Keep accepting the original split Task/Routine and priority/next ids so stale
+# clients and stored personal layouts migrate without losing order/visibility.
 LEGACY_WIDGET_IDS = ('weather', 'priority', 'waste', 'next', 'tasks', 'shopping', 'routines', 'birthdays', 'notes')
 LEGACY_TODO_SIZE_SUPPORT = {
     'tasks': frozenset(('compact', 'wide')),
@@ -69,7 +70,7 @@ def _normalize_saved_widget(row):
         return None
     entry = TODAY_WIDGETS_BY_ID.get(key)
     if entry is not None and size not in entry['supportedSizes']:
-        size = 'wide'
+        size = entry['defaultSize']
     if key in LEGACY_TODO_SIZE_SUPPORT and size not in LEGACY_TODO_SIZE_SUPPORT[key]:
         size = 'wide'
     clean = {'id': key, 'visible': row['visible'], 'size': size}
@@ -77,6 +78,24 @@ def _normalize_saved_widget(row):
     if settings is not None:
         clean['settings'] = settings
     return clean
+
+
+def _migrate_core_widgets(rows):
+    """Replace priority/next aliases in place while preserving user layout choices."""
+    canonical = {row['id'] for row in rows if row['id'] not in LEGACY_CORE_WIDGET_ALIASES}
+    migrated = []
+    for row in rows:
+        target = LEGACY_CORE_WIDGET_ALIASES.get(row['id'])
+        if target is None:
+            migrated.append(row)
+            continue
+        if target in canonical:
+            continue
+        entry = TODAY_WIDGETS_BY_ID[target]
+        size = row['size'] if row['size'] in entry['supportedSizes'] else entry['defaultSize']
+        migrated.append({'id': target, 'visible': row['visible'], 'size': size})
+        canonical.add(target)
+    return migrated
 
 
 def _migrate_todo_widgets(rows):
@@ -91,9 +110,11 @@ def _migrate_todo_widgets(rows):
     legacy_rows = [row for _, row in legacy]
     visible = any(row.get('visible') is True for row in legacy_rows)
     tasks_row = next((row for row in legacy_rows if row.get('id') == 'tasks'), None)
-    preferred = tasks_row.get('size') if tasks_row and tasks_row.get('size') in ('compact', 'wide') else None
+    preferred = tasks_row.get('size') if tasks_row and tasks_row.get('size') in TODAY_WIDGET_SIZES else None
     if preferred is None:
-        preferred = next((row.get('size') for row in legacy_rows if row.get('size') in ('compact', 'wide')), 'wide')
+        preferred = next((row.get('size') for row in legacy_rows if row.get('size') in TODAY_WIDGET_SIZES), TODAY_WIDGETS_BY_ID['todo']['defaultSize'])
+    if preferred not in TODAY_WIDGETS_BY_ID['todo']['supportedSizes']:
+        preferred = TODAY_WIDGETS_BY_ID['todo']['defaultSize']
     combined = {'id': 'todo', 'visible': visible, 'size': preferred}
     first = min(index for index, _ in legacy)
     cleaned = [row for row in rows if row.get('id') not in DEPRECATED_TODO_WIDGET_IDS]
@@ -112,21 +133,22 @@ def _expanded_widgets(widgets, *, legacy_defaults=True):
             continue
         seen.add(row['id'])
         rows.append(row)
-    rows = _migrate_todo_widgets(rows)
+    rows = _migrate_todo_widgets(_migrate_core_widgets(rows))
     seen = {row['id'] for row in rows}
 
     # These surfaces were introduced after the original v1 layout. Existing v1
     # users historically received them visible at deterministic insertion points.
     if 'week' not in seen:
-        rows.insert(0, default_widget('week', visible=legacy_defaults))
+        timeline_index = next((index for index, row in enumerate(rows) if row['id'] == 'timeline'), None)
+        rows.insert(timeline_index + 1 if timeline_index is not None else 0, default_widget('week', visible=legacy_defaults))
         seen.add('week')
     if 'trip' not in seen:
-        priority_index = next((index for index, row in enumerate(rows) if row['id'] == 'priority'), None)
-        rows.insert(priority_index + 1 if priority_index is not None else min(1, len(rows)), default_widget('trip', visible=legacy_defaults))
+        focus_index = next((index for index, row in enumerate(rows) if row['id'] == 'focus'), None)
+        rows.insert(focus_index + 1 if focus_index is not None else min(1, len(rows)), default_widget('trip', visible=legacy_defaults))
         seen.add('trip')
     if 'pinboard' not in seen:
-        next_index = next((index for index, row in enumerate(rows) if row['id'] == 'next'), None)
-        rows.insert(next_index + 1 if next_index is not None else min(5, len(rows)), default_widget('pinboard', visible=legacy_defaults))
+        timeline_index = next((index for index, row in enumerate(rows) if row['id'] == 'timeline'), None)
+        rows.insert(timeline_index + 1 if timeline_index is not None else min(5, len(rows)), default_widget('pinboard', visible=legacy_defaults))
         seen.add('pinboard')
 
     # Registry growth is additive. Missing modern widgets are retained as hidden

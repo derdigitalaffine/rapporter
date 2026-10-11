@@ -23,3 +23,13 @@ Currently registered reference kinds are calendar events, tasks, note references
 Reordering no longer renumbers every pin for every arrow click. The backend computes a longest stable subsequence of the requested order, keeps those persisted positions unchanged, and assigns only moved segments to free integer positions between stable neighbours. A normal one-step move therefore changes one row. If repeated moves eventually consume every integer in a local gap, the backend performs a deterministic 1000-spaced full rebalance and then resumes sparse updates. This trades a rare O(n) maintenance write for O(changed pins) writes on normal interaction without introducing fractional/database-specific order values.
 
 The current Board UI already exposes up/down arrow controls, so keyboard/touch users have a non-drag reordering path; the backend optimization does not change that interaction or response shape.
+
+## Sichtbarkeit und verknüpfte Quellen
+
+Neue Notizzettel und Fotos können für dich, ausgewählte Familienmitglieder oder die ganze Familie sichtbar sein. Entfernte Familienmitgliedschaften verlieren ihre ausgewählten Freigaben sofort. Verknüpfte Inhalte übernehmen beim Anpinnen die aktuelle Sichtbarkeit ihrer Quelle; du kannst den Pin anschließend enger freigeben. Ein Pin erweitert niemals die Rechte an der Quelle.
+
+Die Karte zeigt die tatsächlich wirksame Sichtbarkeit. Wird ein Quellzugriff entzogen oder die Quelle gelöscht, bleibt nur ein neutraler Hinweis ohne Beschriftung, Bilder, Autor- oder Aktivitätsdaten. Bei eigenen Notizen öffnet **Quelle zusätzlich freigeben** ausdrücklich die bestehende Notiz-Freigabe; die Pinnwand ändert diese Rechte nicht beim Speichern.
+
+### Technischer Abnahmevertrag
+
+Die Seitenauflösung kombiniert vorhandene kanonische Adapter-Querysets für aktuelle Memberships in einer gebündelten Query pro Adaptertyp. Die exakte Schnittmenge und Vorschauen werden daraus berechnet; die Abfragezahl wächst nicht pro Pin. Direkte ACL-Prüfungen für Bilder, Reorder und einzelne Objekte bleiben serverseitig. Die neue Pin-Sichtbarkeit ist eine additive Migration; bestehende Pins behalten zunächst ihre Familien-Shell und bleiben durch Quellrechte begrenzt.

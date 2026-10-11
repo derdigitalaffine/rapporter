@@ -59,3 +59,20 @@ class PinVisibilityOracleTests(TestCase):
         missing = self.client.get(f'/api/board/{uuid.uuid4()}/')
         self.assertEqual(hidden.status_code, 404)
         self.assertEqual(missing.status_code, 404)
+
+    def test_source_denied_reorder_matches_random_id_and_preserves_positions(self):
+        source = Note.objects.create(family=self.family, author=self.other, title='Private source')
+        pin = BoardPost.objects.create(
+            family=self.family, author=self.other, kind='note_ref',
+            target_id=source.pk, visibility=BoardPost.Visibility.FAMILY, position=1000,
+        )
+        before = list(BoardPost.objects.filter(family=self.family).values_list('id', 'position'))
+        denied = self.client.post('/api/board/reorder/', {
+            'family': str(self.family.pk), 'ids': [str(pin.pk)],
+        }, format='json')
+        guessed = self.client.post('/api/board/reorder/', {
+            'family': str(self.family.pk), 'ids': [str(uuid.uuid4())],
+        }, format='json')
+        self.assertEqual(denied.status_code, 400)
+        self.assertEqual(denied.data, guessed.data)
+        self.assertEqual(list(BoardPost.objects.filter(family=self.family).values_list('id', 'position')), before)

@@ -1,7 +1,9 @@
+from collections import defaultdict
+
 from django.db.models import Q
 
 from .models import BoardPost, Membership
-from .pin_adapters import adapter_key_for_post, get_pin_adapter
+from .pin_adapters import adapter_key_for_post, get_pin_adapter, unavailable_target
 
 
 def pin_scope_queryset(user, queryset=None):
@@ -28,13 +30,57 @@ def pin_scope_allows(user, pin):
     membership = Membership.objects.filter(family_id=pin.family_id, user=user, family__status='active').first()
     if membership is None:
         return False
-    if pin.author_id == user.id:
+    return pin_scope_for_membership(pin, membership)
+
+
+def pin_scope_for_membership(pin, membership):
+    """Pure Pin-scope predicate shared by direct and batched effective ACLs."""
+    if membership.family_id != pin.family_id or pin.family.status != 'active':
+        return False
+    if pin.author_id == membership.user_id:
         return True
     if pin.visibility == BoardPost.Visibility.FAMILY:
         return True
     if pin.visibility == BoardPost.Visibility.SELECTED:
-        return pin.visible_to_memberships.filter(pk=membership.pk).exists()
+        return any(row.pk == membership.pk for row in pin.visible_to_memberships.all())
     return False
+
+
+def resolve_pin_page_visibility(pins, user):
+    """Batch previews and exact effective scopes without per-Pin source reads."""
+    pins = list(pins)
+    targets = {pin.pk: None if not pin.target_id else unavailable_target(pin) for pin in pins}
+    scopes = {pin.pk: pin.visibility if not pin.target_id else 'none' for pin in pins}
+    references = [pin for pin in pins if pin.target_id]
+    if not references:
+        return targets, scopes
+    memberships = list(Membership.objects.filter(
+        family_id__in={pin.family_id for pin in references}, family__status='active',
+    ).select_related('user'))
+    family_members = defaultdict(set)
+    authors = {}
+    for member in memberships:
+        family_members[member.family_id].add(member.pk)
+        authors[(member.family_id, member.user_id)] = member.pk
+    grouped = defaultdict(list)
+    for pin in references:
+        adapter = get_pin_adapter(adapter_key_for_post(pin))
+        if adapter:
+            grouped[adapter.key].append(pin)
+    for key, rows in grouped.items():
+        previews, audiences = get_pin_adapter(key).resolve_many_with_audiences(rows, user, memberships)
+        targets.update(previews)
+        for pin in rows:
+            if pin.pk not in previews:
+                continue
+            allowed = audiences.get(pin.pk, set())
+            if pin.visibility == BoardPost.Visibility.FAMILY and allowed == family_members[pin.family_id]:
+                scopes[pin.pk] = BoardPost.Visibility.FAMILY
+            elif allowed == {authors.get((pin.family_id, pin.author_id))}:
+                scopes[pin.pk] = BoardPost.Visibility.PRIVATE
+            else:
+                scopes[pin.pk] = BoardPost.Visibility.SELECTED
+    return targets, scopes
 
 
 def source_object_visible(user, pin):

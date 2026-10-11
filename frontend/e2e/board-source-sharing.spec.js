@@ -20,3 +20,13 @@ test('note source sharing is a separate canonical action',async({page})=>{
  await expect(link).toHaveAttribute('href',shareUrl);
  await expect(page.locator('.pin-card')).toContainText('Nur mich');
 });
+
+for(const [language,label,scope] of [["fr", "Partager aussi la source", "Moi uniquement"], ["nl", "Bron ook delen", "Alleen ik"], ["th", "แชร์ต้นฉบับด้วย", "ฉันเท่านั้น"]]) {
+ test(`source sharing uses the selected ${language} language`,async({page})=>{
+  await installApiMocks(page,{language,dismissOnboarding:true});
+  await page.route("**/api/board/**",route=>route.fulfill({json:{count:1,next:null,results:[{id:"pin-locale",family:"family-1",author:1,kind:"note_ref",target:{available:true,title:"Source",can_share_source:true,source_share_url:"/?page=notes&note=n&share=1"},visibility:"family",effective_scope:"private",images:[],can_change_pin_visibility:false,can_delete:false,can_reorder:false}]}}));
+  await page.goto("/?page=board");
+  await expect(page.getByRole("link",{name:label,exact:true})).toHaveAttribute("href","/?page=notes&note=n&share=1");
+  await expect(page.locator(".pin-card")).toContainText(scope);
+ });
+}

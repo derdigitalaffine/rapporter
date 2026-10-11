@@ -188,7 +188,8 @@ class PinboardReferenceTests(TestCase):
 
     def test_pin_does_not_grant_access_to_private_note(self):
         created = self.client.post('/api/board/', {
-            'family': str(self.family.id), 'kind': 'note_ref', 'target_id': str(self.note.id)
+            'family': str(self.family.id), 'kind': 'note_ref', 'target_id': str(self.note.id),
+            'visibility': 'family',  # Explicit wider Pin scope cannot widen the source.
         }, format='json')
         self.assertEqual(created.status_code, 201, created.data)
         self.assertEqual(created.data['target']['title'], 'Privat')

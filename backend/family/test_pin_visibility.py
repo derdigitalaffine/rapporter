@@ -84,7 +84,9 @@ class PinVisibilityTests(TestCase):
         self.selected_membership.delete()
         pin = BoardPost.objects.get(pk=pin_id)
         self.assertEqual(pin.visible_to_memberships.count(), 0)
-        self.assertEqual(self._rows(self.selected), [])
+        self.client.force_authenticate(self.selected)
+        response = self.client.get(f'/api/board/?family={self.family.id}')
+        self.assertEqual(response.status_code, 403)
 
     def test_family_visibility_includes_guest_readers(self):
         response = self.client.post('/api/board/', {
