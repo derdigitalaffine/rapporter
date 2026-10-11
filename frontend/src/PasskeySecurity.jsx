@@ -27,7 +27,7 @@ export default function PasskeySecurity(){
    setPending(null);setReauthOpen(false);await load();
   }catch(error){
    if(isPasskeyCancellation(error)){return}
-   if(error?.status===403&&error?.code==='reauth_required'&&!afterReauth){setPending(action);setReauthOpen(true);return}
+   if(error?.status===403&&!afterReauth){setPending(action);setReauthOpen(true);return}
    toast(messageFor(error),{type:'error'});
   }finally{setBusy(false)}
  }
