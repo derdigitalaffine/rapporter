@@ -86,6 +86,16 @@ After successful delivery acceptance or a terminal delivery failure, FamilyOS im
 
 `sent` means the configured mail backend accepted the message. It does **not** claim inbox delivery, opening or reading. The same limitation applies to the Superadmin test mail: it proves transport acceptance, not inbox placement.
 
+## Superadmin account operations and mail journal
+
+The global Superadmin UI also exposes bounded account-support operations that reuse the canonical Identity and Recovery services:
+
+- **Change user email** creates a pending email identity and queues the normal verification message. The current primary address remains authoritative until the user verifies the new address; Superadmin never bypasses verification with a direct primary-email write.
+- **Send password reset** queues the same versioned, expiring reset flow used by the public recovery endpoint. Superadmin cannot set or view a user's password or recovery token.
+- Both mutations require the existing fresh-session Superadmin protection and produce dedicated audit events that contain only the actor and opaque user target, never the email address or token.
+
+The **Mail journal** is a Superadmin-only operational history built from the durable outbox. It exposes template key, locale, status, attempt count, redacted error class and timestamps. While a retryable delivery still needs its recipient payload, the UI may show only a strongly masked recipient hint. It never returns message bodies, render context, `message_key`, domain references, action tokens, full recipient addresses or SMTP credentials. Once the outbox clears a terminal payload, the journal does not reconstruct that recipient from another data source.
+
 ## Development and tests
 
 For local development where seeing mail is useful, use Django's console backend deliberately:
