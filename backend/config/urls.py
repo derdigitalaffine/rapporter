@@ -21,6 +21,7 @@ from family.superadmin_user_views import (
 )
 from mailing.views import superadmin_mail_health, superadmin_mail_journal
 from mailing.superadmin_views import superadmin_smtp_config, superadmin_smtp_test
+from telemetry.superadmin_views import superadmin_analytics_overview
 
 urlpatterns = [
     path("admin/", admin.site.urls),
@@ -42,6 +43,7 @@ urlpatterns = [
     path("api/superadmin/auth/session/", superadmin_session, name="superadmin_auth_session"),
     path("api/superadmin/auth/sessions/", superadmin_sessions, name="superadmin_auth_sessions"),
     path("api/superadmin/auth/reauth/password/", superadmin_reauthenticate_password, name="superadmin_auth_reauth_password"),
+    path("api/superadmin/analytics/overview/", superadmin_analytics_overview, name="superadmin_analytics_overview"),
     path("api/superadmin/users/", superadmin_users, name="superadmin_users"),
     path("api/superadmin/users/<int:user_id>/email-change/", superadmin_user_email_change, name="superadmin_user_email_change"),
     path("api/superadmin/users/<int:user_id>/email-direct/", superadmin_user_email_direct, name="superadmin_user_email_direct"),
