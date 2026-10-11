@@ -97,10 +97,10 @@ export async function loginWithPasskey(){
 
 export async function listPasskeys(){return api('/auth/passkeys/')}
 
-export async function registerPasskey(name){
+export async function registerPasskey(name,locale='de'){
  const challenge=await api('/auth/passkeys/registration/options/',{method:'POST',body:'{}'});
  const credential=await createCredential(challenge.options);
- return api('/auth/passkeys/registration/verify/',{method:'POST',body:JSON.stringify({challenge_id:challenge.challenge_id,credential,name})});
+ return api('/auth/passkeys/registration/verify/',{method:'POST',body:JSON.stringify({challenge_id:challenge.challenge_id,credential,name,locale})});
 }
 
 export async function reauthenticateWithPasskey(){
@@ -110,4 +110,4 @@ export async function reauthenticateWithPasskey(){
 }
 
 export async function renamePasskey(id,name){return api(`/auth/passkeys/${encodeURIComponent(id)}/`,{method:'PATCH',body:JSON.stringify({name})})}
-export async function removePasskey(id){return api(`/auth/passkeys/${encodeURIComponent(id)}/`,{method:'DELETE'})}
+export async function removePasskey(id,locale='de'){return api(`/auth/passkeys/${encodeURIComponent(id)}/`,{method:'DELETE',body:JSON.stringify({locale})})}
