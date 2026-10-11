@@ -59,14 +59,14 @@ jobs:
           cache-dependency-path: backend/requirements.txt
       - run: pip install -r backend/requirements.txt
       - working-directory: backend
-        run: python manage.py makemigrations auth_abuse auth_identity auth_sessions entitlements telemetry family expenses baby pets documents contracts mailing --check --dry-run
+        run: python manage.py makemigrations auth_abuse auth_identity auth_sessions entitlements telemetry family expenses baby pets documents contracts correspondence mailing --check --dry-run
       - working-directory: backend
         run: python manage.py migrate && python manage.py check
       - working-directory: backend
         run: python manage.py test
 
   e2e_shard:
-    name: e2e / ${{ matrix.project }} / ${{ matrix.shard }}
+    name: e2e / $${{ matrix.project }} / $${{ matrix.shard }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -87,12 +87,12 @@ jobs:
       - working-directory: frontend
         run: npx playwright install --with-deps chromium
       - working-directory: frontend
-        run: npm run e2e -- --project=${{ matrix.project }} --shard=${{ matrix.shard }}
+        run: npm run e2e -- --project=$${{ matrix.project }} --shard=$${{ matrix.shard }}
       - name: Upload visual regression diffs
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: visual-regression-diffs-${{ matrix.project }}-${{ strategy.job-index }}-${{ github.run_attempt }}
+          name: visual-regression-diffs-$${{ matrix.project }}-$${{ strategy.job-index }}-$${{ github.run_attempt }}
           path: frontend/test-results/**/*.png
           if-no-files-found: ignore
           retention-days: 14
@@ -100,21 +100,19 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-report-${{ matrix.project }}-${{ strategy.job-index }}-${{ github.run_attempt }}
+          name: playwright-report-$${{ matrix.project }}-$${{ strategy.job-index }}-$${{ github.run_attempt }}
           path: |
             frontend/playwright-report
             frontend/test-results
           if-no-files-found: ignore
           retention-days: 14
 
-  # Keep the historical "e2e" check name stable for branch protection while
-  # running all browser shards in parallel above.
   e2e:
     runs-on: ubuntu-latest
     if: always()
     needs: [e2e_shard]
     env:
-      E2E_SHARD_RESULT: ${{ needs.e2e_shard.result }}
+      E2E_SHARD_RESULT: $${{ needs.e2e_shard.result }}
     steps:
       - name: Require all E2E shards
         run: test "$E2E_SHARD_RESULT" = "success"
