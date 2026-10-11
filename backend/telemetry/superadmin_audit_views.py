@@ -1,25 +1,45 @@
+import csv
+import json
 from datetime import timedelta
-from uuid import UUID
+from io import StringIO
+from uuid import UUID, uuid4
 
+from django.http import HttpResponse
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
-from family.superadmin_views import IsSuperAdmin
+from family.superadmin_views import IsSuperAdmin, _enforce_sensitive_action, _rate_limited_response
 
 from .catalog import ACTOR_CLASSES, AUDIT_EVENT_SPECS, OUTCOMES, TARGET_TYPES
 from .models import AuditEvent
+from .service import try_record_audit_event
 
 
 PERIODS = {"24h": 1, "7d": 7, "30d": 30, "90d": 90, "365d": 365}
 DEFAULT_LIMIT = 50
 MAX_LIMIT = 100
 MAX_OFFSET = 10_000
+MAX_EXPORT_ROWS = 5_000
 # identifier_hash is deliberately excluded from the admin API even though it is
 # valid telemetry metadata. The explorer should never expose entered login
 # identifiers or stable derivatives of them.
 SAFE_DETAIL_KEYS = frozenset({"auth_method", "role", "scope", "export_kind", "origin", "error_class", "source_key"})
+CSV_COLUMNS = (
+    "id",
+    "occurred_at",
+    "event_key",
+    "actor_class",
+    "actor_id",
+    "family_id",
+    "target_type",
+    "target_id",
+    "outcome",
+    "reason",
+    "request_id",
+    "details",
+)
 
 
 def _positive_int(value, *, default, maximum, field):
@@ -53,6 +73,34 @@ def _serialize_event(event):
     }
 
 
+def _csv_cell(value):
+    if value is None:
+        return ""
+    if isinstance(value, dict):
+        text = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    elif hasattr(value, "isoformat"):
+        text = value.isoformat()
+    else:
+        text = str(value)
+    if text.startswith(("=", "+", "-", "@")):
+        return f"'{text}"
+    return text
+
+
+def _csv_response(events, *, period, export_id):
+    stream = StringIO()
+    writer = csv.DictWriter(stream, fieldnames=CSV_COLUMNS, extrasaction="ignore")
+    writer.writeheader()
+    for event in events:
+        serialized = _serialize_event(event)
+        writer.writerow({column: _csv_cell(serialized.get(column)) for column in CSV_COLUMNS})
+    response = HttpResponse(stream.getvalue(), content_type="text/csv; charset=utf-8")
+    response["Content-Disposition"] = f'attachment; filename="familyos-audit-{period}-{timezone.now().date().isoformat()}.csv"'
+    response["X-Audit-Export-Id"] = str(export_id)
+    response["Cache-Control"] = "no-store"
+    return response
+
+
 @api_view(["GET"])
 @permission_classes([IsSuperAdmin])
 def superadmin_audit_events(request):
@@ -61,6 +109,15 @@ def superadmin_audit_events(request):
     if not days:
         return Response(
             {"detail": "Unsupported audit period.", "allowed_periods": list(PERIODS)},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    export_format = str(request.query_params.get("export") or "").lower()
+    if export_format and export_format != "csv":
+        return Response({"detail": "Unsupported audit export format."}, status=status.HTTP_400_BAD_REQUEST)
+    if export_format and ("limit" in request.query_params or "offset" in request.query_params):
+        return Response(
+            {"detail": "Audit export does not accept pagination parameters."},
             status=status.HTTP_400_BAD_REQUEST,
         )
 
@@ -121,6 +178,30 @@ def superadmin_audit_events(request):
 
     queryset = queryset.order_by("-occurred_at", "id")
     total = queryset.count()
+
+    if export_format == "csv":
+        if total > MAX_EXPORT_ROWS:
+            return Response(
+                {"detail": "Audit export exceeds the maximum row count.", "max_rows": MAX_EXPORT_ROWS, "count": total},
+                status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            )
+        decision = _enforce_sensitive_action(request)
+        if not decision.allowed:
+            return _rate_limited_response(decision)
+        events = list(queryset)
+        export_id = uuid4()
+        try_record_audit_event(
+            "superadmin.export.created",
+            actor=request.user,
+            actor_class="superadmin",
+            outcome="success",
+            reason="admin_action",
+            target_type="export",
+            target_id=str(export_id),
+            metadata={"export_kind": "audit_csv"},
+        )
+        return _csv_response(events, period=period, export_id=export_id)
+
     events = list(queryset[offset : offset + limit])
     next_offset = offset + limit if offset + limit < total else None
 
