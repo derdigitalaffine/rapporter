@@ -5,6 +5,7 @@ TODAY_LAYOUT_VERSION = 2
 TODAY_WIDGET_SIZES = ('compact', 'medium', 'wide')
 LEGACY_SIZE_MAP = {'compact': 'compact', 'square': 'medium', 'full': 'wide'}
 DEPRECATED_TODO_WIDGET_IDS = frozenset(('tasks', 'routines'))
+LEGACY_CORE_WIDGET_ALIASES = {'priority': 'focus', 'next': 'timeline'}
 
 DEFAULT_WEEK_SETTINGS = {'events': True, 'waste': True, 'holidays': True, 'special': True}
 DEFAULT_TRIP_SETTINGS = {'show_wishes': False}
@@ -18,6 +19,7 @@ def _entry(
     category='family',
     sizes=('compact', 'wide'),
     default_size='wide',
+    default_visible=True,
     settings=None,
     deep_link=None,
 ):
@@ -28,7 +30,7 @@ def _entry(
         'titleKey': key,
         'category': category,
         'component': component,
-        'defaultVisible': True,
+        'defaultVisible': default_visible,
         'defaultOrder': order,
         'defaultSize': default_size,
         'supportedSizes': tuple(sizes),
@@ -43,19 +45,19 @@ def _entry(
 
 
 TODAY_WIDGET_REGISTRY = (
-    _entry('week', 0, component='WeekCompassWidget', category='planning', settings=DEFAULT_WEEK_SETTINGS),
-    _entry('priority', 1, category='planning'),
-    _entry('trip', 2, category='planning', sizes=TODAY_WIDGET_SIZES, default_size='medium', settings=DEFAULT_TRIP_SETTINGS),
-    _entry('next', 3, category='planning', sizes=TODAY_WIDGET_SIZES, default_size='medium'),
+    _entry('focus', 0, component='TodayFocusWidget', category='planning', default_size='wide'),
+    _entry('timeline', 1, component='TodayTimelineWidget', category='planning', sizes=TODAY_WIDGET_SIZES, default_size='wide'),
+    _entry('week', 2, component='WeekCompassWidget', category='planning', sizes=TODAY_WIDGET_SIZES, default_size='medium', settings=DEFAULT_WEEK_SETTINGS),
+    _entry('todo', 3, component='TodayTodoWidget', category='planning', sizes=TODAY_WIDGET_SIZES, default_size='compact'),
     _entry('pinboard', 4, component='PinboardTodayWidget', category='collaboration', default_size='compact'),
-    _entry('weather', 5, category='context', sizes=TODAY_WIDGET_SIZES, default_size='medium'),
-    _entry('todo', 6, component='TodayTodoWidget', category='planning'),
-    _entry('shopping', 7, category='household', default_size='compact'),
-    _entry('waste', 8, category='household', sizes=TODAY_WIDGET_SIZES, default_size='medium'),
-    _entry('inbox', 9, category='collaboration', sizes=TODAY_WIDGET_SIZES, default_size='medium'),
-    _entry('birthdays', 10, category='family', sizes=TODAY_WIDGET_SIZES, default_size='medium'),
-    _entry('notes', 11, category='family', sizes=TODAY_WIDGET_SIZES, default_size='medium'),
-    _entry('loyalty', 12, category='household', sizes=TODAY_WIDGET_SIZES, default_size='compact'),
+    _entry('trip', 5, category='planning', sizes=TODAY_WIDGET_SIZES, default_size='medium', default_visible=False, settings=DEFAULT_TRIP_SETTINGS),
+    _entry('weather', 6, category='context', sizes=TODAY_WIDGET_SIZES, default_size='medium', default_visible=False),
+    _entry('shopping', 7, category='household', default_size='compact', default_visible=False),
+    _entry('waste', 8, category='household', sizes=TODAY_WIDGET_SIZES, default_size='medium', default_visible=False),
+    _entry('inbox', 9, category='collaboration', sizes=TODAY_WIDGET_SIZES, default_size='medium', default_visible=False),
+    _entry('birthdays', 10, sizes=TODAY_WIDGET_SIZES, default_size='medium', default_visible=False),
+    _entry('notes', 11, sizes=TODAY_WIDGET_SIZES, default_size='medium', default_visible=False),
+    _entry('loyalty', 12, category='household', sizes=TODAY_WIDGET_SIZES, default_size='compact', default_visible=False),
 )
 
 TODAY_WIDGETS_BY_ID = {entry['id']: entry for entry in TODAY_WIDGET_REGISTRY}
