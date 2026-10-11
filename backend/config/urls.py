@@ -4,6 +4,7 @@ from django.urls import include, path
 from auth_sessions.views import reauthenticate_password, revoke_other_sessions, session_detail, session_list
 from family.auth_views import login_view, logout_view, refresh_view, session_view
 from mailing.views import superadmin_mail_health
+from mailing.superadmin_views import superadmin_smtp_config, superadmin_smtp_test
 
 urlpatterns = [
     path("admin/", admin.site.urls),
@@ -17,6 +18,8 @@ urlpatterns = [
     path("api/auth/reauth/password/", reauthenticate_password, name="auth_reauth_password"),
     path("api/auth/email/", include("auth_identity.urls")),
     path("api/superadmin/mail-health/", superadmin_mail_health, name="superadmin_mail_health"),
+    path("api/superadmin/smtp/", superadmin_smtp_config, name="superadmin_smtp_config"),
+    path("api/superadmin/smtp/test/", superadmin_smtp_test, name="superadmin_smtp_test"),
     path("api/", include("entitlements.urls")),
     path("api/", include("family.urls")),
     path("api/", include("expenses.urls")),
