@@ -9,6 +9,7 @@ export const CREATE_ACTIONS=[
   {id:'event',labelKey:'createUi.event',icon:'calendar',group:'primary',permission:'createContent',contextMatcher:matches('calendar'),open:({open,context})=>open('event',context)},
   {id:'expense',labelKey:'createUi.expense',icon:'receipt',group:'primary',permission:'createContent',contextMatcher:matches('expenses'),open:({open,context})=>open('expense',context)},
   {id:'contract',labelKey:'createUi.contract',icon:'receipt',group:'secondary',permission:'createContent',contextMatcher:matches('contracts'),open:({open,context})=>open('contract',context)},
+  {id:'correspondence',labelKey:'createUi.correspondence',icon:'inbox',group:'secondary',permission:'createContent',contextMatcher:nowhere,open:({open,context})=>open('correspondence',context)},
   {id:'birthday',labelKey:'birthdayUi.add',icon:'calendar',group:'secondary',permission:'manageSettings',contextMatcher:matches('birthdays'),open:({open,context})=>open('birthday',context)},
   {id:'taskList',labelKey:'createUi.taskList',icon:'lists',group:'secondary',permission:'createContent',contextMatcher:nowhere,open:({open,context})=>open('taskList',context)},
   {id:'shoppingList',labelKey:'createUi.shoppingList',icon:'shopping',group:'secondary',permission:'createContent',contextMatcher:nowhere,open:({open,context})=>open('shoppingList',context)},
