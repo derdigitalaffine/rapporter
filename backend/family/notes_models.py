@@ -2,6 +2,7 @@ from django.conf import settings
 from django.db import models
 from .models import Family, TimestampedModel
 
+
 class Note(TimestampedModel):
     family = models.ForeignKey(Family, on_delete=models.CASCADE)
     author = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='private_notes')
@@ -9,17 +10,23 @@ class Note(TimestampedModel):
     body = models.TextField(blank=True)
     drawing = models.JSONField(default=list, blank=True)
     pinned = models.BooleanField(default=False)
+    extended_mode = models.BooleanField(default=False)
+    blocks = models.JSONField(default=list, blank=True)
     version = models.PositiveIntegerField(default=1)
+
     class Meta:
         ordering = ['-pinned', '-updated_at']
         indexes = [models.Index(fields=['family', 'author', '-updated_at'], name='notes_family_author_date')]
 
+
 class NoteShare(models.Model):
     note = models.ForeignKey(Note, on_delete=models.CASCADE, related_name='shares')
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
-    permission = models.CharField(max_length=8, choices=[('read','Read'), ('edit','Edit')])
+    permission = models.CharField(max_length=8, choices=[('read', 'Read'), ('edit', 'Edit')])
+
     class Meta:
-        constraints = [models.UniqueConstraint(fields=['note','user'], name='unique_note_share')]
+        constraints = [models.UniqueConstraint(fields=['note', 'user'], name='unique_note_share')]
+
 
 class NoteRevision(TimestampedModel):
     note = models.ForeignKey(Note, on_delete=models.CASCADE, related_name='revisions')
@@ -28,5 +35,8 @@ class NoteRevision(TimestampedModel):
     title = models.CharField(max_length=160, blank=True)
     body = models.TextField(blank=True)
     drawing = models.JSONField(default=list)
+    extended_mode = models.BooleanField(default=False)
+    blocks = models.JSONField(default=list, blank=True)
+
     class Meta:
         ordering = ['-version']

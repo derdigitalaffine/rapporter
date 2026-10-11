@@ -45,8 +45,23 @@ test('new member invitation uses email delivery without exposing a QR token',asy
  dialog=page.getByRole('dialog');
  await dialog.getByText('Gast',{exact:true}).first().click();
  await dialog.getByRole('button',{name:'Einladung senden'}).click();
- await expect(dialog.getByText('VERSAND WIRD VORBEREITET',{exact:true})).toBeVisible();
+ await expect(dialog.getByText(/Versand wird vorbereitet/i)).toBeVisible();
  await expect(dialog.getByText(/oma@example\.test/)).toBeVisible();
  await expect(dialog.locator('.invite-qr-image')).toHaveCount(0);
  await expect(dialog.getByRole('button',{name:/Link kopieren/})).toHaveCount(0);
+});
+
+test('member invite list shows server delivery state and last send time',async({page})=>{
+ const state=await installApiMocks(page,{language:'de'});
+ state.invitations.push({
+  id:'invite-sent',family:'family-1',family_name:'Musterfamilie',role:'guest',email:'oma@example.test',display_name:'Oma',
+  expires_at:new Date(Date.now()+7*86400000).toISOString(),accepted_at:null,revoked_at:null,active:true,
+  delivery_status:'sent',last_sent_at:new Date().toISOString(),created_at:new Date().toISOString(),
+ });
+ await page.goto('/?page=members');
+ await page.waitForLoadState('networkidle');
+ const card=page.locator('.invite-card').filter({hasText:'Oma'});
+ await expect(card.getByText('Versendet',{exact:true})).toBeVisible();
+ await expect(card).toContainText('zuletzt versendet');
+ await expect(card).not.toContainText('token-');
 });

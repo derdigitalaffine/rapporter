@@ -33,6 +33,7 @@ class FamilyConfig(AppConfig):
         core_models.TripPhoto = TripPhoto
         from . import models_features  # noqa: F401
         from . import board_notifications  # noqa: F401
+        from . import invitation_signals  # noqa: F401
         from . import prediction_signals  # noqa: F401
         from . import signals  # noqa: F401
         from . import travel_signals  # noqa: F401

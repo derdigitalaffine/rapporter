@@ -70,6 +70,57 @@ test('timed end is exclusive at midnight while real cross-midnight spans keep ev
  await expect(october9.locator('.calendar-event-chip').filter({hasText:'Mehrtag bis Mitternacht'})).toHaveCount(0);
 });
 
+test('calendar grids use roving keyboard focus and announce period changes',async({page},testInfo)=>{
+ await installApiMocks(page);
+ await page.goto('/?page=calendar&day=2026-10-07');
+
+ const period=page.locator('.calendar-period-title');
+ await expect(period).toHaveAttribute('aria-live','polite');
+ await expect(period).toHaveAttribute('aria-atomic','true');
+
+ if(testInfo.project.name==='mobile-chromium'){
+  await expect(page.locator('.calendar-week-mobile')).toBeVisible();
+  await expect(page.locator('.calendar-week-grid')).toBeHidden();
+  return;
+ }
+
+ const weekGrid=page.locator('.calendar-week-grid');
+ await expect(weekGrid.locator('.calendar-day-head[tabindex="0"]')).toHaveCount(1);
+ const october7=weekGrid.locator('[data-calendar-day="2026-10-07"]');
+ await october7.focus();
+ await expect(october7).toBeFocused();
+
+ await october7.press('ArrowRight');
+ let focused=page.locator('.calendar-week-grid [data-calendar-day="2026-10-08"]');
+ await expect(focused).toBeFocused();
+ await expect(focused).toHaveAttribute('tabindex','0');
+ await expect(weekGrid.locator('.calendar-day-head[tabindex="0"]')).toHaveCount(1);
+
+ await focused.press('ArrowDown');
+ focused=page.locator('.calendar-week-grid [data-calendar-day="2026-10-15"]');
+ await expect(focused).toBeFocused();
+ await focused.press('ArrowUp');
+ focused=page.locator('.calendar-week-grid [data-calendar-day="2026-10-08"]');
+ await expect(focused).toBeFocused();
+
+ await focused.press('Home');
+ focused=page.locator('.calendar-week-grid [data-calendar-day="2026-10-05"]');
+ await expect(focused).toBeFocused();
+ await focused.press('End');
+ await expect(page.locator('.calendar-week-grid [data-calendar-day="2026-10-11"]')).toBeFocused();
+
+ await page.goto('/?page=calendar&view=month&day=2026-10-31');
+ const monthGrid=page.locator('.calendar-month-grid');
+ await expect(monthGrid.locator('.calendar-month-date[tabindex="0"]')).toHaveCount(1);
+ const october31=monthGrid.locator('[data-calendar-day="2026-10-31"]');
+ await october31.focus();
+ await october31.press('ArrowRight');
+ const november1=page.locator('.calendar-month-grid [data-calendar-day="2026-11-01"]');
+ await expect(november1).toBeFocused();
+ await expect(november1).toHaveAttribute('tabindex','0');
+ await expect(page.locator('.calendar-period-title')).toContainText('November');
+});
+
 test('Today week compass navigates weeks, resets to today and opens tapped day in calendar',async({page})=>{
  await installApiMocks(page);
  await page.goto('/');
