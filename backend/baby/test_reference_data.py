@@ -61,14 +61,14 @@ class PediatricReferenceTests(TestCase):
         Membership.objects.create(family=self.family, user=self.owner, role=Membership.Role.OWNER, display_name="Owner")
         set_module(self.owner, self.family, enabled=True)
 
-    def draft(self, version="2026.1", **payload_kwargs):
+    def draft(self, version="2026.1", effective_from=date(2026, 1, 1), **payload_kwargs):
         return create_reference_draft(
             self.admin,
             source_key=DEFAULT_SOURCE_KEY,
             source_title="Reviewed pediatric standard",
             source_version=version,
             locale="de-DE",
-            effective_from=date(2026, 1, 1),
+            effective_from=effective_from,
             payload=reference_payload(**payload_kwargs),
             reason="reviewed release",
             notes="Controlled import for tests.",
@@ -121,6 +121,17 @@ class PediatricReferenceTests(TestCase):
         package.refresh_from_db()
         with self.assertRaises(DjangoValidationError):
             package.delete()
+
+    def test_future_effective_package_cannot_displace_current_release_early(self):
+        current = publish_reference_package(self.admin, self.draft("2026.1").id)
+        future = self.draft("2026.2", effective_from=date.today() + timedelta(days=30), exam_target=8)
+        with self.assertRaises(DjangoValidationError):
+            publish_reference_package(self.admin, future.id)
+        future.refresh_from_db()
+        current.refresh_from_db()
+        self.assertEqual(future.status, PediatricReferencePackage.Status.DRAFT)
+        self.assertEqual(current.status, PediatricReferencePackage.Status.PUBLISHED)
+        self.assertEqual(published_reference_package().id, current.id)
 
     def test_publish_supersede_reactivate_and_audit(self):
         first = publish_reference_package(self.admin, self.draft("2026.1").id)
