@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import child_identity_views, extra_views, media_views, reference_views, secure_views, views
+from . import child_identity_views, extra_views, media_views, profile_views, reference_views, secure_views, views
 
 
 urlpatterns = [
@@ -16,6 +16,7 @@ urlpatterns = [
     path("baby/pregnancy-utilities/<uuid:session_id>/", views.pregnancy_utility_detail),
     path("baby/pregnancies/<uuid:pregnancy_id>/journal/", views.pregnancy_journal),
     path("baby/profiles/", secure_views.baby_profiles),
+    path("baby/profiles/<uuid:baby_id>/", profile_views.baby_profile_detail),
     path("baby/memberships/<uuid:membership_id>/identity/", child_identity_views.child_identity_by_membership),
     path("baby/profiles/<uuid:baby_id>/identity/", child_identity_views.child_identity_detail),
     path("baby/profiles/<uuid:baby_id>/guardians/", child_identity_views.child_guardians),
