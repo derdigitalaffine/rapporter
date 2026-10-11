@@ -28,7 +28,7 @@ User = get_user_model()
 def child_profile(baby_id, *, for_update=False):
     queryset = BabyProfile.objects.select_related("family", "membership__user")
     if for_update:
-        queryset = queryset.select_for_update()
+        queryset = queryset.select_for_update(of=("self",))
     baby = queryset.filter(pk=baby_id).first()
     if not baby:
         raise NotFound("Child identity not found.")
@@ -75,7 +75,7 @@ def serialize_child_identity(baby):
         state = "verification_pending"
     else:
         state = "managed"
-    email = (primary.email if primary else pending.email if pending else "")
+    email = primary.email if primary else pending.email if pending else ""
     return {
         "baby": str(baby.pk),
         "membership": str(baby.membership_id) if baby.membership_id else None,
@@ -180,6 +180,10 @@ def _technical_username_for_existing_baby(baby):
     return f"child-{baby.family_id.hex[:8]}-{baby.id.hex[:20]}"
 
 
+def _identity_key(baby):
+    return baby.family_id, baby.display_name.strip().casefold(), baby.birth_date
+
+
 @transaction.atomic
 def attach_identity_to_orphan_baby(baby_id):
     baby = child_profile(baby_id, for_update=True)
@@ -230,14 +234,33 @@ def reconcile_orphan_child_identities(*, apply=False):
         .select_related("family")
         .order_by("family_id", "birth_date", "display_name", "created_at")
     )
-    keys = [
-        (row.family_id, row.display_name.strip().casefold(), row.birth_date)
-        for row in rows
-    ]
+    keys = [_identity_key(row) for row in rows]
     counts = Counter(keys)
+    linked_keys = {
+        _identity_key(row)
+        for row in BabyProfile.objects.filter(membership__isnull=False).only(
+            "family_id", "display_name", "birth_date"
+        )
+    }
+    guardian_family_ids = set(
+        CareCircleAccess.objects.filter(
+            is_guardian=True,
+            membership__role__in=MANAGER_ROLES,
+        ).values_list("family_id", flat=True)
+    )
+    explicit_guardian_babies = set(
+        ManagedChildGuardian.objects.filter(
+            can_manage_account=True,
+            membership__role__in=MANAGER_ROLES,
+            baby__membership__isnull=True,
+        ).values_list("baby_id", flat=True)
+    )
+
     result = {"reconciled": [], "review": []}
     for baby, key in zip(rows, keys):
-        if counts[key] > 1:
+        ambiguous_identity = counts[key] > 1 or key in linked_keys
+        has_guardian_seed = baby.family_id in guardian_family_ids or baby.pk in explicit_guardian_babies
+        if ambiguous_identity or not has_guardian_seed:
             result["review"].append(str(baby.pk))
             continue
         if apply:
