@@ -38,7 +38,8 @@ class SuperadminUserAdminTests(TestCase):
         self.assertEqual(row["email"], "old@example.test")
         self.assertTrue(row["email_verified"])
         self.assertTrue(row["can_password_reset"])
-        self.assertNotIn("password", str(row).lower())
+        forbidden_secret_fields = {"password", "password_hash", "password_reset_token", "token"}
+        self.assertTrue(forbidden_secret_fields.isdisjoint(row.keys()))
 
     @patch("family.superadmin_user_views._enforce_sensitive_action", return_value=SimpleNamespace(allowed=True))
     def test_email_change_uses_pending_verification_and_audits_without_replacing_primary(self, enforce):
