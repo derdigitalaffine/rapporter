@@ -10,8 +10,8 @@
     "build": "npm run i18n:check && npm run release:check && vite build && vite build --config vite.superadmin.config.js && node scripts/stamp-service-worker.mjs",
     "preview": "vite preview --host 0.0.0.0",
     "e2e": "playwright test",
-    "e2e:visual": "playwright test e2e/visual-regression.spec.js",
-    "e2e:visual:update": "playwright test e2e/visual-regression.spec.js --update-snapshots"
+    "e2e:visual": "playwright test e2e/visual-regression.spec.js e2e/calendar-grid-visual.spec.js",
+    "e2e:visual:update": "playwright test e2e/visual-regression.spec.js e2e/calendar-grid-visual.spec.js --update-snapshots"
   },
   "dependencies": {
     "@vitejs/plugin-react": "latest",
