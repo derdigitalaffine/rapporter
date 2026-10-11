@@ -105,3 +105,17 @@ test('source permission and session replacement remove cached private projection
  await page.route('**/api/events/**',route=>route.fulfill({json:[]}));await page.route('**/api/actions/**',route=>route.fulfill({json:{results:[action('replacement','Neuer Nutzer morgen','2026-10-11T08:00:00Z')],scope:'upcoming'}}));
  await page.evaluate(()=>window.dispatchEvent(new CustomEvent('famuhle:auth-changed',{detail:{authenticated:true}})));await expect(tomorrow).toContainText('Neuer Nutzer morgen');await expect(tomorrow).not.toContainText('Sporttasche packen');
 });
+
+test('same-day revalidation preserves layout while pending and removes denied source before other request finishes',async({page})=>{
+ await boot(page);const tomorrow=page.getByTestId('today-tomorrow');const load=page.getByTestId('today-family-load');await expect(tomorrow).toContainText('Zahnarzt morgen');await expect(load).toContainText('Kinderarzt');
+ const before=await tomorrow.boundingBox();
+ let release;const pending=new Promise(resolve=>{release=resolve});let denied=false;
+ await page.route('**/api/actions/**',async route=>{await pending;return route.fulfill({json:{results:[],scope:new URL(route.request().url()).searchParams.get('scope')}})});
+ const calendarRoutes=[];await page.route('**/api/events/**',async route=>{calendarRoutes.push(route);await pending;if(!denied)return route.fulfill({json:[]})});
+ await page.evaluate(()=>window.dispatchEvent(new Event('focus')));await expect.poll(()=>calendarRoutes.length).toBe(2);
+ await expect(tomorrow).toContainText('Zahnarzt morgen');await expect(load).toContainText('Kinderarzt');expect((await tomorrow.boundingBox()).height).toBe(before.height);
+ denied=true;await Promise.all(calendarRoutes.map(route=>route.fulfill({status:403,json:{detail:'Access revoked'}})));
+ await expect(tomorrow).not.toContainText('Zahnarzt morgen');await expect(load).not.toContainText('Kinderarzt');await expect(tomorrow).toContainText('teilweise');
+ // The independently pending Action source remains visible until its own result.
+ await expect(tomorrow).toContainText('Sporttasche packen');release();await expect(tomorrow).not.toContainText('Sporttasche packen');
+});

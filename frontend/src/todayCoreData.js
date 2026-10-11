@@ -25,11 +25,15 @@ async function loadTodayCoreData(family,{force=false,coalesce=false}={}){
  if(!force&&store.day===day){
   if(store.loaded)return snapshot(store);
  }
- if(force||store.day!==day)clearProjection(store,emit);
+ if(store.day!==day)clearProjection(store,emit);
  const generation=store.generation+1;
- store.generation=generation;store.day=day;store.loading=true;store.actionFailed=false;store.calendarFailed=false;emit(store);
+ store.generation=generation;store.day=day;store.loading=true;emit(store);
  const actionRequest=api(`/actions/?family=${encodeURIComponent(familyId)}&scope=today`);
  const calendarRequest=fetchCalendarEvents({familyId,start:day,end:day});
+ // Preserve already-authorized same-day rows while revalidating, but never
+ // retain a failed source until the other request has also completed.
+ actionRequest.catch(()=>{if(store.generation===generation){store.actions=[];store.actionFailed=true;emit(store)}});
+ calendarRequest.catch(()=>{if(store.generation===generation){store.events=[];store.calendarFailed=true;emit(store)}});
  const promise=Promise.allSettled([actionRequest,calendarRequest]).then(([actionsResult,eventsResult])=>{
   if(store.generation!==generation)return snapshot(store);
   if(actionsResult.status==='fulfilled'){
