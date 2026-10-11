@@ -1,0 +1,13 @@
+.entitlement-summary{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.entitlement-summary-main{display:flex;align-items:center;gap:10px;min-width:0}
+.entitlement-summary-main>span{display:grid;gap:2px;min-width:0}
+.entitlement-summary-main small{color:var(--muted);font-weight:800}
+.entitlement-summary-main strong{font-size:1rem}
+.entitlement-tier{flex:none;border:1px solid var(--line);border-radius:var(--radius-pill);background:var(--soft);padding:5px 9px;font-size:.72rem;font-weight:900}
+.entitlement-tier.vip{background:var(--green-soft);color:var(--positive)}
+.entitlement-summary-hint{margin:8px 0 0;color:var(--muted);font-size:.74rem}
+.menu-row.entitlement-locked{color:var(--muted)}
+.menu-row.entitlement-locked>svg{opacity:.78}
+.entitlement-lock-badge{display:inline-flex;align-items:center;gap:4px;max-width:100%;border:1px solid var(--line);border-radius:var(--radius-pill);padding:4px 7px;background:var(--soft);color:var(--muted);font-size:.68rem;font-weight:900;white-space:nowrap}
+.entitlement-lock-badge svg{flex:none}
+@media(max-width:390px){.entitlement-summary{align-items:flex-start}.entitlement-summary-hint{font-size:.7rem}.entitlement-lock-badge{font-size:.64rem;padding-inline:6px}}
