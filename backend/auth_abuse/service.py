@@ -82,6 +82,13 @@ INVITE_KEYS = (
     KeyPolicy("network", 4),
     KeyPolicy("global", 50),
 )
+INVITE_PUBLIC_KEYS = (
+    KeyPolicy("user", 1),
+    KeyPolicy("network", 4),
+    KeyPolicy("identifier", 1),
+    KeyPolicy("network_identifier", 1),
+    KeyPolicy("global", 50),
+)
 
 # Stable scope names are part of the API contract. Future auth work (#201/#202)
 # should reuse these entries instead of adding local throttles.
@@ -109,6 +116,12 @@ POLICIES: dict[str, AbusePolicy] = {
     ),
     "invite.resend": AbusePolicy(
         "invite.resend", WindowPolicy(3, 300), WindowPolicy(10, 3600), INVITE_KEYS, 60, 1800, "auth.invite.resend"
+    ),
+    "invite.resolve": AbusePolicy(
+        "invite.resolve", WindowPolicy(30, 60), WindowPolicy(200, 3600), INVITE_PUBLIC_KEYS, 15, 300, "auth.invite.resolve"
+    ),
+    "invite.consume": AbusePolicy(
+        "invite.consume", WindowPolicy(8, 60), WindowPolicy(30, 3600), INVITE_PUBLIC_KEYS, 30, 900, "auth.invite.consume"
     ),
     "webauthn.registration.options": AbusePolicy(
         "webauthn.registration.options", WindowPolicy(10, 60), WindowPolicy(40, 3600), AUTHENTICATED_KEYS, 15, 300, "auth.webauthn.registration"

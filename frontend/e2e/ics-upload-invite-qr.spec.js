@@ -35,17 +35,18 @@ test('city waste calendar accepts a downloaded ICS file',async({page})=>{
  await expect(page.getByText('Müllkalender Stadt Kaiserslautern ist bereit',{exact:true})).toBeVisible();
 });
 
-test('new member invitation shows a QR code for the invite page',async({page})=>{
+test('new member invitation uses email delivery without exposing a QR token',async({page})=>{
  await boot(page,'/?page=members');
  await page.getByRole('button',{name:'Person einladen'}).click();
  let dialog=page.getByRole('dialog');
  await dialog.getByLabel('Anzeigename').fill('Oma');
- await dialog.getByRole('button',{name:/Weiter zu Rolle/}).click();
+ await dialog.getByLabel('E-Mail').fill('oma@example.test');
+ await dialog.getByRole('button',{name:/Weiter zu Rolle & Senden/}).click();
  dialog=page.getByRole('dialog');
  await dialog.getByText('Gast',{exact:true}).first().click();
- await dialog.getByRole('button',{name:'Einladung erstellen'}).click();
- const qr=dialog.locator('.invite-qr-image');
- await expect(qr).toBeVisible();
- await expect(qr).toHaveAttribute('src',/^data:image\/png;base64,/);
- await expect(dialog.getByText('Mit dem Handy scannen',{exact:true})).toBeVisible();
+ await dialog.getByRole('button',{name:'Einladung senden'}).click();
+ await expect(dialog.getByText('VERSAND WIRD VORBEREITET',{exact:true})).toBeVisible();
+ await expect(dialog.getByText(/oma@example\.test/)).toBeVisible();
+ await expect(dialog.locator('.invite-qr-image')).toHaveCount(0);
+ await expect(dialog.getByRole('button',{name:/Link kopieren/})).toHaveCount(0);
 });
