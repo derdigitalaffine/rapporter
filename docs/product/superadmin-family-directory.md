@@ -25,7 +25,7 @@ Each family row additionally exposes:
 - owner-level `email_verified`
 - `entitlements` from the canonical `resolve_entitlements()` service (`tier`, display name, capabilities, origin summary and origin classes)
 
-Existing fields, owners and pending-owner-invite rows remain compatible.
+Existing fields, owners and pending-owner-invite rows remain compatible. Entitlement and activity values are computed as a request-time operational snapshot rather than persisted dashboard state.
 
 ## Privacy boundary
 
