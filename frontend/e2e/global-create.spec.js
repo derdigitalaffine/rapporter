@@ -62,3 +62,13 @@ for(const [language,forYou,pinned,allActions,settingsTitle,smartRanking,settings
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=document.documentElement.clientWidth+1)).toBe(true);
  });
 }
+
+test('preference changes give immediate feedback and roll back a rejected save',async({page})=>{
+ await bootPage(page,'profile');
+ const smart=page.locator('.quickstart-settings .quickstart-setting-toggle input').first();
+ await expect(smart).toBeEnabled();await expect(smart).toBeChecked();
+ let release;const pending=new Promise(resolve=>{release=resolve});let started=false;
+ await page.route('**/api/create-actions/**',async route=>{if(route.request().method()!=='PATCH')return route.fallback();started=true;await pending;return route.fulfill({status:503,json:{detail:'Unavailable'}})});
+ await smart.uncheck();await expect.poll(()=>started).toBe(true);await expect(smart).not.toBeChecked();await expect(smart).toBeDisabled();
+ release();await expect(smart).toBeChecked();await expect(smart).toBeEnabled();
+});
