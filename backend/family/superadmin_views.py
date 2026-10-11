@@ -12,10 +12,10 @@ from auth_abuse.service import enforce
 from auth_identity.models import EmailIdentity
 from auth_identity.service import EmailIdentityError, normalize_email
 from auth_sessions.service import require_fresh_session
-from entitlements.services import resolve_entitlements
+from entitlements.services import resolve_entitlements, resolve_entitlements_for_families
 from telemetry.models import AuditEvent, UsageEvent
 
-from .invitation_delivery import invitation_delivery_summary
+from .invitation_delivery import invitation_delivery_summary, prime_invitation_delivery_summaries
 from .invitation_service import issue_invitation
 from .models import Family, IntegrationSource, Membership
 
@@ -110,6 +110,24 @@ def _families_queryset():
     )
 
 
+def _prime_family_rows(families):
+    family_list = list(families)
+    if not family_list:
+        return family_list
+    snapshots = resolve_entitlements_for_families(family_list)
+    now = timezone.now()
+    pending_invites = []
+    for family in family_list:
+        family._superadmin_entitlement_snapshot = snapshots[family.pk]
+        pending_invites.extend(
+            invite
+            for invite in family.invitations.all()
+            if invite.accepted_at is None and invite.revoked_at is None and invite.expires_at > now
+        )
+    prime_invitation_delivery_summaries(pending_invites)
+    return family_list
+
+
 def _family_row(family):
     now = timezone.now()
     memberships = list(family.memberships.all())
@@ -144,7 +162,9 @@ def _family_row(family):
                 "email_verified": bool(primary and primary.verified_at),
             }
         )
-    entitlement_snapshot = resolve_entitlements(family).as_dict()
+    entitlement_snapshot = getattr(family, "_superadmin_entitlement_snapshot", None)
+    if entitlement_snapshot is None:
+        entitlement_snapshot = resolve_entitlements(family)
     return {
         "id": str(family.id),
         "name": family.name,
@@ -159,7 +179,7 @@ def _family_row(family):
         ),
         "pending_invite_count": int(getattr(family, "pending_invite_count", len(pending)) or 0),
         "last_activity_at": getattr(family, "last_activity_at", None),
-        "entitlements": entitlement_snapshot,
+        "entitlements": entitlement_snapshot.as_dict(),
         "owners": owner_rows,
         "pending_owner_invites": pending_rows,
         "created_at": family.created_at,
@@ -319,7 +339,7 @@ def superadmin_families(request):
                 {"detail": "Unsupported family sort.", "allowed_sorts": list(FAMILY_SORTS)},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        rows = rows.order_by(*ordering)
+        rows = _prime_family_rows(rows.order_by(*ordering))
         return Response([_family_row(family) for family in rows])
 
     decision = _enforce_sensitive_action(request)
@@ -377,6 +397,7 @@ def superadmin_family_detail(request, family_id):
         return Response({"detail": "Familie nicht gefunden."}, status=status.HTTP_404_NOT_FOUND)
 
     if request.method == "GET":
+        _prime_family_rows([family])
         return Response(_family_detail_payload(family))
 
     requested = request.data.get("status")
