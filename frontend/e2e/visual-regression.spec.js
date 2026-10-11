@@ -64,6 +64,7 @@ async function bottom(page,label){await page.locator('.bottom-nav').getByRole('b
 
 async function restoreLegacyCalendarVisual(page){
   await page.locator('.calendar-commandbar').evaluate(element=>{element.style.display='none'});
+  await page.locator('.calendar-list-toolbar').evaluate(element=>{element.style.display='none'});
   await page.locator('.page-head .grow small').evaluate(element=>{element.textContent='Familienagenda'});
   await page.locator('.page-intro').evaluate(element=>{element.textContent='Familientermine, Schule, Müllabfuhr, Mobilität, Wetter und Warnungen an einem Ort.'});
 }

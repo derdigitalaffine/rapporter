@@ -4,7 +4,7 @@ import './calendar-i18n';
 import './birthday-i18n';
 import {api} from './api';
 import {Icon} from './icons';
-import {toast} from './feedback';
+import {confirmAction,toast} from './feedback';
 import {formatDateTime} from './locale';
 import {isWasteEvent,wasteClass,wasteKind,wasteKindLabel} from './waste-ui';
 import {eventSourceDescriptor,eventSourceFilterKey,eventSourceStyle,isHolidayEvent,isNativeCalendarEvent} from './calendar-event-ui';
@@ -16,9 +16,11 @@ import './calendar-hub.css';
 import './calendar-health.css';
 
 const CALENDAR_SOURCE_FILTERS=new Set(['birthday','family','warning','waste','weather','transit','school','calendar']);
+const CALENDAR_LIST_DENSITY_KEY='familyos:calendar:list-density:v1';
 
 export default function CalendarHub({family,onBack,t}){
  const [events,setEvents]=useState([]);const [integrations,setIntegrations]=useState([]);const [edit,setEdit]=useState(null);const [detail,setDetail]=useState(null);const [filter,setFilter]=useState(calendarSourceFilterFromLocation);const [showPast,setShowPast]=useState(false);const [view,setView]=useState(calendarViewFromLocation);
+ const [selectionMode,setSelectionMode]=useState(false);const [selectedIds,setSelectedIds]=useState(()=>new Set());const [listDensity,setListDensity]=useState(readCalendarListDensity);const [batchBusy,setBatchBusy]=useState(false);
  const loadSequence=useRef(0);const lastRange=useRef(null);const previousFamilyId=useRef(family?.id);
  const targetDay=new URLSearchParams(window.location.search).get('day');
  const load=useCallback(async(range={})=>{
@@ -43,7 +45,7 @@ export default function CalendarHub({family,onBack,t}){
  useEffect(()=>{
   const familyChanged=previousFamilyId.current!=null&&family?.id!=null&&String(previousFamilyId.current)!==String(family.id);
   previousFamilyId.current=family?.id;
-  setEvents([]);
+  setEvents([]);setSelectionMode(false);setSelectedIds(new Set());
   if(familyChanged){setFilter('all');replaceCalendarQuery('source',null)}else setFilter(calendarSourceFilterFromLocation());
   setShowPast(Boolean(targetDay&&targetDay<dayKey(new Date())));
  },[family?.id,targetDay]);
@@ -56,6 +58,11 @@ export default function CalendarHub({family,onBack,t}){
  const hasPast=useMemo(()=>sourceFiltered.some(eventIsPast),[sourceFiltered]);
  const visible=useMemo(()=>showPast?sourceFiltered:sourceFiltered.filter(e=>!eventIsPast(e)),[sourceFiltered,showPast]);
  const grouped=useMemo(()=>groupByDay(visible),[visible]);
+ const selectableVisible=useMemo(()=>visible.filter(isNativeCalendarEvent),[visible]);
+ const selectableIds=useMemo(()=>new Set(selectableVisible.map(event=>String(event.id))),[selectableVisible]);
+ const allSelectableSelected=selectableVisible.length>0&&selectableVisible.every(event=>selectedIds.has(String(event.id)));
+ useEffect(()=>{if(view!=='list'){setSelectionMode(false);setSelectedIds(new Set())}},[view]);
+ useEffect(()=>{setSelectedIds(current=>{const next=new Set([...current].filter(id=>selectableIds.has(id)));if(next.size===current.size&&[...next].every(id=>current.has(id)))return current;return next})},[selectableIds]);
  useEffect(()=>{if(view!=='list'||!targetDay)return;const timer=setTimeout(()=>document.getElementById(`calendar-day-${targetDay}`)?.scrollIntoView({block:'start',behavior:'smooth'}),60);return()=>clearTimeout(timer)},[targetDay,grouped.length,showPast,view]);
  function editEvent(e){setDetail(null);setEdit(e)}
  function openEvent(e){if(e.type==='birthday'&&e.payload?.url){window.location.assign(e.payload.url);return}setDetail(e)}
@@ -69,6 +76,39 @@ export default function CalendarHub({family,onBack,t}){
   setView(next);
   replaceCalendarQuery('view',next==='week'?null:next);
  }
+ function changeListDensity(next){
+  const value=next==='compact'?'compact':'normal';
+  setListDensity(value);writeCalendarListDensity(value);
+ }
+ function startSelection(){setDetail(null);setSelectionMode(true)}
+ function stopSelection(){if(batchBusy)return;setSelectionMode(false);setSelectedIds(new Set())}
+ function toggleSelection(event){
+  if(batchBusy||!isNativeCalendarEvent(event))return;
+  const id=String(event.id);
+  setSelectedIds(current=>{const next=new Set(current);if(next.has(id))next.delete(id);else next.add(id);return next});
+ }
+ function toggleAllSelectable(){
+  if(batchBusy)return;
+  setSelectedIds(allSelectableSelected?new Set():new Set(selectableVisible.map(event=>String(event.id))));
+ }
+ async function deleteSelected(){
+  const ids=[...selectedIds].filter(id=>selectableIds.has(id));
+  if(!ids.length||batchBusy)return;
+  const confirmed=await confirmAction({title:t('calendarUi.deleteSelectedTitle'),message:t('calendarUi.deleteSelectedMessage',{count:ids.length}),confirmLabel:t('calendarUi.deleteSelected'),cancelLabel:t('cancel'),danger:true});
+  if(!confirmed)return;
+  setBatchBusy(true);
+  const requested=new Set(ids);
+  try{
+   const failed=await deleteCalendarEvents(ids);
+   const failedSet=new Set(failed);
+   const deleted=ids.length-failed.length;
+   if(deleted)setEvents(rows=>rows.filter(row=>!requested.has(String(row.id))||failedSet.has(String(row.id))));
+   setSelectedIds(failedSet);
+   if(failed.length)toast(t('calendarUi.deleteSelectedPartial',{deleted,failed:failed.length}),{type:'error'});
+   else{setSelectionMode(false);toast(t('calendarUi.deleteSelectedSuccess',{count:deleted}),{type:'success'})}
+   if(lastRange.current)await load(lastRange.current);
+  }finally{setBatchBusy(false)}
+ }
  async function eventSaved(saved,{deleted=false}={}){
   const editedId=edit?.id;
   setEdit(null);
@@ -77,8 +117,11 @@ export default function CalendarHub({family,onBack,t}){
   if(lastRange.current)await load(lastRange.current);
  }
  const language=i18n.language;
- const listContent=<>{hasPast&&<div className="calendar-history-toggle"><button className="secondary compact" aria-pressed={showPast} onClick={()=>setShowPast(value=>!value)}><Icon name="calendar"/>{t(showPast?'calendarUi.hidePast':'calendarUi.showPast')}</button></div>}
- <div className="agenda-days">{grouped.length?grouped.map(([day,rows])=><section className={`agenda-day ${targetDay===day?'agenda-day-target':''}`} id={`calendar-day-${day}`} key={day}><div className="agenda-day-head"><div><small>{dayRelativeLabel(day,t,language)}</small><h2>{dayLongLabel(day,t,language)}</h2></div><span>{rows.length}</span></div><div className="agenda-list">{rows.map(e=><CalendarEventRow key={e.id} event={e} family={family} t={t} language={language} onOpen={()=>openEvent(e)}/>)}</div></section>):<div className="smart-empty"><Icon name="calendar" size={34}/><strong>{t('noUpcoming')}</strong><span>{filter==='all'?t('calendarAddHint'):t('calendarUi.noSourceEntries')}</span>{filter!=='all'&&<button className="secondary compact" onClick={()=>changeFilter('all')}>{t('calendarUi.showAllSources')}</button>}</div>}</div></>;
+ const listContent=<><div className="calendar-list-toolbar" role="toolbar" aria-label={t('calendarUi.listTools')}>
+  <div className="calendar-list-density" role="group" aria-label={t('calendarUi.listDensity')}><span>{t('calendarUi.listDensity')}</span><button type="button" className="secondary compact" aria-pressed={listDensity==='normal'} onClick={()=>changeListDensity('normal')}>{t('calendarUi.densityNormal')}</button><button type="button" className="secondary compact" aria-pressed={listDensity==='compact'} onClick={()=>changeListDensity('compact')}>{t('calendarUi.densityCompact')}</button></div>
+  <div className="calendar-list-actions">{selectionMode?<><span className="calendar-selection-count" aria-live="polite">{t('calendarUi.selectedCount',{count:selectedIds.size})}</span><button type="button" className="secondary compact" onClick={toggleAllSelectable} disabled={batchBusy||selectableVisible.length===0}>{t(allSelectableSelected?'calendarUi.clearSelection':'calendarUi.selectAllVisible')}</button><button type="button" className="secondary compact" onClick={stopSelection} disabled={batchBusy}>{t('calendarUi.selectionDone')}</button><button type="button" className="calendar-bulk-delete" onClick={deleteSelected} disabled={batchBusy||selectedIds.size===0}><Icon name="delete"/>{t('calendarUi.deleteSelected')}</button></>:<button type="button" className="secondary compact" onClick={startSelection} disabled={selectableVisible.length===0}><Icon name="check"/>{t('calendarUi.selectEvents')}</button>}</div>
+ </div>{hasPast&&<div className="calendar-history-toggle"><button className="secondary compact" aria-pressed={showPast} onClick={()=>setShowPast(value=>!value)}><Icon name="calendar"/>{t(showPast?'calendarUi.hidePast':'calendarUi.showPast')}</button></div>}
+ <div className={`agenda-days ${listDensity==='compact'?'calendar-list-compact':''} ${selectionMode?'calendar-selection-mode':''}`}>{grouped.length?grouped.map(([day,rows])=><section className={`agenda-day ${targetDay===day?'agenda-day-target':''}`} id={`calendar-day-${day}`} key={day}><div className="agenda-day-head"><div><small>{dayRelativeLabel(day,t,language)}</small><h2>{dayLongLabel(day,t,language)}</h2></div><span>{rows.length}</span></div><div className="agenda-list">{rows.map(e=><CalendarListRow key={e.id} event={e} family={family} t={t} language={language} selecting={selectionMode} selected={selectedIds.has(String(e.id))} disabled={batchBusy} onToggle={()=>toggleSelection(e)} onOpen={()=>openEvent(e)}/>)}</div></section>):<div className="smart-empty"><Icon name="calendar" size={34}/><strong>{t('noUpcoming')}</strong><span>{filter==='all'?t('calendarAddHint'):t('calendarUi.noSourceEntries')}</span>{filter!=='all'&&<button className="secondary compact" onClick={()=>changeFilter('all')}>{t('calendarUi.showAllSources')}</button>}</div>}</div></>;
  return <div className="smart-page calendar-agenda"><div className="page-head"><button className="back-button" onClick={onBack} aria-label={t('back')}><Icon name="back"/></button><div className="grow"><small>{t('calendarUi.familyCalendar')}</small><h1>{t('calendar')}</h1></div></div><p className="page-intro">{t('calendarUi.calendarIntro')}</p>
  {unhealthySources.length>0&&<CalendarSourceHealth sources={unhealthySources} t={t}/>} 
  {(filters.length>1||filter!=='all')&&<div className="calendar-filters" aria-label={t('calendarUi.sources')}><button className={filter==='all'?'active':''} onClick={()=>changeFilter('all')}><Icon name="calendar"/> {t('all')}</button>{filters.map(source=><button key={source.filterKey} className={filter===source.filterKey?'active':''} onClick={()=>changeFilter(source.filterKey)}><Icon name={source.icon}/>{source.key==='family'?(family?.name||source.label):source.label}</button>)}</div>}
@@ -89,13 +132,15 @@ export default function CalendarHub({family,onBack,t}){
 
 function CalendarSourceHealth({sources,t}){const names=sources.map(source=>source.name).filter(Boolean).join(' · ');return <aside className="calendar-source-health" role="status" aria-live="polite"><span className="calendar-source-health-icon" aria-hidden="true"><Icon name="warning"/></span><div className="calendar-source-health-copy"><strong>{sources.length===1?t('calendarUi.sourceHealthOne'):t('calendarUi.sourceHealthMany',{count:sources.length})}</strong><span>{names}</span></div><a className="calendar-source-health-link" href="/?page=integrations"><span>{t('calendarUi.sourceHealthOpen')}</span><Icon name="next"/></a></aside>}
 
+function CalendarListRow({event,family,t,language,selecting,selected,disabled,onToggle,onOpen}){const selectable=isNativeCalendarEvent(event);if(!selecting)return <CalendarEventRow event={event} family={family} t={t} language={language} onOpen={onOpen}/>;return <div className={`calendar-selection-row ${selectable?'is-selectable':'is-readonly'} ${selected?'is-selected':''}`}>{selectable?<label className="calendar-row-check"><input type="checkbox" checked={selected} disabled={disabled} onChange={onToggle} aria-label={t('calendarUi.selectEvent',{title:event.title})}/></label>:<span className="calendar-row-check calendar-row-check-disabled" role="img" aria-label={t('calendarUi.readonlySelection')}><Icon name="info"/></span>}<div className="calendar-selection-event"><CalendarEventRow event={event} family={family} t={t} language={language} onOpen={selectable?onToggle:onOpen} selecting={selecting} selected={selected}/></div></div>}
+
 function CalendarEventRow(props){if(isHolidayEvent(props.event))return <HolidayEvent {...props}/>;if(isWasteEvent(props.event))return <WasteEvent {...props}/>;return <AgendaEvent {...props}/>}
 
 function HolidayEvent({event,t,language,onOpen}){const de=language.startsWith('de');const source=eventSourceDescriptor(event,t);const sourceName=event.source_meta?source.label:(de?'Schulferien':'School holidays');return <button className="agenda-special agenda-holiday" onClick={onOpen}><span className="special-rail" aria-hidden="true"/><span className="agenda-special-icon"><Icon name={source.icon}/></span><div className="grow"><div className="agenda-special-label">{de?'FERIEN':'SCHOOL HOLIDAY'}</div><strong>{event.title}</strong><span>{formatHolidayRange(event,t,language)}</span></div><span className="agenda-special-source"><Icon name={source.icon}/>{sourceName}</span><Icon name="next" className="agenda-affordance"/></button>}
 
 function WasteEvent({event,t,language,onOpen}){const kind=wasteKind(event);const tone=wasteClass(event);const de=language.startsWith('de');const source=eventSourceDescriptor(event,t);return <button className={`agenda-special agenda-waste ${tone}`} onClick={onOpen}><span className={`waste-dot ${tone}`} aria-hidden="true"><Icon name="waste" size={8}/></span><span className="agenda-special-icon"><Icon name={source.icon}/></span><div className="grow"><div className="agenda-special-label">{de?'MÜLLABFUHR':'WASTE COLLECTION'}</div><strong>{event.title}</strong><span>{wasteKindLabel(kind,language)}{event.payload?.location?` · ${event.payload.location}`:''}</span></div><span className={`agenda-special-source ${tone}`}><Icon name={source.icon}/>{source.label}</span><Icon name="next" className="agenda-affordance"/></button>}
 
-function AgendaEvent({event,family,t,language,onOpen}){const source=eventSourceDescriptor(event,t);const member=eventMemberDescriptor(event,family);const native=isNativeCalendarEvent(event);const warning=source.key==='warning';const label=source.key==='family'?(family?.name||source.label):source.label;const style=sourceVisualStyle(event);return <button className={`agenda-event ${warning?'agenda-warning':''}`} onClick={onOpen}><div className="agenda-time">{event.payload?.all_day?<strong>{t('calendarUi.allDay')}</strong>:<><strong>{formatTime(event.starts_at,language)}</strong>{event.ends_at&&<span>{formatEndTime(event,language)}</span>}</>}</div><span className={`agenda-source-icon source-${source.key}`} style={style}><Icon name={source.icon}/></span><div className="grow agenda-event-main"><div className="agenda-title-line"><strong>{event.title}</strong>{event.payload?.delay_minutes>0&&<span className="delay-badge">+{event.payload.delay_minutes} min</span>}</div><div className="agenda-event-meta">{event.payload?.location&&<span><Icon name="location"/>{event.payload.location}</span>}<span className={`source-badge source-${source.key}`} style={style}><Icon name={source.icon}/>{label}</span>{member&&<span className="source-badge" aria-label={`Person: ${member.name}`}><Icon name="user"/>{member.name}</span>}{event.payload?.recurrence&&<span><Icon name="refresh"/> {recurrenceLabel(event.payload.recurrence,t)}</span>}</div></div><Icon name={native?'edit':'next'} className="agenda-affordance"/></button>}
+function AgendaEvent({event,family,t,language,onOpen,selecting=false,selected=false}){const source=eventSourceDescriptor(event,t);const member=eventMemberDescriptor(event,family);const native=isNativeCalendarEvent(event);const warning=source.key==='warning';const label=source.key==='family'?(family?.name||source.label):source.label;const style=sourceVisualStyle(event);return <button className={`agenda-event ${warning?'agenda-warning':''}`} onClick={onOpen} aria-pressed={selecting&&native?selected:undefined}><div className="agenda-time">{event.payload?.all_day?<strong>{t('calendarUi.allDay')}</strong>:<><strong>{formatTime(event.starts_at,language)}</strong>{event.ends_at&&<span>{formatEndTime(event,language)}</span>}</>}</div><span className={`agenda-source-icon source-${source.key}`} style={style}><Icon name={source.icon}/></span><div className="grow agenda-event-main"><div className="agenda-title-line"><strong>{event.title}</strong>{event.payload?.delay_minutes>0&&<span className="delay-badge">+{event.payload.delay_minutes} min</span>}</div><div className="agenda-event-meta">{event.payload?.location&&<span><Icon name="location"/>{event.payload.location}</span>}<span className={`source-badge source-${source.key}`} style={style}><Icon name={source.icon}/>{label}</span>{member&&<span className="source-badge" aria-label={`Person: ${member.name}`}><Icon name="user"/>{member.name}</span>}{event.payload?.recurrence&&<span><Icon name="refresh"/> {recurrenceLabel(event.payload.recurrence,t)}</span>}</div></div><Icon name={native?'edit':'next'} className="agenda-affordance"/></button>}
 
 function EventDetail({event,family,t,language,onClose,onEdit}){const source=eventSourceDescriptor(event,t);const member=eventMemberDescriptor(event,family);const displayLabel=isHolidayEvent(event)&&!event.source_meta?(language.startsWith('de')?'Ferien':'School holiday'):source.key==='family'?(family?.name||source.label):source.label;const provider=isNativeCalendarEvent(event)?'FamilyOS':displayLabel;const wasteTone=source.key==='waste'?wasteClass(event):'';const special=isHolidayEvent(event)?'holiday-detail':isWasteEvent(event)?'waste-detail':'';const style=sourceVisualStyle(event);return <div className="sheet-backdrop" onMouseDown={e=>e.target===e.currentTarget&&onClose()}><section className={`quick-sheet calendar-detail ${source.key==='warning'?'warning-detail':''} ${special}`} role="dialog" aria-modal="true"><div className="sheet-handle"/><div className="sheet-head"><div><span className={`source-badge source-${source.key} ${wasteTone}`} style={style}><Icon name={source.icon}/>{displayLabel}</span><h2>{event.title}</h2></div><button className="sheet-close" onClick={onClose} aria-label={t('back')}><Icon name="close"/></button></div><div className="event-detail-body"><div className="event-detail-primary"><span className={`agenda-source-icon source-${source.key} ${wasteTone}`} style={style}><Icon name={source.icon}/></span><div><strong>{formatFullDate(event,t,language)}</strong><span>{formatEventRange(event,t,language)}</span></div></div>{event.payload?.location&&<DetailRow icon="location" label={t('location')} value={event.payload.location}/>} {event.payload?.description&&<DetailRow icon="info" label={t('notes')} value={event.payload.description}/>} {member&&<DetailRow icon="user" label="Person" value={member.name}/>} {event.payload?.recurrence&&<DetailRow icon="refresh" label={t('recurrence')} value={recurrenceLabel(event.payload.recurrence,t)}/>} {event.payload?.delay_minutes>0&&<DetailRow icon="transit" label={t('calendarUi.delay')} value={`+${event.payload.delay_minutes} ${t('calendarUi.minutes')}`}/>}<DetailRow icon="integrations" label={t('calendarUi.source')} value={provider}/>{event.payload?.source_url==='https://bm.rlp.de/service/ferientermine'&&<a className="text-link" href={event.payload.source_url} target="_blank" rel="noreferrer"><Icon name="link"/>{t('calendarUi.officialSource')}</a>}</div>{onEdit?<button className="primary" onClick={onEdit}><Icon name="edit"/>{t('editEvent')}</button>:<div className="readonly-event-note"><Icon name="info"/><span>{t('calendarUi.readonly')}</span></div>}</section></div>}
 function DetailRow({icon,label,value}){return <div className="event-detail-row"><Icon name={icon}/><div><small>{label}</small><span>{value}</span></div></div>}
@@ -103,6 +148,9 @@ function DetailRow({icon,label,value}){return <div className="event-detail-row">
 function isCalendarSourceFilter(value){return CALENDAR_SOURCE_FILTERS.has(value)||/^integration:[A-Za-z0-9_-]{1,80}$/.test(value||'')}
 function calendarSourceFilterFromLocation(){const value=new URLSearchParams(window.location.search).get('source');return isCalendarSourceFilter(value)?value:'all'}
 function replaceCalendarQuery(name,value){const url=new URL(window.location.href);if(value==null)url.searchParams.delete(name);else url.searchParams.set(name,value);window.history.replaceState(window.history.state,'',`${url.pathname}${url.search}${url.hash}`)}
+function readCalendarListDensity(){try{return window.localStorage.getItem(CALENDAR_LIST_DENSITY_KEY)==='compact'?'compact':'normal'}catch{return'normal'}}
+function writeCalendarListDensity(value){try{window.localStorage.setItem(CALENDAR_LIST_DENSITY_KEY,value)}catch{}}
+async function deleteCalendarEvents(ids){const failed=[];for(let index=0;index<ids.length;index+=6){const chunk=ids.slice(index,index+6);const results=await Promise.allSettled(chunk.map(id=>api(`/events/${encodeURIComponent(id)}/`,{method:'DELETE'})));results.forEach((result,offset)=>{if(result.status==='rejected')failed.push(chunk[offset])})}return failed}
 function sourceVisualStyle(event){const vars=eventSourceStyle(event);return {...vars,background:vars['--event-soft'],color:vars['--event-tone']}}
 function eventTime(event){return event.starts_at?new Date(event.starts_at).getTime():Number.MAX_SAFE_INTEGER}
 function eventIsPast(event){if(!event.starts_at)return false;const boundary=event.ends_at||event.starts_at;return new Date(boundary).getTime()<Date.now()}
