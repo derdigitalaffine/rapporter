@@ -24,7 +24,6 @@ import DecisionsHub from './DecisionsHub';
 import WishlistsHub from './WishlistsHub';
 import GlobalCreate from './GlobalCreate';
 import CreateFlowHost from './CreateFlowHost';
-import SuperAdmin from './SuperAdmin';
 import BirthdaysHub from './BirthdaysHub';
 import './birthday-i18n';
 import './profile-i18n';
@@ -66,7 +65,7 @@ export default function App(){
  useEffect(()=>{if(integrationCallbackAtBoot)queueMicrotask(()=>history.replaceState({page:'integrations'},'',pageHref('integrations')))},[]);
  if(!authed)return <Login expired={sessionExpired} onDone={()=>{setSessionExpired(false);setSessionUser(null);setLoaded(false);setLoadError('');setAuthed(true)}}/>;
  const signOut=()=>{if(!canLeave({logout:true}))return;logout();setSessionUser(null);setFamilies([]);setBabyModule(null);setPetModule(null);setLoaded(false);navigate('home',{replace:true});setSessionExpired(false);setAuthed(false)};
- if(loaded&&sessionUser?.is_superadmin)return <SuperAdmin user={sessionUser} onLogout={signOut}/>;
+ if(loaded&&sessionUser?.is_superadmin)return <main className="login-shell"><img className="brand-wide" src="/brand/logo-primary.svg" alt="FamilyOS"/><Card className="login-card"><small>Getrennte Administration</small><h1>Superadmin ist eine eigene PWA</h1><p>Das Admin-Cockpit verwendet eine getrennte Anmeldung und wird nicht innerhalb der FamilyOS-App geöffnet.</p><a className="primary" href="/superadmin/">Superadmin-PWA öffnen</a><button className="secondary" type="button" onClick={signOut}>FamilyOS-Anmeldung abmelden</button></Card></main>;
  async function switchFamily(nextId){if(!nextId||String(nextId)===String(family?.id))return;if(!canLeave({family:nextId}))return;localStorage.setItem(ACTIVE_FAMILY_KEY,String(nextId));setActiveFamilyId(String(nextId));setCreateFlow(null);setCreateRevision(0);setBabyModule(null);setPetModule(null);navigate('home');setData(demo);setLoaded(false);await load(String(nextId))}
  async function installApp(){if(!installPrompt)return;await installPrompt.prompt();try{await installPrompt.userChoice}finally{setInstallPrompt(null)}}
  async function toggleTask(x){try{await api(`/tasks/${x.id}/toggle/`,{method:'POST'});load()}catch(e){toast(e.message||t('saveFailed'),{type:'error'})}}

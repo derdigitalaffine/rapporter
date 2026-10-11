@@ -161,8 +161,8 @@ class AuthAbuseIntegrationTests(TestCase):
         )
         client = APIClient()
         login = client.post(
-            "/api/auth/login/",
-            {"username": admin.username, "password": "super-secure-123"},
+            "/api/superadmin/auth/login/",
+            {"identifier": admin.username, "password": "super-secure-123"},
             format="json",
             REMOTE_ADDR="198.51.100.55",
         )
