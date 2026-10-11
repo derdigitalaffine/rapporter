@@ -39,6 +39,7 @@ class PinSourceSharingCapabilityTests(TestCase):
 
     def test_note_owner_gets_explicit_canonical_source_share_deep_link(self):
         row = self._pin_for(self.owner)
+        self.assertTrue(row['can_share_source'])
         self.assertTrue(row['target']['can_share_source'])
         self.assertEqual(
             row['target']['source_share_url'],
@@ -47,5 +48,6 @@ class PinSourceSharingCapabilityTests(TestCase):
 
     def test_non_owner_never_gets_source_share_capability(self):
         row = self._pin_for(self.reader)
+        self.assertFalse(row['can_share_source'])
         self.assertNotIn('can_share_source', row['target'])
         self.assertNotIn('source_share_url', row['target'])
