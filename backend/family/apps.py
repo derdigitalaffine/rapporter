@@ -14,6 +14,7 @@ class FamilyConfig(AppConfig):
         from .family_master_models import FamilyMasterData
         from .notes_models import Note, NoteRevision, NoteShare
         from .shopping_models import ShoppingListStoreProfile, ShoppingStore, ShoppingTemplate, ShoppingTemplateItem
+        from .task_detail_models import TaskChecklistItem, TaskExternalLink
         from .today_models import TodayLayout
         from .travel_models import Trip, TripPhoto
         core_models.BirthdayOccasion = BirthdayOccasion
@@ -28,6 +29,8 @@ class FamilyConfig(AppConfig):
         core_models.ShoppingListStoreProfile = ShoppingListStoreProfile
         core_models.ShoppingTemplate = ShoppingTemplate
         core_models.ShoppingTemplateItem = ShoppingTemplateItem
+        core_models.TaskChecklistItem = TaskChecklistItem
+        core_models.TaskExternalLink = TaskExternalLink
         core_models.TodayLayout = TodayLayout
         core_models.Trip = Trip
         core_models.TripPhoto = TripPhoto
