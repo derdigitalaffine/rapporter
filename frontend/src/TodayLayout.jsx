@@ -70,6 +70,15 @@ export default function TodayLayout({family,header,onboarding,widgets}){
   return builtin(definition.id)||isProvided(definition.id);
  };
  const placedRowsFrom=rows=>(rows||[]).filter(widget=>widget.visible&&isAvailableDefinition(definitionFor(widget.id)));
+ const reorderPlacedRows=(rows,fromId,toId)=>{
+  const slots=[];const placed=[];
+  rows.forEach((widget,index)=>{if(widget.visible&&isAvailableDefinition(definitionFor(widget.id))){slots.push(index);placed.push(widget)}});
+  const from=placed.findIndex(widget=>widget.id===fromId);const to=placed.findIndex(widget=>widget.id===toId);
+  if(from<0||to<0||from===to)return rows;
+  const reordered=reorder(placed,from,to);const next=[...rows];
+  slots.forEach((slot,index)=>{next[slot]=reordered[index]});
+  return next;
+ };
  const categoryFor=definition=>definition.category==='planning'?'planning':definition.category==='household'?'household':['collaboration','family'].includes(definition.category)?'family':'travel';
  const categoryLabel=category=>s[{planning:'categoryPlanning',family:'categoryFamily',household:'categoryHousehold',travel:'categoryTravel'}[category]];
  const clearLongPress=()=>{
@@ -120,19 +129,19 @@ export default function TodayLayout({family,header,onboarding,widgets}){
  const moveByDelta=(id,delta,shouldAnnounce=true)=>{
   const rows=draftRef.current||[];const placed=placedRowsFrom(rows);const placedFrom=placed.findIndex(widget=>widget.id===id);const placedTo=placedFrom+delta;
   if(placedFrom<0||placedTo<0||placedTo>=placed.length)return false;
-  const targetId=placed[placedTo].id;const from=rows.findIndex(widget=>widget.id===id);const to=rows.findIndex(widget=>widget.id===targetId);
-  setDraft(current=>reorder(current,current.findIndex(widget=>widget.id===id),current.findIndex(widget=>widget.id===targetId)));
+  const targetId=placed[placedTo].id;
+  setDraft(current=>reorderPlacedRows(current,id,targetId));
   if(dragState.current?.id===id)dragState.current.position=placedTo;
   if(shouldAnnounce)setAnnouncement(positionText(id,placedTo,placed.length));
   requestAnimationFrame(()=>dragHandles.current.get(id)?.focus());
-  return from!==to;
+  return true;
  };
  const moveToWidget=(id,targetId,targetIndex)=>{
-  if(id===targetId)return;const rows=draftRef.current||[];const from=rows.findIndex(widget=>widget.id===id);const to=rows.findIndex(widget=>widget.id===targetId);
-  if(from<0||to<0||from===to)return;const total=placedRowsFrom(rows).length;
-  setDraft(current=>reorder(current,current.findIndex(widget=>widget.id===id),current.findIndex(widget=>widget.id===targetId)));
-  if(dragState.current)dragState.current.position=targetIndex;
-  setAnnouncement(positionText(id,Number.isFinite(targetIndex)?targetIndex:0,total));
+  if(id===targetId)return;const rows=draftRef.current||[];const placed=placedRowsFrom(rows);const from=placed.findIndex(widget=>widget.id===id);const to=placed.findIndex(widget=>widget.id===targetId);
+  if(from<0||to<0||from===to)return;const total=placed.length;
+  setDraft(current=>reorderPlacedRows(current,id,targetId));
+  if(dragState.current)dragState.current.position=to;
+  setAnnouncement(positionText(id,Number.isFinite(targetIndex)?targetIndex:to,total));
  };
  const hideWidget=id=>{
   clearDrag();setDraft(rows=>rows.map(widget=>widget.id===id?{...widget,visible:false}:widget));setAnnouncement(`${labelFor(id)}: ${s.hidden}`);
