@@ -147,7 +147,7 @@ class DocumentSearchTests(TestCase):
         rebuild_document_search_index(foreign.id)
 
         response = self.search(self.alice, family=str(self.other_family.id), q="Familienakte")
-        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.status_code, 403)
         self.assertNotIn(str(foreign.id), str(response.data))
 
         response = self.search(self.alice, person=str(self.outsider_member.id))
