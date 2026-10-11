@@ -91,6 +91,8 @@ AUDIT_EVENT_SPECS = {
     "invite.revoked": AuditSpec(),
     "superadmin.family.suspended": AuditSpec(),
     "superadmin.family.reactivated": AuditSpec(),
+    "superadmin.user.email_change_requested": AuditSpec(),
+    "superadmin.user.password_reset_requested": AuditSpec(),
     "superadmin.export.created": AuditSpec(frozenset({"export_kind"})),
     "entitlement.granted": AuditSpec(frozenset({"origin"})),
     "entitlement.revoked": AuditSpec(frozenset({"origin"})),
