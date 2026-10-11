@@ -20,7 +20,12 @@ from .pin_adapters import (
     resolve_pin_targets,
     validate_pin_target,
 )
-from .pin_visibility import effective_scope_for_user, pin_scope_queryset, source_object_visible
+from .pin_visibility import (
+    effective_scope_for_user,
+    pin_scope_queryset,
+    source_object_visible,
+    source_scope_for_target,
+)
 from .private_images import optimize_image, store_image, remove_image, image_path
 
 
@@ -161,6 +166,7 @@ class BoardSerializer(serializers.ModelSerializer):
         selected_ids = attrs.get('selected_membership_ids', serializers.empty)
         kind_supplied = 'kind' in getattr(self, 'initial_data', {})
         adapter_supplied = 'adapter_key' in getattr(self, 'initial_data', {})
+        visibility_supplied = 'visibility' in getattr(self, 'initial_data', {})
 
         if adapter_key:
             if adapter_key not in ADAPTER_KEYS:
@@ -189,6 +195,19 @@ class BoardSerializer(serializers.ModelSerializer):
             if self.instance is None and membership.role == 'guest':
                 raise PermissionDenied('Diese Rolle darf keine Pins erstellen.')
             validate_pin_target(kind, target_id, family.id, user, adapter_key=adapter_key)
+
+            if self.instance is None and adapter_key and target_id and not visibility_supplied:
+                source_visibility, source_memberships = source_scope_for_target(
+                    user=user,
+                    family_id=family.id,
+                    adapter_key=adapter_key,
+                    target_id=target_id,
+                )
+                attrs['visibility'] = source_visibility
+                visibility = source_visibility
+                if source_visibility == BoardPost.Visibility.SELECTED:
+                    selected_ids = [row.id for row in source_memberships]
+                    attrs['selected_membership_ids'] = source_memberships
 
             if selected_ids is not serializers.empty:
                 requested = {str(value) for value in selected_ids}
