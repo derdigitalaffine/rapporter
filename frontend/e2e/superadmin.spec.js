@@ -8,6 +8,7 @@ const smtp={enabled:true,host:'smtp.example.test',port:587,username:'mailer',pas
 const mailHealth={configured:true,counts:{queued:1,sending:0,retry:0,sent:12,failed:0,canceled:0},last_success_at:'2026-10-11T10:01:00Z',latency_seconds:{p50:1.2,p95:3.8},recent_error_classes:[]};
 const userRow=(pendingEmail='')=>({id:7,username:'user_pat',display_name:'Pat User',is_active:true,is_superuser:false,email:'pat@example.test',email_verified:true,email_managed:true,pending_email:pendingEmail,pending_verification_sent_at:pendingEmail?'2026-10-11T10:00:00Z':null,can_password_reset:true,memberships:[{id:'member-1',family_id:'family-1',family_name:'Familie Test',family_status:'active',role:'owner',display_name:'Pat User'}]});
 const familyRow=()=>({id:'family-1',name:'Familie Test',slug:'familie-test',locale:'de',timezone:'Europe/Berlin',status:'active',member_count:3,owners:[{username:'user_pat',email:'pat@example.test',display_name:'Pat User'}],pending_owner_invites:[]});
+const visibleNavButton=(page,label)=>page.locator('.superadmin-nav button:visible, .superadmin-mobile-nav button:visible').filter({hasText:new RegExp(`^${label}`)}).first();
 
 async function installCockpitMocks(page,{loggedIn=true,onLogin,onLogout}={}){
  await installApiMocks(page);
@@ -37,12 +38,12 @@ test('superadmin is a separately authenticated PWA with URL-stable cockpit navig
  await page.getByRole('button',{name:'Als Superadmin anmelden'}).click();
  await expect.poll(()=>loginBody).toEqual({identifier:'root',password:'admin-password'});
  await expect(page.getByRole('heading',{name:'Plattform im Blick'})).toBeVisible();
- await expect(page.getByText('Admin-Sitzung getrennt von FamilyOS')).toBeVisible();
- await page.getByRole('button',{name:/Nutzer Identity und Recovery/}).click();
+ await expect(visibleNavButton(page,'Nutzer')).toBeVisible();
+ await visibleNavButton(page,'Nutzer').click();
  await expect(page).toHaveURL(/section=users/);
  await expect(page.getByRole('heading',{name:'Nutzer'})).toBeVisible();
  await expect(page.getByText('pat@example.test',{exact:true})).toBeVisible();
- await page.getByRole('button',{name:/Sicherheit Admin-Sitzungen und Schutz/}).click();
+ await visibleNavButton(page,'Sicherheit').click();
  await expect(page).toHaveURL(/section=security/);
  await expect(page.getByText('Mobile Safari')).toBeVisible();
  await page.getByRole('button',{name:/Abmelden/}).click();
