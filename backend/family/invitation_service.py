@@ -16,7 +16,8 @@ from django.utils import timezone
 
 from mailing.service import enqueue_transactional_email
 
-from .models import FamilyInvitation
+from .invitation_audit import record_invite_audit
+from .models import Family, FamilyInvitation
 
 TOKEN_DOMAIN = "familyos.family-invitation.v1"
 DEFAULT_INVITE_LIFETIME = timedelta(days=7)
@@ -91,11 +92,63 @@ def queue_invitation_email(invite: FamilyInvitation, nonce: str):
     )
 
 
+def _active_matching_invites(*, family, role, email, now):
+    return (
+        FamilyInvitation.objects.select_for_update(of=("self",))
+        .filter(
+            family=family,
+            role=role,
+            email__iexact=str(email or "").strip(),
+            accepted_at__isnull=True,
+            revoked_at__isnull=True,
+            expires_at__gt=now,
+        )
+        .order_by("-created_at", "-id")
+    )
+
+
 def issue_invitation(*, family, invited_by, role, email="", display_name="", expires_at=None):
-    invite_id = uuid.uuid4()
+    email = str(email or "").strip()
+    now = timezone.now()
+    expiry = expires_at or (now + DEFAULT_INVITE_LIFETIME)
     nonce = _new_nonce()
-    token = invitation_token(invite_id, nonce)
+
     with transaction.atomic():
+        # Serialize issuance per family so concurrent requests cannot leave multiple
+        # active bearer secrets for the same family/email/role tuple.
+        Family.objects.select_for_update().get(pk=family.pk)
+        matches = list(_active_matching_invites(family=family, role=role, email=email, now=now))
+        if matches:
+            invite = matches[0]
+            for duplicate in matches[1:]:
+                duplicate.revoked_at = now
+                duplicate.save(update_fields=["revoked_at", "updated_at"])
+                record_invite_audit("invite.revoked", duplicate)
+
+            token = invitation_token(invite.pk, nonce)
+            invite.invited_by = invited_by
+            invite.email = email
+            invite.display_name = display_name
+            invite.expires_at = expiry
+            invite.revoked_at = None
+            invite.token = invitation_token_digest(token)
+            invite.save(
+                update_fields=[
+                    "invited_by",
+                    "email",
+                    "display_name",
+                    "expires_at",
+                    "revoked_at",
+                    "token",
+                    "updated_at",
+                ]
+            )
+            queue_invitation_email(invite, nonce)
+            record_invite_audit("invite.resent", invite, actor=invited_by)
+            return invite, token
+
+        invite_id = uuid.uuid4()
+        token = invitation_token(invite_id, nonce)
         invite = FamilyInvitation.objects.create(
             id=invite_id,
             family=family,
@@ -103,14 +156,15 @@ def issue_invitation(*, family, invited_by, role, email="", display_name="", exp
             role=role,
             email=email,
             display_name=display_name,
-            expires_at=expires_at or (timezone.now() + DEFAULT_INVITE_LIFETIME),
+            expires_at=expiry,
             token=invitation_token_digest(token),
         )
         queue_invitation_email(invite, nonce)
+        record_invite_audit("invite.created", invite, actor=invited_by)
     return invite, token
 
 
-def rotate_invitation(invite: FamilyInvitation, *, expires_at=None):
+def rotate_invitation(invite: FamilyInvitation, *, expires_at=None, actor=None):
     nonce = _new_nonce()
     with transaction.atomic():
         locked = (
@@ -126,6 +180,7 @@ def rotate_invitation(invite: FamilyInvitation, *, expires_at=None):
         locked.expires_at = expires_at or (timezone.now() + DEFAULT_INVITE_LIFETIME)
         locked.save(update_fields=["token", "revoked_at", "expires_at", "updated_at"])
         queue_invitation_email(locked, nonce)
+        record_invite_audit("invite.resent", locked, actor=actor or locked.invited_by)
     return locked, token
 
 
