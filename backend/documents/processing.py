@@ -7,6 +7,7 @@ from django.utils import timezone
 
 from .consumers import dispatch_processing_consumers
 from .models import Document, DocumentProcessingRun, ExtractedField
+from .search import rebuild_document_search_index
 
 PIPELINE_VERSION = "1"
 MAX_ATTEMPTS = 4
@@ -229,6 +230,7 @@ def finish_run(run, result, *, needs_review=True):
             ]
         )
         Document.objects.filter(pk=locked.document_id).update(processing_status=document_status)
+        rebuild_document_search_index(locked.document_id, processing_run=locked)
         return locked
 
 
@@ -268,6 +270,7 @@ def fail_run(run, *, error_code, safe_error, retryable=True, now=None):
                 "processed_at",
                 "claim_token",
                 "lease_expires_at",
+                "next_retry_at",
                 "error_code",
                 "safe_error",
                 "updated_at",
