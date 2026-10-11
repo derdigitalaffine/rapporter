@@ -9,7 +9,7 @@ async function boot(page,language='de'){
   if(method==='POST'){
    const raw=request.postData()||'';
    const text=raw.match(/name="text"\r\n\r\n([^]*?)\r\n--/)?.[1]||body.text||'';
-   const row={id:`pin-${rows.length+1}`,family:'family-1',text,kind:body.kind||'note',target_id:body.target_id||null,target:null,position:0,author:1,author_name:'Alex',created_at:new Date().toISOString(),can_edit:true,can_delete:true,can_reorder:true,images:[]};
+   const row={id:`pin-${rows.length+1}`,family:'family-1',text,kind:body.kind||'note',target_id:body.target_id||null,target:null,visibility:'family',selected_membership_ids:[],effective_scope:'family',position:0,author:1,author_name:'Alex',created_at:new Date().toISOString(),can_edit:true,can_delete:true,can_reorder:true,can_change_pin_visibility:true,can_share_source:false,can_interact:true,images:[]};
    rows.unshift(row);return route.fulfill({status:201,json:row});
   }
   if(method==='PATCH'){rows[0]={...rows[0],...body};return route.fulfill({json:rows[0]})}
@@ -64,7 +64,7 @@ test('composer pins a whole shopping list and provides searchable event choices'
 test('school holiday pins show the full period and author identity',async({page})=>{
  const {rows,state}=await boot(page);
  const holiday={id:'holiday-1',family:'family-1',source:'school-source',type:'school.holiday',title:'Herbstferien',starts_at:'2026-10-12T00:00:00Z',ends_at:'2026-10-24T00:00:00Z',payload:{date_start:'2026-10-12',date_end_exclusive:'2026-10-24'}};
- state.events.push(holiday);rows.push({id:'pin-holiday',family:'family-1',text:'',kind:'event',target_id:'holiday-1',target:{id:'holiday-1',kind:'event',title:'Herbstferien',subtitle:holiday.starts_at,url:'/?page=calendar&event=holiday-1'},position:0,author:2,author_name:'Sam',created_at:new Date().toISOString(),can_edit:false,can_delete:true,can_reorder:true,images:[]});
+ state.events.push(holiday);rows.push({id:'pin-holiday',family:'family-1',text:'',kind:'event',target_id:'holiday-1',target:{id:'holiday-1',kind:'event',title:'Herbstferien',subtitle:holiday.starts_at,url:'/?page=calendar&event=holiday-1'},visibility:'family',selected_membership_ids:[],effective_scope:'family',position:0,author:2,author_name:'Sam',created_at:new Date().toISOString(),can_edit:false,can_delete:true,can_reorder:true,can_change_pin_visibility:false,can_share_source:false,can_interact:true,images:[]});
  await page.reload();const pin=page.locator('#pin-pin-holiday');await expect(pin).toContainText('Ferien');await expect(pin).toContainText('Herbstferien');await expect(pin).toContainText(/12.*23/);await expect(pin.locator('.pin-author')).toContainText('Sam');
 });
 
