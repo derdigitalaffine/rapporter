@@ -20,11 +20,25 @@ from .pin_adapters import (
     resolve_pin_targets,
     validate_pin_target,
 )
+from .pin_visibility import pin_scope_queryset
 from .private_images import optimize_image, store_image, remove_image, image_path
 
 
 class BoardPagination(PageNumberPagination):
     page_size = 20
+
+
+class SelectedMembershipIdsField(serializers.ListField):
+    child = serializers.UUIDField()
+
+    def get_attribute(self, instance):
+        return instance
+
+    def to_representation(self, obj):
+        request = self.parent.context.get('request')
+        if not request or obj.author_id != request.user.id:
+            return []
+        return [str(membership.id) for membership in obj.visible_to_memberships.all()]
 
 
 class BoardSerializer(serializers.ModelSerializer):
@@ -33,11 +47,22 @@ class BoardSerializer(serializers.ModelSerializer):
     can_edit = serializers.SerializerMethodField()
     can_delete = serializers.SerializerMethodField()
     can_reorder = serializers.SerializerMethodField()
+    can_change_pin_visibility = serializers.SerializerMethodField()
+    can_share_source = serializers.SerializerMethodField()
+    can_interact = serializers.SerializerMethodField()
+    effective_scope = serializers.SerializerMethodField()
+    selected_membership_ids = SelectedMembershipIdsField(required=False)
     target = serializers.SerializerMethodField()
 
     class Meta:
         model = BoardPost
-        fields = ['id', 'family', 'author', 'author_name', 'text', 'kind', 'adapter_key', 'target_id', 'target', 'position', 'created_at', 'updated_at', 'images', 'can_edit', 'can_delete', 'can_reorder']
+        fields = [
+            'id', 'family', 'author', 'author_name', 'text', 'kind', 'adapter_key',
+            'target_id', 'target', 'visibility', 'selected_membership_ids',
+            'effective_scope', 'can_change_pin_visibility', 'can_share_source',
+            'can_interact', 'position', 'created_at', 'updated_at', 'images',
+            'can_edit', 'can_delete', 'can_reorder',
+        ]
         read_only_fields = ['author', 'position', 'created_at', 'updated_at']
 
     def get_images(self, obj):
@@ -56,17 +81,42 @@ class BoardSerializer(serializers.ModelSerializer):
     def get_can_reorder(self, obj):
         return obj.family_id in self.context.get('reorder_families', set())
 
-    def get_target(self, obj):
+    def get_can_change_pin_visibility(self, obj):
+        return self.get_can_edit(obj)
+
+    def get_can_share_source(self, obj):
+        # Source ACLs belong to their canonical domain. The pinboard never mutates
+        # them implicitly; domain-specific explicit share actions can opt in later.
+        return False
+
+    def _target_for(self, obj):
         resolved = self.context.get('pin_targets')
         if resolved is not None and obj.id in resolved:
             return resolved[obj.id]
-        return resolve_pin_target(obj, self.context['request'].user)
+        cache = self.context.setdefault('_pin_target_cache', {})
+        if obj.id not in cache:
+            cache[obj.id] = resolve_pin_target(obj, self.context['request'].user)
+        return cache[obj.id]
+
+    def get_target(self, obj):
+        return self._target_for(obj)
+
+    def get_effective_scope(self, obj):
+        target = self._target_for(obj)
+        if obj.target_id and isinstance(target, dict) and target.get('available') is False:
+            return 'none'
+        return obj.visibility
+
+    def get_can_interact(self, obj):
+        return self.get_effective_scope(obj) != 'none'
 
     def validate(self, attrs):
         family = attrs.get('family') or getattr(self.instance, 'family', None)
         kind = attrs.get('kind', getattr(self.instance, 'kind', BoardPost.Kind.NOTE))
         target_id = attrs.get('target_id', getattr(self.instance, 'target_id', None))
         adapter_key = str(attrs.get('adapter_key', getattr(self.instance, 'adapter_key', '')) or '').strip()
+        visibility = attrs.get('visibility', getattr(self.instance, 'visibility', BoardPost.Visibility.FAMILY))
+        selected_ids = attrs.get('selected_membership_ids', serializers.empty)
         kind_supplied = 'kind' in getattr(self, 'initial_data', {})
         adapter_supplied = 'adapter_key' in getattr(self, 'initial_data', {})
 
@@ -91,13 +141,50 @@ class BoardSerializer(serializers.ModelSerializer):
             user = self.context['request'].user
             membership = Membership.objects.filter(family=family, user=user).first()
             if not membership:
-                # Fail before resolving a target so a foreign family cannot be used
-                # as an existence oracle for guessed object ids.
+                # Fail before resolving a target or membership ids so a foreign
+                # family cannot become an existence oracle.
                 raise PermissionDenied('Kein Zugriff auf diese Familie.')
             if self.instance is None and membership.role == 'guest':
                 raise PermissionDenied('Diese Rolle darf keine Pins erstellen.')
             validate_pin_target(kind, target_id, family.id, user, adapter_key=adapter_key)
+
+            if selected_ids is not serializers.empty:
+                requested = {str(value) for value in selected_ids}
+                selected_memberships = list(Membership.objects.filter(family=family, id__in=selected_ids))
+                if {str(row.id) for row in selected_memberships} != requested:
+                    raise serializers.ValidationError({'selected_membership_ids': 'Ausgewählte Personen sind nicht verfügbar.'})
+                attrs['selected_membership_ids'] = selected_memberships
+
+            if visibility == BoardPost.Visibility.SELECTED:
+                if selected_ids is serializers.empty:
+                    has_existing = bool(
+                        self.instance
+                        and self.instance.visibility == BoardPost.Visibility.SELECTED
+                        and self.instance.visible_to_memberships.exists()
+                    )
+                    if not has_existing:
+                        raise serializers.ValidationError({'selected_membership_ids': 'Bitte mindestens eine Person auswählen.'})
+                elif not attrs['selected_membership_ids']:
+                    raise serializers.ValidationError({'selected_membership_ids': 'Bitte mindestens eine Person auswählen.'})
+            elif selected_ids is not serializers.empty and attrs['selected_membership_ids']:
+                raise serializers.ValidationError({'selected_membership_ids': 'Personen können nur bei „Ausgewählte Personen“ gesetzt werden.'})
         return attrs
+
+    def create(self, validated_data):
+        selected = validated_data.pop('selected_membership_ids', serializers.empty)
+        instance = super().create(validated_data)
+        if selected is not serializers.empty:
+            instance.visible_to_memberships.set(selected)
+        return instance
+
+    def update(self, instance, validated_data):
+        selected = validated_data.pop('selected_membership_ids', serializers.empty)
+        instance = super().update(instance, validated_data)
+        if instance.visibility != BoardPost.Visibility.SELECTED:
+            instance.visible_to_memberships.clear()
+        elif selected is not serializers.empty:
+            instance.visible_to_memberships.set(selected)
+        return instance
 
 
 class BoardViewSet(viewsets.ModelViewSet):
@@ -106,7 +193,8 @@ class BoardViewSet(viewsets.ModelViewSet):
     http_method_names = ['get', 'post', 'patch', 'delete', 'head', 'options']
 
     def get_queryset(self):
-        rows = BoardPost.objects.filter(family__status='active', family__memberships__user=self.request.user).select_related('author', 'family').prefetch_related('images')
+        rows = BoardPost.objects.select_related('author', 'family').prefetch_related('images', 'visible_to_memberships')
+        rows = pin_scope_queryset(self.request.user, rows)
         if self.request.query_params.get('family'):
             rows = rows.filter(family_id=self.request.query_params['family'])
         return rows
@@ -201,13 +289,25 @@ class BoardViewSet(viewsets.ModelViewSet):
             wanted = [uuid.UUID(str(value)) for value in ids]
         except (TypeError, ValueError, AttributeError):
             raise ValidationError({'ids': 'Ungültige Pin-ID.'})
+
+        allowed_ids = set(
+            pin_scope_queryset(
+                request.user,
+                BoardPost.objects.filter(family_id=family_id),
+            ).values_list('id', flat=True)
+        )
+        if any(value not in allowed_ids for value in wanted):
+            # The same response is used for random, foreign and hidden pin ids.
+            raise ValidationError({'ids': 'Pins sind für diese Pinnwand nicht verfügbar.'})
+
         with transaction.atomic():
             current = list(BoardPost.objects.select_for_update().filter(family_id=family_id).order_by('position', '-created_at', '-id'))
-            by_id = {row.id: row for row in current}
-            if any(value not in by_id for value in wanted):
-                raise ValidationError({'ids': 'Pins gehören nicht zu dieser Familie.'})
+            visible_current = [row for row in current if row.id in allowed_ids]
+            by_id = {row.id: row for row in visible_current}
             wanted_set = set(wanted)
-            ordered = [by_id[value] for value in wanted] + [row for row in current if row.id not in wanted_set]
+            visible_ordered = [by_id[value] for value in wanted] + [row for row in visible_current if row.id not in wanted_set]
+            visible_iter = iter(visible_ordered)
+            ordered = [next(visible_iter) if row.id in allowed_ids else row for row in current]
             planned = plan_board_positions(current, ordered)
             changed = []
             for row, position in planned:
@@ -215,13 +315,14 @@ class BoardViewSet(viewsets.ModelViewSet):
                 changed.append(row)
             if changed:
                 BoardPost.objects.bulk_update(changed, ['position'])
-        return Response({'ids': [str(row.id) for row in ordered]})
+        return Response({'ids': [str(row.id) for row in visible_ordered]})
 
 
 @api_view(['GET', 'DELETE'])
 @transaction.atomic
 def board_image(request, image_id):
-    row = BoardImage.objects.filter(id=image_id, post__family__memberships__user=request.user, post__family__status='active').first()
+    visible_posts = pin_scope_queryset(request.user, BoardPost.objects.all()).values_list('id', flat=True)
+    row = BoardImage.objects.select_related('post', 'post__family').filter(id=image_id, post_id__in=visible_posts).first()
     if not row:
         raise Http404()
     if request.method == 'DELETE':
