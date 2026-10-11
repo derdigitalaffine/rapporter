@@ -142,7 +142,7 @@ def correspondence_action(request, document_id):
             amount = Decimal(str(raw_amount)) if raw_amount not in (None, "") else None
         except (InvalidOperation, TypeError, ValueError):
             raise ValidationError({"amount": "Ungültiger Betrag."}) from None
-        if amount is None or amount < 0:
+        if amount is None or amount <= 0:
             raise ValidationError({"amount": "Für eine Ausgabe ist ein positiver Betrag erforderlich."})
         try:
             with transaction.atomic():
