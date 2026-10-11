@@ -81,17 +81,18 @@ test('routine quick add records exactly one log and supports safe undo',async({p
 
 test('lists and more preserve legacy task, workflow and routine routes',async({page})=>{
  await boot(page);
- await page.getByRole('button',{name:'Listen',exact:true}).click();
+ const tabs=page.getByRole('navigation',{name:'To-dos'});
+ await tabs.getByRole('button',{name:'Listen',exact:true}).click();
  await expect(page.getByRole('link',{name:/Aufgaben & Listen/})).toHaveAttribute('href',/page=tasks/);
  await expect(page.getByRole('link',{name:/Routinen verwalten/})).toHaveAttribute('href',/page=routines/);
- await page.getByRole('button',{name:'Mehr',exact:true}).click();
+ await tabs.getByRole('button',{name:'Mehr',exact:true}).click();
  await expect(page.getByRole('link',{name:/Erledigt & Verlauf/})).toHaveAttribute('href',/mode=completed/);
  await expect(page.getByRole('link',{name:/Workflows \/ Kanban/})).toHaveAttribute('href',/mode=workflow/);
 });
 
 test('mobile hub has no horizontal overflow and no serious accessibility violations',async({page})=>{
  await boot(page,{viewport:{width:360,height:740}});
- await expect(page.getByRole('button',{name:'Heute',exact:true})).toBeVisible();
+ await expect(page.getByRole('navigation',{name:'To-dos'}).getByRole('button',{name:'Heute',exact:true})).toBeVisible();
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=document.documentElement.clientWidth)).toBe(true);
  await expectNoSevereA11y(page);
 });
