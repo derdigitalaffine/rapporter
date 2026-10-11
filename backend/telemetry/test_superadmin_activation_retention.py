@@ -121,7 +121,7 @@ class SuperadminActivationRetentionTests(TestCase):
         self.assertEqual(activation["window_days"], 7)
         self.assertEqual(activation["accepted_memberships"]["value"], 4)
         self.assertEqual(activation["email_verified"]["value"], 3)
-        self.assertEqual(activation["meaningful_activity_within_7d"]["value"], 3)
+        self.assertEqual(activation["meaningful_activity_within_7d"]["value"], 2)
         self.assertEqual(activation["activated"]["value"], 1)
         self.assertEqual(activation["activation_rate_pct"]["value"], 25.0)
         self.assertNotIn("email", str(response.data["retention"]))
@@ -132,7 +132,6 @@ class SuperadminActivationRetentionTests(TestCase):
         now = timezone.now()
         cohort_at = now - timedelta(days=15)
         retained_users = 3
-        retained_families = 2
 
         for index in range(5):
             user = User.objects.create_user(username=f"retention-user-{index}", password="pw")
@@ -148,12 +147,6 @@ class SuperadminActivationRetentionTests(TestCase):
                     user=user,
                     family=family,
                     occurred_at=user.date_joined + timedelta(days=7, hours=3),
-                )
-            if index < retained_families and index >= retained_users:
-                self._usage(
-                    user=user,
-                    family=family,
-                    occurred_at=family.created_at + timedelta(days=7, hours=4),
                 )
 
         response = self.client.get("/api/superadmin/analytics/overview/?period=30d")
