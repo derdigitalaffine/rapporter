@@ -2,6 +2,7 @@ import {useEffect,useMemo,useRef,useState} from 'react';
 import {Icon} from './icons';
 import {formatDateTime} from './locale';
 import {eventDayKeys,eventMarker,eventSourceDescriptor,eventSourceStyle,isoWeekNumber,isHolidayEvent,zonedDateKey} from './calendar-event-ui';
+import {eventMemberDescriptor} from './calendar-members';
 import './calendar-v2.css';
 import './calendar-markers.css';
 
@@ -64,36 +65,36 @@ export default function CalendarPresentation({view,onViewChange,onRangeChange,ev
     {VIEW_VALUES.map(value=><button key={value} aria-pressed={view===value} className={view===value?'active':''} onClick={()=>onViewChange(value)}>{t(`calendarUi.view${capitalize(value)}`)}</button>)}
    </div>
   </section>
-  {view==='week'&&<WeekView days={weekDays} selectedDay={selectedDay} today={today} eventsFor={eventsFor} onSelect={selectDay} onDayKeyDown={handleDayKeyDown} onOpen={onOpen} t={t} language={language}/>} 
-  {view==='month'&&<MonthView days={monthDays} anchor={anchor} selectedDay={selectedDay} today={today} eventsFor={eventsFor} onSelect={selectDay} onDayKeyDown={handleDayKeyDown} onOpen={onOpen} t={t} language={language}/>} 
+  {view==='week'&&<WeekView days={weekDays} selectedDay={selectedDay} today={today} eventsFor={eventsFor} onSelect={selectDay} onDayKeyDown={handleDayKeyDown} onOpen={onOpen} family={family} t={t} language={language}/>} 
+  {view==='month'&&<MonthView days={monthDays} anchor={anchor} selectedDay={selectedDay} today={today} eventsFor={eventsFor} onSelect={selectDay} onDayKeyDown={handleDayKeyDown} onOpen={onOpen} family={family} t={t} language={language}/>} 
   {view==='list'&&listContent}
  </>
 }
 
-function WeekView({days,selectedDay,today,eventsFor,onSelect,onDayKeyDown,onOpen,t,language}){
+function WeekView({days,selectedDay,today,eventsFor,onSelect,onDayKeyDown,onOpen,family,t,language}){
  return <section className="calendar-view calendar-week-view" aria-label={t('calendarUi.viewWeek')}>
-  <div className="calendar-week-grid">{days.map(day=>{const rows=eventsFor(day);const holiday=rows.some(isHolidayEvent);return <article key={day} className={`calendar-week-day ${day===today?'is-today':''} ${day===selectedDay?'is-selected':''} ${holiday?'has-holiday':''}`}><button className="calendar-day-head" data-calendar-day={day} tabIndex={day===selectedDay?0:-1} onKeyDown={event=>onDayKeyDown(event,day)} onClick={()=>onSelect(day)} aria-current={day===today?'date':undefined}><span>{weekdayLabel(day,language,'short')}</span><strong>{Number(day.slice(-2))}</strong></button><div className="calendar-day-events">{rows.length?rows.slice(0,5).map(event=><EventChip key={`${event.id}-${day}`} event={event} onOpen={()=>onOpen(event)} t={t} language={language}/>):<span className="calendar-day-empty">{t('calendarUi.free')}</span>}{rows.length>5&&<button className="calendar-more" onClick={()=>onSelect(day)}>+{rows.length-5}</button>}</div></article>})}</div>
+  <div className="calendar-week-grid">{days.map(day=>{const rows=eventsFor(day);const holiday=rows.some(isHolidayEvent);return <article key={day} className={`calendar-week-day ${day===today?'is-today':''} ${day===selectedDay?'is-selected':''} ${holiday?'has-holiday':''}`}><button className="calendar-day-head" data-calendar-day={day} tabIndex={day===selectedDay?0:-1} onKeyDown={event=>onDayKeyDown(event,day)} onClick={()=>onSelect(day)} aria-current={day===today?'date':undefined}><span>{weekdayLabel(day,language,'short')}</span><strong>{Number(day.slice(-2))}</strong></button><div className="calendar-day-events">{rows.length?rows.slice(0,5).map(event=><EventChip key={`${event.id}-${day}`} event={event} family={family} onOpen={()=>onOpen(event)} t={t} language={language}/>):<span className="calendar-day-empty">{t('calendarUi.free')}</span>}{rows.length>5&&<button className="calendar-more" onClick={()=>onSelect(day)}>+{rows.length-5}</button>}</div></article>})}</div>
   <div className="calendar-week-mobile"><div className="calendar-mobile-daystrip">{days.map(day=>{const rows=eventsFor(day);const holiday=rows.find(isHolidayEvent);const markerRows=rows.filter(event=>!isHolidayEvent(event));const visible=markerRows.slice(0,3);const hidden=Math.max(0,markerRows.length-visible.length);const description=rows.map(event=>event.title).join(', ');return <button key={day} className={`${day===selectedDay?'active':''} ${day===today?'is-today':''} ${holiday?'has-holiday':''}`} aria-current={day===today?'date':undefined} aria-label={`${longDayLabel(day,language)}${description?`. ${description}`:''}`} onClick={()=>onSelect(day)}><span className="calendar-mobile-weekday">{weekdayLabel(day,language,'narrow')}</span><strong>{Number(day.slice(-2))}</strong>{holiday&&<span className="calendar-mobile-holiday-mark" aria-hidden="true"><Icon name="school" size={8}/></span>}<span className="calendar-mobile-markers" aria-hidden="true">{visible.map((event,index)=>{const marker=eventMarker(event);return <i key={`${event.id}-${index}`} className={`calendar-mobile-marker ${marker.className}`}><Icon name={marker.icon} size={6}/></i>})}{hidden>0&&<em>+{hidden}</em>}</span></button>})}</div></div>
-  <SelectedDay day={selectedDay} events={eventsFor(selectedDay)} onOpen={onOpen} t={t} language={language}/>
+  <SelectedDay day={selectedDay} events={eventsFor(selectedDay)} onOpen={onOpen} family={family} t={t} language={language}/>
  </section>
 }
 
-function MonthView({days,anchor,selectedDay,today,eventsFor,onSelect,onDayKeyDown,onOpen,t,language}){
+function MonthView({days,anchor,selectedDay,today,eventsFor,onSelect,onDayKeyDown,onOpen,family,t,language}){
  const month=anchor.slice(0,7);
  return <section className="calendar-view calendar-month-view" aria-label={t('calendarUi.viewMonth')}>
   <div className="calendar-month-weekdays" aria-hidden="true">{weekKeys('2026-06-01').map(day=><span key={day}>{weekdayLabel(day,language,'short')}</span>)}</div>
-  <div className="calendar-month-grid">{days.map(day=>{const rows=eventsFor(day);const holiday=rows.some(isHolidayEvent);return <article key={day} className={`calendar-month-day ${day.slice(0,7)!==month?'outside':''} ${day===today?'is-today':''} ${day===selectedDay?'is-selected':''} ${holiday?'has-holiday':''}`}><button className="calendar-month-date" data-calendar-day={day} tabIndex={day===selectedDay?0:-1} onKeyDown={event=>onDayKeyDown(event,day)} onClick={()=>onSelect(day)} aria-label={longDayLabel(day,language)} aria-current={day===today?'date':undefined}>{Number(day.slice(-2))}</button><div className="calendar-month-events">{rows.slice(0,3).map(event=><EventChip compact key={`${event.id}-${day}`} event={event} onOpen={()=>onOpen(event)} t={t} language={language}/>)}{rows.length>3&&<button className="calendar-more" onClick={()=>onSelect(day)}>+{rows.length-3}</button>}</div></article>})}</div>
-  <SelectedDay day={selectedDay} events={eventsFor(selectedDay)} onOpen={onOpen} t={t} language={language}/>
+  <div className="calendar-month-grid">{days.map(day=>{const rows=eventsFor(day);const holiday=rows.some(isHolidayEvent);return <article key={day} className={`calendar-month-day ${day.slice(0,7)!==month?'outside':''} ${day===today?'is-today':''} ${day===selectedDay?'is-selected':''} ${holiday?'has-holiday':''}`}><button className="calendar-month-date" data-calendar-day={day} tabIndex={day===selectedDay?0:-1} onKeyDown={event=>onDayKeyDown(event,day)} onClick={()=>onSelect(day)} aria-label={longDayLabel(day,language)} aria-current={day===today?'date':undefined}>{Number(day.slice(-2))}</button><div className="calendar-month-events">{rows.slice(0,3).map(event=><EventChip compact key={`${event.id}-${day}`} event={event} family={family} onOpen={()=>onOpen(event)} t={t} language={language}/>)}{rows.length>3&&<button className="calendar-more" onClick={()=>onSelect(day)}>+{rows.length-3}</button>}</div></article>})}</div>
+  <SelectedDay day={selectedDay} events={eventsFor(selectedDay)} onOpen={onOpen} family={family} t={t} language={language}/>
  </section>
 }
 
-function SelectedDay({day,events,onOpen,t,language}){
- return <section className="calendar-selected-day"><div className="calendar-selected-day-head"><div><small>{weekdayLabel(day,language,'long')}</small><h2>{dayMonthLabel(day,language)}</h2></div><span>{events.length}</span></div>{events.length?<div className="calendar-selected-events">{events.map(event=><EventChip key={event.id} event={event} onOpen={()=>onOpen(event)} t={t} language={language}/>)}</div>:<div className="calendar-day-empty-state"><Icon name="calendar"/><span>{t('calendarUi.noEventsThisDay')}</span></div>}</section>
+function SelectedDay({day,events,onOpen,family,t,language}){
+ return <section className="calendar-selected-day"><div className="calendar-selected-day-head"><div><small>{weekdayLabel(day,language,'long')}</small><h2>{dayMonthLabel(day,language)}</h2></div><span>{events.length}</span></div>{events.length?<div className="calendar-selected-events">{events.map(event=><EventChip key={event.id} event={event} family={family} onOpen={()=>onOpen(event)} t={t} language={language}/>)}</div>:<div className="calendar-day-empty-state"><Icon name="calendar"/><span>{t('calendarUi.noEventsThisDay')}</span></div>}</section>
 }
 
-function EventChip({event,onOpen,t,language,compact=false}){
- const source=eventSourceDescriptor(event,t);const holiday=isHolidayEvent(event);
- return <button className={`calendar-event-chip source-${source.key} ${holiday?'calendar-holiday-chip':''} ${compact?'compact':''}`} style={eventSourceStyle(event)} onClick={onOpen} title={`${source.label}: ${event.title}`}><Icon name={source.icon}/><span className="calendar-event-chip-text">{event.payload?.all_day?'':`${formatTime(event.starts_at,language)} `}{event.title}</span>{event.payload?.all_day&&<small>{t('calendarUi.allDay')}</small>}</button>
+function EventChip({event,family,onOpen,t,language,compact=false}){
+ const source=eventSourceDescriptor(event,t);const holiday=isHolidayEvent(event);const member=eventMemberDescriptor(event,family);
+ return <button className={`calendar-event-chip source-${source.key} ${holiday?'calendar-holiday-chip':''} ${compact?'compact':''}`} style={eventSourceStyle(event)} onClick={onOpen} title={`${source.label}: ${event.title}${member?` · ${member.name}`:''}`}><Icon name={source.icon}/><span className="calendar-event-chip-text">{event.payload?.all_day?'':`${formatTime(event.starts_at,language)} `}{event.title}</span>{member&&<span className="source-badge" aria-label={`Person: ${member.name}`} title={member.name}><Icon name="user"/></span>}{event.payload?.all_day&&<small>{t('calendarUi.allDay')}</small>}</button>
 }
 
 function parseDay(key){const [year,month,day]=String(key).split('-').map(Number);return new Date(Date.UTC(year,month-1,day,12))}
