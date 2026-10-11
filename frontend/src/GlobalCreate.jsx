@@ -1,9 +1,11 @@
 import {useEffect,useMemo,useRef,useState} from 'react';
 import {useTranslation} from 'react-i18next';
 import './create-i18n';
+import './create-smart.css';
 import {api} from './api';
 import {Icon} from './icons';
-import {availableCreateActions,CREATE_PAGES,createActionById,directCreateAction} from './create-actions';
+import {availableCreateActions,CREATE_PAGES,createActionById,normalizeCreateRankingProfile,rankCreateActions,resolveDirectCreateAction} from './create-actions';
+import {CREATE_RANKING_UPDATED_EVENT,fetchCreateRanking,flushCreateUsageQueue,loadCachedCreateRanking} from './create-ranking-client';
 import {CREATE_REQUEST_EVENT} from './create-request';
 
 const CAPABILITIES={loyalty:true,messages:false};
@@ -12,7 +14,8 @@ const EMPTY_MODULES={baby:null,pets:null};
 export default function GlobalCreate({page,family,role,context={},onCreate,suppressed=false}){
   const {t}=useTranslation();
   const fabRef=useRef(null);const firstActionRef=useRef(null);const pendingAction=useRef(null);const previousSuppressed=useRef(suppressed);
-  const [paletteOpen,setPaletteOpen]=useState(false);const [keyboardOpen,setKeyboardOpen]=useState(false);const [externalDialog,setExternalDialog]=useState(false);const [restoreFocus,setRestoreFocus]=useState(false);const [moduleState,setModuleState]=useState({familyId:null,...EMPTY_MODULES});
+  const [paletteOpen,setPaletteOpen]=useState(false);const [showAll,setShowAll]=useState(false);const [frozenQuick,setFrozenQuick]=useState([]);const [keyboardOpen,setKeyboardOpen]=useState(false);const [externalDialog,setExternalDialog]=useState(false);const [restoreFocus,setRestoreFocus]=useState(false);const [moduleState,setModuleState]=useState({familyId:null,...EMPTY_MODULES});
+  const [rankingProfile,setRankingProfile]=useState(()=>normalizeCreateRankingProfile({}));
   useEffect(()=>{
     let live=true;
     const familyId=family?.id||null;
@@ -24,11 +27,23 @@ export default function GlobalCreate({page,family,role,context={},onCreate,suppr
     ]).then(([baby,pets])=>{if(live)setModuleState({familyId,baby,pets})});
     return()=>{live=false};
   },[family?.id]);
+  useEffect(()=>{
+    const familyId=family?.id;
+    if(!familyId){setRankingProfile(normalizeCreateRankingProfile({}));return}
+    setRankingProfile(loadCachedCreateRanking(familyId));
+    fetchCreateRanking(familyId).then(setRankingProfile).catch(()=>{});
+    flushCreateUsageQueue(familyId).catch(()=>{});
+    const update=event=>{if(String(event.detail?.familyId)===String(familyId)&&event.detail?.profile)setRankingProfile(normalizeCreateRankingProfile(event.detail.profile))};
+    const online=()=>flushCreateUsageQueue(familyId).catch(()=>{});
+    window.addEventListener(CREATE_RANKING_UPDATED_EVENT,update);window.addEventListener('online',online);
+    return()=>{window.removeEventListener(CREATE_RANKING_UPDATED_EVENT,update);window.removeEventListener('online',online)};
+  },[family?.id]);
   const modules=moduleState.familyId===family?.id?moduleState:EMPTY_MODULES;
   const options=useMemo(()=>({role,capabilities:CAPABILITIES,modules}),[role,modules]);
   const actions=useMemo(()=>availableCreateActions(options),[options]);
-  const direct=useMemo(()=>directCreateAction(page,options),[page,options]);
-  const primary=actions.filter(action=>action.group==='primary');const secondary=actions.filter(action=>action.group==='secondary');
+  const ranked=useMemo(()=>rankCreateActions({availableActions:actions,page,profile:rankingProfile}),[actions,page,rankingProfile]);
+  const direct=useMemo(()=>resolveDirectCreateAction({availableActions:actions,rankedActions:ranked,profile:rankingProfile}),[actions,ranked,rankingProfile]);
+  const allPrimary=actions.filter(action=>action.group==='primary');const allSecondary=actions.filter(action=>action.group==='secondary');
   const mounted=Boolean(family);
   const modulePage=page==='baby'?'baby':page==='pets'?'pets':null;
   const modulePageAvailable=!modulePage||Boolean(modules[modulePage]?.enabled&&modules[modulePage]?.authorized);
@@ -62,7 +77,7 @@ export default function GlobalCreate({page,family,role,context={},onCreate,suppr
     if(!paletteOpen)return;
     const keydown=event=>{if(event.key==='Escape'){event.preventDefault();closePalette()}};
     const pop=()=>{
-      setPaletteOpen(false);
+      setPaletteOpen(false);setShowAll(false);setFrozenQuick([]);
       const pending=pendingAction.current;pendingAction.current=null;
       if(pending){pending.action.open({open:onCreate,context:pending.context});return}
       setRestoreFocus(true);
@@ -99,14 +114,23 @@ export default function GlobalCreate({page,family,role,context={},onCreate,suppr
     history.replaceState(base,'',href);
     return {base,href};
   }
-  function openPalette(){const {base,href}=anchorCurrentHistory();history.pushState({...base,createPalette:true},'',href);setPaletteOpen(true)}
-  function closePalette(){pendingAction.current=null;if(history.state?.createPalette)history.back();else{setPaletteOpen(false);setRestoreFocus(true)}}
+  function openPalette(){const {base,href}=anchorCurrentHistory();setFrozenQuick(ranked);setShowAll(false);history.pushState({...base,createPalette:true},'',href);setPaletteOpen(true)}
+  function closePalette(){pendingAction.current=null;if(history.state?.createPalette)history.back();else{setPaletteOpen(false);setShowAll(false);setFrozenQuick([]);setRestoreFocus(true)}}
   function choose(action){const actionContext=currentContext();pendingAction.current={action,context:actionContext};if(history.state?.createPalette)history.back();else{setPaletteOpen(false);pendingAction.current=null;anchorCurrentHistory();action.open({open:onCreate,context:actionContext})}}
   function activate(){if(direct){anchorCurrentHistory();direct.open({open:onCreate,context:currentContext()});return}openPalette()}
+  const reasonKey=action=>`createUi.reason.${action.quickstart?.reason||'default'}`;
 
   if(!mounted&&!paletteOpen)return null;
   return <>
-    {mounted&&<button ref={fabRef} type="button" className="global-create-fab" style={{display:visible?'flex':'none'}} onClick={activate} aria-hidden={!visible} inert={!visible?'':undefined} aria-label={direct?t('createUi.addNamed',{name:t(direct.labelKey)}):t('createUi.button')} title={direct?t('createUi.addNamed',{name:t(direct.labelKey)}):t('createUi.button')}><Icon name="plus" size={22}/><span>{direct?t(direct.labelKey):t('createUi.button')}</span></button>}
-    {paletteOpen&&<div className="sheet-backdrop create-palette-backdrop" onMouseDown={event=>event.target===event.currentTarget&&closePalette()}><section className="quick-sheet create-palette-sheet" role="dialog" aria-modal="true" aria-labelledby="create-palette-title"><div className="sheet-handle"/><div className="sheet-head"><div><small>{family?.name}</small><h2 id="create-palette-title">{t('createUi.paletteTitle')}</h2></div><button className="sheet-close" onClick={closePalette} aria-label={t('createUi.close')}><Icon name="close"/></button></div><p className="create-palette-hint">{t('createUi.paletteHint',{family:family?.name||''})}</p>{primary.length>0&&<div className="create-palette-group"><small>{t('createUi.quick')}</small><div className="create-action-grid">{primary.map((action,index)=><button ref={index===0?firstActionRef:null} type="button" className="create-action-card primary-action" key={action.id} onClick={()=>choose(action)}><span><Icon name={action.icon} size={22}/></span><strong>{t(action.labelKey)}</strong><Icon name="next" size={14}/></button>)}</div></div>}{secondary.length>0&&<div className="create-palette-group"><small>{t('createUi.more')}</small><div className="create-action-list">{secondary.map(action=><button type="button" key={action.id} onClick={()=>choose(action)}><Icon name={action.icon}/><span>{t(action.labelKey)}</span><Icon name="next" size={14}/></button>)}</div></div>}{!actions.length&&<p className="create-palette-empty">{t('createUi.noActions')}</p>}</section></div>}
+    {mounted&&<div className={`global-create-controls ${direct?'direct-mode':''}`} style={{display:visible?'flex':'none'}} aria-hidden={!visible} inert={!visible?'':undefined}>
+      <button ref={fabRef} type="button" className="global-create-fab" onClick={activate} aria-label={direct?t('createUi.addNamed',{name:t(direct.labelKey)}):t('createUi.button')} title={direct?t('createUi.addNamed',{name:t(direct.labelKey)}):t('createUi.button')}><Icon name="plus" size={22}/><span>{direct?t(direct.labelKey):t('createUi.button')}</span></button>
+      {direct&&<button type="button" className="global-create-menu-button" onClick={openPalette} aria-label={t('createUi.openQuickstart')} title={t('createUi.openQuickstart')}><Icon name="more" size={18}/></button>}
+    </div>}
+    {paletteOpen&&<div className="sheet-backdrop create-palette-backdrop" onMouseDown={event=>event.target===event.currentTarget&&closePalette()}><section className="quick-sheet create-palette-sheet" role="dialog" aria-modal="true" aria-labelledby="create-palette-title"><div className="sheet-handle"/><div className="sheet-head"><div><small>{family?.name}</small><h2 id="create-palette-title">{t('createUi.paletteTitle')}</h2></div><button type="button" className="sheet-close" onClick={closePalette} aria-label={t('createUi.close')}><Icon name="close"/></button></div><p className="create-palette-hint">{t('createUi.paletteHint',{family:family?.name||''})}</p>
+      {frozenQuick.length>0&&<div className="create-palette-group"><small>{t('createUi.forYou')}</small><div className="create-action-grid">{frozenQuick.map((action,index)=><button ref={index===0?firstActionRef:null} type="button" className="create-action-card primary-action" key={action.id} onClick={()=>choose(action)}><span><Icon name={action.icon} size={22}/></span><strong>{t(action.labelKey)}</strong><small className="create-action-reason">{t(reasonKey(action))}</small></button>)}</div></div>}
+      <button type="button" className="secondary create-all-toggle" aria-expanded={showAll} onClick={()=>setShowAll(value=>!value)}><span>{t(showAll?'createUi.hideAllActions':'createUi.allActions')}</span><Icon name={showAll?'up':'next'} size={14}/></button>
+      {showAll&&<div className="create-all-actions"><div className="create-palette-group"><small>{t('createUi.quick')}</small><div className="create-action-list">{allPrimary.map(action=><button type="button" key={action.id} onClick={()=>choose(action)}><Icon name={action.icon}/><span>{t(action.labelKey)}</span><Icon name="next" size={14}/></button>)}</div></div>{allSecondary.length>0&&<div className="create-palette-group"><small>{t('createUi.more')}</small><div className="create-action-list">{allSecondary.map(action=><button type="button" key={action.id} onClick={()=>choose(action)}><Icon name={action.icon}/><span>{t(action.labelKey)}</span><Icon name="next" size={14}/></button>)}</div></div>}</div>}
+      {!actions.length&&<p className="create-palette-empty">{t('createUi.noActions')}</p>}
+    </section></div>}
   </>;
 }
