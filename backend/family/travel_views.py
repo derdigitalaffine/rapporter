@@ -116,12 +116,18 @@ class TripSerializer(serializers.ModelSerializer):
     creator_name = serializers.SerializerMethodField()
     calendar_event_id = serializers.UUIDField(source="calendar_event.id", read_only=True)
     expected_updated_at = serializers.DateTimeField(write_only=True, required=False)
+    participants = serializers.PrimaryKeyRelatedField(
+        many=True,
+        queryset=Membership.objects.none(),
+        required=False,
+    )
 
     class Meta:
         model = Trip
         fields = [
             "id",
             "family",
+            "participants",
             "title",
             "destination",
             "stage",
@@ -144,6 +150,15 @@ class TripSerializer(serializers.ModelSerializer):
             "expected_updated_at",
         ]
         read_only_fields = ["created_by", "created_at", "updated_at", "calendar_event_id"]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        request = self.context.get("request")
+        if request and request.user.is_authenticated:
+            self.fields["participants"].child_relation.queryset = Membership.objects.filter(
+                family__memberships__user=request.user,
+                family__status="active",
+            ).distinct()
 
     def _current(self, attrs, field, default=None):
         if field in attrs:
@@ -169,12 +184,17 @@ class TripSerializer(serializers.ModelSerializer):
         if self.instance and "family" in attrs and attrs["family"].id != self.instance.family_id:
             raise serializers.ValidationError({"family": "Die Familie einer Reise kann nicht geändert werden."})
 
+        family = self._current(attrs, "family")
+        if "participants" in attrs and any(row.family_id != family.id for row in attrs["participants"]):
+            raise serializers.ValidationError(
+                {"participants": "Teilnehmende müssen Mitglied derselben Familie wie die Reise sein."}
+            )
+
         starts_on = self._current(attrs, "starts_on")
         ends_on = self._current(attrs, "ends_on")
         date_year = self._current(attrs, "date_year")
         date_month = self._current(attrs, "date_month")
         date_season = self._current(attrs, "date_season", "")
-        family = self._current(attrs, "family")
 
         precision_explicit = "date_precision" in attrs
         date_bounds_touched = "starts_on" in attrs or "ends_on" in attrs
@@ -345,7 +365,9 @@ class TripSerializer(serializers.ModelSerializer):
 
 class TripViewSet(viewsets.ModelViewSet):
     serializer_class = TripSerializer
-    queryset = Trip.objects.select_related("family", "created_by", "calendar_event").prefetch_related("photos").all()
+    queryset = Trip.objects.select_related("family", "created_by", "calendar_event").prefetch_related(
+        "photos", "participants"
+    ).all()
     http_method_names = ["get", "post", "patch", "delete", "head", "options"]
 
     def get_queryset(self):
