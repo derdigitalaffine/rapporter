@@ -38,6 +38,38 @@ test('calendar view survives a reload through URL state',async({page})=>{
  await expect(page.locator('.calendar-month-view')).toBeVisible();
 });
 
+test('timed end is exclusive at midnight while real cross-midnight spans keep every occupied day',async({page})=>{
+ const state=await installApiMocks(page);
+ state.events.push(
+  {id:'ends-at-midnight',family:state.family.id,source:null,type:'calendar.event',title:'Endet Mitternacht',starts_at:'2026-10-07T23:00:00+02:00',ends_at:'2026-10-08T00:00:00+02:00',actionable:false,payload:{}},
+  {id:'crosses-midnight',family:state.family.id,source:null,type:'calendar.event',title:'Über Mitternacht',starts_at:'2026-10-07T23:00:00+02:00',ends_at:'2026-10-08T01:00:00+02:00',actionable:false,payload:{}},
+  {id:'multi-day-midnight-end',family:state.family.id,source:null,type:'calendar.event',title:'Mehrtag bis Mitternacht',starts_at:'2026-10-06T12:00:00+02:00',ends_at:'2026-10-09T00:00:00+02:00',actionable:false,payload:{}},
+ );
+ await page.goto('/?page=calendar&day=2026-10-07');
+
+ const weekDays=page.locator('.calendar-week-day');
+ const tuesday=weekDays.nth(1);const wednesday=weekDays.nth(2);const thursday=weekDays.nth(3);const friday=weekDays.nth(4);
+ await expect(wednesday.locator('.calendar-event-chip').filter({hasText:'Endet Mitternacht'})).toHaveCount(1);
+ await expect(thursday.locator('.calendar-event-chip').filter({hasText:'Endet Mitternacht'})).toHaveCount(0);
+ await expect(wednesday.locator('.calendar-event-chip').filter({hasText:'Über Mitternacht'})).toHaveCount(1);
+ await expect(thursday.locator('.calendar-event-chip').filter({hasText:'Über Mitternacht'})).toHaveCount(1);
+ await expect(tuesday.locator('.calendar-event-chip').filter({hasText:'Mehrtag bis Mitternacht'})).toHaveCount(1);
+ await expect(thursday.locator('.calendar-event-chip').filter({hasText:'Mehrtag bis Mitternacht'})).toHaveCount(1);
+ await expect(friday.locator('.calendar-event-chip').filter({hasText:'Mehrtag bis Mitternacht'})).toHaveCount(0);
+
+ await page.getByRole('button',{name:'Monat',exact:true}).click();
+ await expect(page.locator('.calendar-month-view')).toBeVisible();
+ // October 2026 starts on Thursday, so the fixed 42-day grid begins on Monday 28 September.
+ const monthDays=page.locator('.calendar-month-day');
+ const october7=monthDays.nth(9);const october8=monthDays.nth(10);const october9=monthDays.nth(11);
+ await expect(october7.locator('.calendar-event-chip').filter({hasText:'Endet Mitternacht'})).toHaveCount(1);
+ await expect(october8.locator('.calendar-event-chip').filter({hasText:'Endet Mitternacht'})).toHaveCount(0);
+ await expect(october7.locator('.calendar-event-chip').filter({hasText:'Über Mitternacht'})).toHaveCount(1);
+ await expect(october8.locator('.calendar-event-chip').filter({hasText:'Über Mitternacht'})).toHaveCount(1);
+ await expect(october8.locator('.calendar-event-chip').filter({hasText:'Mehrtag bis Mitternacht'})).toHaveCount(1);
+ await expect(october9.locator('.calendar-event-chip').filter({hasText:'Mehrtag bis Mitternacht'})).toHaveCount(0);
+});
+
 test('Today week compass navigates weeks, resets to today and opens tapped day in calendar',async({page})=>{
  await installApiMocks(page);
  await page.goto('/');
@@ -68,6 +100,7 @@ test('Today and mobile calendar distinguish appointments, waste, birthdays and s
  );
  await page.goto('/');
  const compass=page.getByTestId('week-compass');
+ await expect(compass).toBeVisible();
  await expect(compass.locator('.week-marker.marker-event').first()).toBeVisible();
  await expect(compass.locator('.week-marker.marker-waste.waste-paper')).toBeVisible();
  await expect(compass.locator('.week-marker.marker-birthday')).toBeVisible();
