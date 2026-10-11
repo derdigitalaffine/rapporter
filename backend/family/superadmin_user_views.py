@@ -82,6 +82,12 @@ def _user_locale(user):
     return "en" if membership and str(membership.family.locale).lower().startswith("en") else "de"
 
 
+def _absolute_admin_url(request, path):
+    forwarded_proto = str(request.headers.get("X-Forwarded-Proto") or "").split(",", 1)[0].strip().lower()
+    scheme = forwarded_proto if forwarded_proto in {"http", "https"} else request.scheme
+    return f"{scheme}://{request.get_host()}{path}"
+
+
 @api_view(["GET"])
 @permission_classes([IsSuperAdmin])
 def superadmin_users(request):
@@ -226,4 +232,4 @@ def superadmin_user_password_reset_link(request, user_id):
         target_type="user",
         target_id=str(user.pk),
     )
-    return Response({"reset_url": request.build_absolute_uri(path)}, status=status.HTTP_201_CREATED)
+    return Response({"reset_url": _absolute_admin_url(request, path)}, status=status.HTTP_201_CREATED)
