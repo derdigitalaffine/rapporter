@@ -20,8 +20,9 @@ test('main areas keep stable URLs across reload',async({page})=>{
 });
 
 test('browser back and forward follow previous app areas',async({page})=>{
- await boot(page);await page.locator('.bottom-nav').getByRole('button',{name:'Aufgaben',exact:true}).click();await page.locator('.bottom-nav').getByRole('button',{name:'Einkauf',exact:true}).click();await expect(page).toHaveURL(/\?page=shopping$/);
- await page.goBack();await expect(page.getByRole('heading',{name:'Aufgaben',exact:true})).toBeVisible();await expect(page).toHaveURL(/\?page=tasks$/);
+ await boot(page);await page.locator('.bottom-nav').getByRole('button',{name:'To-dos',exact:true}).click();await expect(page.getByRole('heading',{name:'To-dos',exact:true})).toBeVisible();await expect(page).toHaveURL(/\?page=todo$/);
+ await page.locator('.bottom-nav').getByRole('button',{name:'Einkauf',exact:true}).click();await expect(page).toHaveURL(/\?page=shopping$/);
+ await page.goBack();await expect(page.getByRole('heading',{name:'To-dos',exact:true})).toBeVisible();await expect(page).toHaveURL(/\?page=todo$/);
  await page.goForward();await expect(page.getByRole('heading',{name:'Einkauf',exact:true})).toBeVisible();await expect(page).toHaveURL(/\?page=shopping$/);
 });
 

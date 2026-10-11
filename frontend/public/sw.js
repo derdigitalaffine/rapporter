@@ -1,4 +1,4 @@
-const CACHE='familyos-v12';
+const CACHE='familyos-build-__BUILD_ID__';
 const STATIC_SHELL=['/manifest.webmanifest','/brand/icon-192.png','/brand/icon-512.png','/brand/icon.svg'];
 async function putStatic(cache,key,response){const headers=new Headers(response.headers);headers.delete('vary');const body=await response.arrayBuffer();await cache.put(key,new Response(body,{status:response.status,statusText:response.statusText,headers}))}
 async function cacheAssetGraph(cache,asset,seen=new Set()){const url=new URL(asset,self.location.origin);if(url.origin!==self.location.origin||seen.has(url.pathname))return;seen.add(url.pathname);const response=await fetch(url.pathname,{cache:'no-store'});if(!response.ok)throw new Error(`asset_${response.status}_${url.pathname}`);let source='';if(url.pathname.endsWith('.js'))source=await response.clone().text();await putStatic(cache,url.pathname,response);if(!source)return;const dependencies=[...source.matchAll(/["'](\.\/[^"']+\.(?:js|css))["']/g)].map(match=>new URL(match[1],url).pathname);for(const dependency of new Set(dependencies))await cacheAssetGraph(cache,dependency,seen)}

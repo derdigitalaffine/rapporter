@@ -1,10 +1,11 @@
 import {permissionsForRole} from './family-permissions';
 
 const matches=page=>({page:current})=>current===page;
+const matchesAny=(...pages)=>({page:current})=>pages.includes(current);
 const nowhere=()=>false;
 
 export const CREATE_ACTIONS=[
-  {id:'task',labelKey:'createUi.task',icon:'tasks',group:'primary',permission:'createContent',contextMatcher:matches('tasks'),open:({open,context})=>open('task',context)},
+  {id:'task',labelKey:'createUi.task',icon:'tasks',group:'primary',permission:'createContent',contextMatcher:matchesAny('tasks','todo'),open:({open,context})=>open('task',context)},
   {id:'shoppingItem',labelKey:'createUi.shoppingItem',icon:'shopping',group:'primary',permission:'createContent',contextMatcher:matches('shopping'),open:({open,context})=>open('shoppingItem',context)},
   {id:'event',labelKey:'createUi.event',icon:'calendar',group:'primary',permission:'createContent',contextMatcher:matches('calendar'),open:({open,context})=>open('event',context)},
   {id:'expense',labelKey:'createUi.expense',icon:'receipt',group:'primary',permission:'createContent',contextMatcher:matches('expenses'),open:({open,context})=>open('expense',context)},
@@ -18,7 +19,7 @@ export const CREATE_ACTIONS=[
   {id:'loyalty',labelKey:'createUi.loyalty',icon:'store',group:'secondary',permission:'createContent',contextMatcher:matches('loyalty'),capability:'loyalty',open:({open,context})=>open('loyalty',context)},
 ];
 
-export const CREATE_PAGES=new Set(['birthdays','home','tasks','shopping','routines','more','calendar','expenses','contracts','inbox','loyalty']);
+export const CREATE_PAGES=new Set(['birthdays','home','todo','tasks','shopping','routines','more','calendar','expenses','contracts','inbox','loyalty']);
 
 export function availableCreateActions({role,capabilities={}}){
   const permissions=permissionsForRole(role);
