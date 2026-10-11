@@ -1,6 +1,7 @@
+from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
 from rest_framework.decorators import api_view
-from rest_framework.exceptions import NotFound
+from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.response import Response
 
 from .reference_models import PediatricReferencePackage
@@ -88,7 +89,10 @@ def validate_reference(request, package_id):
 
 @api_view(["POST"])
 def publish_reference(request, package_id):
-    package = publish_reference_package(request.user, package_id)
+    try:
+        package = publish_reference_package(request.user, package_id)
+    except DjangoValidationError as exc:
+        raise ValidationError({"effective_from": exc.messages}) from exc
     return Response(serialize_reference_package(package))
 
 
