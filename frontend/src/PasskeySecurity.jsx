@@ -21,9 +21,9 @@ export default function PasskeySecurity(){
  async function execute(action,{afterReauth=false}={}){
   setBusy(true);
   try{
-   if(action.type==='add'){await registerPasskey(action.name);setName('');toast(t('passkeys.created'),{type:'success'})}
+   if(action.type==='add'){await registerPasskey(action.name,i18n.language);setName('');toast(t('passkeys.created'),{type:'success'})}
    if(action.type==='rename'){await renamePasskey(action.id,action.name);setEditId('');setEditName('');toast(t('passkeys.renamed'),{type:'success'})}
-   if(action.type==='remove'){await removePasskey(action.id);toast(t('passkeys.removed'),{type:'success'})}
+   if(action.type==='remove'){await removePasskey(action.id,i18n.language);toast(t('passkeys.removed'),{type:'success'})}
    setPending(null);setReauthOpen(false);await load();
   }catch(error){
    if(isPasskeyCancellation(error)){return}
