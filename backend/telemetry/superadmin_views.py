@@ -14,6 +14,7 @@ from family.superadmin_views import IsSuperAdmin
 
 from .models import AuditEvent, DailyRollup, UsageEvent
 from .service import METRIC_ACTIVE_FAMILIES, METRIC_ACTIVE_USERS
+from .superadmin_activation import activation_overview, rolling_engagement
 
 
 PERIODS = {"24h": 1, "7d": 7, "30d": 30, "90d": 90, "365d": 365}
@@ -187,6 +188,8 @@ def superadmin_analytics_overview(request):
     previous_funnel = _invite_funnel(previous_start, start)
     current_owner_funnel = _invite_funnel(start, end, role="owner")
     previous_owner_funnel = _invite_funnel(previous_start, start, role="owner")
+    engagement = rolling_engagement(end)
+    activation = activation_overview(start, end, previous_start, observation_end=end)
 
     User = get_user_model()
     current_new_users = User.objects.filter(date_joined__gte=start, date_joined__lt=end).count()
@@ -227,6 +230,8 @@ def superadmin_analytics_overview(request):
                 "new_users": _change(current_new_users, previous_new_users),
                 "new_families": _change(current_new_families, previous_new_families),
             },
+            "engagement": engagement,
+            "activation": activation,
             "onboarding": {
                 "invites": _funnel_comparison(current_funnel, previous_funnel),
                 "owner_invites": _funnel_comparison(
@@ -245,6 +250,8 @@ def superadmin_analytics_overview(request):
                 "active_user": "Authenticated user with at least one activity.foreground usage event in the selected period.",
                 "active_family": "Family with at least one activity.foreground usage event in the selected period.",
                 "verified_email_user": "User with a verified primary EmailIdentity.",
+                "dau_wau_mau": "Rolling distinct users with activity.foreground in the preceding 1, 7 and 30 days, anchored at period.end; equal-length preceding windows are used for comparison when raw retention is sufficient.",
+                "activation_v1": "New-account invite acceptance followed by canonical email verification and meaningful activity in the accepted family within 7 days; only mature cohort rows enter the rate denominator.",
                 "invite_send_to_accept_rate": "Distinct created invites accepted in-period divided by distinct created invites with invite.sent in-period; null when no invite was sent.",
                 "invite_median_seconds_to_accept": "Median elapsed seconds from invite.created to invite.accepted for accepted invites in the selected created-in-period cohort.",
                 "comparison": "Immediately preceding period of equal length; change_pct is null when the previous value is zero.",
