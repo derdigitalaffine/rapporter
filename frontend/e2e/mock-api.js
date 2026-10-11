@@ -9,7 +9,7 @@ function idFrom(path,prefix){return path.slice(prefix.length).split('/')[0]}
 export async function installApiMocks(page,{authenticated=true,language='de',dismissOnboarding=true}={}){
   await page.addInitScript(({authenticated,language,dismissOnboarding,familyId})=>{
     if(authenticated)localStorage.setItem('famuhle-session','1');else localStorage.removeItem('famuhle-session');
-    localStorage.setItem('famuhle-language',language);
+    if(!localStorage.getItem('famuhle-language'))localStorage.setItem('famuhle-language',language);
     if(dismissOnboarding)localStorage.setItem(`famuhle-onboarding-dismissed:${familyId}`,'1');
   },{authenticated,language,dismissOnboarding,familyId});
 
