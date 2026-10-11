@@ -112,6 +112,7 @@ class ChildIdentityTests(TestCase):
 
     def test_login_activation_reuses_child_user_and_requires_email_verification(self):
         child_user_id = self.baby.membership.user_id
+        child_username = self.baby.membership.user.username
         user_count = User.objects.count()
         baby, identity = begin_child_login_activation(
             self.owner,
@@ -123,6 +124,7 @@ class ChildIdentityTests(TestCase):
         self.assertEqual(User.objects.count(), user_count)
         self.assertEqual(identity.kind, EmailIdentity.Kind.PENDING)
         self.assertIsNone(authenticate_identifier("mia@example.test", PASSWORD))
+        self.assertIsNone(authenticate_identifier(child_username, PASSWORD, legacy=True))
         self.assertFalse(child_login_is_active(baby))
 
         token = verification_token(identity)
@@ -132,6 +134,7 @@ class ChildIdentityTests(TestCase):
         baby.refresh_from_db()
         self.assertTrue(child_login_is_active(baby))
         self.assertEqual(authenticate_identifier("mia@example.test", PASSWORD).pk, child_user_id)
+        self.assertIsNone(authenticate_identifier(child_username, PASSWORD, legacy=True))
         self.assertEqual(User.objects.count(), user_count)
 
     def test_ordinary_invite_registration_cannot_duplicate_pending_child_identity(self):
