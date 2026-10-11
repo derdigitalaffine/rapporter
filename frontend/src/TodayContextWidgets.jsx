@@ -3,6 +3,7 @@ import {api} from './api';
 import {Icon} from './icons';
 import {currentWeek,eventDayKeys,eventMarker,eventVisibleInWeek,isoWeekNumber,isHolidayEvent} from './calendar-event-ui';
 import {fetchCalendarEvents} from './calendar-events-api';
+import {formatPinEventMeta,pinAuthorHue,pinAuthorInitial,pinIconName,pinTypeLabel} from './pinboard-ui';
 import './today-context-widgets.css';
 
 const unwrap=value=>value?.results||value||[];
@@ -29,17 +30,21 @@ export function WeekCompassWidget({family,language='de',settings=defaultWeekSett
 }
 
 export function PinboardTodayWidget({family,language='de',compact=false}){
- const [pins,setPins]=useState([]);const [loading,setLoading]=useState(true);const de=language.startsWith('de');
- useEffect(()=>{let current=true;setLoading(true);api(`/board/?family=${encodeURIComponent(family.id)}`).then(result=>{if(current)setPins(unwrap(result).slice(0,compact?2:4))}).catch(()=>{if(current)setPins([])}).finally(()=>{if(current)setLoading(false)});return()=>{current=false}},[family.id,compact]);
+ const [pins,setPins]=useState([]),[events,setEvents]=useState([]),[loading,setLoading]=useState(true);const de=language.startsWith('de');
+ const eventById=useMemo(()=>new Map(events.map(row=>[String(row.id),row])),[events]);
+ useEffect(()=>{let current=true;setLoading(true);Promise.all([api(`/board/?family=${encodeURIComponent(family.id)}`),api('/events/').catch(()=>[])]).then(([pinResult,eventResult])=>{if(!current)return;setPins(unwrap(pinResult).slice(0,compact?2:4));setEvents(unwrap(eventResult).filter(row=>String(row.family)===String(family.id)))}).catch(()=>{if(current){setPins([]);setEvents([])}}).finally(()=>{if(current)setLoading(false)});return()=>{current=false}},[family.id,compact]);
  return <section className="today-section today-pinboard" data-testid="today-pinboard"><div className="today-section-head"><div><small>{de?'GEMEINSAM IM BLICK':'SHARED AT A GLANCE'}</small><h2>{de?'Pinnwand':'Pinboard'}</h2></div><button className="today-link" onClick={()=>window.location.assign('/?page=board')}>{de?'Öffnen':'Open'} <Icon name="next"/></button></div>
- {pins.length?<div className="today-pinboard-grid">{pins.map(pin=><PinPreview key={pin.id} pin={pin} de={de}/>)}</div>:<button className="today-pinboard-empty" onClick={()=>window.location.assign('/?page=board&compose=1')}><span><Icon name="plus"/></span><strong>{loading?(de?'Pinnwand wird geladen …':'Loading pinboard …'):(de?'Ersten wichtigen Punkt anpinnen':'Pin the first important item')}</strong><small>{de?'Notiz, Foto, Termin, Aufgabe oder Einkauf':'Note, photo, event, task or shopping'}</small></button>}
+ {pins.length?<div className="today-pinboard-grid">{pins.map(pin=><PinPreview key={pin.id} pin={pin} event={eventById.get(String(pin.target_id))} de={de} language={language}/>)}</div>:<button className="today-pinboard-empty" onClick={()=>window.location.assign('/?page=board&compose=1')}><span><Icon name="plus"/></span><strong>{loading?(de?'Pinnwand wird geladen …':'Loading pinboard …'):(de?'Ersten wichtigen Punkt anpinnen':'Pin the first important item')}</strong><small>{de?'Notiz, Foto, Termin, Aufgabe oder Einkaufsliste':'Note, photo, event, task or shopping list'}</small></button>}
  <div className="today-pinboard-actions"><button className="secondary compact" onClick={()=>window.location.assign('/?page=board&compose=1')}><Icon name="plus"/> {de?'Anpinnen':'Pin something'}</button></div></section>
 }
 
-function PinPreview({pin,de}){
- const target=pin.target;const unavailable=target?.available===false;const href=target?.url||`/?page=board&post=${encodeURIComponent(pin.id)}`;const title=unavailable?(de?'Nicht mehr verfügbar':'No longer available'):(target?.title||pin.text||typeLabel(pin.kind,de));const meta=unavailable?'':target?.subtitle||pin.author_name||'';return <button className={`today-pin ${pin.kind||'note'} ${unavailable?'unavailable':''}`} onClick={()=>window.location.assign(href)}>{pin.images?.[0]&&<img src={pin.images[0].url} alt="" width={pin.images[0].width} height={pin.images[0].height} loading="lazy"/>}<span className="today-pin-type"><Icon name={pinIcon(pin.kind)}/></span><span className="today-pin-copy"><strong>{String(title).slice(0,100)}</strong>{meta&&<small>{formatMeta(meta,de)}</small>}</span></button>
+function PinPreview({pin,event,de,language}){
+ const target=pin.target;const unavailable=target?.available===false;const href=target?.url||`/?page=board&post=${encodeURIComponent(pin.id)}`;const title=unavailable?(de?'Nicht mehr verfügbar':'No longer available'):(target?.title||pin.text||pinTypeLabel(pin.kind,de,event));const eventMeta=pin.kind==='event'?formatPinEventMeta(event,language):'';const meta=unavailable?'':eventMeta||target?.subtitle||'';const type=pinTypeLabel(pin.kind,de,event);const authorLabel=de?'Angepinnt von':'Pinned by';const authorStyle={'--pin-author-hue':pinAuthorHue(pin.author)};const holiday=pin.kind==='event'&&isHolidayEvent(event);
+ return <button className={`today-pin ${pin.kind||'note'} ${holiday?'event-holiday ':''}${unavailable?'unavailable':''}`} onClick={()=>window.location.assign(href)} aria-label={`${type}: ${title}. ${authorLabel} ${pin.author_name||''}`}>
+  {pin.images?.[0]&&<img src={pin.images[0].url} alt="" width={pin.images[0].width} height={pin.images[0].height} loading="lazy"/>}
+  <span className="today-pin-type" aria-hidden="true"><Icon name={pinIconName(pin.kind,event)}/></span>
+  <span className="today-pin-copy"><span className="today-pin-kicker"><span className="today-pin-kind">{type}</span><span className="today-pin-author" style={authorStyle} title={`${authorLabel} ${pin.author_name||''}`}><span className="today-pin-author-avatar" aria-hidden="true">{pinAuthorInitial(pin.author_name)}</span><span className="today-pin-author-name">{pin.author_name}</span></span></span><strong>{String(title).slice(0,100)}</strong>{meta&&<small>{eventMeta||formatMeta(meta,de)}</small>}</span>
+ </button>
 }
 
-function pinIcon(kind){return kind==='event'?'calendar':kind==='task'?'tasks':kind==='shopping'?'shopping':kind==='photo'?'camera':'lists'}
-function typeLabel(kind,de){const labels=de?{note:'Notizzettel',photo:'Foto',event:'Termin',task:'Aufgabe',note_ref:'Notiz',shopping:'Einkauf'}:{note:'Note',photo:'Photo',event:'Event',task:'Task',note_ref:'Note',shopping:'Shopping'};return labels[kind]||labels.note}
 function formatMeta(value,de){if(!value)return'';if(typeof value==='string'&&/^\d{4}-\d{2}-\d{2}T/.test(value)){const date=new Date(value);if(!Number.isNaN(date.getTime()))return date.toLocaleString(de?'de-DE':'en-GB',{dateStyle:'short',timeStyle:'short'})}return String(value).slice(0,120)}
