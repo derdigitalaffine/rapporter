@@ -49,13 +49,14 @@ class TodayLayoutTests(TestCase):
     def test_registry_exposes_required_v2_metadata(self):
         required = {
             'id', 'titleKey', 'category', 'component', 'defaultVisible',
-            'defaultOrder', 'supportedSizes', 'moduleGate', 'permissionGate',
+            'defaultOrder', 'defaultSize', 'supportedSizes', 'moduleGate', 'permissionGate',
             'sensitivity', 'refreshPolicy', 'emptyStatePolicy', 'deepLink',
             'settingsSchema',
         }
         self.assertEqual([entry['id'] for entry in TODAY_WIDGET_REGISTRY], list(DEFAULT_WIDGET_ORDER))
         self.assertTrue(all(required <= set(entry) for entry in TODAY_WIDGET_REGISTRY))
         self.assertTrue(all(set(entry['supportedSizes']) <= {'compact', 'medium', 'wide'} for entry in TODAY_WIDGET_REGISTRY))
+        self.assertTrue(all(entry['defaultSize'] in entry['supportedSizes'] for entry in TODAY_WIDGET_REGISTRY))
 
     def test_default_roundtrip_is_v2_and_private(self):
         initial = self.client.get(self.url)
@@ -67,7 +68,10 @@ class TodayLayoutTests(TestCase):
         self.assertNotIn('tasks', DEFAULT_WIDGET_ORDER)
         self.assertNotIn('routines', DEFAULT_WIDGET_ORDER)
         self.assertTrue(all(row['visible'] for row in initial.data['widgets']))
-        self.assertTrue(all(row['size'] == 'wide' for row in initial.data['widgets']))
+        self.assertEqual(
+            {row['id']: row['size'] for row in initial.data['widgets']},
+            {entry['id']: entry['defaultSize'] for entry in TODAY_WIDGET_REGISTRY},
+        )
         self.assertEqual(initial.data['widgets'][0]['settings'], DEFAULT_WEEK_SETTINGS)
         trip = next(row for row in initial.data['widgets'] if row['id'] == 'trip')
         self.assertEqual(trip['settings'], DEFAULT_TRIP_SETTINGS)
@@ -112,6 +116,8 @@ class TodayLayoutTests(TestCase):
         self.assertEqual(weather['size'], 'wide')
         self.assertFalse(weather['visible'])
         self.assertEqual(expanded[0], {'id': 'week', 'visible': True, 'size': 'wide', 'settings': DEFAULT_WEEK_SETTINGS})
+        self.assertEqual(next(row for row in expanded if row['id'] == 'trip')['size'], 'medium')
+        self.assertEqual(next(row for row in expanded if row['id'] == 'pinboard')['size'], 'compact')
 
         weather_index = next(index for index, row in enumerate(expanded) if row['id'] == 'weather')
         todo_index = next(index for index, row in enumerate(expanded) if row['id'] == 'todo')
