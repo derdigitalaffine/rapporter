@@ -23,7 +23,7 @@ test('integration hub uses canonical action hierarchy',async({page})=>{
   await expect(connectedCard.getByRole('button',{name:'Weitere Verbindung'})).toHaveClass(/\bsecondary\b/);
 
   const availableCard=page.locator('.catalog-card',{hasText:'Abfallkalender'});
-  await expect(availableCard.getByRole('button',{name:'Konfigurieren'})).toHaveClass(/\bprimary\b/);
+  await expect(availableCard.getByRole('button',{name:'Einrichten'})).toHaveClass(/\bprimary\b/);
 
   await page.locator('.integration-details summary').click();
   const disconnect=page.getByRole('button',{name:'Trennen'});
