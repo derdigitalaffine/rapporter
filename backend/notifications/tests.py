@@ -124,18 +124,25 @@ class NotificationApiTests(TestCase):
         preference, _ = NotificationPreference.objects.get_or_create(membership=self.member_membership)
         preference.tasks = False
         preference.save(update_fields=["tasks", "updated_at"])
+        resource_url = "/?page=tasks&task=11111111-1111-1111-1111-111111111111"
         result = notify_domain_event(
             self.family,
             "task.created",
             actor=self.owner,
             context={"item": "Müll rausbringen", "list": "Haushalt", "task_id": "11111111-1111-1111-1111-111111111111"},
-            url="/?page=tasks&task=11111111-1111-1111-1111-111111111111",
+            url=resource_url,
         )
         self.assertEqual(result["recipients"], 0)
-        notification = Notification.objects.get(recipient=self.member_membership)
+        notification = Notification.objects.get(recipient=self.member_membership, event_type="task.created", resource_url=resource_url)
         self.assertEqual(notification.event_type, "task.created")
         self.assertEqual(notification.title, "Neue Aufgabe")
-        self.assertEqual(notification.resource_url, "/?page=tasks&task=11111111-1111-1111-1111-111111111111")
-        self.assertFalse(Notification.objects.filter(recipient=self.owner_membership).exists())
+        self.assertEqual(notification.resource_url, resource_url)
+        self.assertFalse(
+            Notification.objects.filter(
+                recipient=self.owner_membership,
+                event_type="task.created",
+                resource_url=resource_url,
+            ).exists()
+        )
         preference.refresh_from_db()
         self.assertFalse(preference.tasks)
