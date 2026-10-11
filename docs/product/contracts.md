@@ -10,16 +10,18 @@ Ein Vertrag kann vollständig ohne Datei angelegt und verwaltet werden. Der glob
 - Dokument scannen,
 - PDF/Bild auswählen.
 
-Bei einem Dokument verarbeitet der lokale Document-Core die Datei. `ExtractedField`-Werte dienen nur als Vorschläge im Editor. Der Nutzer prüft und speichert die Daten selbst. Für jeden unterstützten Vorschlag zeigt die UI Confidence, Seite, Belegtext und `source_type` an.
+Bei einem Dokument verarbeitet der lokale Document-Core die Datei. `ExtractedField`-Werte dienen nur als Vorschläge im Editor. Der Nutzer prüft und speichert die Daten selbst. Für jeden unterstützten Vorschlag zeigt die UI Confidence, Seite, Belegtext und `source_type` an. Die vom Document-Core bereits gelieferten Vertrags-Keys (`contract.number`, `contract.start_date`, `contract.end_date`) werden direkt gemappt; weitere eng beschriftete Vertragsfelder werden lokal aus dem bereits extrahierten Seitentext vorgeschlagen, ohne eine zweite OCR- oder Cloud-Pipeline.
 
 ## Explizite und abgeleitete Termine
 
-`end_date` ist nur dann eine explizite Dokumentangabe, wenn es als solche gespeichert wurde. Aus bestätigten Vertragsdaten berechnet der Contract-Core separat:
+`end_date` ist nur dann eine explizite Dokumentangabe, wenn es als solche gespeichert wurde. Die Kündigungsfrist wird als menschenlesbare Vertragsangabe erhalten, zum Beispiel `30 Tage`, `6 Wochen` oder `3 Monate`; Monatsfristen werden nicht pauschal in 30-Tage-Blöcke umgedeutet.
+
+Aus bestätigten Vertragsdaten berechnet der Contract-Core separat:
 
 - das mögliche Ende der Mindestlaufzeit aus `start_date + minimum_term_months`, falls kein explizites Ende existiert,
-- die mögliche Kündigungsfrist aus Vertragsende/Mindestlaufzeitende minus `cancellation_period_days`.
+- die mögliche Kündigungsfrist aus Vertragsende/Mindestlaufzeitende minus der bestätigten Kündigungsfrist.
 
-Diese Werte werden als `source_type="derived"` ausgegeben und in der UI ausdrücklich als berechnet markiert. Sie werden nicht als Dokumentfundstelle dargestellt.
+Diese Werte werden als `source_type="derived"` ausgegeben und in der UI ausdrücklich als berechnet markiert. Sie werden nicht als Dokumentfundstelle dargestellt. Kalender-Monate und -Jahre werden kalendarisch gerechnet (zum Beispiel 31. März minus 1 Monat = 28./29. Februar), nicht als Tagesnäherung.
 
 ## Folgeaktionen
 
@@ -73,7 +75,8 @@ Die Contract-Tests decken insbesondere ab:
 - private Isolation und familienweite Lesbarkeit,
 - Cross-family-Fail-Closed-Verhalten,
 - gleiche-Familie/ACL-Anforderungen für Dokumentlinks,
-- OCR-Prefill inklusive Confidence, Beleg, Seite und `explicit`/`derived`,
+- Mapping der echten Document-Core-Vertrags-Keys inklusive deutschem Datumsformat,
+- ergänzendes lokales Prefill inklusive Confidence, Beleg, Seite und `explicit`/`derived`,
 - bestätigungspflichtige Folgeaktionen,
 - Privacy-Block für Task/Event bei privaten Verträgen,
-- abgeleitete Mindestlaufzeit- und Kündigungstermine.
+- kalendarische Monatsfristen sowie abgeleitete Mindestlaufzeit- und Kündigungstermine.

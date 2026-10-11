@@ -34,7 +34,7 @@ class Contract(TimestampedModel):
     start_date = models.DateField(null=True, blank=True)
     minimum_term_months = models.PositiveIntegerField(null=True, blank=True)
     end_date = models.DateField(null=True, blank=True)
-    cancellation_period_days = models.PositiveIntegerField(null=True, blank=True)
+    cancellation_period = models.CharField(max_length=64, blank=True)
     renewal_rule = models.CharField(max_length=240, blank=True)
     amount = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
     billing_interval = models.CharField(max_length=24, choices=BillingInterval.choices, blank=True)

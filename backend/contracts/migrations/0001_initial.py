@@ -41,7 +41,7 @@ class Migration(migrations.Migration):
                 ("start_date", models.DateField(blank=True, null=True)),
                 ("minimum_term_months", models.PositiveIntegerField(blank=True, null=True)),
                 ("end_date", models.DateField(blank=True, null=True)),
-                ("cancellation_period_days", models.PositiveIntegerField(blank=True, null=True)),
+                ("cancellation_period", models.CharField(blank=True, max_length=64)),
                 ("renewal_rule", models.CharField(blank=True, max_length=240)),
                 ("amount", models.DecimalField(blank=True, decimal_places=2, max_digits=12, null=True)),
                 ("billing_interval", models.CharField(blank=True, choices=[("monthly", "Monthly"), ("quarterly", "Quarterly"), ("half_year", "Half year"), ("yearly", "Yearly"), ("one_time", "One time"), ("other", "Other")], max_length=24)),

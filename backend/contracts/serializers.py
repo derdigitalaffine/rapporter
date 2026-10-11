@@ -23,7 +23,7 @@ def contract_payload(contract, user):
         "start_date": contract.start_date.isoformat() if contract.start_date else None,
         "minimum_term_months": contract.minimum_term_months,
         "end_date": contract.end_date.isoformat() if contract.end_date else None,
-        "cancellation_period_days": contract.cancellation_period_days,
+        "cancellation_period": contract.cancellation_period,
         "renewal_rule": contract.renewal_rule,
         "amount": str(contract.amount) if contract.amount is not None else None,
         "billing_interval": contract.billing_interval,

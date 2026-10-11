@@ -95,6 +95,7 @@ def _apply_fields(contract, data):
         "provider": 180,
         "contract_number": 120,
         "customer_number": 120,
+        "cancellation_period": 64,
         "renewal_rule": 240,
     }
     updates = []
@@ -120,9 +121,6 @@ def _apply_fields(contract, data):
     if "minimum_term_months" in data:
         contract.minimum_term_months = _positive_int(data.get("minimum_term_months"), "minimum_term_months")
         updates.append("minimum_term_months")
-    if "cancellation_period_days" in data:
-        contract.cancellation_period_days = _positive_int(data.get("cancellation_period_days"), "cancellation_period_days")
-        updates.append("cancellation_period_days")
     if "amount" in data:
         contract.amount = _decimal(data.get("amount"), "amount")
         updates.append("amount")
