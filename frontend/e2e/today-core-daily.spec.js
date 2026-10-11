@@ -2,11 +2,11 @@ import {test,expect} from '@playwright/test';
 import {installApiMocks} from './mock-api.js';
 
 const familyId='family-1';
-const isoIn=hours=>new Date(Date.now()+hours*3600000).toISOString();
-function localDay(){
- const parts=new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Berlin',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());
- const read=type=>parts.find(part=>part.type===type)?.value||'';
- return `${read('year')}-${read('month')}-${read('day')}`;
+const FIXED_NOW='2026-10-10T10:00:00.000Z';
+const isoIn=hours=>new Date(Date.parse(FIXED_NOW)+hours*3600000).toISOString();
+const localDay=()=> '2026-10-10';
+async function freezeToday(page){
+ await page.addInitScript(now=>{const RealDate=Date;globalThis.Date=class extends RealDate{constructor(...args){super(...(args.length?args:[now]))}static now(){return new RealDate(now).getTime()} }},FIXED_NOW);
 }
 function actionRows(state){
  return state.tasks.map(task=>({
@@ -17,12 +17,14 @@ function actionRows(state){
 }
 async function boot(page){
  await page.setViewportSize({width:390,height:844});
+ await freezeToday(page);
  const state=await installApiMocks(page,{dismissOnboarding:true});
  state.tasks[0].due_at=isoIn(2);
- state.events.push(
+ state.events=[
+  {id:'event-1',family:familyId,source:null,type:'calendar.event',title:'Kinderarzt',starts_at:isoIn(4),ends_at:isoIn(5),payload:{provider:'fam-uh-le',location:'Praxis'}},
   {id:'warning-today',family:familyId,source:null,type:'public.warning',title:'Sturmwarnung',starts_at:isoIn(1),ends_at:isoIn(4),payload:{provider:'Warnamt'}},
-  {id:'all-day',family:familyId,source:null,type:'calendar.event',title:'Schulfest',starts_at:null,ends_at:null,payload:{date_start:localDay(),date_end_exclusive:null,provider:'Familie'}}
- );
+  {id:'all-day',family:familyId,source:null,type:'calendar.event',title:'Schulfest',starts_at:null,ends_at:null,payload:{date_start:localDay(),date_end_exclusive:null,provider:'Familie'}},
+ ];
  let actionRequests=0;
  await page.route('**/api/actions/**',route=>{
   actionRequests+=1;const rows=actionRows(state);
