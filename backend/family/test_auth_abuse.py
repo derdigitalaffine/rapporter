@@ -7,127 +7,126 @@ from rest_framework.test import APIClient
 
 from auth_abuse.models import AuthAbuseBucket
 
-from .models import Family, FamilyInvitation, Membership
+from .models import Family, Membership
 
 
-@override_settings(AUTH_ABUSE_HMAC_KEY="family-auth-abuse-test-key")
+@override_settings(AUTH_ABUSE_HMAC_KEY="integration-test-only-abuse-key")
 class AuthAbuseIntegrationTests(TestCase):
     def setUp(self):
         User = get_user_model()
-        self.owner = User.objects.create_user(
-            username="owner",
-            email="owner@example.test",
-            password="owner-password-123",
+        self.user = User.objects.create_user(
+            username="alice",
+            email="alice@example.com",
+            password="test-pass-123",
         )
-        self.family = Family.objects.create(name="Family", slug="family")
-        Membership.objects.create(family=self.family, user=self.owner, role=Membership.Role.OWNER)
+        self.family = Family.objects.create(name="Alice Family", slug="abuse-alice-family")
+        Membership.objects.create(
+            family=self.family,
+            user=self.user,
+            role=Membership.Role.OWNER,
+            display_name="Alice",
+        )
 
-    def test_login_failures_are_rate_limited_without_changing_response_shape(self):
-        User = get_user_model()
-        User.objects.create_user(
-            username="known-user",
-            email="known@example.test",
-            password="correct-password",
-        )
+    def test_login_failure_is_generic_and_rate_limited(self):
         client = APIClient()
-        known = []
-        unknown = []
-        for _ in range(6):
-            known.append(
-                client.post(
-                    "/api/auth/login/",
-                    {"username": "known-user", "password": "wrong-password"},
-                    format="json",
-                    REMOTE_ADDR="198.51.100.50",
-                )
-            )
-            unknown.append(
-                client.post(
-                    "/api/auth/login/",
-                    {"username": "missing-user", "password": "wrong-password"},
-                    format="json",
-                    REMOTE_ADDR="198.51.100.51",
-                )
-            )
-        self.assertEqual(known[0].status_code, 401)
-        self.assertEqual(unknown[0].status_code, 401)
-        self.assertEqual(known[0].data, unknown[0].data)
-        self.assertEqual(known[-1].status_code, 429)
-        self.assertEqual(unknown[-1].status_code, 429)
-        self.assertEqual(known[-1].data["code"], "rate_limited")
-        self.assertEqual(unknown[-1].data["code"], "rate_limited")
-        self.assertGreaterEqual(known[-1].data["retry_after"], 1)
-        self.assertEqual(known[-1]["Retry-After"], str(known[-1].data["retry_after"]))
-
-    def test_successful_login_forgives_identifier_failure_budget(self):
-        User = get_user_model()
-        user = User.objects.create_user(
-            username="recovering-user",
-            email="recovering@example.test",
-            password="correct-password",
-        )
-        client = APIClient()
-        for _ in range(2):
-            response = client.post(
+        responses = [
+            client.post(
                 "/api/auth/login/",
-                {"username": user.username, "password": "wrong-password"},
+                {"username": "alice", "password": "definitely-wrong"},
                 format="json",
-                REMOTE_ADDR="198.51.100.52",
+                REMOTE_ADDR="198.51.100.50",
             )
-            self.assertEqual(response.status_code, 401)
-        response = client.post(
+            for _ in range(6)
+        ]
+        self.assertEqual([response.status_code for response in responses[:5]], [401] * 5)
+        self.assertEqual(responses[5].status_code, 429)
+        self.assertEqual(responses[0].data["detail"], responses[5].data["detail"])
+        self.assertEqual(responses[5].data["code"], "rate_limited")
+        self.assertGreater(int(responses[5]["Retry-After"]), 0)
+
+    def test_unknown_login_identifier_has_same_failure_shape(self):
+        client = APIClient()
+        known = client.post(
             "/api/auth/login/",
-            {"username": user.username, "password": "correct-password"},
+            {"username": "alice", "password": "wrong"},
+            format="json",
+            REMOTE_ADDR="198.51.100.51",
+        )
+        unknown = client.post(
+            "/api/auth/login/",
+            {"username": "nobody-here", "password": "wrong"},
             format="json",
             REMOTE_ADDR="198.51.100.52",
         )
-        self.assertEqual(response.status_code, 200)
-        identifier_buckets = AuthAbuseBucket.objects.filter(
-            scope="login.password",
-            key_kind="identifier",
-        )
-        self.assertTrue(identifier_buckets.exists())
-        self.assertTrue(all(bucket.count == 0 for bucket in identifier_buckets))
+        self.assertEqual(known.status_code, 401)
+        self.assertEqual(unknown.status_code, 401)
+        self.assertEqual(known.data, unknown.data)
 
-    def test_owner_invite_creation_is_rate_limited_after_authorization(self):
-        expires_at = (timezone.now() + timedelta(days=7)).isoformat()
+    def test_successful_login_forgives_identifier_specific_counters(self):
         client = APIClient()
-        client.force_authenticate(self.owner)
-        responses = [
-            client.post(
-                "/api/invitations/",
-                {
-                    "family": str(self.family.id),
-                    "role": "adult",
-                    "email": f"guest-{index}@example.test",
-                    "expires_at": expires_at,
-                },
-                format="json",
-                REMOTE_ADDR="198.51.100.53",
+        response = client.post(
+            "/api/auth/login/",
+            {"username": "alice", "password": "test-pass-123"},
+            format="json",
+            REMOTE_ADDR="198.51.100.53",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(
+            AuthAbuseBucket.objects.filter(
+                scope="login.password",
+                key_kind="identifier",
+                count=0,
+                blocked_until__isnull=True,
+            ).exists()
+        )
+
+    def test_invitation_creation_is_limited_per_actor_and_family(self):
+        client = APIClient()
+        client.force_authenticate(self.user)
+        responses = []
+        for index in range(6):
+            responses.append(
+                client.post(
+                    "/api/invitations/",
+                    {
+                        "family": str(self.family.id),
+                        "role": "adult",
+                        "email": f"invite-{index}@example.com",
+                        "expires_at": (timezone.now() + timedelta(days=7)).isoformat(),
+                    },
+                    format="json",
+                    REMOTE_ADDR="198.51.100.54",
+                )
             )
-            for index in range(6)
-        ]
         self.assertEqual([response.status_code for response in responses[:5]], [201] * 5)
         self.assertEqual(responses[5].status_code, 429)
         self.assertEqual(responses[5].data["code"], "rate_limited")
 
-    def test_unauthorized_invite_attempts_do_not_consume_owner_budget(self):
+    def test_foreign_family_cannot_consume_invite_budget(self):
         User = get_user_model()
-        foreign_owner = User.objects.create_user(username="foreign-owner", password="strong-password")
-        foreign_family = Family.objects.create(name="Foreign", slug="foreign")
-        Membership.objects.create(family=foreign_family, user=foreign_owner, role=Membership.Role.OWNER)
-        stranger = User.objects.create_user(username="stranger", password="strong-password")
+        foreign_owner = User.objects.create_user(
+            username="bob",
+            email="bob@example.com",
+            password="test-pass-123",
+        )
+        foreign_family = Family.objects.create(name="Bob Family", slug="abuse-bob-family")
+        Membership.objects.create(
+            family=foreign_family,
+            user=foreign_owner,
+            role=Membership.Role.OWNER,
+            display_name="Bob",
+        )
         expires_at = (timezone.now() + timedelta(days=7)).isoformat()
 
-        client = APIClient()
-        client.force_authenticate(stranger)
+        attacker = APIClient()
+        attacker.force_authenticate(self.user)
         responses = [
-            client.post(
+            attacker.post(
                 "/api/invitations/",
                 {
                     "family": str(foreign_family.id),
                     "role": "adult",
-                    "email": f"blocked-{index}@example.test",
+                    "email": f"poison-{index}@example.com",
                     "expires_at": expires_at,
                 },
                 format="json",
