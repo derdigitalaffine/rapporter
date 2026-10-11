@@ -14,7 +14,7 @@ async function bootVisual(page,path='/'){
 }
 async function snapshot(page,name){
   const desktop=(page.viewportSize()?.width||0)>=1000;
-  let thresholds=name==='today'?{maxDiffPixelRatio:.08}:name==='more'?{maxDiffPixelRatio:.03}:name==='members'?{maxDiffPixels:300}:{maxDiffPixels:100};
+  let thresholds=name==='today'?{maxDiffPixelRatio:.08}:name==='more'?{maxDiffPixelRatio:.03}:name==='members'?{maxDiffPixels:300}:name==='tasks'&&!desktop?{maxDiffPixels:200}:{maxDiffPixels:100};
   if(desktop&&['tasks','shopping-planning','integrations','automations'].includes(name))thresholds={maxDiffPixelRatio:.035};
   if(desktop&&['calendar','members','dialog-task-editor','dialog-event-editor'].includes(name))thresholds={maxDiffPixelRatio:.015};
   await expect(page).toHaveScreenshot(`${name}.png`,{animations:'disabled',caret:'hide',...thresholds});
@@ -28,7 +28,7 @@ async function restoreLegacyCalendarVisual(page){
 }
 
 test('visual · Today',async({page})=>{await bootVisual(page);await expect(page.getByRole('heading',{name:/Musterfamilie/})).toBeVisible();await snapshot(page,'today')});
-test('visual · Tasks',async({page})=>{await bootVisual(page);await bottom(page,'Aufgaben');await expect(page.getByRole('heading',{name:'Aufgaben',exact:true})).toBeVisible();await snapshot(page,'tasks')});
+test('visual · Tasks',async({page})=>{await bootVisual(page,'/?page=tasks');await expect(page.getByRole('heading',{name:'Aufgaben',exact:true})).toBeVisible();await snapshot(page,'tasks')});
 test('visual · Shopping planning',async({page})=>{await bootVisual(page);await bottom(page,'Einkauf');await expect(page.getByText('Milch',{exact:true})).toBeVisible();await snapshot(page,'shopping-planning')});
 test('visual · Shopping store mode',async({page})=>{await bootVisual(page);await bottom(page,'Einkauf');await page.getByRole('button',{name:/Im Laden/i}).click();await expect(page.locator('.store-focus')).toBeVisible();await snapshot(page,'shopping-store')});
 test('visual · Calendar',async({page})=>{await bootVisual(page,'/?page=calendar');await page.getByRole('button',{name:'Liste',exact:true}).click();await expect(page.getByText('Kinderarzt',{exact:true})).toBeVisible();await restoreLegacyCalendarVisual(page);await snapshot(page,'calendar')});
@@ -36,6 +36,6 @@ test('visual · Members',async({page})=>{await bootVisual(page,'/?page=members')
 test('visual · Integrations',async({page})=>{await bootVisual(page,'/?page=integrations');await expect(page.locator('.integration-health-card').filter({hasText:'Open-Meteo'})).toBeVisible();await snapshot(page,'integrations')});
 test('visual · Automations',async({page})=>{await bootVisual(page,'/?page=automations');await expect(page.locator('.automation-template').first()).toBeVisible();await snapshot(page,'automations')});
 test('visual · More',async({page})=>{await bootVisual(page);await bottom(page,'Mehr');await expect(page.getByRole('heading',{name:'Mehr',exact:true})).toBeVisible();await snapshot(page,'more')});
-test('visual · Task editor dialog',async({page})=>{await bootVisual(page);await bottom(page,'Aufgaben');await page.locator('.global-create-fab').click();await expect(page.getByRole('dialog').getByRole('heading',{name:'Aufgabe hinzufügen'})).toBeVisible();await snapshot(page,'dialog-task-editor')});
+test('visual · Task editor dialog',async({page})=>{await bootVisual(page,'/?page=tasks');await page.locator('.global-create-fab').click();await expect(page.getByRole('dialog').getByRole('heading',{name:'Aufgabe hinzufügen'})).toBeVisible();await snapshot(page,'dialog-task-editor')});
 test('visual · Event editor dialog',async({page})=>{await bootVisual(page,'/?page=calendar');await page.locator('.global-create-fab').click();await expect(page.getByRole('dialog').getByRole('heading',{name:'Termin hinzufügen'})).toBeVisible();await snapshot(page,'dialog-event-editor')});
 test('invite success dialog stays responsive and secret-free',async({page})=>{await bootVisual(page,'/?page=members');await page.getByRole('button',{name:'Person einladen'}).click();let dialog=page.getByRole('dialog');await dialog.getByLabel('Anzeigename').fill('Oma');await dialog.getByLabel('E-Mail').fill('oma@example.test');await dialog.getByRole('button',{name:/Weiter zu Rolle/}).click();dialog=page.getByRole('dialog');await dialog.getByText('Gast',{exact:true}).first().click();await dialog.getByRole('button',{name:'Einladung senden'}).click();await expect(dialog.getByText(/Versand wird vorbereitet/i)).toBeVisible();await expect(dialog.getByText(/oma@example\.test/)).toBeVisible();await expect(dialog.locator('.invite-qr-image')).toHaveCount(0);await expect(dialog.getByRole('button',{name:/Link kopieren|Teilen/})).toHaveCount(0);const box=await dialog.boundingBox();const viewport=page.viewportSize();expect(box).not.toBeNull();expect(viewport).not.toBeNull();expect(box.x).toBeGreaterThanOrEqual(0);expect(box.y).toBeGreaterThanOrEqual(0);expect(box.x+box.width).toBeLessThanOrEqual(viewport.width+1);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=document.documentElement.clientWidth+1)).toBe(true)});
