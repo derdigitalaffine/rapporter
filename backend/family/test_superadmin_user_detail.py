@@ -197,12 +197,21 @@ class SuperadminUserDetailTests(TestCase):
         ):
             self.assertNotIn(secret, serialized)
 
-        for forbidden_key in (
-            "current_refresh_jti",
-            "previous_refresh_jti",
-            "credential_id",
-            "public_key",
-            "request_id",
-            "metadata",
-        ):
-            self.assertNotIn(forbidden_key, serialized)
+        session_keys = set(response.data["security"]["sessions"]["results"][0])
+        self.assertTrue(
+            session_keys.isdisjoint(
+                {"id", "current_refresh_jti", "previous_refresh_jti", "refresh_expires_at", "revoked_reason"}
+            )
+        )
+        self.assertEqual(
+            set(response.data["security"]["passkeys"]),
+            {"active", "revoked", "last_used_at"},
+        )
+        for row in response.data["invitations"]["results"]:
+            self.assertTrue(set(row).isdisjoint({"id", "token"}))
+        for row in timeline:
+            self.assertTrue(
+                set(row).isdisjoint(
+                    {"request_id", "metadata", "target_id", "identifier_hash", "credential_id", "public_key"}
+                )
+            )
