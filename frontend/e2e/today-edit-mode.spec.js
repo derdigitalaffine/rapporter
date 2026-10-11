@@ -1,8 +1,6 @@
 import {test,expect} from '@playwright/test';
 import {installApiMocks} from './mock-api.js';
 
-const familyId='family-1';
-
 async function boot(page,{language='de'}={}){
  await installApiMocks(page,{language});
  let layout={
@@ -29,6 +27,10 @@ async function boot(page,{language='de'}={}){
 
 async function editorRows(editor){
  return editor.locator('[data-editor-widget-id]').evaluateAll(nodes=>nodes.map(node=>node.dataset.editorWidgetId));
+}
+
+async function visibleWidgets(page){
+ return page.locator('[data-today-widget]').evaluateAll(nodes=>nodes.map(node=>node.dataset.todayWidget));
 }
 
 test('keyboard move mode reorders with live announcement and keeps focus',async({page})=>{
@@ -96,9 +98,36 @@ test('pointer drag works only from the visible handle and persists on save',asyn
  expect(getLayout().widgets.map(row=>row.id).indexOf('weather')).toBe(weatherIndex+1);
 });
 
+test('touch drag uses the same visible handle and reorders without a drag-only contract',async({page})=>{
+ await page.setViewportSize({width:390,height:844});
+ await boot(page);
+ await page.getByRole('button',{name:'Anpassen'}).click();
+ const editor=page.getByRole('region',{name:'Anpassen'});
+ const before=await editorRows(editor);
+ const weatherIndex=before.indexOf('weather');
+ const targetId=before[weatherIndex+1];
+ expect(targetId).toBeTruthy();
+ const handle=editor.getByTestId('today-drag-weather');
+ const target=editor.locator(`[data-editor-widget-id="${targetId}"]`);
+ const handleBox=await handle.boundingBox();
+ const targetBox=await target.boundingBox();
+ expect(handleBox).not.toBeNull();
+ expect(targetBox).not.toBeNull();
+ const startX=handleBox.x+handleBox.width/2;
+ const startY=handleBox.y+handleBox.height/2;
+ const targetX=targetBox.x+targetBox.width/2;
+ const targetY=targetBox.y+targetBox.height/2;
+ await handle.dispatchEvent('pointerdown',{pointerId:61,pointerType:'touch',isPrimary:true,button:0,clientX:startX,clientY:startY});
+ await handle.dispatchEvent('pointermove',{pointerId:61,pointerType:'touch',isPrimary:true,buttons:1,clientX:targetX,clientY:targetY});
+ await handle.dispatchEvent('pointerup',{pointerId:61,pointerType:'touch',isPrimary:true,button:0,clientX:targetX,clientY:targetY});
+ expect((await editorRows(editor)).indexOf('weather')).toBe(weatherIndex+1);
+ await expect(editor.getByRole('button',{name:'Wetter · Nach oben'})).toBeEnabled();
+});
+
 test('touch long press enters edit mode focused without moving the widget',async({page})=>{
  await page.setViewportSize({width:390,height:844});
  await boot(page);
+ const before=await visibleWidgets(page);
  const widget=page.locator('[data-today-widget="weather"]');
  await expect(widget).toBeVisible();
  const box=await widget.boundingBox();
@@ -111,10 +140,11 @@ test('touch long press enters edit mode focused without moving the widget',async
  await expect(editor).toBeVisible();
  const handle=editor.getByRole('button',{name:'Wetter · Verschieben'});
  await expect(handle).toBeFocused();
- expect((await editorRows(editor)).indexOf('weather')).toBe(0);
  const handleBox=await handle.boundingBox();
  expect(handleBox.width).toBeGreaterThanOrEqual(44);
  expect(handleBox.height).toBeGreaterThanOrEqual(44);
+ await editor.getByRole('button',{name:'Abbrechen',exact:true}).click();
+ expect(await visibleWidgets(page)).toEqual(before);
 });
 
 test('touch movement cancels long press so normal scrolling is not captured',async({page})=>{
