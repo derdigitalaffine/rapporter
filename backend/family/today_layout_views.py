@@ -14,13 +14,18 @@ PRE_PINBOARD_WIDGET_IDS = LEGACY_WIDGET_IDS + ('loyalty', 'inbox')
 WIDGET_IDS = PRE_PINBOARD_WIDGET_IDS + ('trip', 'week', 'pinboard')
 SQUARE_WIDGET_IDS = frozenset(('trip', 'next', 'weather', 'routines', 'waste', 'inbox', 'birthdays', 'notes', 'loyalty'))
 DEFAULT_WEEK_SETTINGS = {'events': True, 'waste': True, 'holidays': True, 'special': True}
+DEFAULT_TRIP_SETTINGS = {'show_wishes': False}
+DEFAULT_WIDGET_SETTINGS = {
+    'week': DEFAULT_WEEK_SETTINGS,
+    'trip': DEFAULT_TRIP_SETTINGS,
+}
 DEFAULT_WIDGET_ORDER = ('week', 'priority', 'trip', 'next', 'pinboard', 'weather', 'tasks', 'shopping', 'routines', 'waste', 'inbox', 'birthdays', 'notes', 'loyalty')
 
 
 def _default_widget(key, *, visible=True):
     row = {'id': key, 'visible': visible, 'size': 'full'}
-    if key == 'week':
-        row['settings'] = deepcopy(DEFAULT_WEEK_SETTINGS)
+    if key in DEFAULT_WIDGET_SETTINGS:
+        row['settings'] = deepcopy(DEFAULT_WIDGET_SETTINGS[key])
     return row
 
 
@@ -31,11 +36,12 @@ def _normalize_saved_widget(row):
     if not isinstance(row, dict):
         return row
     clean = deepcopy(row)
-    if clean.get('id') == 'week':
+    defaults = DEFAULT_WIDGET_SETTINGS.get(clean.get('id'))
+    if defaults is not None:
         supplied = clean.get('settings') if isinstance(clean.get('settings'), dict) else {}
         clean['settings'] = {
             key: supplied.get(key, value) if type(supplied.get(key, value)) is bool else value
-            for key, value in DEFAULT_WEEK_SETTINGS.items()
+            for key, value in defaults.items()
         }
     else:
         clean.pop('settings', None)
@@ -76,19 +82,20 @@ def payload(layout=None):
 def _validate_widget(widget, seen):
     if not isinstance(widget, dict):
         return False
-    allowed = {'id', 'visible', 'size'} | ({'settings'} if widget.get('id') == 'week' else set())
+    key = widget.get('id')
+    defaults = DEFAULT_WIDGET_SETTINGS.get(key)
+    allowed = {'id', 'visible', 'size'} | ({'settings'} if defaults is not None else set())
     if set(widget) - allowed or not {'id', 'visible', 'size'} <= set(widget):
         return False
-    key = widget['id']
     if not isinstance(key, str) or key not in WIDGET_IDS or key in seen:
         return False
     if type(widget['visible']) is not bool or widget['size'] not in ('full', 'compact', 'square'):
         return False
     if widget['size'] == 'square' and key not in SQUARE_WIDGET_IDS:
         return False
-    if key == 'week':
-        settings = widget.get('settings', DEFAULT_WEEK_SETTINGS)
-        if (not isinstance(settings, dict) or set(settings) != set(DEFAULT_WEEK_SETTINGS) or
+    if defaults is not None:
+        settings = widget.get('settings', defaults)
+        if (not isinstance(settings, dict) or set(settings) != set(defaults) or
                 any(type(value) is not bool for value in settings.values())):
             return False
     elif 'settings' in widget:

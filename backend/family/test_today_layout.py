@@ -5,7 +5,13 @@ from django.test import TestCase
 from rest_framework.test import APIClient
 
 from .models import Family, Membership, TodayLayout
-from .today_layout_views import DEFAULT_WEEK_SETTINGS, DEFAULT_WIDGET_ORDER, DEFAULT_WIDGETS, LEGACY_WIDGET_IDS
+from .today_layout_views import (
+    DEFAULT_TRIP_SETTINGS,
+    DEFAULT_WEEK_SETTINGS,
+    DEFAULT_WIDGET_ORDER,
+    DEFAULT_WIDGETS,
+    LEGACY_WIDGET_IDS,
+)
 
 
 class TodayLayoutTests(TestCase):
@@ -27,6 +33,8 @@ class TodayLayoutTests(TestCase):
         self.assertEqual([row['id'] for row in initial.data['widgets']], list(DEFAULT_WIDGET_ORDER))
         self.assertTrue(all(row['visible'] for row in initial.data['widgets']))
         self.assertEqual(initial.data['widgets'][0]['settings'], DEFAULT_WEEK_SETTINGS)
+        trip = next(row for row in initial.data['widgets'] if row['id'] == 'trip')
+        self.assertEqual(trip['settings'], DEFAULT_TRIP_SETTINGS)
         self.assertFalse(TodayLayout.objects.exists())
         config = deepcopy(initial.data); config['widgets'].reverse(); config['widgets'][0].update(visible=False, size='compact')
         saved = self.client.put(self.url, config, format='json')
@@ -52,7 +60,7 @@ class TodayLayoutTests(TestCase):
         priority_index = next(index for index, row in enumerate(expanded) if row['id'] == 'priority')
         trip_index = next(index for index, row in enumerate(expanded) if row['id'] == 'trip')
         self.assertEqual(trip_index, priority_index + 1)
-        self.assertEqual(expanded[trip_index], {'id': 'trip', 'visible': True, 'size': 'full'})
+        self.assertEqual(expanded[trip_index], {'id': 'trip', 'visible': True, 'size': 'full', 'settings': DEFAULT_TRIP_SETTINGS})
         next_index = next(index for index, row in enumerate(expanded) if row['id'] == 'next')
         pinboard_index = next(index for index, row in enumerate(expanded) if row['id'] == 'pinboard')
         self.assertEqual(pinboard_index, next_index + 1)
@@ -63,6 +71,17 @@ class TodayLayoutTests(TestCase):
         ])
         stored = TodayLayout.objects.get(family=self.family, user=self.user)
         self.assertEqual(stored.widgets, legacy)
+
+    def test_existing_trip_widget_without_settings_normalizes_to_wishes_off(self):
+        custom = deepcopy(DEFAULT_WIDGETS)
+        trip = next(row for row in custom if row['id'] == 'trip')
+        trip.pop('settings')
+        TodayLayout.objects.create(family=self.family, user=self.user, widgets=custom, revision=2)
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 200)
+        normalized = next(row for row in response.data['widgets'] if row['id'] == 'trip')
+        self.assertEqual(normalized['settings'], DEFAULT_TRIP_SETTINGS)
+        self.assertFalse(normalized['settings']['show_wishes'])
 
     def test_week_settings_are_private_and_persisted(self):
         config = self.client.get(self.url).data
@@ -75,6 +94,18 @@ class TodayLayoutTests(TestCase):
         self.client.force_authenticate(self.other)
         other_week = next(row for row in self.client.get(self.url).data['widgets'] if row['id'] == 'week')
         self.assertEqual(other_week['settings'], DEFAULT_WEEK_SETTINGS)
+
+    def test_trip_wish_setting_is_private_and_persisted(self):
+        config = self.client.get(self.url).data
+        trip = next(row for row in config['widgets'] if row['id'] == 'trip')
+        trip['settings']['show_wishes'] = True
+        saved = self.client.put(self.url, config, format='json')
+        self.assertEqual(saved.status_code, 200)
+        stored = TodayLayout.objects.get(family=self.family, user=self.user)
+        self.assertTrue(next(row for row in stored.widgets if row['id'] == 'trip')['settings']['show_wishes'])
+        self.client.force_authenticate(self.other)
+        other_trip = next(row for row in self.client.get(self.url).data['widgets'] if row['id'] == 'trip')
+        self.assertEqual(other_trip['settings'], DEFAULT_TRIP_SETTINGS)
 
     def test_saved_custom_order_is_never_replaced_by_new_reference_default(self):
         custom = deepcopy(DEFAULT_WIDGETS)
@@ -120,7 +151,11 @@ class TodayLayoutTests(TestCase):
             item = deepcopy(valid); item['widgets'][0][field] = value; invalid.append(item)
         item = deepcopy(valid); item['widgets'][0]['settings']['events'] = 'yes'; invalid.append(item)
         item = deepcopy(valid); item['widgets'][0]['settings']['secret'] = True; invalid.append(item)
-        item = deepcopy(valid); item['widgets'][1]['settings'] = deepcopy(DEFAULT_WEEK_SETTINGS); invalid.append(item)
+        trip_index = next(index for index, row in enumerate(valid['widgets']) if row['id'] == 'trip')
+        item = deepcopy(valid); item['widgets'][trip_index]['settings']['show_wishes'] = 'yes'; invalid.append(item)
+        item = deepcopy(valid); item['widgets'][trip_index]['settings']['secret'] = True; invalid.append(item)
+        priority_index = next(index for index, row in enumerate(valid['widgets']) if row['id'] == 'priority')
+        item = deepcopy(valid); item['widgets'][priority_index]['settings'] = deepcopy(DEFAULT_WEEK_SETTINGS); invalid.append(item)
         item = deepcopy(valid); item['widgets'][1] = item['widgets'][0]; invalid.append(item)
         item = deepcopy(valid); item['user'] = self.other.id; invalid.append(item)
         for item in invalid:
