@@ -158,8 +158,8 @@ class Expense(TimestampedModel):
             ),
             models.CheckConstraint(
                 condition=(
-                    models.Q(funding_source=FundingSource.MEMBER, paid_by__isnull=False)
-                    | models.Q(funding_source=FundingSource.SHARED, paid_by__isnull=True)
+                    models.Q(funding_source="member", paid_by__isnull=False)
+                    | models.Q(funding_source="shared", paid_by__isnull=True)
                 ),
                 name="expense_funding_source_consistent",
             ),
