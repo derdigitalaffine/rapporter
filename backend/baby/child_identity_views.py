@@ -53,6 +53,8 @@ def child_login_activation(request, baby_id):
     require_fresh_session(request)
     serializer = ChildActivationInput(data=request.data)
     serializer.is_valid(raise_exception=True)
+    baby = child_profile(baby_id)
+    require_child_guardian(request.user, baby, manage=True)
     email = serializer.validated_data["email"]
     decision = enforce(
         "email_verification.resend",
