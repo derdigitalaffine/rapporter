@@ -22,6 +22,8 @@ from family.superadmin_user_views import (
 from mailing.views import superadmin_mail_health, superadmin_mail_journal
 from mailing.superadmin_views import superadmin_smtp_config, superadmin_smtp_test
 from telemetry.superadmin_audit_views import superadmin_audit_events
+from telemetry.superadmin_delivery_views import superadmin_delivery_summary
+from telemetry.superadmin_operations_views import superadmin_operations_health
 from telemetry.superadmin_views import superadmin_analytics_overview, superadmin_security_summary
 
 urlpatterns = [
@@ -47,6 +49,8 @@ urlpatterns = [
     path("api/superadmin/analytics/overview/", superadmin_analytics_overview, name="superadmin_analytics_overview"),
     path("api/superadmin/audit/", superadmin_audit_events, name="superadmin_audit_events"),
     path("api/superadmin/security/summary/", superadmin_security_summary, name="superadmin_security_summary"),
+    path("api/superadmin/delivery/summary/", superadmin_delivery_summary, name="superadmin_delivery_summary"),
+    path("api/superadmin/operations/health/", superadmin_operations_health, name="superadmin_operations_health"),
     path("api/superadmin/users/", superadmin_users, name="superadmin_users"),
     path("api/superadmin/users/<int:user_id>/email-change/", superadmin_user_email_change, name="superadmin_user_email_change"),
     path("api/superadmin/users/<int:user_id>/email-direct/", superadmin_user_email_direct, name="superadmin_user_email_direct"),
