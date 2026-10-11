@@ -1,9 +1,9 @@
 import {test,expect} from '@playwright/test';
 import {installApiMocks} from './mock-api.js';
 
-async function openIntegrationHub(page,query=''){
+async function openIntegrationHub(page){
   await installApiMocks(page);
-  await page.goto(`/?page=integrations${query}`);
+  await page.goto('/?page=integrations');
   await expect(page.getByRole('heading',{name:'Integrationen',exact:true})).toBeVisible();
 }
 
@@ -33,7 +33,12 @@ test('integration hub uses canonical action hierarchy',async({page})=>{
 
 test('success actions expose one primary continuation and responsive icon actions stay usable',async({page})=>{
   await page.setViewportSize({width:390,height:844});
-  await openIntegrationHub(page,'&integration_connected=Open-Meteo');
+  await openIntegrationHub(page);
+
+  const wasteCard=page.locator('.catalog-card',{hasText:'Abfallkalender'});
+  await wasteCard.getByRole('button',{name:'Einrichten'}).click();
+  await page.getByLabel('ICS-Link').fill('https://example.test/waste.ics');
+  await page.getByRole('button',{name:'Verbinden',exact:true}).click();
 
   const success=page.locator('.connection-success');
   await expect(success).toBeVisible();
