@@ -2,6 +2,7 @@ import {useCallback,useEffect,useMemo,useRef,useState} from 'react';
 import i18n from './i18n';
 import './calendar-i18n';
 import './birthday-i18n';
+import {api} from './api';
 import {Icon} from './icons';
 import {toast} from './feedback';
 import {formatDateTime} from './locale';
@@ -12,11 +13,12 @@ import {fetchCalendarEvents} from './calendar-events-api';
 import CalendarPresentation,{calendarViewFromLocation} from './CalendarPresentation';
 import EventEditor from './EventEditor';
 import './calendar-hub.css';
+import './calendar-health.css';
 
 const CALENDAR_SOURCE_FILTERS=new Set(['birthday','family','warning','waste','weather','transit','school','calendar']);
 
 export default function CalendarHub({family,onBack,t}){
- const [events,setEvents]=useState([]);const [edit,setEdit]=useState(null);const [detail,setDetail]=useState(null);const [filter,setFilter]=useState(calendarSourceFilterFromLocation);const [showPast,setShowPast]=useState(false);const [view,setView]=useState(calendarViewFromLocation);
+ const [events,setEvents]=useState([]);const [integrations,setIntegrations]=useState([]);const [edit,setEdit]=useState(null);const [detail,setDetail]=useState(null);const [filter,setFilter]=useState(calendarSourceFilterFromLocation);const [showPast,setShowPast]=useState(false);const [view,setView]=useState(calendarViewFromLocation);
  const loadSequence=useRef(0);const lastRange=useRef(null);const previousFamilyId=useRef(family?.id);
  const targetDay=new URLSearchParams(window.location.search).get('day');
  const load=useCallback(async(range={})=>{
@@ -28,6 +30,17 @@ export default function CalendarHub({family,onBack,t}){
   }catch(e){if(sequence===loadSequence.current){setEvents([]);toast(e.message||t('saveFailed'),{type:'error'})}}
  },[family?.id,t]);
  useEffect(()=>{
+  let live=true;
+  setIntegrations([]);
+  if(!family?.id)return()=>{live=false};
+  api('/integrations/').then(value=>{
+   if(!live)return;
+   const rows=value?.results||value||[];
+   setIntegrations(rows.filter(row=>String(row.family)===String(family.id)));
+  }).catch(()=>{if(live)setIntegrations([])});
+  return()=>{live=false};
+ },[family?.id]);
+ useEffect(()=>{
   const familyChanged=previousFamilyId.current!=null&&family?.id!=null&&String(previousFamilyId.current)!==String(family.id);
   previousFamilyId.current=family?.id;
   setEvents([]);
@@ -35,6 +48,10 @@ export default function CalendarHub({family,onBack,t}){
   setShowPast(Boolean(targetDay&&targetDay<dayKey(new Date())));
  },[family?.id,targetDay]);
  const filters=useMemo(()=>{const map=new Map();events.forEach(event=>{const source=eventSourceDescriptor(event,t);if(!map.has(source.filterKey))map.set(source.filterKey,source)});return [...map.values()]},[events,t]);
+ const unhealthySources=useMemo(()=>{
+  const activeSourceIds=new Set(events.map(event=>event?.source_meta?.id).filter(Boolean).map(String));
+  return integrations.filter(source=>source.enabled&&source.last_sync_status==='error'&&activeSourceIds.has(String(source.id)));
+ },[events,integrations]);
  const sourceFiltered=useMemo(()=>filter==='all'?events:events.filter(e=>eventSourceFilterKey(e)===filter),[events,filter]);
  const hasPast=useMemo(()=>sourceFiltered.some(eventIsPast),[sourceFiltered]);
  const visible=useMemo(()=>showPast?sourceFiltered:sourceFiltered.filter(e=>!eventIsPast(e)),[sourceFiltered,showPast]);
@@ -63,11 +80,14 @@ export default function CalendarHub({family,onBack,t}){
  const listContent=<>{hasPast&&<div className="calendar-history-toggle"><button className="secondary compact" aria-pressed={showPast} onClick={()=>setShowPast(value=>!value)}><Icon name="calendar"/>{t(showPast?'calendarUi.hidePast':'calendarUi.showPast')}</button></div>}
  <div className="agenda-days">{grouped.length?grouped.map(([day,rows])=><section className={`agenda-day ${targetDay===day?'agenda-day-target':''}`} id={`calendar-day-${day}`} key={day}><div className="agenda-day-head"><div><small>{dayRelativeLabel(day,t,language)}</small><h2>{dayLongLabel(day,t,language)}</h2></div><span>{rows.length}</span></div><div className="agenda-list">{rows.map(e=><CalendarEventRow key={e.id} event={e} family={family} t={t} language={language} onOpen={()=>openEvent(e)}/>)}</div></section>):<div className="smart-empty"><Icon name="calendar" size={34}/><strong>{t('noUpcoming')}</strong><span>{filter==='all'?t('calendarAddHint'):t('calendarUi.noSourceEntries')}</span>{filter!=='all'&&<button className="secondary compact" onClick={()=>changeFilter('all')}>{t('calendarUi.showAllSources')}</button>}</div>}</div></>;
  return <div className="smart-page calendar-agenda"><div className="page-head"><button className="back-button" onClick={onBack} aria-label={t('back')}><Icon name="back"/></button><div className="grow"><small>{t('calendarUi.familyCalendar')}</small><h1>{t('calendar')}</h1></div></div><p className="page-intro">{t('calendarUi.calendarIntro')}</p>
+ {unhealthySources.length>0&&<CalendarSourceHealth sources={unhealthySources} t={t}/>} 
  {(filters.length>1||filter!=='all')&&<div className="calendar-filters" aria-label={t('calendarUi.sources')}><button className={filter==='all'?'active':''} onClick={()=>changeFilter('all')}><Icon name="calendar"/> {t('all')}</button>{filters.map(source=><button key={source.filterKey} className={filter===source.filterKey?'active':''} onClick={()=>changeFilter(source.filterKey)}><Icon name={source.icon}/>{source.key==='family'?(family?.name||source.label):source.label}</button>)}</div>}
  <CalendarPresentation view={view} onViewChange={changeView} onRangeChange={load} events={sourceFiltered} family={family} t={t} language={language} onOpen={openEvent} targetDay={targetDay} listContent={listContent}/>
  {detail&&<EventDetail event={detail} family={family} t={t} language={language} onClose={()=>setDetail(null)} onEdit={isNativeCalendarEvent(detail)?()=>editEvent(detail):null}/>} 
  {edit&&<EventEditor family={family} event={edit.id?edit:null} onClose={()=>setEdit(null)} onSaved={eventSaved}/>}</div>
 }
+
+function CalendarSourceHealth({sources,t}){const names=sources.map(source=>source.name).filter(Boolean).join(' · ');return <aside className="calendar-source-health" role="status" aria-live="polite"><span className="calendar-source-health-icon" aria-hidden="true"><Icon name="warning"/></span><div className="calendar-source-health-copy"><strong>{sources.length===1?t('calendarUi.sourceHealthOne'):t('calendarUi.sourceHealthMany',{count:sources.length})}</strong><span>{names}</span></div><a className="calendar-source-health-link" href="/?page=integrations"><span>{t('calendarUi.sourceHealthOpen')}</span><Icon name="next"/></a></aside>}
 
 function CalendarEventRow(props){if(isHolidayEvent(props.event))return <HolidayEvent {...props}/>;if(isWasteEvent(props.event))return <WasteEvent {...props}/>;return <AgendaEvent {...props}/>}
 
