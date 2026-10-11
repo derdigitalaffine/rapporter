@@ -25,10 +25,11 @@ EMAIL_VERIFICATION_MAX_AGE_SECONDS=int(os.getenv("EMAIL_VERIFICATION_MAX_AGE_SEC
 TELEMETRY_USAGE_RETENTION_DAYS=int(os.getenv("TELEMETRY_USAGE_RETENTION_DAYS","60"));TELEMETRY_AUDIT_RETENTION_DAYS=int(os.getenv("TELEMETRY_AUDIT_RETENTION_DAYS","180"))
 CORS_ALLOWED_ORIGINS=[u.strip() for u in os.getenv("CORS_ALLOWED_ORIGINS","http://localhost:5173").split(",") if u.strip()];CORS_ALLOW_CREDENTIALS=True;SECURE_PROXY_SSL_HEADER=("HTTP_X_FORWARDED_PROTO","https");SESSION_COOKIE_SECURE=not DEBUG;SESSION_COOKIE_HTTPONLY=True;SESSION_COOKIE_SAMESITE="Lax";CSRF_COOKIE_SECURE=not DEBUG;CSRF_COOKIE_SAMESITE="Lax";SECURE_HSTS_SECONDS=0 if DEBUG else 31536000;SECURE_HSTS_INCLUDE_SUBDOMAINS=not DEBUG;SECURE_HSTS_PRELOAD=not DEBUG;SECURE_CONTENT_TYPE_NOSNIFF=True;SECURE_REFERRER_POLICY="same-origin";X_FRAME_OPTIONS="DENY"
 
-# Transactional mail platform. Production SMTP is opt-in; the dummy backend is a safe
-# self-hosted default that never writes message content to stdout or external services.
+# Transactional mail platform. Deployment configuration remains the fallback; the
+# routing backend switches to encrypted Superadmin SMTP only when explicitly enabled.
 APP_URL=os.getenv("APP_URL","").strip().rstrip("/")
-EMAIL_BACKEND=os.getenv("EMAIL_BACKEND","django.core.mail.backends.dummy.EmailBackend").strip()
+EMAIL_ENV_BACKEND=os.getenv("EMAIL_BACKEND","django.core.mail.backends.dummy.EmailBackend").strip()
+EMAIL_BACKEND="mailing.backends.ManagedRoutingEmailBackend"
 EMAIL_HOST=os.getenv("EMAIL_HOST","").strip()
 EMAIL_PORT=int(os.getenv("EMAIL_PORT","587") or "587")
 EMAIL_HOST_USER=os.getenv("EMAIL_HOST_USER","")
