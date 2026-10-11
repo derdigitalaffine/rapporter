@@ -10,7 +10,7 @@ Der mobile Share-Target ist Progressive Enhancement. Normale Kamera-/Dateiauswah
 
 ## Suchvertrag
 
-`GET /api/documents/search/?family=<uuid>` startet immer mit `visible_documents(user, family)`. Erst auf diesem ACL-gefilterten QuerySet werden Filter und Volltextsuche angewandt.
+`GET /api/documents/search/?family=<uuid>` startet immer mit `visible_documents(user, family)`. Erst auf diesem ACL-gefilterten QuerySet werden Filter und Volltextsuche angewandt. Der repo-weite `ActiveTenantAccess` validiert einen expliziten `family`-Parameter bereits davor; fremde Familien werden daher nach dem kanonischen API-Vertrag mit `403` abgelehnt, ohne dass die Such-View oder Suchmaterial für diesen Tenant ausgewertet werden.
 
 Unterstützte Suchquellen:
 
@@ -56,7 +56,7 @@ Browser ohne Web Share Target bzw. ohne installierte PWA sehen weiterhin den nor
 
 ## Privacy und Sicherheit
 
-- Dokument-ACL wird serverseitig **vor** der Suche ausgewertet.
+- Der globale Tenant-Guard prüft explizite Family-Parameter vor der View; anschließend wird Dokument-ACL serverseitig **vor** der Suche ausgewertet.
 - Search-Index-Inhalte werden nicht über einen separaten Endpoint ausgeliefert.
 - Dateien im Share Target verlassen den Origin nicht, bevor der Nutzer den normalen Dokument-Import bestätigt.
 - Download bleibt über den bestehenden ACL-geschützten `/api/documents/<id>/file/`-Endpoint mit `private, no-store`.
@@ -75,7 +75,7 @@ Backend-Tests decken insbesondere ab:
 - OCR-Text und Referenzfelder sind auffindbar
 - privater OCR-Text bleibt für andere Familienmitglieder vollständig unsichtbar
 - `selected` wird erst nach explizitem Zugriff sichtbar
-- Cross-Family-Suche schlägt geschlossen mit 404 fehl
+- Cross-Family-Suche wird vom kanonischen Tenant-Guard mit `403` geschlossen abgelehnt und liefert keine Dokumentkennung zurück
 - Filter werden auf dem autorisierten QuerySet angewandt
 - neues Processing macht Suchmaterial erkennbar veraltet und löst sichere Erneuerung aus
 
