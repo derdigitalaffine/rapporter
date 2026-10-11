@@ -228,7 +228,7 @@ def deterministic_summary(data, suggestions):
     if merged.get("reference_number"):
         parts.append(f"Akten-/Referenzzeichen: {merged['reference_number']}.")
     if merged.get("amount"):
-        parts.append(f"Genannter Betrag: {merged['amount']} EUR.")
+        parts.append(f"Genannter Betrag: {merged['amount']}.")
     if merged.get("deadline"):
         parts.append(f"Genannte Frist: {merged['deadline']}.")
     if data.get("action_text"):
