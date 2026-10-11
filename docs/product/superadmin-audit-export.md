@@ -6,7 +6,7 @@ Issue: #205 (roadmap #223)
 
 The bounded audit explorer keeps the existing `GET /api/superadmin/audit/` route. Add `export=csv` to export the same filtered event set as CSV.
 
-Supported filters and periods are identical to the explorer. Export requests do not accept `limit` or `offset`; the export covers the complete filtered set up to a hard maximum of 5,000 rows. Larger result sets fail with `413` rather than being silently truncated. The CSV is a request-time snapshot of the filtered audit set.
+Supported filters and periods are identical to the explorer. Export requests do not accept `limit` or `offset`; the export covers the complete filtered set up to a hard maximum of 5,000 rows. Larger result sets fail with `413` rather than being silently truncated. The CSV is a request-time snapshot of the filtered audit set and does not retain server-side export state.
 
 ## Security boundary
 
