@@ -1,12 +1,13 @@
 import {test,expect} from '@playwright/test';
 import {installApiMocks} from './mock-api.js';
 
-async function boot(page){
+async function boot(page,path='/'){
   await page.setViewportSize({width:390,height:844});
   await installApiMocks(page,{dismissOnboarding:true});
-  await page.goto('/');
+  await page.goto(path);
   await page.waitForLoadState('networkidle');
-  await expect(page.locator('.today-hero h1')).toBeVisible();
+  if(path.includes('page=todo'))await expect(page.getByRole('heading',{name:'To-dos',exact:true})).toBeVisible();
+  else await expect(page.locator('.today-hero h1')).toBeVisible();
 }
 
 async function announceUpdate(page){
@@ -17,8 +18,7 @@ async function announceUpdate(page){
 }
 
 test('PWA update waits while a task editor has unsaved input and activates only on request',async({page})=>{
-  await boot(page);
-  await page.locator('.bottom-nav').getByRole('button',{name:'Aufgaben'}).click();
+  await boot(page,'/?page=todo');
   await page.locator('.global-create-fab').click();
   const title=page.getByLabel('Titel');
   await expect(title).toBeFocused();
