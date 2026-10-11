@@ -196,7 +196,13 @@ class FamilyInvitationViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["post"])
     def renew(self, request, pk=None):
         invite = self.get_object()
-        decision = enforce("invite.resend", request=request, user=request.user, family_id=invite.family_id)
+        decision = enforce(
+            "invite.resend",
+            request=request,
+            user=request.user,
+            family_id=invite.family_id,
+            identifier=invite.email,
+        )
         if not decision.allowed:
             return _rate_limited_response(decision)
         try:
