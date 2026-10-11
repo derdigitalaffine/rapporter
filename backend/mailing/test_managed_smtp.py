@@ -23,6 +23,15 @@ class ManagedSmtpCoreTests(TestCase):
         self.assertNotIn("password", payload)
         self.assertNotIn("top-secret", str(payload))
 
+    def test_public_config_marks_unreadable_managed_password_unconfigured(self):
+        ManagedSmtpConfig.objects.create(pk=1, enabled=True, host="smtp.example.test", port=587,
+            username="mailer", password_encrypted="not-valid-fernet", security="starttls",
+            from_email="mail@example.test")
+        payload = public_config()
+        self.assertTrue(payload["password_set"])
+        self.assertFalse(payload["configured"])
+        self.assertEqual(payload["effective_source"], "superadmin")
+
     @patch("mailing.backends.get_connection")
     def test_routing_backend_uses_managed_transport_and_sender(self, get_connection):
         target = Mock();target.send_messages.return_value = 1;get_connection.return_value = target
@@ -68,6 +77,10 @@ class ManagedSmtpApiTests(TestCase):
         self.assertEqual(decrypt_password(row.password_encrypted), "keep-me")
         self.assertNotIn("keep-me", str(response.data))
 
+    @override_settings(
+        EMAIL_BACKEND="mailing.backends.ManagedRoutingEmailBackend",
+        EMAIL_ENV_BACKEND="django.core.mail.backends.dummy.EmailBackend",
+    )
     @patch("mailing.superadmin_views._enforce_sensitive_action", return_value=SimpleNamespace(allowed=True))
     def test_test_send_rejects_unconfigured_transport(self, _enforce):
         client = APIClient();client.force_authenticate(self.admin)
