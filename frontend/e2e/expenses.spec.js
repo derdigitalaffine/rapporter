@@ -167,7 +167,7 @@ test('expenses · details expose shared funding, ledger and one standard budget 
   await dialog.getByLabel('Budgettopf (optional)').selectOption('budget-home');
   await dialog.getByRole('button',{name:'Ausgabe speichern'}).click();
 
-  expect(store.expenses).toHaveLength(1);
+  await expect.poll(()=>store.expenses.length).toBe(1);
   expect(store.expenses[0].funding_source).toBe('shared');
   expect(store.expenses[0].paid_by).toBeNull();
   expect(store.expenses[0].shares).toHaveLength(0);
