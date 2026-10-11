@@ -35,6 +35,7 @@ urlpatterns = [
     path("api/auth/sessions/revoke-others/", revoke_other_sessions, name="auth_session_revoke_others"),
     path("api/auth/reauth/password/", reauthenticate_password, name="auth_reauth_password"),
     path("api/auth/email/", include("auth_identity.urls")),
+    path("api/auth/passkeys/", include("auth_passkeys.urls")),
     path("api/superadmin/auth/login/", superadmin_login, name="superadmin_auth_login"),
     path("api/superadmin/auth/refresh/", superadmin_refresh, name="superadmin_auth_refresh"),
     path("api/superadmin/auth/logout/", superadmin_logout, name="superadmin_auth_logout"),
