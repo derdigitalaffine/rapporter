@@ -13,12 +13,12 @@ from auth_sessions.admin_views import (
 from auth_sessions.views import reauthenticate_password, revoke_other_sessions, session_detail, session_list
 from family.auth_views import login_view, logout_view, refresh_view, session_view
 from family.superadmin_analytics_views import superadmin_matomo_report, superadmin_matomo_status
+from family.superadmin_user_crud_views import superadmin_user_crud_detail, superadmin_users_crud
 from family.superadmin_user_views import (
     superadmin_user_email_change,
     superadmin_user_email_direct,
     superadmin_user_password_reset,
     superadmin_user_password_reset_link,
-    superadmin_users,
 )
 from mailing.views import superadmin_mail_health, superadmin_mail_journal
 from mailing.superadmin_views import superadmin_smtp_config, superadmin_smtp_test
@@ -54,7 +54,8 @@ urlpatterns = [
     path("api/superadmin/security/summary/", superadmin_security_summary, name="superadmin_security_summary"),
     path("api/superadmin/delivery/summary/", superadmin_delivery_summary, name="superadmin_delivery_summary"),
     path("api/superadmin/operations/health/", superadmin_operations_health, name="superadmin_operations_health"),
-    path("api/superadmin/users/", superadmin_users, name="superadmin_users"),
+    path("api/superadmin/users/", superadmin_users_crud, name="superadmin_users"),
+    path("api/superadmin/users/<int:user_id>/", superadmin_user_crud_detail, name="superadmin_user_detail"),
     path("api/superadmin/users/<int:user_id>/email-change/", superadmin_user_email_change, name="superadmin_user_email_change"),
     path("api/superadmin/users/<int:user_id>/email-direct/", superadmin_user_email_direct, name="superadmin_user_email_direct"),
     path("api/superadmin/users/<int:user_id>/password-reset/", superadmin_user_password_reset, name="superadmin_user_password_reset"),
