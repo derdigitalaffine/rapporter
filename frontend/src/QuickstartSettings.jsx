@@ -48,6 +48,12 @@ export default function QuickstartSettings({family,role}){
   const nextHidden=preferences.hidden_action_ids.filter(value=>value!==id);
   save({pinned_action_ids:nextPinned,hidden_action_ids:nextHidden});
  }
+ function setAutomatic(id){
+  save({
+   pinned_action_ids:preferences.pinned_action_ids.filter(value=>value!==id),
+   hidden_action_ids:preferences.hidden_action_ids.filter(value=>value!==id),
+  });
+ }
  function toggleHidden(id){
   const hidden=preferences.hidden_action_ids.includes(id);
   const nextHidden=hidden?preferences.hidden_action_ids.filter(value=>value!==id):[...preferences.hidden_action_ids,id];
@@ -70,7 +76,7 @@ export default function QuickstartSettings({family,role}){
    <label className="quickstart-setting-toggle"><input type="checkbox" checked={preferences.direct_mode} disabled={busy} onChange={event=>save({direct_mode:event.target.checked})}/><span>{t('createUi.directMode')}</span></label>
    {preferences.direct_mode&&<label>{t('createUi.directAction')}<select value={preferences.direct_action_id} disabled={busy} onChange={event=>save({direct_action_id:event.target.value})}><option value="">{t('createUi.dynamicDirect')}</option>{actions.filter(action=>!preferences.hidden_action_ids.includes(action.id)).map(action=><option key={action.id} value={action.id}>{t(action.labelKey)}</option>)}</select></label>}
   </div></details>
-  <div className="quickstart-settings-actions" aria-label={t('createUi.actionsLabel')}>{ordered.map((action,index)=>{const pinned=preferences.pinned_action_ids.includes(action.id);const hidden=preferences.hidden_action_ids.includes(action.id);return <div className={`quickstart-settings-action ${hidden?'hidden-action':''}`} key={action.id}><Icon name={action.icon} size={18}/><strong>{t(action.labelKey)}</strong><div className="quickstart-settings-action-buttons"><button type="button" disabled={busy} onClick={()=>togglePin(action.id)} aria-pressed={pinned}>{t(pinned?'createUi.unpin':'createUi.pin')}</button><button type="button" disabled={busy} onClick={()=>toggleHidden(action.id)} aria-pressed={hidden}>{t(hidden?'createUi.show':'createUi.hide')}</button><button type="button" disabled={busy||index===0} onClick={()=>move(action.id,-1)} aria-label={`${t('createUi.moveUp')}: ${t(action.labelKey)}`}><Icon name="back" size={14}/></button><button type="button" disabled={busy||index===ordered.length-1} onClick={()=>move(action.id,1)} aria-label={`${t('createUi.moveDown')}: ${t(action.labelKey)}`}><Icon name="next" size={14}/></button></div></div>})}</div>
+  <div className="quickstart-settings-actions" aria-label={t('createUi.actionsLabel')}>{ordered.map((action,index)=>{const pinned=preferences.pinned_action_ids.includes(action.id);const hidden=preferences.hidden_action_ids.includes(action.id);const automatic=!pinned&&!hidden;return <div className={`quickstart-settings-action ${hidden?'hidden-action':''}`} key={action.id}><Icon name={action.icon} size={18}/><strong>{t(action.labelKey)}</strong><div className="quickstart-settings-action-buttons"><button type="button" disabled={busy} onClick={()=>togglePin(action.id)} aria-pressed={pinned}>{t(pinned?'createUi.unpin':'createUi.pin')}</button><button type="button" disabled={busy||automatic} onClick={()=>setAutomatic(action.id)} aria-pressed={automatic}>{t('createUi.automatic')}</button><button type="button" disabled={busy} onClick={()=>toggleHidden(action.id)} aria-pressed={hidden}>{t(hidden?'createUi.show':'createUi.hide')}</button><button type="button" disabled={busy||index===0} onClick={()=>move(action.id,-1)} aria-label={`${t('createUi.moveUp')}: ${t(action.labelKey)}`}><Icon name="back" size={14}/></button><button type="button" disabled={busy||index===ordered.length-1} onClick={()=>move(action.id,1)} aria-label={`${t('createUi.moveDown')}: ${t(action.labelKey)}`}><Icon name="next" size={14}/></button></div></div>})}</div>
   <button type="button" className="secondary quickstart-reset" disabled={busy} onClick={()=>save({reset_learning:true},'createUi.resetDone')}>{t('createUi.resetLearning')}</button>
  </section>;
 }
