@@ -35,9 +35,10 @@ test('automation hub uses canonical action semantics and accessible state',async
   await expectMinTarget(pageBack);
 
   const steps=page.locator('.automation-stepper button');
+  await expect(steps).toHaveCount(4);
   await expect(steps.first()).toHaveAttribute('aria-current','step');
-  await expectMinTarget(steps.first());
   await expect(steps.nth(1)).toBeDisabled();
+  for(let index=0;index<4;index+=1)await expectMinTarget(steps.nth(index));
 
   const ruleActions=page.locator('.rule-row').first().locator('.rule-actions button');
   await expect(ruleActions).toHaveCount(3);
@@ -53,6 +54,7 @@ test('automation hub uses canonical action semantics and accessible state',async
   await expect(run).toHaveClass(/\bghost\b/);
   await expect(run).toHaveClass(/\bicon-button\b/);
   await expect(run).toHaveAttribute('aria-label',/.+/);
+  await expect(run).toHaveCSS('background-color','rgba(0, 0, 0, 0)');
 
   const remove=ruleActions.nth(2);
   await expect(remove).toHaveClass(/\bghost\b/);
@@ -62,6 +64,10 @@ test('automation hub uses canonical action semantics and accessible state',async
 
   for(const action of [toggle,run,remove])await expectMinTarget(action);
 
+  await toggle.click();
+  await expect(ruleActions.nth(0)).toHaveAttribute('aria-pressed','false');
+  await expect(ruleActions.nth(0)).not.toHaveClass(/\bactive\b/);
+
   const mobileOverflow=await page.evaluate(()=>document.documentElement.scrollWidth-document.documentElement.clientWidth);
   expect(mobileOverflow).toBeLessThanOrEqual(1);
 
@@ -70,16 +76,20 @@ test('automation hub uses canonical action semantics and accessible state',async
   expect(desktopOverflow).toBeLessThanOrEqual(1);
 });
 
-test('builder keeps one primary progression action and canonical back controls',async({page})=>{
+test('builder keeps one primary progression action and canonical low-emphasis controls',async({page})=>{
   await openAutomationHub(page);
 
   await page.locator('.builder-choice').first().click();
+  const restart=page.getByRole('button',{name:'Neu beginnen'});
+  await expect(restart).toHaveClass(/\btext-button\b/);
+  await expectMinTarget(restart);
+
   const nav=page.locator('.builder-nav');
   await expect(nav.locator('button').first()).toHaveClass(/\bsecondary\b/);
   await expect(nav.locator('button').last()).toHaveClass(/\bprimary\b/);
 
   await nav.locator('button').last().click();
-  const builderBack=page.locator('.builder-choice-head .back-button');
+  const builderBack=page.locator('.builder-choice-head .back-button.mini');
   await expect(builderBack).toHaveClass(/\bghost\b/);
   await expect(builderBack).toHaveClass(/\bicon-button\b/);
   await expect(builderBack).toHaveAttribute('aria-label',/.+/);
