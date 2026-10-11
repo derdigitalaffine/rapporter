@@ -13,13 +13,16 @@ from auth_identity.models import EmailIdentity
 from auth_identity.service import EmailIdentityError, normalize_email
 from auth_sessions.service import require_fresh_session
 from entitlements.services import resolve_entitlements
+from telemetry.models import AuditEvent, UsageEvent
 
 from .invitation_delivery import invitation_delivery_summary
 from .invitation_service import issue_invitation
-from .models import Family, Membership
+from .models import Family, IntegrationSource, Membership
 
 
 RATE_LIMIT_DETAIL = "Zu viele Anfragen. Bitte später erneut versuchen."
+FAMILY_DETAIL_AUDIT_LIMIT = 30
+FAMILY_DETAIL_INVITE_LIMIT = 50
 FAMILY_SORTS = {
     "name": ("name", "created_at"),
     "-name": ("-name", "created_at"),
@@ -164,6 +167,115 @@ def _family_row(family):
     }
 
 
+def _membership_rows(family):
+    rows = []
+    for membership in family.memberships.all():
+        primary = _primary_identity(membership.user)
+        rows.append(
+            {
+                "id": str(membership.id),
+                "user_id": membership.user_id,
+                "username": membership.user.username,
+                "display_name": membership.display_name,
+                "role": membership.role,
+                "account_active": membership.user.is_active,
+                "email": primary.email if primary else membership.user.email,
+                "email_verified": bool(primary and primary.verified_at),
+            }
+        )
+    rows.sort(key=lambda row: (row["role"] != Membership.Role.OWNER, (row["display_name"] or row["username"]).casefold(), row["id"]))
+    return rows
+
+
+def _invite_state(invite, now):
+    if invite.accepted_at is not None:
+        return "accepted"
+    if invite.revoked_at is not None:
+        return "revoked"
+    if invite.expires_at <= now:
+        return "expired"
+    return "pending"
+
+
+def _family_detail_payload(family):
+    now = timezone.now()
+    activity = UsageEvent.objects.filter(family=family, event_key="activity.foreground")
+    modules = list(
+        UsageEvent.objects.filter(
+            family=family,
+            event_key="module.used",
+            occurred_at__gte=now - timedelta(days=30),
+        )
+        .values("dimension_key")
+        .annotate(active_users=Count("user_id", distinct=True), last_used_at=Max("occurred_at"))
+        .order_by("dimension_key")
+    )
+    integration_rows = IntegrationSource.objects.filter(family=family)
+    integration_enabled = integration_rows.filter(enabled=True)
+    integration_degraded = integration_enabled.filter(Q(consecutive_failures__gt=0) | Q(last_sync_status="failed"))
+    latest_integration_success = integration_enabled.aggregate(last=Max("last_success_at"))["last"]
+
+    invite_rows = []
+    invites = sorted(list(family.invitations.all()), key=lambda item: (item.created_at, str(item.id)), reverse=True)
+    for invite in invites[:FAMILY_DETAIL_INVITE_LIMIT]:
+        invite_rows.append(
+            {
+                "id": str(invite.id),
+                "role": invite.role,
+                "email": invite.email,
+                "display_name": invite.display_name,
+                "state": _invite_state(invite, now),
+                "created_at": invite.created_at,
+                "expires_at": invite.expires_at,
+                "accepted_at": invite.accepted_at,
+                "revoked_at": invite.revoked_at,
+            }
+        )
+
+    audit_rows = list(
+        AuditEvent.objects.filter(family=family, actor_class=AuditEvent.ActorClass.SUPERADMIN)
+        .order_by("-occurred_at", "-id")
+        .values("occurred_at", "event_key", "outcome", "reason", "target_type")[:FAMILY_DETAIL_AUDIT_LIMIT]
+    )
+
+    return {
+        "family": _family_row(family),
+        "memberships": _membership_rows(family),
+        "activity": {
+            "active_users_7d": activity.filter(occurred_at__gte=now - timedelta(days=7)).values("user_id").distinct().count(),
+            "active_users_30d": activity.filter(occurred_at__gte=now - timedelta(days=30)).values("user_id").distinct().count(),
+            "last_activity_at": activity.aggregate(last=Max("occurred_at"))["last"],
+            "module_adoption_30d": modules,
+        },
+        "invitations": {
+            "total": len(invites),
+            "returned": len(invite_rows),
+            "limit": FAMILY_DETAIL_INVITE_LIMIT,
+            "results": invite_rows,
+        },
+        "integrations": {
+            "enabled": integration_enabled.count(),
+            "degraded": integration_degraded.count(),
+            "latest_success_at": latest_integration_success,
+        },
+        "superadmin_audit": {
+            "limit": FAMILY_DETAIL_AUDIT_LIMIT,
+            "results": audit_rows,
+        },
+        "privacy": {
+            "content_scope": "administrative_metadata_only",
+            "excluded": [
+                "family_content",
+                "integration_config",
+                "integration_endpoints",
+                "raw_audit_metadata",
+                "tokens",
+                "credential_material",
+            ],
+        },
+    }
+
+
 def _unique_slug(name):
     base = slugify(name)[:100] or "family"
     slug = base
@@ -252,16 +364,21 @@ def superadmin_families(request):
     )
 
 
-@api_view(["PATCH"])
+@api_view(["GET", "PATCH"])
 @permission_classes([IsSuperAdmin])
 def superadmin_family_detail(request, family_id):
-    decision = _enforce_sensitive_action(request)
-    if not decision.allowed:
-        return _rate_limited_response(decision)
+    if request.method == "PATCH":
+        decision = _enforce_sensitive_action(request)
+        if not decision.allowed:
+            return _rate_limited_response(decision)
 
-    family = Family.objects.filter(id=family_id).first()
+    family = _families_queryset().filter(id=family_id).first()
     if not family:
         return Response({"detail": "Familie nicht gefunden."}, status=status.HTTP_404_NOT_FOUND)
+
+    if request.method == "GET":
+        return Response(_family_detail_payload(family))
+
     requested = request.data.get("status")
     if requested not in Family.Status.values:
         return Response({"detail": "Ungültiger Familienstatus."}, status=status.HTTP_400_BAD_REQUEST)
