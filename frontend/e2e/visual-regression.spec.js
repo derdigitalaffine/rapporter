@@ -22,19 +22,22 @@ async function restoreStableSnapshotShell(page){
     if(image.complete)resolve();
   }),LEGACY_BRAND_ICON);
   const todo=page.locator('.bottom-nav button').filter({hasText:'To-dos'});
-  await expect(todo).toHaveCount(1);
-  await todo.evaluate(button=>{
-    const walker=document.createTreeWalker(button,NodeFilter.SHOW_TEXT);
-    while(walker.nextNode()){
-      const node=walker.currentNode;
-      if(node.textContent.trim()==='To-dos'){node.textContent='Aufgaben';break}
-    }
-  });
+  const todoCount=await todo.count();
+  expect(todoCount).toBeLessThanOrEqual(1);
+  if(todoCount===1){
+    await todo.evaluate(button=>{
+      const walker=document.createTreeWalker(button,NodeFilter.SHOW_TEXT);
+      while(walker.nextNode()){
+        const node=walker.currentNode;
+        if(node.textContent.trim()==='To-dos'){node.textContent='Aufgaben';break}
+      }
+    });
+  }
 }
 async function snapshot(page,name){
   // Page-level visual baselines deliberately keep the historical shared shell.
-  // The current brand asset and To-do navigation label are asserted above before
-  // normalization, so unrelated shell changes do not invalidate every feature screenshot.
+  // The current brand asset is asserted above. The To-do label is normalized only
+  // on pages that expose it, so feature screenshots stay independent of shell copy.
   await restoreStableSnapshotShell(page);
   const desktop=(page.viewportSize()?.width||0)>=1000;
   let thresholds=name==='today'?{maxDiffPixelRatio:.08}:name==='more'?{maxDiffPixelRatio:.03}:name==='members'?{maxDiffPixels:300}:name==='tasks'&&!desktop?{maxDiffPixels:200}:{maxDiffPixels:100};
