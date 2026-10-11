@@ -4,10 +4,13 @@ from rest_framework.response import Response
 from family.superadmin_views import IsSuperAdmin
 
 from .service import mail_health_summary
+from .smtp_config import public_config
 
 
 @api_view(["GET"])
 @permission_classes([IsSuperAdmin])
 def superadmin_mail_health(request):
     """Expose only the redacted operational mail summary to superadmins."""
-    return Response(mail_health_summary())
+    summary = mail_health_summary()
+    summary["configured"] = public_config()["configured"]
+    return Response(summary)
