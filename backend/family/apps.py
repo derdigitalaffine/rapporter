@@ -10,6 +10,7 @@ class FamilyConfig(AppConfig):
         from . import models as core_models
         from .birthday_context_models import BirthdayOccasion
         from .board_models import BoardImage, BoardPost
+        from .caldav_models import CalDavConnection
         from .context_models import ContextLink
         from .family_master_models import FamilyMasterData
         from .notes_models import Note, NoteRevision, NoteShare
@@ -20,6 +21,7 @@ class FamilyConfig(AppConfig):
         core_models.BirthdayOccasion = BirthdayOccasion
         core_models.BoardPost = BoardPost
         core_models.BoardImage = BoardImage
+        core_models.CalDavConnection = CalDavConnection
         core_models.ContextLink = ContextLink
         core_models.FamilyMasterData = FamilyMasterData
         core_models.Note = Note
