@@ -29,3 +29,8 @@
 @media(min-width:560px){.quickstart-settings-action{grid-template-columns:24px minmax(120px,1fr) minmax(280px,1.6fr)}.quickstart-settings-action-buttons{grid-column:auto}}
 @media(max-width:389px){.global-create-controls{right:12px;max-width:calc(100vw - 24px)}.create-action-grid{grid-template-columns:1fr}.create-action-card{min-height:72px}.quickstart-settings-action-buttons{grid-template-columns:1fr 1fr 44px 44px}}
 @media(prefers-reduced-motion:reduce){.create-all-toggle svg{transition:none}}
+
+/* The wrapper follows the existing Create FAB breakpoint placement. */
+@media(min-width:760px) and (min-height:621px){.global-create-controls{bottom:28px;right:max(28px,calc((100vw - 1180px)/2 + 28px))}}
+@media(min-width:960px) and (min-height:621px){.global-create-controls{right:max(40px,calc((100vw - 1320px)/2 + 40px))}}
+@media(min-width:1180px) and (min-height:621px){.global-create-controls{right:max(52px,calc((100vw - 1480px)/2 + 52px))}}
