@@ -1,6 +1,6 @@
 import {Icon} from './icons';
 import {formatDateTime} from './locale';
-import {eventDayKeys,isWarningEvent} from './calendar-event-ui';
+import {eventDayKeys,isWarningEvent,zonedDateKey} from './calendar-event-ui';
 import {isWasteEvent} from './waste-ui';
 import {useTodayCoreData} from './todayCoreData';
 import {useTomorrowData} from './todayContextData';
@@ -12,10 +12,10 @@ const timeValue=value=>{const parsed=value?new Date(value).getTime():Number.POSI
 function text(language){
  const de=!String(language||'').startsWith('en');
  return de?{
-  tomorrowKicker:'MORGEN',tomorrow:'Morgen',openCalendar:'Kalender öffnen',openTodo:'To-dos öffnen',allDay:'Ganztägig',task:'To-do',calendar:'Kalender',empty:'Morgen ist nichts Zeitgebundenes geplant.',partial:'Morgen konnte gerade nur teilweise geladen werden.',more:count=>`+${count} weitere`,
+  tomorrowKicker:'MORGEN',tomorrow:'Morgen',openCalendar:'Kalender öffnen',allDay:'Ganztägig',task:'To-do',calendar:'Kalender',empty:'Morgen ist nichts Zeitgebundenes geplant.',partial:'Morgen konnte gerade nur teilweise geladen werden.',more:count=>`+${count} weitere`,
   loadKicker:'FAMILIE',load:'Engpässe heute',conflict:'Terminüberschneidung',urgentOne:'1 dringendes Ding',urgentMany:count=>`${count} dringende Dinge`,calm:'Keine konkreten Engpässe erkannt.',partialLoad:'Engpässe konnten gerade nur teilweise geprüft werden.',overlaps:'überschneidet sich mit'
  }:{
-  tomorrowKicker:'TOMORROW',tomorrow:'Tomorrow',openCalendar:'Open calendar',openTodo:'Open to-dos',allDay:'All day',task:'To-do',calendar:'Calendar',empty:'Nothing time-bound is planned for tomorrow.',partial:'Tomorrow could only be loaded partially.',more:count=>`+${count} more`,
+  tomorrowKicker:'TOMORROW',tomorrow:'Tomorrow',openCalendar:'Open calendar',allDay:'All day',task:'To-do',calendar:'Calendar',empty:'Nothing time-bound is planned for tomorrow.',partial:'Tomorrow could only be loaded partially.',more:count=>`+${count} more`,
   loadKicker:'FAMILY',load:'Today’s bottlenecks',conflict:'Calendar overlap',urgentOne:'1 urgent item',urgentMany:count=>`${count} urgent items`,calm:'No concrete bottlenecks detected.',partialLoad:'Bottlenecks could only be checked partially.',overlaps:'overlaps with'
  };
 }
@@ -28,12 +28,12 @@ function tomorrowRows(context,family,language){
   rows.push({key:`event:${event.id}`,kind:'event',title:event.title||l.calendar,at:event.starts_at,allDay:Boolean(event.payload?.date_start&&!event.starts_at),href:`/?page=calendar&day=${encodeURIComponent(day)}`,meta:l.calendar});
  });
  (context.actions||[]).filter(item=>item&&!settledStates.has(item.state)).forEach(item=>rows.push({key:item.id,kind:'action',title:item.title,at:item.due_at||item.next_due_at,allDay:false,href:item.deep_link||'/?page=todo',meta:l.task}));
- rows.sort((a,b)=>Number(a.allDay)-Number(b.allDay)||timeValue(a.at)-timeValue(b.at)||a.title.localeCompare(b.title));
+ rows.sort((a,b)=>Number(b.allDay)-Number(a.allDay)||timeValue(a.at)-timeValue(b.at)||a.title.localeCompare(b.title));
  return rows;
 }
 
 function todayEvents(events,family){
- const timeZone=family?.timezone||'UTC';const today=new Intl.DateTimeFormat('en-CA',{timeZone,year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+ const timeZone=family?.timezone||'UTC';const today=zonedDateKey(new Date(),timeZone);
  return (events||[]).filter(event=>event&&eventDayKeys(event,timeZone).includes(today));
 }
 function conflictPairs(events,family){
