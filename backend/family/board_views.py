@@ -12,7 +12,14 @@ from rest_framework.response import Response
 from .board_reorder import plan_board_positions
 from .models import BoardPost, BoardImage, Membership
 from .domain_notifications import notify_domain_event
-from .pin_adapters import resolve_pin_target, resolve_pin_targets, validate_pin_target
+from .pin_adapters import (
+    ADAPTER_KEYS,
+    canonical_adapter_key,
+    legacy_kind_for_adapter_key,
+    resolve_pin_target,
+    resolve_pin_targets,
+    validate_pin_target,
+)
 from .private_images import optimize_image, store_image, remove_image, image_path
 
 
@@ -30,7 +37,7 @@ class BoardSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = BoardPost
-        fields = ['id', 'family', 'author', 'author_name', 'text', 'kind', 'target_id', 'target', 'position', 'created_at', 'updated_at', 'images', 'can_edit', 'can_delete', 'can_reorder']
+        fields = ['id', 'family', 'author', 'author_name', 'text', 'kind', 'adapter_key', 'target_id', 'target', 'position', 'created_at', 'updated_at', 'images', 'can_edit', 'can_delete', 'can_reorder']
         read_only_fields = ['author', 'position', 'created_at', 'updated_at']
 
     def get_images(self, obj):
@@ -59,6 +66,27 @@ class BoardSerializer(serializers.ModelSerializer):
         family = attrs.get('family') or getattr(self.instance, 'family', None)
         kind = attrs.get('kind', getattr(self.instance, 'kind', BoardPost.Kind.NOTE))
         target_id = attrs.get('target_id', getattr(self.instance, 'target_id', None))
+        adapter_key = str(attrs.get('adapter_key', getattr(self.instance, 'adapter_key', '')) or '').strip()
+        kind_supplied = 'kind' in getattr(self, 'initial_data', {})
+        adapter_supplied = 'adapter_key' in getattr(self, 'initial_data', {})
+
+        if adapter_key:
+            if adapter_key not in ADAPTER_KEYS:
+                raise serializers.ValidationError({'adapter_key': 'Unbekannter Pin-Adapter.'})
+            expected_kind = legacy_kind_for_adapter_key(adapter_key)
+            if (kind_supplied and kind != expected_kind) or (self.instance is not None and self.instance.kind != expected_kind):
+                raise serializers.ValidationError({'adapter_key': 'Adapter und Pin-Typ widersprechen sich.'})
+            kind = expected_kind
+            attrs['kind'] = expected_kind
+            attrs['adapter_key'] = adapter_key
+        else:
+            derived_key = canonical_adapter_key(legacy_kind=kind)
+            if derived_key:
+                adapter_key = derived_key
+                attrs['adapter_key'] = derived_key
+            elif adapter_supplied and attrs.get('adapter_key') not in ('', None):
+                raise serializers.ValidationError({'adapter_key': 'Unbekannter Pin-Adapter.'})
+
         if family:
             user = self.context['request'].user
             membership = Membership.objects.filter(family=family, user=user).first()
@@ -68,7 +96,7 @@ class BoardSerializer(serializers.ModelSerializer):
                 raise PermissionDenied('Kein Zugriff auf diese Familie.')
             if self.instance is None and membership.role == 'guest':
                 raise PermissionDenied('Diese Rolle darf keine Pins erstellen.')
-            validate_pin_target(kind, target_id, family.id, user)
+            validate_pin_target(kind, target_id, family.id, user, adapter_key=adapter_key)
         return attrs
 
 
@@ -141,6 +169,10 @@ class BoardViewSet(viewsets.ModelViewSet):
             raise ValidationError({'family': 'Familie kann nicht geändert werden.'})
         if 'kind' in serializer.validated_data and serializer.validated_data['kind'] != post.kind:
             raise ValidationError({'kind': 'Der Pin-Typ kann nicht geändert werden.'})
+        if 'adapter_key' in serializer.validated_data:
+            expected_key = canonical_adapter_key(adapter_key=post.adapter_key, legacy_kind=post.kind) or canonical_adapter_key(legacy_kind=post.kind)
+            if serializer.validated_data['adapter_key'] != expected_key:
+                raise ValidationError({'adapter_key': 'Der Pin-Adapter kann nicht geändert werden.'})
         if 'target_id' in serializer.validated_data and serializer.validated_data['target_id'] != post.target_id:
             raise ValidationError({'target_id': 'Das verknüpfte Objekt kann nicht geändert werden.'})
         if self.request.FILES:

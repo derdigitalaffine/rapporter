@@ -4,17 +4,17 @@ from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.response import Response
 
 from .models import Family, Membership
-from .pin_adapters import get_pin_adapter
+from .pin_adapters import get_pin_adapter, legacy_kind_for_adapter_key
 
 
 PAGE_SIZE = 20
 MAX_PAGE_SIZE = 50
 SEARCH_FIELDS = {
-    'event': ('title',),
+    'calendar_event': ('title',),
     'task': ('title',),
     'routine': ('name',),
-    'note_ref': ('title', 'body'),
-    'shopping': ('name',),
+    'note': ('title', 'body'),
+    'shopping_item': ('name',),
     'shopping_list': ('name', 'store'),
     'trip': ('title', 'destination'),
     'document': ('title', 'correspondent'),
@@ -44,11 +44,11 @@ def _picker_queryset(adapter, user, family_id):
     return adapter.queryset(user).filter(**{adapter.family_lookup: family_id})
 
 
-def _search(queryset, kind, query):
+def _search(queryset, adapter_key, query):
     query = (query or '').strip()
     if not query:
         return queryset
-    fields = SEARCH_FIELDS.get(kind, ())
+    fields = SEARCH_FIELDS.get(adapter_key, ())
     predicate = Q()
     for field in fields:
         predicate |= Q(**{f'{field}__icontains': query})
@@ -58,13 +58,13 @@ def _search(queryset, kind, query):
 @api_view(['GET'])
 def pin_picker(request):
     family_id = request.query_params.get('family')
-    kind = request.query_params.get('kind')
+    requested_key = request.query_params.get('adapter_key') or request.query_params.get('kind')
     if not family_id:
         raise ValidationError({'family': 'Familie fehlt.'})
-    if not kind:
+    if not requested_key:
         raise ValidationError({'kind': 'Pin-Typ fehlt.'})
 
-    adapter = get_pin_adapter(kind)
+    adapter = get_pin_adapter(requested_key)
     if adapter is None:
         raise ValidationError({'kind': 'Unbekannter Pin-Typ.'})
 
@@ -85,7 +85,7 @@ def pin_picker(request):
         maximum=MAX_PAGE_SIZE,
         field='page_size',
     )
-    queryset = _search(_picker_queryset(adapter, request.user, family_id), kind, request.query_params.get('q'))
+    queryset = _search(_picker_queryset(adapter, request.user, family_id), adapter.key, request.query_params.get('q'))
     queryset = queryset.order_by('-updated_at', '-id')
 
     # Fetch a bounded window and apply the adapter's canonical can_pin rule to
@@ -99,7 +99,8 @@ def pin_picker(request):
     has_next = len(pinnable) > start + page_size
 
     return Response({
-        'kind': kind,
+        'kind': legacy_kind_for_adapter_key(adapter.key),
+        'adapter_key': adapter.key,
         'page': page,
         'page_size': page_size,
         'has_next': has_next,
