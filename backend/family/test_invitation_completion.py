@@ -1,7 +1,9 @@
+import threading
 from datetime import timedelta
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.db import close_old_connections, transaction
+from django.test import TestCase, TransactionTestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
 
@@ -12,7 +14,7 @@ from telemetry.models import AuditEvent
 
 from .invitation_audit import record_invite_expired_once
 from .invitation_serializers import SafeFamilyInvitationSerializer
-from .invitation_service import issue_invitation, resolve_invitation
+from .invitation_service import issue_invitation, queue_invitation_email, resolve_invitation
 from .invitation_views import accept_for_user, verified_invite_identity_matches
 from .models import Family, FamilyInvitation, Membership
 
@@ -90,6 +92,23 @@ class InvitationCompletionTests(TestCase):
         self.assertNotIn(invite.email, details)
         self.assertNotIn(token, details)
         self.assertNotIn(invite.token, details)
+
+    def test_invitation_outbox_enqueue_is_idempotent_for_same_generation(self):
+        invite, _token = self.issue()
+        row = TransactionalEmail.objects.get(
+            reference_type="family.invitation",
+            reference_id__startswith=f"{invite.pk}:",
+        )
+        _raw_id, nonce = row.reference_id.split(":", 1)
+        same = queue_invitation_email(invite, nonce)
+        self.assertEqual(same.pk, row.pk)
+        self.assertEqual(
+            TransactionalEmail.objects.filter(
+                reference_type="family.invitation",
+                reference_id=row.reference_id,
+            ).count(),
+            1,
+        )
 
     def test_resend_policy_has_invite_and_recipient_identity_keys(self):
         policy = get_policy("invite.resend")
@@ -245,3 +264,70 @@ class InvitationCompletionTests(TestCase):
             AuditEvent.objects.filter(event_key="invite.expired", target_id=str(invite.pk)).count(),
             1,
         )
+
+
+class InvitationConcurrencyTests(TransactionTestCase):
+    reset_sequences = True
+
+    def setUp(self):
+        User = get_user_model()
+        self.inviter = User.objects.create_user(
+            username="parallel-owner",
+            email="parallel-owner@example.test",
+            password="test-password-123",
+        )
+        self.target = User.objects.create_user(
+            username="parallel-target",
+            email="parallel-target@example.test",
+            password="test-password-123",
+        )
+        self.family = Family.objects.create(name="Parallel Family", slug="parallel-family")
+        Membership.objects.create(
+            family=self.family,
+            user=self.inviter,
+            role=Membership.Role.OWNER,
+            display_name="Owner",
+        )
+
+    def test_parallel_consumption_has_exactly_one_winner(self):
+        invite, token = issue_invitation(
+            family=self.family,
+            invited_by=self.inviter,
+            role=Membership.Role.GUEST,
+            email=self.target.email,
+        )
+        target_id = self.target.pk
+        barrier = threading.Barrier(2)
+        results = []
+        errors = []
+
+        def consume():
+            close_old_connections()
+            try:
+                user = get_user_model().objects.get(pk=target_id)
+                barrier.wait(timeout=10)
+                with transaction.atomic():
+                    locked = resolve_invitation(token, for_update=True)
+                    if locked is None or not locked.is_active:
+                        results.append("unavailable")
+                        return
+                    accept_for_user(locked, user)
+                    results.append("accepted")
+            except Exception as exc:
+                errors.append(repr(exc))
+            finally:
+                close_old_connections()
+
+        threads = [threading.Thread(target=consume), threading.Thread(target=consume)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=20)
+
+        self.assertFalse(any(thread.is_alive() for thread in threads), "parallel invite test deadlocked")
+        self.assertEqual(errors, [])
+        self.assertEqual(results.count("accepted"), 1)
+        self.assertEqual(results.count("unavailable"), 1)
+        self.assertEqual(Membership.objects.filter(family=self.family, user=self.target).count(), 1)
+        invite.refresh_from_db()
+        self.assertIsNotNone(invite.accepted_at)
