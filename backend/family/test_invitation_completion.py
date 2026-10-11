@@ -91,23 +91,28 @@ class InvitationCompletionTests(TestCase):
         self.assertNotIn(token, details)
         self.assertNotIn(invite.token, details)
 
-    def test_resend_policy_has_recipient_identity_key(self):
+    def test_resend_policy_has_invite_and_recipient_identity_keys(self):
         policy = get_policy("invite.resend")
         first = build_identity_keys(
             policy,
             identifier="Guest@example.test",
             user=self.inviter,
             family_id=self.family.pk,
+            invite_id="invite-one",
         )
         second = build_identity_keys(
             policy,
             identifier="other@example.test",
             user=self.inviter,
             family_id=self.family.pk,
+            invite_id="invite-two",
         )
-        first_identifier = next(key for key in first if key.kind == "identifier")
-        second_identifier = next(key for key in second if key.kind == "identifier")
-        self.assertNotEqual(first_identifier.digest, second_identifier.digest)
+        first_by_kind = {key.kind: key for key in first}
+        second_by_kind = {key.kind: key for key in second}
+        self.assertIn("identifier", first_by_kind)
+        self.assertIn("invite", first_by_kind)
+        self.assertNotEqual(first_by_kind["identifier"].digest, second_by_kind["identifier"].digest)
+        self.assertNotEqual(first_by_kind["invite"].digest, second_by_kind["invite"].digest)
 
     def test_serializer_projects_outbox_status_without_exposing_token(self):
         invite, _token = self.issue()
@@ -193,7 +198,9 @@ class InvitationCompletionTests(TestCase):
         client.force_authenticate(self.inviter)
         revoked = client.delete(f"/api/invitations/{invite.pk}/")
         self.assertEqual(revoked.status_code, 204)
-        self.assertIsNone(resolve_invitation(token).is_active if resolve_invitation(token) else None)
+        resolved = resolve_invitation(token)
+        self.assertIsNotNone(resolved)
+        self.assertFalse(resolved.is_active)
         public = APIClient().get(f"/api/invite/{token}/")
         self.assertEqual(public.status_code, 404)
         self.assertTrue(
