@@ -6,8 +6,14 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
 from auth_identity.models import EmailIdentity
-from auth_identity.password_reset import request_password_reset
-from auth_identity.service import EmailConflictError, EmailIdentityError, queue_verification, request_pending_email
+from auth_identity.password_reset import create_password_reset_reference, password_reset_path, request_password_reset
+from auth_identity.service import (
+    EmailConflictError,
+    EmailIdentityError,
+    queue_verification,
+    request_pending_email,
+    set_primary_email_direct,
+)
 from telemetry.service import try_record_audit_event
 
 from .superadmin_views import IsSuperAdmin, _enforce_sensitive_action, _rate_limited_response
@@ -130,6 +136,34 @@ def superadmin_user_email_change(request, user_id):
 
 @api_view(["POST"])
 @permission_classes([IsSuperAdmin])
+def superadmin_user_email_direct(request, user_id):
+    decision = _enforce_sensitive_action(request)
+    if not decision.allowed:
+        return _rate_limited_response(decision)
+    user = _target_user(user_id)
+    if not user:
+        return Response({"detail": "Nutzer nicht gefunden."}, status=status.HTTP_404_NOT_FOUND)
+    try:
+        set_primary_email_direct(user, request.data.get("email") or "")
+    except EmailConflictError as exc:
+        return Response({"detail": str(exc), "code": "email_conflict"}, status=status.HTTP_409_CONFLICT)
+    except EmailIdentityError as exc:
+        return Response({"detail": str(exc), "code": "invalid_email"}, status=status.HTTP_400_BAD_REQUEST)
+    try_record_audit_event(
+        "superadmin.user.email_direct_set",
+        actor=request.user,
+        actor_class="superadmin",
+        outcome="success",
+        reason="admin_action",
+        target_type="user",
+        target_id=str(user.pk),
+    )
+    refreshed = _target_user(user.pk)
+    return Response({"updated": True, "user": _user_row(refreshed)}, status=status.HTTP_200_OK)
+
+
+@api_view(["POST"])
+@permission_classes([IsSuperAdmin])
 def superadmin_user_password_reset(request, user_id):
     decision = _enforce_sensitive_action(request)
     if not decision.allowed:
@@ -160,3 +194,36 @@ def superadmin_user_password_reset(request, user_id):
         target_id=str(user.pk),
     )
     return Response({"queued": True}, status=status.HTTP_202_ACCEPTED)
+
+
+@api_view(["POST"])
+@permission_classes([IsSuperAdmin])
+def superadmin_user_password_reset_link(request, user_id):
+    decision = _enforce_sensitive_action(request)
+    if not decision.allowed:
+        return _rate_limited_response(decision)
+    user = _target_user(user_id)
+    if not user:
+        return Response({"detail": "Nutzer nicht gefunden."}, status=status.HTTP_404_NOT_FOUND)
+    reference = create_password_reset_reference(user)
+    if not reference:
+        return Response(
+            {"detail": "Reset-Link benötigt ein aktives Konto mit bestätigter primärer E-Mail-Adresse.", "code": "password_reset_unavailable"},
+            status=status.HTTP_409_CONFLICT,
+        )
+    path = password_reset_path(reference)
+    if not path:
+        return Response(
+            {"detail": "Reset-Link konnte nicht erzeugt werden.", "code": "password_reset_link_failed"},
+            status=status.HTTP_409_CONFLICT,
+        )
+    try_record_audit_event(
+        "superadmin.user.password_reset_link_created",
+        actor=request.user,
+        actor_class="superadmin",
+        outcome="success",
+        reason="admin_action",
+        target_type="user",
+        target_id=str(user.pk),
+    )
+    return Response({"reset_url": request.build_absolute_uri(path)}, status=status.HTTP_201_CREATED)
