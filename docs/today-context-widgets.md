@@ -31,3 +31,9 @@ Every rendered row is a real link to its source surface, status is textual rathe
 ## Deliberate boundaries
 
 This slice does not implement `deadlines`, because #398 requires deadline/document facts to come from the canonical expiry/deadline contract rather than a second Today deadline model. It also does not touch Quick Actions (#195/PR #451) or the remaining Pinboard work (#220–#222).
+
+## Cache lifecycle and localization
+
+Action/Calendar projections are shared per family and timezone. Each subscribed projection revalidates at most once per minute while visible, plus on returning to the tab. Civil dates are recomputed in the family timezone, including midnight and DST transitions. Old rows are cleared before revalidation; failed permission reads never retain private content. Authentication changes invalidate in-flight generations immediately. When the last consumer leaves, cached rows are discarded, so another user/session or a later visit cannot inherit them. No offline content cache is introduced.
+
+Context copy supports German, English, French, Dutch and Thai. Times use the family timezone rather than the browser timezone.

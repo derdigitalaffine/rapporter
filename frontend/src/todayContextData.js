@@ -2,6 +2,7 @@ import {useCallback,useEffect,useState} from 'react';
 import {api} from './api';
 import {fetchCalendarEvents} from './calendar-events-api';
 import {zonedDateKey} from './calendar-event-ui';
+import {clearProjection,watchProjection} from './todayProjectionLifecycle';
 
 const stores=new Map();
 const unwrap=value=>Array.isArray(value)?value:(value?.actions||value?.results||[]);
@@ -27,11 +28,11 @@ async function loadTomorrowData(family,{force=false}={}){
  const timeZone=family?.timezone||'UTC';
  const day=nextCivilDateKey(timeZone);
  const store=storeFor(familyId,timeZone);
+ if(store.loading&&store.promise&&store.day===day)return store.promise;
  if(!force&&store.day===day){
-  if(store.loading&&store.promise)return store.promise;
   if(store.loaded)return snapshot(store);
  }
- if(store.day&&store.day!==day){store.actions=[];store.events=[];store.loaded=false;store.promise=null}
+ if(force||store.day!==day)clearProjection(store,emit);
  const generation=store.generation+1;
  store.generation=generation;store.day=day;store.loading=true;store.actionFailed=false;store.calendarFailed=false;emit(store);
  const actionRequest=api(`/actions/?family=${encodeURIComponent(familyId)}&scope=upcoming`);
@@ -66,7 +67,8 @@ export function useTomorrowData(family){
   const store=storeFor(familyId,timeZone);let active=true;
   const listener=value=>{if(active)setView({key,state:value})};
   store.listeners.add(listener);setView({key,state:snapshot(store)});loadTomorrowData(family);
-  return()=>{active=false;store.listeners.delete(listener)};
+  watchProjection(store,{load:options=>loadTomorrowData(family,options),clear:()=>clearProjection(store,emit)});
+  return()=>{active=false;store.listeners.delete(listener);if(!store.listeners.size)store.stopWatching?.()};
  },[key]);
  const refresh=useCallback(()=>loadTomorrowData(family,{force:true}),[key]);
  return {...state,refresh};

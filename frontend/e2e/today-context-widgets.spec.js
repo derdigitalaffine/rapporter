@@ -8,7 +8,7 @@ const familyOne={id:'family-1',name:'Musterfamilie',slug:'musterfamilie',locale:
 const familyTwo={id:'family-2',name:'Nebenfamilie',slug:'nebenfamilie',locale:'de',timezone:'Europe/Berlin',memberships:[{id:'member-2',family:'family-2',user:1,username:'alex',role:'adult',display_name:'Alex',avatar:''}]};
 
 async function freezeToday(page){
- await page.addInitScript(now=>{const RealDate=Date;globalThis.Date=class extends RealDate{constructor(...args){super(...(args.length?args:[now]))}static now(){return new RealDate(now).getTime()} }},FIXED_NOW);
+ await page.addInitScript(now=>{const RealDate=Date;globalThis.Date=class extends RealDate{constructor(...args){super(...(args.length?args:[globalThis.__contextNow||now]))}static now(){return new RealDate(globalThis.__contextNow||now).getTime()} }},FIXED_NOW);
 }
 const action=(id,title,due,family='family-1',urgency='normal')=>({id:`task:${id}`,family,kind:'task',title,state:'open',due_at:due,next_due_at:due,completed_at:null,assignee:null,priority:urgency==='high'?'high':'normal',urgency,context:{source:'manual',list:{id:'list-1',name:'Alltag'},workflow:null},repeat:null,tags:[],primary_action:{id:'complete',method:'POST',href:`/api/tasks/${id}/toggle/`},allowed_actions:[],deep_link:`/?page=tasks&task=${id}`,ranking:{version:'actions-v1',bucket:urgency==='high'?1:5,reasons:['normal']}});
 const event=(id,title,start,end,family='family-1',payload={provider:'FamilyOS'})=>({id,family,source:null,type:'calendar.event',title,starts_at:start,ends_at:end,actionable:false,payload});
@@ -79,4 +79,29 @@ test('late Tomorrow data from the previous family never flashes after a family s
  await page.route('**/api/events/**',route=>route.fulfill({status:200,contentType:'application/json',body:'[]'}));
  await page.goto('/');const switcher=page.locator('.family-switcher select');await expect(switcher).toHaveValue('family-1');await switcher.selectOption('family-2');
  const tomorrow=page.getByTestId('today-tomorrow');await expect(tomorrow).toContainText('Nebenfamilie morgen');await page.waitForTimeout(450);await expect(tomorrow).not.toContainText('Alt-Familie morgen');
+});
+
+for(const [language,title,label] of [['fr','Demain','Ouvrir le calendrier'],['nl','Morgen','Kalender openen'],['th','พรุ่งนี้','เปิดปฏิทิน']]){
+ test(`context copy supports ${language} and family-local time`,async({page})=>{
+  await boot(page);await page.evaluate(language=>localStorage.setItem('famuhle-language',language),language);await page.reload();
+  const tomorrow=page.getByTestId('today-tomorrow');await expect(tomorrow.getByRole('heading',{name:title,exact:true})).toBeVisible();await expect(tomorrow.getByRole('link',{name:label})).toBeVisible();await expect(tomorrow.getByRole('link',{name:/Zahnarzt morgen/})).toContainText('15:00');
+ });
+}
+
+test('family-local midnight across DST changes the projected civil day without remounting',async({page})=>{
+ await page.clock.install();await boot(page);const days=[];
+ await page.route('**/api/actions/**',route=>route.fulfill({json:{results:[],scope:new URL(route.request().url()).searchParams.get('scope')}}));
+ await page.route('**/api/events/**',route=>{const day=new URL(route.request().url()).searchParams.get('start');days.push(day);return route.fulfill({json:[event(day,`Tag ${day}`,null,null,'family-1',{date_start:day})]})});
+ await page.evaluate(()=>{globalThis.__contextNow='2026-10-24T21:59:30Z';window.dispatchEvent(new Event('focus'))});
+ const tomorrow=page.getByTestId('today-tomorrow');await expect(tomorrow).toContainText('Tag 2026-10-25');
+ await page.evaluate(()=>{globalThis.__contextNow='2026-10-24T22:00:30Z'});await page.clock.fastForward(60_000);
+ await expect(tomorrow).toContainText('Tag 2026-10-26');await expect(tomorrow).not.toContainText('Tag 2026-10-25');expect(days).toContain('2026-10-26');
+});
+
+test('source permission and session replacement remove cached private projection rows',async({page})=>{
+ await boot(page);const tomorrow=page.getByTestId('today-tomorrow');const load=page.getByTestId('today-family-load');await expect(tomorrow).toContainText('Zahnarzt morgen');await expect(load).toContainText('Kinderarzt');
+ await page.route('**/api/actions/**',route=>route.fulfill({json:{results:[],scope:new URL(route.request().url()).searchParams.get('scope')}}));await page.route('**/api/events/**',route=>route.fulfill({status:403,json:{detail:'Access revoked'}}));
+ await page.evaluate(()=>window.dispatchEvent(new Event('focus')));await expect(tomorrow).not.toContainText('Zahnarzt morgen');await expect(load).not.toContainText('Kinderarzt');await expect(tomorrow).toContainText('teilweise');await expect(load).toContainText('teilweise');
+ await page.route('**/api/events/**',route=>route.fulfill({json:[]}));await page.route('**/api/actions/**',route=>route.fulfill({json:{results:[action('replacement','Neuer Nutzer morgen','2026-10-11T08:00:00Z')],scope:'upcoming'}}));
+ await page.evaluate(()=>window.dispatchEvent(new CustomEvent('famuhle:auth-changed',{detail:{authenticated:true}})));await expect(tomorrow).toContainText('Neuer Nutzer morgen');await expect(tomorrow).not.toContainText('Sporttasche packen');
 });

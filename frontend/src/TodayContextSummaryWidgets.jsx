@@ -9,16 +9,14 @@ import './today-context-summary-widgets.css';
 const settledStates=new Set(['done','done_today','paused']);
 const timeValue=value=>{const parsed=value?new Date(value).getTime():Number.POSITIVE_INFINITY;return Number.isFinite(parsed)?parsed:Number.POSITIVE_INFINITY};
 
-function text(language){
- const de=!String(language||'').startsWith('en');
- return de?{
-  tomorrowKicker:'MORGEN',tomorrow:'Morgen',openCalendar:'Kalender öffnen',allDay:'Ganztägig',task:'To-do',calendar:'Kalender',empty:'Morgen ist nichts Zeitgebundenes geplant.',partial:'Morgen konnte gerade nur teilweise geladen werden.',more:count=>`+${count} weitere`,
-  loadKicker:'FAMILIE',load:'Engpässe heute',conflict:'Terminüberschneidung',urgentOne:'1 dringendes Ding',urgentMany:count=>`${count} dringende Dinge`,calm:'Keine konkreten Engpässe erkannt.',partialLoad:'Engpässe konnten gerade nur teilweise geprüft werden.',overlaps:'überschneidet sich mit'
- }:{
-  tomorrowKicker:'TOMORROW',tomorrow:'Tomorrow',openCalendar:'Open calendar',allDay:'All day',task:'To-do',calendar:'Calendar',empty:'Nothing time-bound is planned for tomorrow.',partial:'Tomorrow could only be loaded partially.',more:count=>`+${count} more`,
-  loadKicker:'FAMILY',load:'Today’s bottlenecks',conflict:'Calendar overlap',urgentOne:'1 urgent item',urgentMany:count=>`${count} urgent items`,calm:'No concrete bottlenecks detected.',partialLoad:'Bottlenecks could only be checked partially.',overlaps:'overlaps with'
- };
-}
+const labels={
+ de:{tomorrowKicker:'MORGEN',tomorrow:'Morgen',openCalendar:'Kalender öffnen',allDay:'Ganztägig',task:'To-do',calendar:'Kalender',empty:'Morgen ist nichts Zeitgebundenes geplant.',partial:'Morgen konnte gerade nur teilweise geladen werden.',more:count=>`+${count} weitere`,loadKicker:'FAMILIE',load:'Engpässe heute',conflict:'Terminüberschneidung',urgentOne:'1 dringendes Ding',urgentMany:count=>`${count} dringende Dinge`,calm:'Keine konkreten Engpässe erkannt.',partialLoad:'Engpässe konnten gerade nur teilweise geprüft werden.',overlaps:'überschneidet sich mit'},
+ en:{tomorrowKicker:'TOMORROW',tomorrow:'Tomorrow',openCalendar:'Open calendar',allDay:'All day',task:'To-do',calendar:'Calendar',empty:'Nothing time-bound is planned for tomorrow.',partial:'Tomorrow could only be loaded partially.',more:count=>`+${count} more`,loadKicker:'FAMILY',load:'Today’s bottlenecks',conflict:'Calendar overlap',urgentOne:'1 urgent item',urgentMany:count=>`${count} urgent items`,calm:'No concrete bottlenecks detected.',partialLoad:'Bottlenecks could only be checked partially.',overlaps:'overlaps with'},
+ fr:{tomorrowKicker:'DEMAIN',tomorrow:'Demain',openCalendar:'Ouvrir le calendrier',allDay:'Toute la journée',task:'Tâche',calendar:'Calendrier',empty:'Rien de prévu à une heure précise demain.',partial:'Les données de demain sont partiellement disponibles.',more:count=>`+${count} autres`,loadKicker:'FAMILLE',load:'Difficultés aujourd’hui',conflict:'Chevauchement de rendez-vous',urgentOne:'1 élément urgent',urgentMany:count=>`${count} éléments urgents`,calm:'Aucune difficulté concrète détectée.',partialLoad:'Les difficultés n’ont pu être vérifiées que partiellement.',overlaps:'chevauche'},
+ nl:{tomorrowKicker:'MORGEN',tomorrow:'Morgen',openCalendar:'Kalender openen',allDay:'Hele dag',task:'Taak',calendar:'Kalender',empty:'Morgen staat niets tijdgebondens gepland.',partial:'Morgen kon slechts gedeeltelijk worden geladen.',more:count=>`+${count} meer`,loadKicker:'GEZIN',load:'Knelpunten vandaag',conflict:'Overlappende afspraken',urgentOne:'1 dringend item',urgentMany:count=>`${count} dringende items`,calm:'Geen concrete knelpunten gevonden.',partialLoad:'Knelpunten konden slechts gedeeltelijk worden gecontroleerd.',overlaps:'overlapt met'},
+ th:{tomorrowKicker:'พรุ่งนี้',tomorrow:'พรุ่งนี้',openCalendar:'เปิดปฏิทิน',allDay:'ทั้งวัน',task:'งาน',calendar:'ปฏิทิน',empty:'พรุ่งนี้ไม่มีรายการที่กำหนดเวลาไว้',partial:'โหลดข้อมูลของพรุ่งนี้ได้เพียงบางส่วน',more:count=>`อีก ${count} รายการ`,loadKicker:'ครอบครัว',load:'สิ่งที่ต้องระวังวันนี้',conflict:'นัดหมายทับซ้อนกัน',urgentOne:'รายการเร่งด่วน 1 รายการ',urgentMany:count=>`รายการเร่งด่วน ${count} รายการ`,calm:'ไม่พบปัญหาที่ชัดเจน',partialLoad:'ตรวจสอบปัญหาได้เพียงบางส่วน',overlaps:'ทับซ้อนกับ'}
+};
+function text(language){return labels[String(language||'de').toLowerCase().split('-')[0]]||labels.de}
 
 function tomorrowRows(context,family,language){
  const l=text(language);const timeZone=family?.timezone||'UTC';const rows=[];
@@ -47,7 +45,7 @@ export function TodayTomorrowWidget({family,language='de',widgetSize='compact'})
  const context=useTomorrowData(family);const l=text(language);const rows=tomorrowRows(context,family,language);const limit=widgetSize==='compact'?2:3;const shown=rows.slice(0,limit);const extra=Math.max(0,rows.length-shown.length);
  return <section className="today-section today-tomorrow" data-testid="today-tomorrow">
   <div className="today-section-head"><div><small>{l.tomorrowKicker}</small><h2>{l.tomorrow}</h2></div><a className="today-link" href="/?page=calendar">{l.openCalendar} <Icon name="next"/></a></div>
-  {shown.length?<ol className="today-context-summary-list">{shown.map(row=><li key={row.key}><a href={row.href}><span className="today-context-summary-icon"><Icon name={row.kind==='action'?'check':'calendar'}/></span><span className="grow"><strong>{row.title}</strong><small>{row.allDay?l.allDay:row.at?`${formatDateTime(language,new Date(row.at),{timeStyle:'short'})} · ${row.meta}`:row.meta}</small></span><Icon name="next"/></a></li>)}</ol>:<div className="today-core-empty"><Icon name="calendar"/><span>{context.loading?'…':l.empty}</span></div>}
+  {shown.length?<ol className="today-context-summary-list">{shown.map(row=><li key={row.key}><a href={row.href}><span className="today-context-summary-icon"><Icon name={row.kind==='action'?'check':'calendar'}/></span><span className="grow"><strong>{row.title}</strong><small>{row.allDay?l.allDay:row.at?`${formatDateTime(language,new Date(row.at),{timeStyle:'short',timeZone:family?.timezone||'UTC'})} · ${row.meta}`:row.meta}</small></span><Icon name="next"/></a></li>)}</ol>:<div className="today-core-empty"><Icon name="calendar"/><span>{context.loading?'…':l.empty}</span></div>}
   {extra>0&&<a className="today-context-summary-more" href="/?page=calendar">{l.more(extra)}</a>}
   {(context.actionFailed||context.calendarFailed)&&<small className="today-core-status">{l.partial}</small>}
  </section>;

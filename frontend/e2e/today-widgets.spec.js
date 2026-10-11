@@ -85,7 +85,7 @@ test('Today task and routine primary actions are one click and undoable',async({
 });
 
 test('Today routine snooze is a two-click allowed quick action',async({page})=>{
- const {state}=await boot(page,{routines:[{id:'routine-1',family:familyId,name:'Spülmaschine',active:true,prediction:{status:'due'}}]});const widget=page.getByTestId('today-todos');const menu=widget.locator('summary[aria-label="Schnellaktionen: Spülmaschine"]');await menu.click();await widget.getByRole('button',{name:'24 Std. pausieren'}).click();expect(state.snoozes).toEqual([{id:'routine-1',hours:24}]);await expect(widget.getByText('Routine für 24 Stunden pausiert.',{exact:true})).toBeVisible();await expect(menu).toBeFocused();
+ const {state}=await boot(page,{routines:[{id:'routine-1',family:familyId,name:'Spülmaschine',active:true,prediction:{status:'due'}}]});const widget=page.getByTestId('today-todos');const menu=widget.locator('summary[aria-label="Schnellaktionen: Spülmaschine"]');await menu.click();await widget.getByRole('button',{name:'24 Std. pausieren'}).click();await expect.poll(()=>state.snoozes).toEqual([{id:'routine-1',hours:24}]);await expect(widget.getByText('Routine für 24 Stunden pausiert.',{exact:true})).toBeVisible();await expect(menu).toBeFocused();
 });
 
 test('core widgets expose semantic medium sizes without legacy square values',async({page})=>{
