@@ -8,7 +8,7 @@ Issue: #205 (roadmap #223)
 
 Supported periods are `24h`, `7d`, `30d`, `90d`, and `365d`. The response also compares counts with the immediately preceding period of equal length. Values are a request-time snapshot; the endpoint does not auto-refresh or retain dashboard query state.
 
-Access is restricted by the existing `IsSuperAdmin` permission. The aggregate security summary is intentionally separate from the bounded `/api/superadmin/audit/` explorer: this endpoint exposes trends only, not event rows.
+Access is restricted by the existing `IsSuperAdmin` permission. The aggregate security summary is intentionally separate from the bounded `/api/superadmin/audit/` explorer: this endpoint exposes trends only, not event rows. Both contracts may coexist in the Superadmin UI without sharing raw metadata.
 
 ## Metrics
 
