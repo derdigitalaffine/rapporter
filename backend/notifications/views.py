@@ -6,7 +6,7 @@ from rest_framework.pagination import CursorPagination
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from family.models import Membership
+from family.models import Family, Membership
 
 from .models import Notification
 from .serializers import notification_payload
@@ -23,7 +23,7 @@ class NotificationCursorPagination(CursorPagination):
 def _membership_or_404(user, family_id):
     if not family_id:
         raise Http404
-    membership = Membership.objects.filter(user=user, family_id=family_id).select_related("family", "user").first()
+    membership = Membership.objects.filter(user=user, family_id=family_id, family__status=Family.Status.ACTIVE).select_related("family", "user").first()
     if not membership:
         raise Http404
     return membership
@@ -56,6 +56,7 @@ def notification_detail(request, notification_id):
     notification = Notification.objects.select_related("recipient", "recipient__user").filter(
         id=notification_id,
         recipient__user=request.user,
+        family__status=Family.Status.ACTIVE,
     ).first()
     if not notification:
         raise Http404

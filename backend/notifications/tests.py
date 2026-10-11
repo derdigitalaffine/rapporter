@@ -75,6 +75,11 @@ class NotificationApiTests(TestCase):
         )
         self.assertEqual(detail.status_code, 404)
 
+        self.family.status = Family.Status.SUSPENDED
+        self.family.save(update_fields=["status", "updated_at"])
+        self.assertEqual(self.client.get(f"/api/notifications/?family={self.family.id}").status_code, 404)
+        self.assertEqual(self.client.patch(f"/api/notifications/{own.id}/", {"read": True}, format="json").status_code, 404)
+
     def test_read_state_is_idempotent_and_launcher_badge_is_only_a_derived_mirror(self):
         first = self.create_notification()
         second = self.create_notification(title="Zweite Aufgabe")
