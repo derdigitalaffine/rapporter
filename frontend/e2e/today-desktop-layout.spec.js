@@ -42,9 +42,9 @@ async function gridMetrics(page){
   return {
    columns:getComputedStyle(grid).gridTemplateColumns.split(' ').filter(Boolean).length,
    flow:getComputedStyle(grid).gridAutoFlow,
-   full:ratio('[data-widget-size="full"]'),
+   wide:ratio('[data-widget-size="wide"]'),
    compact:ratio('[data-widget-size="compact"]'),
-   medium:ratio('[data-widget-size="square"]'),
+   medium:ratio('[data-widget-size="medium"]'),
    order:[...grid.querySelectorAll('[data-today-widget]')].map(element=>element.dataset.todayWidget),
   };
  });
@@ -55,7 +55,7 @@ test('Today uses semantic desktop spans and keeps DOM order across breakpoints',
  const desktop=await gridMetrics(page);
  expect(desktop.columns).toBe(12);
  expect(desktop.flow).toBe('row');
- expect(desktop.full).toBeGreaterThan(.95);
+ expect(desktop.wide).toBeGreaterThan(.95);
  expect(desktop.compact).toBeGreaterThan(.28);
  expect(desktop.compact).toBeLessThan(.36);
  expect(desktop.medium).toBeGreaterThan(.45);
@@ -75,7 +75,7 @@ test('Today uses semantic desktop spans and keeps DOM order across breakpoints',
  const phone=await gridMetrics(page);
  expect(phone.columns).toBe(1);
  expect(phone.flow).toBe('row');
- expect(phone.full).toBeGreaterThan(.95);
+ expect(phone.wide).toBeGreaterThan(.95);
  expect(phone.compact).toBeGreaterThan(.95);
  expect(phone.medium).toBeGreaterThan(.95);
  expect(phone.order).toEqual(desktop.order);
@@ -90,11 +90,11 @@ test('reset defaults create a deliberate hierarchy and Today actions use canonic
  const editor=page.getByRole('region',{name:'Anpassen'});
 
  await editor.getByRole('button',{name:'Standard wiederherstellen'}).click();
- await expect(editor.getByRole('combobox',{name:'Wochenkompass · Größe'})).toHaveValue('full');
- await expect(editor.getByRole('combobox',{name:'Reise · Größe'})).toHaveValue('square');
+ await expect(editor.getByRole('combobox',{name:'Wochenkompass · Größe'})).toHaveValue('wide');
+ await expect(editor.getByRole('combobox',{name:'Reise · Größe'})).toHaveValue('medium');
  await expect(editor.getByRole('combobox',{name:'Pinnwand · Größe'})).toHaveValue('compact');
  await expect(editor.getByRole('combobox',{name:'Einkauf · Größe'})).toHaveValue('compact');
- await expect(editor.getByRole('combobox',{name:'Wetter · Größe'}).locator('option[value="square"]')).toHaveText('Mittel');
+ await expect(editor.getByRole('combobox',{name:'Wetter · Größe'}).locator('option[value="medium"]')).toHaveText('Mittel');
 
  await expect(editor.getByRole('button',{name:'Standard wiederherstellen'})).toHaveClass(/ghost/);
  await expect(editor.getByRole('button',{name:'Abbrechen',exact:true})).toHaveClass(/secondary/);

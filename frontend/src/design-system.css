@@ -134,12 +134,14 @@ button{touch-action:manipulation}
 
 .section-title,.integration-section-head,.today-section-head,.agenda-day-head{min-width:0}
 
-/* Shared responsive widget primitive. Full/compact widgets span the grid, while
-   square widgets occupy one half-width cell and stay square at every app width. */
+/* Shared responsive widget primitive. v2 uses wide/compact for full-row cards
+   and medium for one half-width square cell. Legacy full/square selectors remain
+   during migration so old surfaces do not regress while their stored layouts are
+   normalized to the v2 semantic contract. */
 .app-widget-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));grid-auto-flow:row dense;gap:var(--space-3);align-items:start;min-width:0}
 .app-widget{min-width:0}
-.app-widget[data-widget-size="full"],.app-widget[data-widget-size="compact"]{grid-column:1/-1}
-.app-widget[data-widget-size="square"]{grid-column:span 1;aspect-ratio:1;min-height:0;overflow:hidden}
+.app-widget[data-widget-size="wide"],.app-widget[data-widget-size="full"],.app-widget[data-widget-size="compact"]{grid-column:1/-1}
+.app-widget[data-widget-size="medium"],.app-widget[data-widget-size="square"]{grid-column:span 1;aspect-ratio:1;min-height:0;overflow:hidden}
 
 @media(max-width:359px){.app-widget-grid{gap:var(--space-2)}}
 

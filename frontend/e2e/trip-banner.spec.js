@@ -44,10 +44,10 @@ test('travel widget medium size stays semantic across breakpoints',async({page})
  await page.getByRole('button',{name:'Anpassen'}).click();
  const editor=page.getByRole('region',{name:'Anpassen'});
  const size=editor.getByRole('combobox',{name:'Reise · Größe'});
- await expect(size.locator('option[value="square"]')).toHaveText('Mittel');
- await size.selectOption('square');
+ await expect(size.locator('option[value="medium"]')).toHaveText('Mittel');
+ await size.selectOption('medium');
  const widget=page.locator('[data-today-widget="trip"]');
- await expect(widget).toHaveAttribute('data-widget-size','square');
+ await expect(widget).toHaveAttribute('data-widget-size','medium');
 
  const phone=await widget.boundingBox();
  expect(phone).not.toBeNull();
