@@ -172,3 +172,32 @@ jobs:
             exit 1
           fi
       - run: docker compose build
+      - name: Smoke-test Superadmin production routes
+        env:
+          CADDYFILE: Caddyfile.proxy
+          HTTP_BIND: 127.0.0.1
+          HTTP_PORT: "18080"
+          PUBLIC_SCHEME: http
+          PUBLIC_HOST: 127.0.0.1
+        run: |
+          cleanup() {
+            docker compose down --remove-orphans >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+          docker compose up -d --no-deps caddy
+          ready=0
+          for _ in $(seq 1 20); do
+            if curl -fsS http://127.0.0.1:18080/ >/dev/null; then
+              ready=1
+              break
+            fi
+            sleep 1
+          done
+          test "$ready" = "1"
+
+          test "$(curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:18080/superadmin)" = "308"
+          curl -fsSI http://127.0.0.1:18080/superadmin | tr -d '\r' | grep -qi '^Location: /superadmin/$'
+          curl -fsS http://127.0.0.1:18080/superadmin/ | grep -q '<title>FamilyOS Superadmin</title>'
+          curl -fsS http://127.0.0.1:18080/superadmin/security | grep -q '<title>FamilyOS Superadmin</title>'
+          curl -fsS http://127.0.0.1:18080/superadmin/manifest.webmanifest | grep -q '"start_url": "/superadmin/"'
+          curl -fsS http://127.0.0.1:18080/superadmin/sw.js | grep -q "const SHELL='/superadmin/'"
