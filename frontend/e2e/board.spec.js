@@ -45,12 +45,13 @@ test('composer pins a whole shopping list and provides searchable event choices'
  await page.getByRole('button',{name:'Anpinnen',exact:true}).click();
  let form=page.locator('.pin-composer');
  await form.getByRole('button',{name:'Einkaufsliste',exact:true}).click();
+ await expect(form).toContainText('übernimmt beim Anpinnen die aktuelle Sichtbarkeit der Quelle');
  const listSelect=form.getByLabel('Vorhandenen Inhalt auswählen');
  await expect(listSelect).toContainText('Supermarkt');
  await listSelect.selectOption('shop-1');
  let requestPromise=page.waitForRequest(request=>request.url().endsWith('/api/board/')&&request.method()==='POST');
  await form.getByRole('button',{name:'Anpinnen',exact:true}).click();
- let request=await requestPromise;expect(request.postDataJSON()).toMatchObject({kind:'shopping_list',target_id:'shop-1'});
+ let request=await requestPromise;expect(request.postDataJSON()).toMatchObject({kind:'shopping_list',target_id:'shop-1'});expect(request.postDataJSON()).not.toHaveProperty('visibility');
 
  await page.getByRole('button',{name:'Anpinnen',exact:true}).click();
  form=page.locator('.pin-composer');await form.getByRole('button',{name:'Termin',exact:true}).click();
@@ -58,7 +59,7 @@ test('composer pins a whole shopping list and provides searchable event choices'
  const option=form.getByRole('option',{name:/Kinderarzt/});await expect(option).toBeVisible();await option.click();
  requestPromise=page.waitForRequest(value=>value.url().endsWith('/api/board/')&&value.method()==='POST');
  await form.getByRole('button',{name:'Anpinnen',exact:true}).click();
- request=await requestPromise;expect(request.postDataJSON()).toMatchObject({kind:'event',target_id:'event-1'});
+ request=await requestPromise;expect(request.postDataJSON()).toMatchObject({kind:'event',target_id:'event-1'});expect(request.postDataJSON()).not.toHaveProperty('visibility');
 });
 
 test('school holiday pins show the full period and author identity',async({page})=>{
