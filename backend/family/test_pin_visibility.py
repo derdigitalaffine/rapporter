@@ -5,7 +5,7 @@ from django.test import TestCase
 from rest_framework.test import APIClient
 
 from .models import BoardImage, BoardPost, Family, Membership, Note, NoteShare, Task
-from .pin_visibility import can_view_pin, visible_pin_memberships
+from .pin_visibility import can_view_pin, effective_scope_for_user, visible_pin_memberships
 
 
 class PinVisibilityTests(TestCase):
@@ -113,6 +113,7 @@ class PinVisibilityTests(TestCase):
             'family': str(self.family.id),
             'kind': 'note_ref',
             'target_id': str(note.id),
+            'text': 'Sensitive pin caption',
             'visibility': 'family',
         }, format='json')
         self.assertEqual(created.status_code, 201, created.data)
@@ -122,19 +123,35 @@ class PinVisibilityTests(TestCase):
         self.assertEqual(hidden['target'], {'id': str(note.id), 'kind': 'note_ref', 'available': False})
         self.assertEqual(hidden['effective_scope'], 'none')
         self.assertFalse(hidden['can_interact'])
+        self.assertEqual(hidden['text'], '')
+        self.assertEqual(hidden['images'], [])
+        self.assertIsNone(hidden['author'])
+        self.assertEqual(hidden['author_name'], '')
+        self.assertIsNone(hidden['created_at'])
+        self.assertIsNone(hidden['updated_at'])
+        self.assertFalse(hidden['can_edit'])
+        self.assertFalse(hidden['can_reorder'])
+        self.assertFalse(hidden['can_change_pin_visibility'])
+        self.assertTrue(hidden['can_delete'])
+        self.assertNotIn('Sensitive pin caption', str(hidden))
         self.assertFalse(can_view_pin(self.selected, pin))
+        self.assertEqual(effective_scope_for_user(self.selected, pin), 'none')
 
         share = NoteShare.objects.create(note=note, user=self.selected, permission='read')
         visible = self._rows(self.selected)[0]
         self.assertEqual(visible['target']['title'], 'Privatquelle')
-        self.assertEqual(visible['effective_scope'], 'family')
+        self.assertEqual(visible['text'], 'Sensitive pin caption')
+        self.assertEqual(visible['effective_scope'], 'selected')
         self.assertTrue(visible['can_interact'])
         self.assertTrue(can_view_pin(self.selected, pin))
+        self.assertEqual(effective_scope_for_user(self.selected, pin), 'selected')
 
         share.delete()
         revoked = self._rows(self.selected)[0]
         self.assertEqual(revoked['effective_scope'], 'none')
         self.assertFalse(revoked['can_interact'])
+        self.assertEqual(revoked['text'], '')
+        self.assertNotIn('Sensitive pin caption', str(revoked))
         self.assertNotIn('Privatquelle', str(revoked))
         self.assertNotIn('Geheim', str(revoked))
 
@@ -148,8 +165,23 @@ class PinVisibilityTests(TestCase):
         }, format='json')
         self.assertEqual(response.status_code, 201, response.data)
         pin = BoardPost.objects.get(pk=response.data['id'])
+        self.assertEqual(response.data['effective_scope'], 'private')
         self.assertFalse(can_view_pin(self.selected, pin))
         self.assertEqual(self._rows(self.selected), [])
+
+    def test_family_reference_reports_family_only_when_every_membership_can_see_source(self):
+        task = Task.objects.create(family=self.family, title='Für die Familie', created_by=self.owner)
+        response = self.client.post('/api/board/', {
+            'family': str(self.family.id),
+            'kind': 'task',
+            'target_id': str(task.id),
+            'visibility': 'family',
+        }, format='json')
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertEqual(response.data['effective_scope'], 'family')
+        row = self._rows(self.guest)[0]
+        self.assertEqual(row['effective_scope'], 'family')
+        self.assertTrue(row['can_interact'])
 
     def test_visible_membership_resolver_applies_source_acl_without_widening(self):
         note = Note.objects.create(family=self.family, author=self.owner, title='Resolver', body='Secret')
