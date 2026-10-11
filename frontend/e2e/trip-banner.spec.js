@@ -36,16 +36,16 @@ test('legacy Today layout restores next trip as a real grid widget',async({page}
  await expect(page.getByRole('heading',{name:'Reisen',exact:true})).toBeVisible();
 });
 
-test('travel widget can be configured as a half-width square',async({page})=>{
+test('travel widget can be configured as a half-width medium card',async({page})=>{
  await page.setViewportSize({width:390,height:844});
  await freezeToday(page);await installApiMocks(page,{dismissOnboarding:true});
  await mockTrips(page,[trip('next','Herbstferien','2026-10-13','2026-10-17')]);
  await page.goto('/');
  await page.getByRole('button',{name:'Anpassen'}).click();
  const editor=page.getByRole('region',{name:'Anpassen'});
- await editor.getByRole('combobox',{name:'Reise · Größe'}).selectOption('square');
+ await editor.getByRole('combobox',{name:'Reise · Größe'}).selectOption('medium');
  const widget=page.locator('[data-today-widget="trip"]');
- await expect(widget).toHaveAttribute('data-widget-size','square');
+ await expect(widget).toHaveAttribute('data-widget-size','medium');
  const box=await widget.boundingBox();
  expect(box).not.toBeNull();
  expect(Math.abs(box.width-box.height)).toBeLessThanOrEqual(2);
