@@ -142,8 +142,8 @@ function OutlineIcon({name,size,className,title}){
 }
 
 export function Icon({name, size=18, className='', title}){
-  const custom=<OutlineIcon name={name} size={size} className={className} title={title}/>;
-  if(custom)return custom;
+  const resolved=outlineAliases[name]||name;
+  if(outlineGlyphs[resolved])return <OutlineIcon name={name} size={size} className={className} title={title}/>;
   const icon=icons[name]||icons.info;
   return <FontAwesomeIcon icon={icon} className={className} title={title} style={{fontSize:size}}/>;
 }
