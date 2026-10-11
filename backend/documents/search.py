@@ -1,5 +1,6 @@
 import re
 from collections.abc import Iterable
+from uuid import UUID
 
 from django.contrib.postgres.search import SearchQuery, SearchRank, SearchVector
 from django.db import transaction
@@ -133,7 +134,8 @@ def document_search_queryset(user, family_id, *, query="", filters=None):
     person = filters.get("person")
     if person:
         queryset = queryset.filter(
-            Q(owner_membership_id=person) | Q(access_entries__membership_id=person)
+            Q(owner_membership_id=person)
+            | Q(access_entries__membership_id=person, access_entries__can_view=True)
         ).distinct()
 
     correspondent = filters.get("correspondent")
@@ -159,6 +161,10 @@ def document_search_queryset(user, family_id, *, query="", filters=None):
 def validate_person_filter(family_id, person_id):
     if not person_id:
         return True
+    try:
+        person_id = UUID(str(person_id))
+    except (TypeError, ValueError, AttributeError):
+        return False
     return Membership.objects.filter(
         id=person_id,
         family_id=family_id,
