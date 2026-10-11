@@ -6,7 +6,7 @@ Issue: #205 (roadmap #223)
 
 `GET /api/superadmin/audit/`
 
-The first bounded audit slice supports `24h`, `7d`, `30d`, `90d`, and `365d`, plus server-side filters for actor class/id, event key, outcome, family UUID, and target type.
+The first bounded audit slice supports `24h`, `7d`, `30d`, `90d`, and `365d`, plus server-side filters for actor class/id, event key, outcome, family UUID, and target type. Family filters use the canonical UUID tenant key; invalid UUIDs fail closed with `400`.
 
 Results are ordered reverse-chronologically and use bounded offset pagination (`limit <= 100`, `offset <= 10000`). Access is restricted by the existing `IsSuperAdmin` permission.
 
