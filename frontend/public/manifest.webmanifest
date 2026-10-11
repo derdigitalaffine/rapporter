@@ -1,34 +1,39 @@
 {
   "name": "FamilyOS",
   "short_name": "FamilyOS",
-  "description": "Familie. Organisiert. Gemeinsam.",
-  "id": "/",
+  "description": "Self-hosted Family Hub fuer Alltag, Planung und Organisation",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "display_override": ["window-controls-overlay", "standalone"],
-  "orientation": "portrait-primary",
-  "background_color": "#fff9f2",
-  "theme_color": "#173c43",
+  "background_color": "#0b1412",
+  "theme_color": "#1f7a5a",
   "lang": "de",
   "categories": ["productivity", "lifestyle"],
   "icons": [
-    {"src":"/brand/icon-192.png","sizes":"192x192","type":"image/png","purpose":"any"},
-    {"src":"/brand/icon-512.png","sizes":"512x512","type":"image/png","purpose":"any"},
-    {"src":"/brand/icon-192-maskable.png","sizes":"192x192","type":"image/png","purpose":"maskable"},
-    {"src":"/brand/icon-512-maskable.png","sizes":"512x512","type":"image/png","purpose":"maskable"},
-    {"src":"/brand/icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any"},
-    {"src":"/brand/icon-maskable.svg","sizes":"any","type":"image/svg+xml","purpose":"maskable"}
+    {"src":"/brand/icon-192.png","sizes":"192x192","type":"image/png","purpose":"any maskable"},
+    {"src":"/brand/icon-512.png","sizes":"512x512","type":"image/png","purpose":"any maskable"},
+    {"src":"/brand/icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any"}
   ],
   "shortcuts": [
+    {"name":"Heute","short_name":"Heute","url":"/?page=home","icons":[{"src":"/brand/icon-192.png","sizes":"192x192"}]},
     {"name":"Aufgaben","short_name":"Aufgaben","url":"/?page=tasks","icons":[{"src":"/brand/icon-192.png","sizes":"192x192"}]},
     {"name":"Einkauf","short_name":"Einkauf","url":"/?page=shopping","icons":[{"src":"/brand/icon-192.png","sizes":"192x192"}]},
-    {"name":"Wenn → Dann","short_name":"Regeln","url":"/?page=automations","icons":[{"src":"/brand/icon-192.png","sizes":"192x192"}]}
+    {"name":"Kalender","short_name":"Kalender","url":"/?page=calendar","icons":[{"src":"/brand/icon-192.png","sizes":"192x192"}]}
   ],
   "share_target": {
-    "action": "/share.html",
-    "method": "GET",
-    "enctype": "application/x-www-form-urlencoded",
-    "params": {"title":"title","text":"text","url":"url"}
+    "action": "/share-target",
+    "method": "POST",
+    "enctype": "multipart/form-data",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "url": "url",
+      "files": [
+        {
+          "name": "files",
+          "accept": ["application/pdf", "image/jpeg", "image/png", "image/webp"]
+        }
+      ]
+    }
   }
 }
