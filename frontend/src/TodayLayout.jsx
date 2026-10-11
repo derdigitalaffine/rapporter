@@ -4,7 +4,7 @@ import i18n from './i18n';
 import {Icon} from './icons';
 import {WeekCompassWidget,PinboardTodayWidget} from './TodayContextWidgets';
 import {TodayFocusWidget,TodaySituation,TodayTimelineWidget} from './TodayCoreWidgets';
-import {TodayFamilyLoadWidget,TodayTomorrowWidget} from './TodayContextSummaryWidgets';
+import {TodayFamilyLoadWidget,TodayTomorrowWidget,contextWidgetLabels} from './TodayContextSummaryWidgets';
 import TodayTodoWidget from './TodayTodoWidget';
 import {
  TODAY_LAYOUT_VERSION,
@@ -38,7 +38,16 @@ const reorder=(rows,from,to)=>{
 
 export default function TodayLayout({family,header,onboarding,widgets}){
  const language=i18n.language;
- const s=strings[language.startsWith('de')?'de':'en'];
+ const baseStrings=strings[language.startsWith('de')?'de':'en'];
+ const contextLabels=contextWidgetLabels(language);
+ const contextDescriptions={
+  de:{tomorrow:'Termine und fällige To-dos des nächsten lokalen Kalendertags.',load:'Konkrete Terminüberschneidungen und dringende Dinge ohne Familien-Score.'},
+  en:{tomorrow:'Events and due to-dos for the next local calendar day.',load:'Concrete calendar overlaps and urgent items without a family score.'},
+  fr:{tomorrow:'Rendez-vous et tâches à échéance du prochain jour local.',load:'Chevauchements et éléments urgents concrets, sans score familial.'},
+  nl:{tomorrow:'Afspraken en taken voor de volgende lokale kalenderdag.',load:'Concrete overlappende afspraken en dringende items, zonder gezinsscore.'},
+  th:{tomorrow:'นัดหมายและงานที่ครบกำหนดในวันถัดไปตามเวลาครอบครัว',load:'นัดหมายที่ทับซ้อนและรายการเร่งด่วนที่ชัดเจน ไม่มีคะแนนครอบครัว'}
+ }[String(language||'de').split('-')[0]];
+ const s={...baseStrings,tomorrow:contextLabels.tomorrow,'family-load':contextLabels.load,descriptions:{...baseStrings.descriptions,tomorrow:contextDescriptions?.tomorrow||baseStrings.descriptions.tomorrow,'family-load':contextDescriptions?.load||baseStrings.descriptions['family-load']}};
  const availableWidgets=widgets||{};
  const editButton=useRef(null);
  const editorHeading=useRef(null);

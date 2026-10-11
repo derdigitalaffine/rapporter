@@ -22,13 +22,13 @@ function storeFor(familyId,timeZone='UTC'){
 function snapshot(store){return {actions:store.actions,events:store.events,loading:store.loading,loaded:store.loaded,actionFailed:store.actionFailed,calendarFailed:store.calendarFailed,day:store.day}}
 function emit(store){const value=snapshot(store);store.listeners.forEach(listener=>listener(value))}
 
-async function loadTomorrowData(family,{force=false}={}){
+async function loadTomorrowData(family,{force=false,coalesce=false}={}){
  const familyId=String(family?.id||'');
  if(!familyId)return {actions:[],events:[],loading:false,loaded:false,actionFailed:false,calendarFailed:false,day:''};
  const timeZone=family?.timezone||'UTC';
  const day=nextCivilDateKey(timeZone);
  const store=storeFor(familyId,timeZone);
- if(store.loading&&store.promise&&store.day===day)return store.promise;
+ if(store.loading&&store.promise&&store.day===day&&(!force||coalesce))return store.promise;
  if(!force&&store.day===day){
   if(store.loaded)return snapshot(store);
  }

@@ -15,13 +15,13 @@ function storeFor(familyId,timeZone='UTC'){
 function snapshot(store){return {actions:store.actions,events:store.events,loading:store.loading,loaded:store.loaded,actionFailed:store.actionFailed,calendarFailed:store.calendarFailed}}
 function emit(store){const value=snapshot(store);store.listeners.forEach(listener=>listener(value))}
 
-async function loadTodayCoreData(family,{force=false}={}){
+async function loadTodayCoreData(family,{force=false,coalesce=false}={}){
  const familyId=String(family?.id||'');
  if(!familyId)return {actions:[],events:[],loading:false,loaded:false,actionFailed:false,calendarFailed:false};
  const timeZone=family?.timezone||'UTC';
  const day=zonedDateKey(new Date(),timeZone);
  const store=storeFor(familyId,timeZone);
- if(store.loading&&store.promise&&store.day===day)return store.promise;
+ if(store.loading&&store.promise&&store.day===day&&(!force||coalesce))return store.promise;
  if(!force&&store.day===day){
   if(store.loaded)return snapshot(store);
  }

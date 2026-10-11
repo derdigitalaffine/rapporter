@@ -16,10 +16,10 @@ const labels={
  nl:{tomorrowKicker:'MORGEN',tomorrow:'Morgen',openCalendar:'Kalender openen',allDay:'Hele dag',task:'Taak',calendar:'Kalender',empty:'Morgen staat niets tijdgebondens gepland.',partial:'Morgen kon slechts gedeeltelijk worden geladen.',more:count=>`+${count} meer`,loadKicker:'GEZIN',load:'Knelpunten vandaag',conflict:'Overlappende afspraken',urgentOne:'1 dringend item',urgentMany:count=>`${count} dringende items`,calm:'Geen concrete knelpunten gevonden.',partialLoad:'Knelpunten konden slechts gedeeltelijk worden gecontroleerd.',overlaps:'overlapt met'},
  th:{tomorrowKicker:'พรุ่งนี้',tomorrow:'พรุ่งนี้',openCalendar:'เปิดปฏิทิน',allDay:'ทั้งวัน',task:'งาน',calendar:'ปฏิทิน',empty:'พรุ่งนี้ไม่มีรายการที่กำหนดเวลาไว้',partial:'โหลดข้อมูลของพรุ่งนี้ได้เพียงบางส่วน',more:count=>`อีก ${count} รายการ`,loadKicker:'ครอบครัว',load:'สิ่งที่ต้องระวังวันนี้',conflict:'นัดหมายทับซ้อนกัน',urgentOne:'รายการเร่งด่วน 1 รายการ',urgentMany:count=>`รายการเร่งด่วน ${count} รายการ`,calm:'ไม่พบปัญหาที่ชัดเจน',partialLoad:'ตรวจสอบปัญหาได้เพียงบางส่วน',overlaps:'ทับซ้อนกับ'}
 };
-function text(language){return labels[String(language||'de').toLowerCase().split('-')[0]]||labels.de}
+export function contextWidgetLabels(language){return labels[String(language||'de').toLowerCase().split('-')[0]]||labels.de}
 
 function tomorrowRows(context,family,language){
- const l=text(language);const timeZone=family?.timezone||'UTC';const rows=[];
+ const l=contextWidgetLabels(language);const timeZone=family?.timezone||'UTC';const rows=[];
  (context.events||[]).forEach(event=>{
   if(!event||event.type==='weather.current'||isWarningEvent(event)||isWasteEvent(event)||event.type?.includes('weather'))return;
   const day=eventDayKeys(event,timeZone)[0]||context.day;
@@ -42,7 +42,7 @@ function conflictPairs(events,family){
 }
 
 export function TodayTomorrowWidget({family,language='de',widgetSize='compact'}){
- const context=useTomorrowData(family);const l=text(language);const rows=tomorrowRows(context,family,language);const limit=widgetSize==='compact'?2:3;const shown=rows.slice(0,limit);const extra=Math.max(0,rows.length-shown.length);
+ const context=useTomorrowData(family);const l=contextWidgetLabels(language);const rows=tomorrowRows(context,family,language);const limit=widgetSize==='compact'?2:3;const shown=rows.slice(0,limit);const extra=Math.max(0,rows.length-shown.length);
  return <section className="today-section today-tomorrow" data-testid="today-tomorrow">
   <div className="today-section-head"><div><small>{l.tomorrowKicker}</small><h2>{l.tomorrow}</h2></div><a className="today-link" href="/?page=calendar">{l.openCalendar} <Icon name="next"/></a></div>
   {shown.length?<ol className="today-context-summary-list">{shown.map(row=><li key={row.key}><a href={row.href}><span className="today-context-summary-icon"><Icon name={row.kind==='action'?'check':'calendar'}/></span><span className="grow"><strong>{row.title}</strong><small>{row.allDay?l.allDay:row.at?`${formatDateTime(language,new Date(row.at),{timeStyle:'short',timeZone:family?.timezone||'UTC'})} · ${row.meta}`:row.meta}</small></span><Icon name="next"/></a></li>)}</ol>:<div className="today-core-empty"><Icon name="calendar"/><span>{context.loading?'…':l.empty}</span></div>}
@@ -52,7 +52,7 @@ export function TodayTomorrowWidget({family,language='de',widgetSize='compact'})
 }
 
 export function TodayFamilyLoadWidget({family,language='de',widgetSize='compact'}){
- const core=useTodayCoreData(family);const l=text(language);const conflicts=conflictPairs(core.events,family);const urgent=(core.actions||[]).filter(item=>item&&!settledStates.has(item.state)&&(item.urgency==='critical'||item.urgency==='high'));const signals=[];
+ const core=useTodayCoreData(family);const l=contextWidgetLabels(language);const conflicts=conflictPairs(core.events,family);const urgent=(core.actions||[]).filter(item=>item&&!settledStates.has(item.state)&&(item.urgency==='critical'||item.urgency==='high'));const signals=[];
  conflicts.slice(0,widgetSize==='compact'?1:2).forEach(([left,right])=>signals.push({key:`conflict:${left.id}:${right.id}`,icon:'calendar',title:l.conflict,detail:`${left.title} ${l.overlaps} ${right.title}`,href:'/?page=calendar'}));
  if(urgent.length)signals.push({key:'urgent',icon:'priority',title:urgent.length===1?l.urgentOne:l.urgentMany(urgent.length),detail:'',href:'/?page=todo'});
  const shown=signals.slice(0,widgetSize==='compact'?2:3);

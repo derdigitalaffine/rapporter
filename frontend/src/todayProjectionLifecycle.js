@@ -6,7 +6,7 @@ export function clearProjection(store,emit){
 }
 export function watchProjection(store,{load,clear}){
  if(store.stopWatching)return;
- const refresh=()=>{if(isAuthenticated())load({force:true})};
+ const refresh=()=>{if(isAuthenticated())load({force:true,coalesce:true})};
  const auth=()=>{clear();if(isAuthenticated())load()};
  const visible=()=>{if(document.visibilityState==='visible')refresh()};
  window.addEventListener(AUTH_CHANGED_EVENT,auth);

@@ -84,7 +84,7 @@ test('late Tomorrow data from the previous family never flashes after a family s
 for(const [language,title,label] of [['fr','Demain','Ouvrir le calendrier'],['nl','Morgen','Kalender openen'],['th','พรุ่งนี้','เปิดปฏิทิน']]){
  test(`context copy supports ${language} and family-local time`,async({page})=>{
   await boot(page);await page.evaluate(language=>localStorage.setItem('famuhle-language',language),language);await page.reload();
-  const tomorrow=page.getByTestId('today-tomorrow');await expect(tomorrow.getByRole('heading',{name:title,exact:true})).toBeVisible();await expect(tomorrow.getByRole('link',{name:label})).toBeVisible();await expect(tomorrow.getByRole('link',{name:/Zahnarzt morgen/})).toContainText('15:00');
+  const tomorrow=page.getByTestId('today-tomorrow');await expect(tomorrow.getByRole('heading',{name:title,exact:true})).toBeVisible();await expect(tomorrow.getByRole('link',{name:label})).toBeVisible();await expect(tomorrow.getByRole('link',{name:/Zahnarzt morgen/})).toContainText('15:00');await page.getByRole('button',{name:'Customize',exact:true}).click();await expect(page.getByRole('region',{name:'Customize'}).getByRole('combobox',{name:`${title} · Size`})).toBeVisible();
  });
 }
 
