@@ -8,27 +8,30 @@ Für Menschen **und** Coding-Agenten gilt zusätzlich der detaillierte Koordinat
 
 ## Issue-Status: Arbeit sichtbar machen
 
-Sobald du die aktive Bearbeitung eines Issues beginnst:
+Sobald du die aktive Bearbeitung eines nicht-trivialen Issues beginnst:
 
 1. Setze das bestehende Label **`in progress`** auf das Issue.
 2. Falls das Issue zusätzlich in einem GitHub Project mit Statusfeld liegt, setze dort ebenfalls **`In Progress`**.
 3. Prüfe vor Implementierungsstart #223, alle offenen `in progress`-Issues und offene PRs auf Überschneidungen.
-4. Hinterlasse einen strukturierten `coordination:claim:v1`-Kommentar gemäß `AGENTS.md`.
-5. Verlinke den zugehörigen PR mit dem Issue, sobald er existiert.
+4. Hinterlasse genau einen kanonischen strukturierten Claim gemäß `AGENTS.md`. Neue Arbeit nutzt den exakten Marker `<!-- coordination:claim:v2 -->`.
+5. Pflege darin `Phase`, `Branch`, `PR` und `Coordination keys`, sobald sich der Zustand ändert.
+6. Verlinke den zugehörigen PR mit dem Issue, sobald er existiert.
 
-Ein Claim reserviert nur einen **engen, konkret beschriebenen Scope**, niemals eine ganze Domain. Wenn sich zwei aktive Arbeiten überschneiden, stimmen sich die Beteiligten **vor weiterer Implementierung per GitHub-Kommentar** über Split, Reihenfolge, gemeinsamen Vertrag oder Handoff ab. Doppelimplementierungen durch stilles Parallelrennen sind nicht erwünscht.
+Ein Claim reserviert nur einen **engen, konkret beschriebenen Scope**, niemals eine ganze Domain. Ein Implementierungs-Branch gehört zu genau einem kanonischen Delivery-Issue. Wenn versehentlich zwei Claims denselben Branch oder denselben Deliverable beanspruchen, wird **vor weiterer Implementierung** ein kanonischer Track gewählt und der andere per Handoff superseded/pausiert.
 
-Ein Issue bleibt `in progress`, solange aktiv daran gearbeitet wird oder ein zugehöriger PR noch fachlich/technisch aussteht.
+`Phase: discovery` darf kurzzeitig ohne Branch/PR existieren. Sobald Code geändert wird, muss der Claim auf `implementation` wechseln und einen Branch nennen. Vor Review wird er auf `review` aktualisiert. Blockierte Arbeit nutzt `blocked` und benennt den Blocker sichtbar.
 
-Wenn die Arbeit bewusst pausiert oder verworfen wird, entferne `in progress` wieder und dokumentiere den Grund sowie einen kurzen Handoff im Issue.
+Wenn sich zwei aktive Arbeiten überschneiden, stimmen sich die Beteiligten **vor weiterer Implementierung per GitHub-Kommentar** über Split, Reihenfolge, gemeinsamen Vertrag oder Handoff ab. Doppelimplementierungen durch stilles Parallelrennen sind nicht erwünscht.
+
+Ein Issue bleibt `in progress`, solange aktiv daran gearbeitet wird oder ein zugehöriger PR noch fachlich/technisch aussteht. Bei `superseded`, `paused` oder `abandoned` wird `in progress` nach dem Handoff entfernt; ein nicht mehr aktiver Claim darf keine falsche Reservierung im Dashboard hinterlassen.
 
 ## Zentrale Koordination über #223
 
 #223 ist die gemeinsame Roadmap- und Koordinationsinstanz für größere Abhängigkeiten, Architekturkonflikte und die Gesamtpriorisierung.
 
-Das automatische Koordinations-Dashboard in #223 dient als gemeinsames Lagebild. Es weist unter anderem auf parallele PRs für dasselbe Issue, exakte Dateiüberschneidungen, aktive Claims ohne sichtbaren PR und fehlende Research-Blöcke bei externen Produkt-Feature-Issues hin.
+Das automatische Koordinations-Dashboard in #223 dient als gemeinsames Lagebild. Es weist unter anderem auf parallele Branches, identische Coordination Keys, parallele Closing-PRs, exakte Dateiüberschneidungen, aktive Implementierungs-/Review-Claims ohne sichtbaren PR, malformed/legacy Claims, nicht bereinigte Handoffs und fehlende Research-Blöcke bei externen Produkt-Feature-Issues hin.
 
-Warnungen sind zunächst ein Signal zur Abstimmung, nicht automatisch ein fachlicher Ablehnungsgrund. Bei echtem Overlap muss die Abstimmung jedoch sichtbar dokumentiert werden.
+Warnungen sind zunächst ein Signal zur Abstimmung oder Reparatur, nicht automatisch ein fachlicher Ablehnungsgrund. Bei echtem Overlap muss die Abstimmung jedoch sichtbar dokumentiert werden.
 
 ## Externe Feature-Issues: Reporter entlasten, intern gründlich recherchieren
 
@@ -99,12 +102,14 @@ Bei einem Konflikt zwischen fachlicher Darstellung und globaler Interaction-Phil
 
 ## PR-Konvention
 
-- Ein nicht-trivialer PR referenziert das zugehörige Issue.
+- Ein nicht-trivialer PR referenziert das zugehörige kanonische Delivery-Issue.
+- Closing Keywords stehen als deklarative Relationship-Zeile (`Closes #123`) nur bei vollständigem Abschluss. Partielle Slices nutzen `Refs #123` / `Part of #123`.
 - Große Misch-PRs vermeiden; Änderungen entlang klarer fachlicher Grenzen schneiden.
-- Vor Review den Collision Scan erneut durchführen, insbesondere nach Rebase oder größeren Scope-Änderungen.
-- Material Overlap mit anderen aktiven PRs/Issues im jeweiligen Thread sichtbar dokumentieren.
+- Vor Review Claim auf `Phase: review` setzen und Branch/PR aktualisieren.
+- Vor Review und vor Merge den Collision Scan erneut durchführen, insbesondere nach Rebase oder größeren Scope-Änderungen.
+- Material Overlap mit anderen aktiven Branches/PRs/Issues im jeweiligen Thread sichtbar dokumentieren.
 - Security-/Permission-Änderungen benötigen negative Tests für fremde Familien/Objekte.
 - User-facing Flow-, Rollen- oder Navigationsänderungen benötigen passende Doku.
 - User-facing PRs referenzieren bei relevanter Interaction-/IA-Arbeit #247 bzw. `docs/product/ux-philosophy.md`.
 - Externe Produkt-Feature-Issues benötigen vor Merge den `external-research:v1`-Block.
-- `in progress` wird erst entfernt, wenn die Arbeit tatsächlich abgeschlossen oder bewusst pausiert ist.
+- `in progress` wird erst entfernt, wenn die Arbeit tatsächlich abgeschlossen oder bewusst pausiert/superseded/abandoned ist.
