@@ -127,7 +127,8 @@ export default function ExpenseEditor({family,expense=null,onClose,onSaved,onUnd
  const defaultsSummary=t('expensesUi.quickDefaults',{names:namesList(selectedMembers,i18n.language)});
  const editorTitle=isExisting?t('expensesUi.edit'):stage==='quick'?t('expensesUi.quickTitle'):t('expensesUi.addExpense');
  const isShared=form.funding_source==='shared';
- const canSubmit=validAmount(form.amount)&&(isShared||form.participants.length>0);
+ const allocationReady=!draft?.id||(allocationState.expenseId===String(draft.id)&&allocationState.loaded);
+ const canSubmit=validAmount(form.amount)&&(isShared||form.participants.length>0)&&allocationReady;
 
  function mergeDetected(next){
   setDraft(next);
@@ -166,6 +167,7 @@ export default function ExpenseEditor({family,expense=null,onClose,onSaved,onUnd
  }
  async function save(event){
   event.preventDefault();
+  if(!allocationReady)return;
   if(!isShared&&!form.participants.length){setError(t('expensesUi.selectAtLeastOne'));return}
   if(!validAmount(form.amount)){setError(t('expensesUi.invalidAmount'));return}
   if(form.budget&&form.budget!=='__advanced__'&&!budgetCurrencyCompatible){setError(t('expensesUi.budgetCurrencyHint',{currency:selectedLedger?.base_currency||'EUR'}));return}
