@@ -106,17 +106,17 @@ class SuperadminUserAdminTests(TestCase):
 
         response = client.post(
             f"/api/superadmin/users/{self.target.pk}/email-direct/",
-            {"email": "NEW@example.test"},
+            {"email": "new@example.test"},
             format="json",
         )
 
         self.assertEqual(response.status_code, 200, response.data)
         self.target.refresh_from_db()
-        self.assertEqual(self.target.email, "NEW@example.test")
+        self.assertEqual(self.target.email, "new@example.test")
         self.assertFalse(EmailIdentity.objects.filter(pk=old_primary.pk).exists())
         promoted = EmailIdentity.objects.get(user=self.target, kind=EmailIdentity.Kind.PRIMARY)
         self.assertEqual(promoted.pk, pending.pk)
-        self.assertEqual(promoted.email_normalized, "NEW@example.test")
+        self.assertEqual(promoted.email_normalized, "new@example.test")
         self.assertIsNotNone(promoted.verified_at)
         self.assertGreater(promoted.password_reset_version, old_version)
         self.assertFalse(EmailIdentity.objects.filter(user=self.target, kind=EmailIdentity.Kind.PENDING).exists())
