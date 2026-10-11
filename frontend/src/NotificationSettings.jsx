@@ -5,6 +5,7 @@ import './notification-settings.css';
 import {api} from './api';
 import {Icon} from './icons';
 import {toast} from './feedback';
+import NotificationInbox from './NotificationInbox';
 
 function decodeKey(value){
  const padding='='.repeat((4-value.length%4)%4);const base64=(value+padding).replace(/-/g,'+').replace(/_/g,'/');const raw=atob(base64);return Uint8Array.from([...raw].map(c=>c.charCodeAt(0)));
@@ -24,6 +25,7 @@ export default function NotificationSettings({family,onBack,onOpenAutomations,t}
  async function togglePreference(key){if(!family?.id||!preferences)return;const next=!preferences[key];setPreferences(current=>({...current,[key]:next}));setPreferenceBusy(key);try{const saved=await api(`/push/preferences/?family=${encodeURIComponent(family.id)}`,{method:'PATCH',body:JSON.stringify({[key]:next})});setPreferences(saved)}catch(e){setPreferences(current=>({...current,[key]:!next}));toast(e.message||t('saveFailed'),{type:'error'})}finally{setPreferenceBusy('')}}
  function openRules(){if(onOpenAutomations)onOpenAutomations();else window.location.assign('/?page=automations')}
  return <div className="smart-page"><div className="page-head"><button className="back-button" onClick={onBack} aria-label={t('back')}><Icon name="back"/></button><h1 className="grow">{t('notifications')}</h1></div><p className="page-intro">{t('notificationsHint')}</p>
+ <NotificationInbox family={family}/>
  <div className="notification-state">
   {!supported&&<section className="card notification-card warning"><div className="settings-hero-icon"><Icon name="warning" size={24}/></div><div className="grow"><strong>{t('pushUx.unsupportedTitle')}</strong><span>{t('pushUx.unsupportedText')}</span></div></section>}
   {supported&&config&&!config.configured&&<section className="card notification-card warning"><div className="settings-hero-icon"><Icon name="settings" size={24}/></div><div className="grow"><strong>{t('pushUx.serverMissingTitle')}</strong><span>{t('pushUx.serverMissingText')}</span></div></section>}
