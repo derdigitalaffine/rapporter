@@ -11,6 +11,8 @@ const strings={
   en:{title:'To-dos',open:'open',all:'All to-dos',addTask:'Add task',empty:'Everything for today is done.',loadFailed:'Could not load to-dos.',saveFailed:'Could not save the change.',saved:'Change saved. Undo is available.',undo:'Undo',undone:'Change undone.',snoozed:'Routine snoozed for 24 hours.',retry:'Reload'},
 };
 
+const todayRowItem=item=>({...item,allowed_actions:(item?.allowed_actions||[]).filter(action=>action?.id!=='delete')});
+
 export default function TodayTodoWidget({family,language,compact=false}){
   const text=strings[String(language||'').startsWith('en')?'en':'de'];
   const core=useTodayCoreData(family);const items=core.actions||[];const loading=core.loading&&!core.loaded;
@@ -41,7 +43,7 @@ export default function TodayTodoWidget({family,language,compact=false}){
     <div className="today-panel">
       <div className="todo-live" role="status" aria-live="polite">{notice}{lastAction&&<button ref={undoRef} type="button" onClick={undo} disabled={busyId===lastAction.itemId}><Icon name="refresh" size={14}/> {text.undo}</button>}</div>
       {(error||loadError)&&<div className="todo-error" role="alert">{error||loadError}<button type="button" onClick={refresh} aria-label={text.retry}><Icon name="refresh" size={14}/></button></div>}
-      {loading?<div className="todo-loading" role="status"><Icon name="refresh"/>…</div>:shown.length?<div className="todo-rows">{shown.map(item=><TodoActionRow key={item.id} item={item} language={language} busy={busyId===item.id} onPrimary={onPrimary} onSecondary={onSecondary}/>)}</div>:<div className="todo-empty"><Icon name="doneAll" size={22}/><span>{text.empty}</span></div>}
+      {loading?<div className="todo-loading" role="status"><Icon name="refresh"/>…</div>:shown.length?<div className="todo-rows">{shown.map(item=><TodoActionRow key={item.id} item={todayRowItem(item)} language={language} busy={busyId===item.id} onPrimary={onPrimary} onSecondary={onSecondary}/>)}</div>:<div className="todo-empty"><Icon name="doneAll" size={22}/><span>{text.empty}</span></div>}
     </div>
   </section>;
 }
