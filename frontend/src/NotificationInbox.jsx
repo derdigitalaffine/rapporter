@@ -10,13 +10,19 @@ const copy={
  en:{title:'Notifications',hint:'Family activity addressed to you.',unread:'unread',markAll:'Mark all as read',empty:'No notifications',emptyHint:'New relevant family activity will appear here.',loadMore:'Load more',open:'Open',loading:'Loading notifications …',failed:'Could not load notifications.'},
 };
 
+function normalizePage(payload){
+ const results=Array.isArray(payload?.results)?payload.results:Array.isArray(payload)?payload:[];
+ const unreadCount=Number.isFinite(payload?.unread_count)?Math.max(0,payload.unread_count):0;
+ return {results,unreadCount,nextCursor:payload?.next_cursor||null};
+}
+
 export default function NotificationInbox({family}){
  const {i18n}=useTranslation();const text=copy[i18n.language?.startsWith('en')?'en':'de'];
  const [rows,setRows]=useState([]);const [unread,setUnread]=useState(0);const [cursor,setCursor]=useState(null);const [loading,setLoading]=useState(true);const [busy,setBusy]=useState('');
  const formatter=useMemo(()=>new Intl.DateTimeFormat(i18n.language?.startsWith('en')?'en-GB':'de-DE',{dateStyle:'medium',timeStyle:'short'}),[i18n.language]);
  async function load(nextCursor='',append=false){
   if(!family?.id)return;setLoading(true);
-  try{const query=new URLSearchParams({family:String(family.id),limit:'20'});if(nextCursor)query.set('cursor',nextCursor);const payload=await api(`/notifications/?${query}`);setRows(current=>append?[...current,...payload.results]:payload.results);setUnread(payload.unread_count||0);setCursor(payload.next_cursor||null)}
+  try{const query=new URLSearchParams({family:String(family.id),limit:'20'});if(nextCursor)query.set('cursor',nextCursor);const page=normalizePage(await api(`/notifications/?${query}`));setRows(current=>append?[...current,...page.results]:page.results);setUnread(page.unreadCount);setCursor(page.nextCursor)}
   catch(error){toast(error.message||text.failed,{type:'error'})}
   finally{setLoading(false)}
  }
