@@ -12,7 +12,7 @@ from rest_framework.response import Response
 from .action_views import _family_membership
 from .create_action_models import CreateActionPreference, CreateActionStat, CreateActionUsageReceipt
 from .create_action_ranking import ranking_payload
-from .models import Membership
+from .models import Family, Membership
 
 
 ACTION_ID_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{0,47}$")
@@ -79,17 +79,23 @@ def _preferences_patch(request, *, membership):
         manual = _id_list(data["manual_order"], "manual_order") if "manual_order" in data else None
     except ValueError as exc:
         return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
-    if pinned is not None and hidden is not None and set(pinned) & set(hidden):
-        return Response({"detail": "Eine Aktion kann nicht gleichzeitig angepinnt und ausgeblendet sein."}, status=status.HTTP_400_BAD_REQUEST)
 
     with transaction.atomic():
         locked = Membership.objects.select_for_update().get(pk=membership.pk)
         setting, _ = CreateActionPreference.objects.get_or_create(membership=locked)
+        final_pinned = pinned if pinned is not None else list(setting.pinned_action_ids or [])
+        final_hidden = hidden if hidden is not None else list(setting.hidden_action_ids or [])
+        if set(final_pinned) & set(final_hidden):
+            return Response({"detail": "Eine Aktion kann nicht gleichzeitig angepinnt und ausgeblendet sein."}, status=status.HTTP_400_BAD_REQUEST)
+
         if data.get("reset_learning"):
             stats = CreateActionStat.objects.filter(membership=locked)
             receipts = CreateActionUsageReceipt.objects.filter(membership=locked)
             if setting.learning_scope == CreateActionPreference.LearningScope.GLOBAL:
-                member_ids = Membership.objects.filter(user=locked.user).values_list("id", flat=True)
+                member_ids = Membership.objects.filter(
+                    user=locked.user,
+                    family__status=Family.Status.ACTIVE,
+                ).values_list("id", flat=True)
                 stats = CreateActionStat.objects.filter(membership_id__in=member_ids)
                 receipts = CreateActionUsageReceipt.objects.filter(membership_id__in=member_ids)
             stats.delete()
@@ -132,11 +138,14 @@ def _record_usage(request, *, family, membership):
         return Response({"detail": "Nur erfolgreiche Create-Aktionen können gelernt werden."}, status=status.HTTP_400_BAD_REQUEST)
     try:
         event_id = UUID(str(data.get("event_id", "")))
+    except (ValueError, TypeError, AttributeError):
+        return Response({"detail": "Ungültige event_id."}, status=status.HTTP_400_BAD_REQUEST)
+    try:
         action_id = _safe_action_id(data.get("action_id"))
         origin_page = _safe_bucket(data.get("origin_page"))
         context_bucket = _safe_bucket(data.get("context_bucket"))
-    except (ValueError, TypeError, AttributeError) as exc:
-        return Response({"detail": str(exc) or "Ungültiges Nutzungssignal."}, status=status.HTTP_400_BAD_REQUEST)
+    except ValueError as exc:
+        return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
     now = timezone.now()
     try:
@@ -162,6 +171,8 @@ def _record_usage(request, *, family, membership):
             },
         )
         if not created:
+            if receipt.membership_id != locked.id or receipt.action_id != action_id:
+                return Response({"detail": "Nutzungssignal wurde bereits verwendet."}, status=status.HTTP_409_CONFLICT)
             payload = ranking_payload(locked)
             payload.update({"accepted": True, "deduplicated": True})
             return Response(payload)
