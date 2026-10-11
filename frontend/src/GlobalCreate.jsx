@@ -15,7 +15,7 @@ export default function GlobalCreate({userId,page,family,role,context={},onCreat
   const {t}=useTranslation();
   const fabRef=useRef(null);const firstActionRef=useRef(null);const pendingAction=useRef(null);const previousSuppressed=useRef(suppressed);
   const [paletteOpen,setPaletteOpen]=useState(false);const [showAll,setShowAll]=useState(false);const [frozenQuick,setFrozenQuick]=useState([]);const [keyboardOpen,setKeyboardOpen]=useState(false);const [externalDialog,setExternalDialog]=useState(false);const [restoreFocus,setRestoreFocus]=useState(false);const [moduleState,setModuleState]=useState({familyId:null,...EMPTY_MODULES});
-  const [rankingProfile,setRankingProfile]=useState(()=>normalizeCreateRankingProfile({}));
+  const [rankingView,setRankingView]=useState(()=>({scopeKey:'',profile:normalizeCreateRankingProfile({})}));
   useEffect(()=>{
     let live=true;
     const familyId=family?.id||null;
@@ -29,6 +29,8 @@ export default function GlobalCreate({userId,page,family,role,context={},onCreat
   },[family?.id]);
   const rankingScope=useMemo(()=>createRankingScope(family,userId),[family,userId]);
   const scopeKey=createRankingScopeKey(rankingScope);
+  const rankingProfile=rankingView.scopeKey===scopeKey?rankingView.profile:normalizeCreateRankingProfile({});
+  const setRankingProfile=profile=>setRankingView({scopeKey,profile});
   useEffect(()=>{
     let live=true;
     if(!rankingScope){setRankingProfile(normalizeCreateRankingProfile({}));return}
