@@ -2,6 +2,8 @@ import {test,expect} from '@playwright/test';
 import {installApiMocks} from './mock-api.js';
 
 const fulfillJson=(route,body,status=200)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)});
+async function expectMinTarget(locator){const box=await locator.boundingBox();expect(box?.width||0).toBeGreaterThanOrEqual(44);expect(box?.height||0).toBeGreaterThanOrEqual(44)}
+async function expectClasses(locator,...classes){const classList=await locator.evaluate(element=>[...element.classList]);expect(classList).toEqual(expect.arrayContaining(classes))}
 
 test('email verification requires an explicit user click and scrubs token from browser state',async({page})=>{
  let verifyCalls=0;
@@ -53,6 +55,42 @@ test('profile shows verified email identity status',async({page})=>{
  const card=page.getByTestId('email-identity-card');
  await expect(card).toContainText('alex@example.test');
  await expect(card).toContainText('E-Mail bestätigt');
+});
+
+test('email identity actions keep explicit variants and touch targets',async({page})=>{
+ await page.setViewportSize({width:390,height:844});
+ await installApiMocks(page);
+ await page.route('**/api/auth/email/identity/',route=>fulfillJson(route,{
+  email:'alex@example.test',email_verified:false,email_verified_at:null,email_action_required:false,pending_email:'new@example.test',pending_verification_sent_at:'2026-10-11T12:00:00Z',
+ }));
+ await page.goto('/?page=profile');
+ await page.waitForLoadState('networkidle');
+ const card=page.getByTestId('email-identity-card');
+ const directSecondary=card.locator(':scope > button.secondary.compact');
+ await expect(directSecondary).toHaveCount(2);
+ const primaryResend=directSecondary.filter({hasText:'Bestätigung erneut senden'});
+ const edit=directSecondary.filter({hasText:'E-Mail-Adresse ändern'});
+ const pendingResend=card.locator('.profile-privacy-note .text-button');
+
+ await expect(primaryResend).toHaveAttribute('type','button');
+ await expectClasses(primaryResend,'secondary','compact');
+ await expectMinTarget(primaryResend);
+ await expect(pendingResend).toHaveAttribute('type','button');
+ await expectClasses(pendingResend,'text-button');
+ await expectMinTarget(pendingResend);
+ await expect(edit).toHaveAttribute('type','button');
+ await expectClasses(edit,'secondary','compact');
+ await expectMinTarget(edit);
+
+ await edit.click();
+ const form=card.locator('form.profile-form');
+ const cancel=form.locator('.dialog-actions .secondary');
+ const submit=form.locator('.dialog-actions .primary');
+ await expect(cancel).toHaveAttribute('type','button');
+ await expectMinTarget(cancel);
+ await expect(submit).toHaveAttribute('type','submit');
+ await expectMinTarget(submit);
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
 });
 
 test('legacy account path remains explicit for migration accounts',async({page})=>{
