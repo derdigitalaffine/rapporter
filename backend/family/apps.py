@@ -15,6 +15,7 @@ class FamilyConfig(AppConfig):
         from .notes_models import Note, NoteRevision, NoteShare
         from .shopping_models import ShoppingListStoreProfile, ShoppingStore, ShoppingTemplate, ShoppingTemplateItem
         from .today_models import TodayLayout
+        from .todo_models import TodoActionPreference, TodoPreference
         from .travel_models import Trip, TripPhoto
         core_models.BirthdayOccasion = BirthdayOccasion
         core_models.BoardPost = BoardPost
@@ -29,6 +30,8 @@ class FamilyConfig(AppConfig):
         core_models.ShoppingTemplate = ShoppingTemplate
         core_models.ShoppingTemplateItem = ShoppingTemplateItem
         core_models.TodayLayout = TodayLayout
+        core_models.TodoPreference = TodoPreference
+        core_models.TodoActionPreference = TodoActionPreference
         core_models.Trip = Trip
         core_models.TripPhoto = TripPhoto
         from . import models_features  # noqa: F401
