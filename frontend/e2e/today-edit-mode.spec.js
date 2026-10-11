@@ -7,6 +7,7 @@ async function boot(page,{language='de'}={}){
   version:2,
   revision:0,
   widgets:[
+   {id:'week',visible:true,size:'wide',settings:{events:true,waste:true,holidays:true,special:true}},
    {id:'weather',visible:true,size:'medium'},
    {id:'priority',visible:true,size:'wide'},
    {id:'waste',visible:true,size:'medium'},
@@ -128,7 +129,7 @@ test('touch long press enters edit mode focused without moving the widget',async
  await page.setViewportSize({width:390,height:844});
  await boot(page);
  const before=await visibleWidgets(page);
- const widget=page.locator('[data-today-widget="weather"]');
+ const widget=page.locator('[data-today-widget="week"]');
  await expect(widget).toBeVisible();
  const box=await widget.boundingBox();
  expect(box).not.toBeNull();
@@ -138,7 +139,7 @@ test('touch long press enters edit mode focused without moving the widget',async
  await page.waitForTimeout(600);
  const editor=page.getByRole('region',{name:'Anpassen'});
  await expect(editor).toBeVisible();
- const handle=editor.getByRole('button',{name:'Wetter · Verschieben'});
+ const handle=editor.getByRole('button',{name:'Wochenkompass · Verschieben'});
  await expect(handle).toBeFocused();
  const handleBox=await handle.boundingBox();
  expect(handleBox.width).toBeGreaterThanOrEqual(44);
@@ -150,7 +151,8 @@ test('touch long press enters edit mode focused without moving the widget',async
 test('touch movement cancels long press so normal scrolling is not captured',async({page})=>{
  await page.setViewportSize({width:390,height:844});
  await boot(page);
- const widget=page.locator('[data-today-widget="weather"]');
+ const widget=page.locator('[data-today-widget="week"]');
+ await expect(widget).toBeVisible();
  const box=await widget.boundingBox();
  expect(box).not.toBeNull();
  const x=box.x+20;
