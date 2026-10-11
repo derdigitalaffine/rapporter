@@ -56,11 +56,20 @@ async function boot(page,{language='de',failSave=false,conflict=false,routines=[
  return {state,getLayout:()=>layout};
 }
 
+const editorRow=(editor,id)=>editor.locator(`[data-editor-widget-id="${id}"]`);
+
+async function hideFromEditor(editor,id,label='Ausblenden'){
+ const row=editorRow(editor,id);
+ await expect(row).toBeVisible();
+ await row.getByRole('button',{name:label,exact:true}).click();
+ await expect(row).toHaveCount(0);
+}
+
 test('legacy split layout consolidates to one Today To-do widget and saves canonically',async({page})=>{
  const {getLayout}=await boot(page);await expect(page.locator('[data-today-widget="todo"]')).toBeVisible();await expect(page.locator('[data-today-widget="tasks"]')).toHaveCount(0);await expect(page.locator('[data-today-widget="routines"]')).toHaveCount(0);
- await page.getByRole('button',{name:'Anpassen'}).click();const editor=page.getByRole('region',{name:'Anpassen'});await expect(editor.getByLabel('To-dos',{exact:true})).toBeChecked();await expect(editor.getByLabel('Aufgaben',{exact:true})).toHaveCount(0);await expect(editor.getByLabel('Zuletzt gemacht',{exact:true})).toHaveCount(0);
- await editor.getByLabel('To-dos',{exact:true}).uncheck();await expect(page.locator('[data-today-widget="todo"]')).toHaveCount(0);await editor.getByRole('button',{name:'Abbrechen',exact:true}).click();await expect(page.locator('[data-today-widget="todo"]')).toBeVisible();
- await page.getByRole('button',{name:'Anpassen'}).click();await editor.getByLabel('To-dos',{exact:true}).uncheck();await editor.getByRole('button',{name:'Speichern',exact:true}).click();expect(getLayout().widgets.some(row=>row.id==='todo')).toBe(true);expect(getLayout().widgets.some(row=>['tasks','routines'].includes(row.id))).toBe(false);
+ await page.getByRole('button',{name:'Anpassen'}).click();const editor=page.getByRole('region',{name:'Anpassen'});await expect(editorRow(editor,'todo')).toBeVisible();await expect(editorRow(editor,'tasks')).toHaveCount(0);await expect(editorRow(editor,'routines')).toHaveCount(0);
+ await hideFromEditor(editor,'todo');await expect(page.locator('[data-today-widget="todo"]')).toHaveCount(0);await editor.getByRole('button',{name:'Abbrechen',exact:true}).click();await expect(page.locator('[data-today-widget="todo"]')).toBeVisible();
+ await page.getByRole('button',{name:'Anpassen'}).click();await hideFromEditor(editor,'todo');await editor.getByRole('button',{name:'Speichern',exact:true}).click();expect(getLayout().widgets.some(row=>row.id==='todo')).toBe(true);expect(getLayout().widgets.some(row=>['tasks','routines'].includes(row.id))).toBe(false);
  await page.reload();await expect(page.locator('[data-today-widget="todo"]')).toHaveCount(0);
  await page.getByRole('button',{name:'Anpassen'}).click();await editor.getByRole('button',{name:'Standard wiederherstellen'}).click();await editor.getByRole('button',{name:'Speichern',exact:true}).click();await expect(page.locator('[data-today-widget="todo"]')).toBeVisible();
 });
@@ -84,15 +93,15 @@ test('To-do widget never offers medium layout while suitable widgets still can',
 });
 
 test('failed save preserves draft and concurrent edits require reload',async({page})=>{
- await boot(page,{conflict:true});await page.getByRole('button',{name:'Anpassen'}).click();const editor=page.getByRole('region',{name:'Anpassen'});await editor.getByLabel('Einkauf',{exact:true}).uncheck();await editor.getByRole('button',{name:'Speichern',exact:true}).click();await expect(page.getByRole('alert')).toContainText('anderen Gerät');await expect(editor).toBeVisible();await expect(editor.getByRole('button',{name:'Speichern',exact:true})).toBeDisabled();await page.getByRole('button',{name:'Erneut laden'}).click();await expect(editor).toHaveCount(0);
+ await boot(page,{conflict:true});await page.getByRole('button',{name:'Anpassen'}).click();const editor=page.getByRole('region',{name:'Anpassen'});await hideFromEditor(editor,'shopping');await editor.getByRole('button',{name:'Speichern',exact:true}).click();await expect(page.getByRole('alert')).toContainText('anderen Gerät');await expect(editor).toBeVisible();await expect(editor.getByRole('button',{name:'Speichern',exact:true})).toBeDisabled();await expect(editor.locator('[data-library-widget="shopping"]')).toBeVisible();await page.getByRole('button',{name:'Erneut laden'}).click();await expect(editor).toHaveCount(0);
 });
 
 test('English grid editor fits narrow view and is keyboard operable',async({page})=>{
- await page.setViewportSize({width:360,height:800});await boot(page,{language:'en'});await page.getByRole('button',{name:'Customize'}).click();const editor=page.getByRole('region',{name:'Customize'});const checkbox=editor.getByLabel('To-dos',{exact:true});await checkbox.focus();await page.keyboard.press('Space');await expect(checkbox).not.toBeChecked();expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await editor.getByRole('button',{name:'Cancel',exact:true}).click();await expect(page.locator('[data-today-widget="todo"]')).toBeVisible();
+ await page.setViewportSize({width:360,height:800});await boot(page,{language:'en'});await page.getByRole('button',{name:'Customize'}).click();const editor=page.getByRole('region',{name:'Customize'});const hide=editorRow(editor,'todo').getByRole('button',{name:'Hide',exact:true});await hide.focus();await page.keyboard.press('Enter');await expect(editorRow(editor,'todo')).toHaveCount(0);await expect(editor.locator('[data-library-widget="todo"]')).toBeVisible();expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await editor.getByRole('button',{name:'Cancel',exact:true}).click();await expect(page.locator('[data-today-widget="todo"]')).toBeVisible();
 });
 
 test('temporary save error keeps edited visibility for retry',async({page})=>{
- await boot(page,{failSave:true});await page.getByRole('button',{name:'Anpassen'}).click();const editor=page.getByRole('region',{name:'Anpassen'});await editor.getByLabel('Einkauf',{exact:true}).uncheck();await editor.getByRole('button',{name:'Speichern',exact:true}).click();await expect(page.getByRole('alert')).toContainText('Entwurf bleibt erhalten');await expect(editor.getByLabel('Einkauf',{exact:true})).not.toBeChecked();await expect(editor.getByRole('button',{name:'Speichern',exact:true})).toBeEnabled();
+ await boot(page,{failSave:true});await page.getByRole('button',{name:'Anpassen'}).click();const editor=page.getByRole('region',{name:'Anpassen'});await hideFromEditor(editor,'shopping');await editor.getByRole('button',{name:'Speichern',exact:true}).click();await expect(page.getByRole('alert')).toContainText('Entwurf bleibt erhalten');await expect(editor.locator('[data-library-widget="shopping"]')).toBeVisible();await expect(editor.getByRole('button',{name:'Speichern',exact:true})).toBeEnabled();
 });
 
 test('Today To-do quick actions fit 390px without horizontal overflow',async({page})=>{
