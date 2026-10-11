@@ -2,8 +2,9 @@ from django.db import transaction
 from django.http import Http404
 from django.utils import timezone
 from rest_framework import status
-from rest_framework.decorators import api_view
+from rest_framework.decorators import api_view, permission_classes
 from rest_framework.exceptions import ValidationError
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from family.context_links import ContextLinkError, create_context_link
@@ -102,6 +103,7 @@ def _item_validation_error(code):
 
 
 @api_view(["GET", "POST"])
+@permission_classes([IsAuthenticated])
 def wishlist_collection(request):
     family_id = request.query_params.get("family") if request.method == "GET" else request.data.get("family")
     membership = active_membership(request.user, family_id)
