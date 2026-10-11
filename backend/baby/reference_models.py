@@ -115,3 +115,62 @@ class PediatricReferencePackage(models.Model):
         if self.status != self.Status.DRAFT:
             raise ValidationError("Published pediatric reference packages cannot be deleted.")
         return super().delete(*args, **kwargs)
+
+
+class PediatricPreventiveEventReference(models.Model):
+    """Private, immutable provenance for a generic family calendar event."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    baby = models.ForeignKey(
+        "baby.BabyProfile",
+        on_delete=models.CASCADE,
+        related_name="preventive_event_references",
+    )
+    event = models.OneToOneField(
+        "family.FamilyEvent",
+        on_delete=models.CASCADE,
+        related_name="pediatric_private_reference",
+    )
+    reference_package = models.ForeignKey(
+        PediatricReferencePackage,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="preventive_event_references",
+    )
+    source_key = models.CharField(max_length=64)
+    source_version = models.CharField(max_length=96)
+    source_checksum = models.CharField(max_length=64, blank=True)
+    locale = models.CharField(max_length=16, default="de-DE")
+    rule_key = models.CharField(max_length=64)
+    start_day = models.PositiveIntegerField()
+    end_day = models.PositiveIntegerField()
+    target_day = models.PositiveIntegerField()
+
+    class Meta:
+        ordering = ["baby_id", "target_day", "rule_key"]
+        indexes = [
+            models.Index(fields=["baby", "source_key", "source_version"], name="baby_ped_event_ref_idx")
+        ]
+
+    def save(self, *args, **kwargs):
+        if self.pk:
+            previous = type(self).objects.filter(pk=self.pk).values(
+                "baby_id",
+                "event_id",
+                "reference_package_id",
+                "source_key",
+                "source_version",
+                "source_checksum",
+                "locale",
+                "rule_key",
+                "start_day",
+                "end_day",
+                "target_day",
+            ).first()
+            if previous:
+                for field, value in previous.items():
+                    if value != getattr(self, field):
+                        raise ValidationError("Preventive event reference provenance is immutable.")
+        return super().save(*args, **kwargs)
