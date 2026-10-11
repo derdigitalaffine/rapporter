@@ -5,8 +5,11 @@ const now=new Date().toISOString();
 const earlier=new Date(Date.now()-3600000).toISOString();
 
 async function json(route,body,status=200){return route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)})}
+async function expectMinTarget(locator){const box=await locator.boundingBox();expect(box?.width||0).toBeGreaterThanOrEqual(44);expect(box?.height||0).toBeGreaterThanOrEqual(44)}
+async function expectClasses(locator,...classes){const classList=await locator.evaluate(element=>[...element.classList]);expect(classList).toEqual(expect.arrayContaining(classes))}
 
 test('security center revokes sessions and gates revoke-all behind reauth',async({page})=>{
+ await page.setViewportSize({width:390,height:844});
  await installApiMocks(page);
  let fresh=false;
  let sessions=[
@@ -35,15 +38,32 @@ test('security center revokes sessions and gates revoke-all behind reauth',async
  await expect(card.getByText('Safari · iPhone')).toBeVisible();
 
  const safariRow=card.locator('.security-session-row').filter({hasText:'Safari · iPhone'});
- await safariRow.getByRole('button',{name:'Abmelden'}).click();
+ const safariRevoke=safariRow.getByRole('button',{name:'Abmelden'});
+ await expect(safariRevoke).toHaveAttribute('type','button');
+ await expectClasses(safariRevoke,'ghost','ghost-danger','compact');
+ await expectMinTarget(safariRevoke);
+ await safariRevoke.click();
  await expect(card.getByText('Safari · iPhone')).toHaveCount(0);
 
- await card.getByRole('button',{name:'Alle anderen abmelden'}).click();
+ const revokeOthers=card.getByRole('button',{name:'Alle anderen abmelden'});
+ await expect(revokeOthers).toHaveAttribute('type','button');
+ await expectClasses(revokeOthers,'secondary');
+ await expectMinTarget(revokeOthers);
+ await revokeOthers.click();
  await expect(card.getByRole('heading',{name:'Identität bestätigen'})).toBeVisible();
+ const confirm=card.getByRole('button',{name:'Bestätigen'});
+ const cancel=card.getByRole('button',{name:'Abbrechen'});
+ await expect(confirm).toHaveAttribute('type','submit');
+ await expectClasses(confirm,'secondary');
+ await expectMinTarget(confirm);
+ await expect(cancel).toHaveAttribute('type','button');
+ await expectClasses(cancel,'text-button');
+ await expectMinTarget(cancel);
  await card.getByLabel('Aktuelles Passwort').fill('correct-horse-battery-staple');
- await card.getByRole('button',{name:'Bestätigen'}).click();
+ await confirm.click();
  await expect(card.getByText('Firefox · Linux')).toHaveCount(0);
  await expect(card.getByText('Keine weiteren aktiven Sitzungen.')).toBeVisible();
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
 });
 
 test('revoking a second browser context makes its next auth request fail',async({browser,baseURL})=>{
