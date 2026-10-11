@@ -5,13 +5,16 @@ import {translation as th,notes as thNotes} from './i18n-extra/th';
 import {translation as frCare} from './i18n-extra/fr-care';
 import {translation as nlCare} from './i18n-extra/nl-care';
 import {translation as thCare} from './i18n-extra/th-care';
+import {translation as frFeatures} from './i18n-extra/fr-features';
+import {translation as nlFeatures} from './i18n-extra/nl-features';
+import {translation as thFeatures} from './i18n-extra/th-features';
 import {nextAppLanguage,normalizeAppLanguage} from './language-options';
 
 const LANGUAGE_KEY='famuhle-language';
 const bundles={
- fr:{translation:{...fr,...frCare},notes:frNotes},
- nl:{translation:{...nl,...nlCare},notes:nlNotes},
- th:{translation:{...th,...thCare},notes:thNotes},
+ fr:{translation:{...fr,...frCare,...frFeatures},notes:frNotes},
+ nl:{translation:{...nl,...nlCare,...nlFeatures},notes:nlNotes},
+ th:{translation:{...th,...thCare,...thFeatures},notes:thNotes},
 };
 for(const [language,namespaces] of Object.entries(bundles)){
  for(const [namespace,resources] of Object.entries(namespaces))i18n.addResourceBundle(language,namespace,resources,true,true);
