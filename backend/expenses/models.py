@@ -112,8 +112,14 @@ class Expense(TimestampedModel):
     title = models.CharField(max_length=180, blank=True)
     merchant = models.CharField(max_length=180, blank=True)
     occurred_at = models.DateTimeField(default=timezone.now)
+    # `total_amount`/`currency` are the amount used by debt, settlement and
+    # budget math. In explicit FX mode they hold the frozen ledger-base value;
+    # original_* + fx_rate preserve the historical source amount/rate.
     total_amount = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
     currency = models.CharField(max_length=3, default="EUR")
+    original_amount = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    original_currency = models.CharField(max_length=3, null=True, blank=True)
+    fx_rate = models.DecimalField(max_digits=20, decimal_places=10, null=True, blank=True)
     funding_source = models.CharField(
         max_length=16,
         choices=FundingSource.choices,
@@ -162,6 +168,29 @@ class Expense(TimestampedModel):
                     | models.Q(funding_source="shared", paid_by__isnull=True)
                 ),
                 name="expense_funding_source_consistent",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(
+                        original_amount__isnull=True,
+                        original_currency__isnull=True,
+                        fx_rate__isnull=True,
+                    )
+                    | models.Q(
+                        original_amount__isnull=False,
+                        original_currency__isnull=False,
+                        fx_rate__isnull=False,
+                    )
+                ),
+                name="expense_fx_all_or_none",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(original_amount__isnull=True) | models.Q(original_amount__gt=0),
+                name="expense_fx_original_positive",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(fx_rate__isnull=True) | models.Q(fx_rate__gt=0),
+                name="expense_fx_rate_positive",
             ),
         ]
 
