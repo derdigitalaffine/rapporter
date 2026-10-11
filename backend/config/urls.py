@@ -1,6 +1,7 @@
 from django.contrib import admin
 from django.urls import include, path
 
+from auth_identity.password_reset_views import password_reset_confirm, password_reset_request
 from auth_sessions.views import reauthenticate_password, revoke_other_sessions, session_detail, session_list
 from family.auth_views import login_view, logout_view, refresh_view, session_view
 from mailing.views import superadmin_mail_health
@@ -11,6 +12,8 @@ urlpatterns = [
     path("api/auth/login/", login_view, name="auth_login"),
     path("api/auth/refresh/", refresh_view, name="auth_refresh"),
     path("api/auth/logout/", logout_view, name="auth_logout"),
+    path("api/auth/password-reset/request/", password_reset_request, name="auth_password_reset_request"),
+    path("api/auth/password-reset/confirm/", password_reset_confirm, name="auth_password_reset_confirm"),
     path("api/auth/session/", session_view, name="auth_session"),
     path("api/auth/sessions/", session_list, name="auth_session_list"),
     path("api/auth/sessions/<uuid:sid>/", session_detail, name="auth_session_detail"),
