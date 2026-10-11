@@ -5,6 +5,81 @@ from django.utils import timezone
 from family.models import Family, Membership, TimestampedModel
 
 
+DEFAULT_LEDGER_NAME = "Familie – laufend"
+
+
+class ExpenseLedger(TimestampedModel):
+    family = models.ForeignKey(Family, on_delete=models.CASCADE, related_name="expense_ledgers")
+    name = models.CharField(max_length=120)
+    base_currency = models.CharField(max_length=3, default="EUR")
+    budget_amount = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    is_default = models.BooleanField(default=False)
+    archived = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ["-is_default", "created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["family"],
+                condition=models.Q(is_default=True),
+                name="expense_one_default_ledger",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(budget_amount__isnull=True) | models.Q(budget_amount__gte=0),
+                name="expense_ledger_budget_nonneg",
+            ),
+        ]
+
+
+def get_default_expense_ledger(family):
+    ledger, _ = ExpenseLedger.objects.get_or_create(
+        family=family,
+        is_default=True,
+        defaults={
+            "name": DEFAULT_LEDGER_NAME,
+            "base_currency": "EUR",
+        },
+    )
+    return ledger
+
+
+class ExpenseBudget(TimestampedModel):
+    class PeriodType(models.TextChoices):
+        OPEN = "open", "Open"
+        MONTH = "month", "Month"
+        YEAR = "year", "Year"
+        DATE_RANGE = "date_range", "Date range"
+        CONTEXT = "context", "Context"
+
+    family = models.ForeignKey(Family, on_delete=models.CASCADE, related_name="expense_budgets")
+    ledger = models.ForeignKey(ExpenseLedger, on_delete=models.CASCADE, related_name="budgets")
+    parent = models.ForeignKey(
+        "self",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="children",
+    )
+    name = models.CharField(max_length=120)
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    period_type = models.CharField(max_length=16, choices=PeriodType.choices, default=PeriodType.OPEN)
+    starts_on = models.DateField(null=True, blank=True)
+    ends_on = models.DateField(null=True, blank=True)
+    archived = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ["created_at"]
+        indexes = [
+            models.Index(fields=["family", "ledger", "archived"], name="exp_budget_ledger_idx"),
+        ]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(amount__gte=0),
+                name="expense_budget_amount_nonneg",
+            ),
+        ]
+
+
 class Expense(TimestampedModel):
     class Status(models.TextChoices):
         DRAFT = "draft", "Draft"
@@ -23,6 +98,13 @@ class Expense(TimestampedModel):
         FAILED = "failed", "Failed"
 
     family = models.ForeignKey(Family, on_delete=models.CASCADE, related_name="expenses")
+    ledger = models.ForeignKey(
+        ExpenseLedger,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="expenses",
+    )
     title = models.CharField(max_length=180, blank=True)
     merchant = models.CharField(max_length=180, blank=True)
     occurred_at = models.DateTimeField(default=timezone.now)
@@ -61,6 +143,30 @@ class Expense(TimestampedModel):
             ),
         ]
 
+    def save(self, *args, **kwargs):
+        previous = None
+        update_fields = kwargs.get("update_fields")
+        tracked_fields = {"ledger", "ledger_id", "total_amount", "currency"}
+        should_check = not self._state.adding and (
+            update_fields is None or bool(tracked_fields.intersection(update_fields))
+        )
+        if should_check:
+            previous = type(self).objects.filter(pk=self.pk).values(
+                "ledger_id",
+                "total_amount",
+                "currency",
+            ).first()
+        super().save(*args, **kwargs)
+        if previous and (
+            previous["ledger_id"] != self.ledger_id
+            or previous["total_amount"] != self.total_amount
+            or previous["currency"] != self.currency
+        ):
+            # Budget allocations are optional, but when present they must cover
+            # the current expense exactly. Never leave stale allocations after
+            # a scope/amount change; the caller may assign a new budget after.
+            self.budget_allocations.all().delete()
+
 
 class ExpenseShare(TimestampedModel):
     class SplitType(models.TextChoices):
@@ -78,6 +184,25 @@ class ExpenseShare(TimestampedModel):
     class Meta:
         unique_together = ("expense", "member")
         ordering = ["created_at"]
+
+
+class ExpenseBudgetAllocation(TimestampedModel):
+    expense = models.ForeignKey(Expense, on_delete=models.CASCADE, related_name="budget_allocations")
+    budget = models.ForeignKey(ExpenseBudget, on_delete=models.CASCADE, related_name="allocations")
+    amount_in_budget_currency = models.DecimalField(max_digits=12, decimal_places=2)
+
+    class Meta:
+        ordering = ["created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["expense", "budget"],
+                name="expense_budget_allocation_unique",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(amount_in_budget_currency__gt=0),
+                name="expense_budget_allocation_positive",
+            ),
+        ]
 
 
 class ReceiptExtraction(TimestampedModel):
@@ -113,6 +238,13 @@ class ReceiptExtraction(TimestampedModel):
 
 class Settlement(TimestampedModel):
     family = models.ForeignKey(Family, on_delete=models.CASCADE, related_name="expense_settlements")
+    ledger = models.ForeignKey(
+        ExpenseLedger,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="settlements",
+    )
     from_member = models.ForeignKey(Membership, on_delete=models.PROTECT, related_name="settlements_sent")
     to_member = models.ForeignKey(Membership, on_delete=models.PROTECT, related_name="settlements_received")
     amount = models.DecimalField(max_digits=12, decimal_places=2)

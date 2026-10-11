@@ -38,3 +38,26 @@ class TransactionalEmail(models.Model):
             models.Index(fields=["status", "next_attempt_at"], name="mail_status_due_idx"),
             models.Index(fields=["status", "lease_expires_at"], name="mail_status_lease_idx"),
         ]
+
+
+class ManagedSmtpConfig(models.Model):
+    class Security(models.TextChoices):
+        STARTTLS = "starttls", "STARTTLS"
+        SSL = "ssl", "TLS/SSL"
+        PLAIN = "plain", "Plain"
+
+    id = models.PositiveSmallIntegerField(primary_key=True, default=1, editable=False)
+    enabled = models.BooleanField(default=False)
+    host = models.CharField(max_length=253, blank=True, default="")
+    port = models.PositiveIntegerField(default=587)
+    username = models.CharField(max_length=254, blank=True, default="")
+    password_encrypted = models.TextField(blank=True, default="")
+    security = models.CharField(max_length=16, choices=Security.choices, default=Security.STARTTLS)
+    timeout = models.PositiveSmallIntegerField(default=10)
+    from_email = models.EmailField(blank=True, default="")
+    reply_to = models.EmailField(blank=True, default="")
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def save(self, *args, **kwargs):
+        self.pk = 1
+        super().save(*args, **kwargs)

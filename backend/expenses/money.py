@@ -1,6 +1,8 @@
 from decimal import Decimal, ROUND_FLOOR, ROUND_HALF_UP
 
-from .models import Expense, Settlement
+from django.db.models import Q
+
+from .models import Expense, Settlement, get_default_expense_ledger
 
 CENT = Decimal("0.01")
 
@@ -70,8 +72,21 @@ def build_split(total, participant_ids, split_type="equal", values=None):
     raise ValueError("Unbekannter Aufteilungstyp.")
 
 
-def balance_summary(family, currency="EUR"):
+def _ledger_scope(ledger):
+    scope = Q(ledger=ledger)
+    # During expand/migrate/cutover, null rows are legacy default-ledger rows.
+    # The data migration fills them, but this keeps rollback/partial rollout safe.
+    if ledger.is_default:
+        scope |= Q(ledger__isnull=True)
+    return scope
+
+
+def balance_summary(family, currency="EUR", ledger=None):
     currency = currency.upper()
+    ledger = ledger or get_default_expense_ledger(family)
+    if ledger.family_id != family.id:
+        raise ValueError("Abrechnungskreis gehört nicht zu dieser Familie.")
+
     members = list(family.memberships.select_related("user").order_by("created_at"))
     summary = {
         str(member.id): {
@@ -84,7 +99,15 @@ def balance_summary(family, currency="EUR"):
         }
         for member in members
     }
-    expenses = Expense.objects.filter(family=family, currency=currency, status=Expense.Status.POSTED).prefetch_related("shares")
+    expenses = (
+        Expense.objects.filter(
+            _ledger_scope(ledger),
+            family=family,
+            currency=currency,
+            status=Expense.Status.POSTED,
+        )
+        .prefetch_related("shares")
+    )
     for expense in expenses:
         if expense.total_amount is None:
             continue
@@ -97,7 +120,12 @@ def balance_summary(family, currency="EUR"):
             if row:
                 row["share"] += share.amount
                 row["balance"] -= share.amount
-    settlements = Settlement.objects.filter(family=family, currency=currency, voided_at__isnull=True)
+    settlements = Settlement.objects.filter(
+        _ledger_scope(ledger),
+        family=family,
+        currency=currency,
+        voided_at__isnull=True,
+    )
     for settlement in settlements:
         sender = summary.get(str(settlement.from_member_id))
         receiver = summary.get(str(settlement.to_member_id))
