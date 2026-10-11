@@ -15,7 +15,13 @@ from family.models import Family, Membership
 
 from .catalog import COMMERCIAL_CUTOVER_KEY, LEGACY_SOURCE_REF
 from .models import CapabilityDefinition, EntitlementCutover, EntitlementGrant, EntitlementGrantAudit
-from .services import create_admin_grant, require_capability, resolve_entitlements, revoke_admin_grant
+from .services import (
+    PRE_COMMERCIAL_ORIGIN_SUMMARY,
+    create_admin_grant,
+    require_capability,
+    resolve_entitlements,
+    revoke_admin_grant,
+)
 
 
 class EntitlementCoreTests(TestCase):
@@ -30,7 +36,26 @@ class EntitlementCoreTests(TestCase):
         Membership.objects.create(family=self.other, user=self.bob, role=Membership.Role.OWNER)
         self.now = timezone.now()
 
-    def test_new_family_defaults_to_light_capabilities(self):
+    def _mark_commercial_cutover(self, *, at=None):
+        cutover_at = at or self.now
+        return EntitlementCutover.objects.create(
+            key=COMMERCIAL_CUTOVER_KEY,
+            cutover_at=cutover_at,
+            applied_at=cutover_at,
+            eligible_family_count=0,
+        )
+
+    def test_family_defaults_to_vip_before_commercial_cutover(self):
+        snapshot = resolve_entitlements(self.family, at=self.now)
+        expected = set(CapabilityDefinition.objects.filter(deprecated=False).values_list("key", flat=True))
+        self.assertEqual(snapshot.tier, "vip")
+        self.assertEqual(snapshot.display_name, "VIP")
+        self.assertEqual(snapshot.origin_summary, PRE_COMMERCIAL_ORIGIN_SUMMARY)
+        self.assertEqual(snapshot.origins, ())
+        self.assertEqual(set(snapshot.capabilities), expected)
+
+    def test_family_defaults_to_light_after_commercial_cutover_marker(self):
+        self._mark_commercial_cutover()
         snapshot = resolve_entitlements(self.family, at=self.now)
         self.assertEqual(snapshot.tier, "light")
         self.assertEqual(snapshot.origin_summary, "default_light")
@@ -39,6 +64,7 @@ class EntitlementCoreTests(TestCase):
         self.assertNotIn("documents", snapshot.capabilities)
 
     def test_active_grants_combine_but_future_expired_revoked_and_inactive_do_not(self):
+        self._mark_commercial_cutover()
         EntitlementGrant.objects.create(
             family=self.family,
             origin=EntitlementGrant.Origin.PROMOTION,
@@ -92,6 +118,7 @@ class EntitlementCoreTests(TestCase):
         self.assertNotIn("pregnancy_baby", snapshot.capabilities)
 
     def test_vip_plan_grants_all_non_deprecated_capabilities(self):
+        self._mark_commercial_cutover()
         EntitlementGrant.objects.create(
             family=self.family,
             origin=EntitlementGrant.Origin.PURCHASED_LIFETIME,
@@ -105,6 +132,7 @@ class EntitlementCoreTests(TestCase):
         self.assertEqual(snapshot.origin_summary, EntitlementGrant.Origin.PURCHASED_LIFETIME)
 
     def test_source_ref_alone_never_authorizes(self):
+        self._mark_commercial_cutover()
         EntitlementGrant.objects.create(
             family=self.family,
             origin=EntitlementGrant.Origin.SUBSCRIPTION,
@@ -115,6 +143,7 @@ class EntitlementCoreTests(TestCase):
         self.assertEqual(resolve_entitlements(self.family, at=self.now).tier, "light")
 
     def test_feature_gate_checks_membership_before_entitlement(self):
+        self._mark_commercial_cutover()
         EntitlementGrant.objects.create(
             family=self.other,
             origin=EntitlementGrant.Origin.PROMOTION,
@@ -128,6 +157,7 @@ class EntitlementCoreTests(TestCase):
             require_capability(self.alice, self.other, "travel", at=self.now)
 
     def test_admin_grants_require_superadmin_and_are_audited_on_grant_and_revoke(self):
+        self._mark_commercial_cutover()
         with self.assertRaises(PermissionDenied):
             create_admin_grant(
                 actor=self.alice,
@@ -157,6 +187,8 @@ class EntitlementCoreTests(TestCase):
         self.assertNotIn("travel", resolve_entitlements(self.family, at=timezone.now()).capabilities)
 
     def test_admin_grant_validation_is_bounded_and_fail_closed(self):
+        with self.assertRaises(PermissionDenied):
+            create_admin_grant(actor=self.alice, family=self.family, plan_key="vip", reason="not allowed")
         with self.assertRaises(ValidationError):
             create_admin_grant(actor=self.superadmin, family=self.family, plan_key="unknown", reason="invalid")
         with self.assertRaises(ValidationError):
@@ -181,6 +213,7 @@ class EntitlementCoreTests(TestCase):
                 origin=EntitlementGrant.Origin.LEGACY_GRANDFATHERED,
             ).exists()
         )
+        self.assertEqual(resolve_entitlements(before_core, at=self.now).tier, "vip")
 
         between_core_and_cutover = Family.objects.create(name="Between Core And Cutover", slug="between-core-cutover")
         cutover_at = timezone.now()
@@ -258,8 +291,11 @@ class EntitlementCoreTests(TestCase):
         own = client.get(f"/api/entitlements/?family={self.family.id}")
         self.assertEqual(own.status_code, 200)
         self.assertEqual(own.data["family"], str(self.family.id))
-        self.assertEqual(own.data["tier"], "light")
+        self.assertEqual(own.data["tier"], "vip")
+        self.assertEqual(own.data["display_name"], "VIP")
+        self.assertEqual(own.data["origin_summary"], PRE_COMMERCIAL_ORIGIN_SUMMARY)
         self.assertIn("todo", own.data["capabilities"])
+        self.assertIn("travel", own.data["capabilities"])
 
         foreign = client.get(f"/api/entitlements/?family={self.other.id}")
         self.assertEqual(foreign.status_code, 403)

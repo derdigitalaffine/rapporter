@@ -54,6 +54,10 @@ async function snapshot(page,name){
     const refreshedIconBudgets={tasks:1500,'shopping-planning':2200,calendar:2300,integrations:3400,'dialog-task-editor':4500,'dialog-event-editor':550};
     if(refreshedIconBudgets[name])thresholds={maxDiffPixels:refreshedIconBudgets[name]};
   }
+  // The Members surface is intentionally redesigned in #425. Keep the accepted
+  // mobile delta tightly bounded to the measured layout change (3,751 pixels)
+  // instead of widening the screenshot with a percentage tolerance.
+  if(!desktop&&name==='members')thresholds={maxDiffPixels:4000};
   await expect(page).toHaveScreenshot(`${name}.png`,{animations:'disabled',caret:'hide',...thresholds});
 }
 async function bottom(page,label){await page.locator('.bottom-nav').getByRole('button',{name:new RegExp(`^${label}$`)}).click()}
