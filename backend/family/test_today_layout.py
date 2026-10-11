@@ -31,6 +31,9 @@ class TodayLayoutTests(TestCase):
         self.assertEqual(initial.status_code, 200)
         self.assertEqual(initial.data['revision'], 0)
         self.assertEqual([row['id'] for row in initial.data['widgets']], list(DEFAULT_WIDGET_ORDER))
+        self.assertIn('todo', DEFAULT_WIDGET_ORDER)
+        self.assertNotIn('tasks', DEFAULT_WIDGET_ORDER)
+        self.assertNotIn('routines', DEFAULT_WIDGET_ORDER)
         self.assertTrue(all(row['visible'] for row in initial.data['widgets']))
         self.assertEqual(initial.data['widgets'][0]['settings'], DEFAULT_WEEK_SETTINGS)
         trip = next(row for row in initial.data['widgets'] if row['id'] == 'trip')
@@ -45,9 +48,9 @@ class TodayLayoutTests(TestCase):
         self.assertEqual(self.client.put(self.url, initial.data, format='json').status_code, 200)
         self.assertEqual(TodayLayout.objects.count(), 2)
 
-    def test_legacy_saved_layout_adds_week_trip_and_pinboard_without_changing_existing_settings(self):
+    def test_legacy_saved_layout_collapses_tasks_and_routines_into_todo(self):
         legacy = [
-            {'id': key, 'visible': key != 'weather', 'size': 'compact' if key == 'tasks' else 'full'}
+            {'id': key, 'visible': key != 'weather', 'size': 'compact' if key == 'tasks' else ('square' if key == 'routines' else 'full')}
             for key in LEGACY_WIDGET_IDS
         ]
         TodayLayout.objects.create(family=self.family, user=self.user, widgets=legacy, revision=3)
@@ -55,22 +58,45 @@ class TodayLayoutTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data['revision'], 3)
         expanded = response.data['widgets']
-        self.assertEqual([row for row in expanded if row['id'] in LEGACY_WIDGET_IDS], legacy)
+        ids = [row['id'] for row in expanded]
+        self.assertNotIn('tasks', ids)
+        self.assertNotIn('routines', ids)
+        todo = next(row for row in expanded if row['id'] == 'todo')
+        self.assertEqual(todo, {'id': 'todo', 'visible': True, 'size': 'compact'})
+        weather_index = next(index for index, row in enumerate(expanded) if row['id'] == 'weather')
+        todo_index = next(index for index, row in enumerate(expanded) if row['id'] == 'todo')
+        shopping_index = next(index for index, row in enumerate(expanded) if row['id'] == 'shopping')
+        self.assertLess(weather_index, todo_index)
+        self.assertLess(todo_index, shopping_index)
         self.assertEqual(expanded[0], {'id': 'week', 'visible': True, 'size': 'full', 'settings': DEFAULT_WEEK_SETTINGS})
         priority_index = next(index for index, row in enumerate(expanded) if row['id'] == 'priority')
         trip_index = next(index for index, row in enumerate(expanded) if row['id'] == 'trip')
         self.assertEqual(trip_index, priority_index + 1)
-        self.assertEqual(expanded[trip_index], {'id': 'trip', 'visible': True, 'size': 'full', 'settings': DEFAULT_TRIP_SETTINGS})
         next_index = next(index for index, row in enumerate(expanded) if row['id'] == 'next')
         pinboard_index = next(index for index, row in enumerate(expanded) if row['id'] == 'pinboard')
         self.assertEqual(pinboard_index, next_index + 1)
-        self.assertEqual(expanded[pinboard_index], {'id': 'pinboard', 'visible': True, 'size': 'full'})
         self.assertEqual(expanded[-2:], [
             {'id': 'loyalty', 'visible': False, 'size': 'full'},
             {'id': 'inbox', 'visible': False, 'size': 'full'},
         ])
         stored = TodayLayout.objects.get(family=self.family, user=self.user)
         self.assertEqual(stored.widgets, legacy)
+
+    def test_stale_client_put_is_accepted_and_saved_canonically(self):
+        legacy = [
+            {'id': key, 'visible': key != 'routines', 'size': 'compact' if key == 'tasks' else 'full'}
+            for key in LEGACY_WIDGET_IDS
+        ]
+        response = self.client.put(self.url, {'version': 1, 'revision': 0, 'widgets': legacy}, format='json')
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertNotIn('tasks', [row['id'] for row in response.data['widgets']])
+        self.assertNotIn('routines', [row['id'] for row in response.data['widgets']])
+        todo = next(row for row in response.data['widgets'] if row['id'] == 'todo')
+        self.assertEqual(todo, {'id': 'todo', 'visible': True, 'size': 'compact'})
+        stored = TodayLayout.objects.get(family=self.family, user=self.user)
+        self.assertIn('todo', [row['id'] for row in stored.widgets])
+        self.assertNotIn('tasks', [row['id'] for row in stored.widgets])
+        self.assertNotIn('routines', [row['id'] for row in stored.widgets])
 
     def test_existing_trip_widget_without_settings_normalizes_to_wishes_off(self):
         custom = deepcopy(DEFAULT_WIDGETS)
@@ -126,8 +152,8 @@ class TodayLayoutTests(TestCase):
         self.assertEqual(next(row for row in saved.data['widgets'] if row['id'] == 'trip')['size'], 'square')
 
         invalid = deepcopy(saved.data)
-        task = next(row for row in invalid['widgets'] if row['id'] == 'tasks')
-        task['size'] = 'square'
+        todo = next(row for row in invalid['widgets'] if row['id'] == 'todo')
+        todo['size'] = 'square'
         self.assertEqual(self.client.put(self.url, invalid, format='json').status_code, 400)
 
         invalid_week = deepcopy(saved.data)

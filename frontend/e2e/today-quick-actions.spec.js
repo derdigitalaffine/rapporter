@@ -12,14 +12,14 @@ async function boot(page,viewport={width:390,height:844}){
 const isContentMutation=request=>['POST','PATCH','DELETE'].includes(request.method())&&request.url().includes('/api/')&&!request.url().includes('/api/push/badge/');
 
 for(const viewport of [{width:390,height:844},{width:844,height:390}]){
-  test(`Today task module action opens editor in one tap and saves without navigation at ${viewport.width}x${viewport.height}`,async({page})=>{
+  test(`Today To-do action opens task editor in one tap and saves without navigation at ${viewport.width}x${viewport.height}`,async({page})=>{
     let created=null;await boot(page,viewport);
     await page.route('**/api/tasks/',async route=>{
       if(route.request().method()!=='POST')return route.fallback();
       created=route.request().postDataJSON();
       return route.fulfill({status:201,contentType:'application/json',body:JSON.stringify({id:'today-task',...created,completed_at:null})});
     });
-    await page.locator('[data-today-widget="tasks"]').getByRole('button',{name:/Aufgabe hinzufügen|Add task/}).click();
+    await page.getByTestId('today-todos').getByRole('button',{name:/Aufgabe hinzufügen|Add task/}).click();
     await expect(page).toHaveURL(/127\.0\.0\.1:4173\/$/);
     const dialog=page.getByRole('dialog');
     await expect(dialog.getByRole('heading',{name:/Aufgabe hinzufügen|Add task/})).toBeVisible();

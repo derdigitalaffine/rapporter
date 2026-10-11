@@ -18,6 +18,13 @@ function dashboardFor(familyId){
   };
 }
 
+function actionsFor(familyId){
+  return dashboardFor(familyId).tasks.map(task=>{
+    const primary={id:'complete',method:'POST',href:`/api/tasks/${task.id}/toggle/`};
+    return {id:`task:${task.id}`,family:familyId,kind:'task',title:task.title,state:'open',due_at:null,next_due_at:null,completed_at:null,assignee:{id:task.assignee,username:task.assignee_name},priority:task.priority,urgency:task.priority==='high'?'high':'normal',context:{source:'manual',list:{id:task.task_list,name:task.list_name},workflow:null},repeat:null,tags:[],primary_action:primary,allowed_actions:[primary,{id:'edit',method:'PATCH',href:`/api/tasks/${task.id}/`}],deep_link:`/?page=tasks&task=${task.id}`,ranking:{version:'actions-v1',bucket:5,reasons:['normal']}};
+  });
+}
+
 async function setupTwoFamilies(page){
   await installApiMocks(page,{dismissOnboarding:true});
   await page.route('**/api/families/**',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify([familyOne,familyTwo])}));
@@ -25,9 +32,13 @@ async function setupTwoFamilies(page){
     const familyId=new URL(route.request().url()).searchParams.get('family')||'family-1';
     return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(dashboardFor(familyId))});
   });
+  await page.route('**/api/actions/**',route=>{
+    const url=new URL(route.request().url());const familyId=url.searchParams.get('family')||'family-1';const scope=url.searchParams.get('scope')||'today';const results=actionsFor(familyId);
+    return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({count:results.length,next:null,previous:null,results,ranking_version:'actions-v1',scope})});
+  });
 }
 
-const taskRows=page=>page.locator('.today-task-row');
+const todo=page=>page.getByTestId('today-todos');
 
 test('family switcher isolates dashboard data and persists selection',async({page})=>{
   await setupTwoFamilies(page);
@@ -36,22 +47,22 @@ test('family switcher isolates dashboard data and persists selection',async({pag
 
   const switcher=page.locator('.family-switcher select');
   await expect(switcher).toHaveValue('family-1');
-  await expect(taskRows(page).getByText('Wäsche aufhängen',{exact:true})).toBeVisible();
+  await expect(todo(page).getByText('Wäsche aufhängen',{exact:true})).toBeVisible();
   await expect(page.getByText('Arzt Musterfamilie',{exact:true})).toBeVisible();
-  await expect(taskRows(page).getByText('Hund füttern',{exact:true})).toHaveCount(0);
+  await expect(todo(page).getByText('Hund füttern',{exact:true})).toHaveCount(0);
   await expect(page.getByText('Training Nebenfamilie',{exact:true})).toHaveCount(0);
 
   await switcher.selectOption('family-2');
   await expect(switcher).toHaveValue('family-2');
-  await expect(taskRows(page).getByText('Hund füttern',{exact:true})).toBeVisible();
+  await expect(todo(page).getByText('Hund füttern',{exact:true})).toBeVisible();
   await expect(page.getByText('Training Nebenfamilie',{exact:true})).toBeVisible();
-  await expect(taskRows(page).getByText('Wäsche aufhängen',{exact:true})).toHaveCount(0);
+  await expect(todo(page).getByText('Wäsche aufhängen',{exact:true})).toHaveCount(0);
   await expect(page.getByText('Arzt Musterfamilie',{exact:true})).toHaveCount(0);
 
   await page.reload();
   await page.waitForLoadState('networkidle');
   await expect(page.locator('.family-switcher select')).toHaveValue('family-2');
-  await expect(taskRows(page).getByText('Hund füttern',{exact:true})).toBeVisible();
+  await expect(todo(page).getByText('Hund füttern',{exact:true})).toBeVisible();
   await expect(page.getByText('Training Nebenfamilie',{exact:true})).toBeVisible();
-  await expect(taskRows(page).getByText('Wäsche aufhängen',{exact:true})).toHaveCount(0);
+  await expect(todo(page).getByText('Wäsche aufhängen',{exact:true})).toHaveCount(0);
 });
