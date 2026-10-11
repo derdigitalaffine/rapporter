@@ -12,7 +12,5 @@ from .smtp_config import public_config
 def superadmin_mail_health(request):
     """Expose only the redacted operational mail summary to superadmins."""
     summary = mail_health_summary()
-    effective = public_config()
-    summary["configured"] = effective["configured"]
-    summary["configuration_source"] = effective["effective_source"]
+    summary["configured"] = public_config()["configured"]
     return Response(summary)
