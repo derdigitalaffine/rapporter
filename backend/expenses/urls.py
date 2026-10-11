@@ -1,10 +1,11 @@
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
-from .views import ExpenseViewSet, SettlementViewSet
+from .views import ExpenseLedgerViewSet, ExpenseViewSet, SettlementViewSet
 from .receipt_views import receipt_file
 
 router = DefaultRouter()
+router.register("expense-ledgers", ExpenseLedgerViewSet, basename="expense-ledger")
 router.register("expenses", ExpenseViewSet, basename="expense")
 router.register("expense-settlements", SettlementViewSet, basename="expense-settlement")
 

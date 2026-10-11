@@ -5,6 +5,44 @@ from django.utils import timezone
 from family.models import Family, Membership, TimestampedModel
 
 
+DEFAULT_LEDGER_NAME = "Familie – laufend"
+
+
+class ExpenseLedger(TimestampedModel):
+    family = models.ForeignKey(Family, on_delete=models.CASCADE, related_name="expense_ledgers")
+    name = models.CharField(max_length=120)
+    base_currency = models.CharField(max_length=3, default="EUR")
+    budget_amount = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    is_default = models.BooleanField(default=False)
+    archived = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ["-is_default", "created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["family"],
+                condition=models.Q(is_default=True),
+                name="expense_one_default_ledger",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(budget_amount__isnull=True) | models.Q(budget_amount__gte=0),
+                name="expense_ledger_budget_nonneg",
+            ),
+        ]
+
+
+def get_default_expense_ledger(family):
+    ledger, _ = ExpenseLedger.objects.get_or_create(
+        family=family,
+        is_default=True,
+        defaults={
+            "name": DEFAULT_LEDGER_NAME,
+            "base_currency": "EUR",
+        },
+    )
+    return ledger
+
+
 class Expense(TimestampedModel):
     class Status(models.TextChoices):
         DRAFT = "draft", "Draft"
@@ -23,6 +61,13 @@ class Expense(TimestampedModel):
         FAILED = "failed", "Failed"
 
     family = models.ForeignKey(Family, on_delete=models.CASCADE, related_name="expenses")
+    ledger = models.ForeignKey(
+        ExpenseLedger,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="expenses",
+    )
     title = models.CharField(max_length=180, blank=True)
     merchant = models.CharField(max_length=180, blank=True)
     occurred_at = models.DateTimeField(default=timezone.now)
@@ -113,6 +158,13 @@ class ReceiptExtraction(TimestampedModel):
 
 class Settlement(TimestampedModel):
     family = models.ForeignKey(Family, on_delete=models.CASCADE, related_name="expense_settlements")
+    ledger = models.ForeignKey(
+        ExpenseLedger,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="settlements",
+    )
     from_member = models.ForeignKey(Membership, on_delete=models.PROTECT, related_name="settlements_sent")
     to_member = models.ForeignKey(Membership, on_delete=models.PROTECT, related_name="settlements_received")
     amount = models.DecimalField(max_digits=12, decimal_places=2)
