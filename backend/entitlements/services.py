@@ -61,26 +61,12 @@ def _active_grants(family, at):
     )
 
 
-def resolve_entitlements(family, *, at=None):
-    """Resolve licensing only; module activation remains a separate product state.
-
-    Before the explicit commercial cutover all families intentionally receive the
-    full VIP capability set. The cutover marker is the single switch that hands
-    access control back to persisted grants/default Light capabilities. Existing
-    families are grandfathered by ``apply_commercial_cutover`` at that boundary,
-    while families created afterwards can follow future commercial policy without
-    another resolver special case.
-    """
-    at = at or timezone.now()
-    definitions = _definitions()
-    pre_commercial_vip = not EntitlementCutover.objects.filter(pk=COMMERCIAL_CUTOVER_KEY).exists()
+def _snapshot_from(definitions, pre_commercial_vip, grants):
     capabilities = (
         set(definitions)
         if pre_commercial_vip
         else {key for key, definition in definitions.items() if definition.default_light}
     )
-    grants = _active_grants(family, at)
-
     for grant in grants:
         if grant.plan_key in FULL_ACCESS_PLAN_KEYS:
             capabilities.update(definitions)
@@ -114,6 +100,54 @@ def resolve_entitlements(family, *, at=None):
         origin_summary=origin_summary,
         origins=origins,
     )
+
+
+def resolve_entitlements(family, *, at=None):
+    """Resolve licensing only; module activation remains a separate product state.
+
+    Before the explicit commercial cutover all families intentionally receive the
+    full VIP capability set. The cutover marker is the single switch that hands
+    access control back to persisted grants/default Light capabilities. Existing
+    families are grandfathered by ``apply_commercial_cutover`` at that boundary,
+    while families created afterwards can follow future commercial policy without
+    another resolver special case.
+    """
+    at = at or timezone.now()
+    definitions = _definitions()
+    pre_commercial_vip = not EntitlementCutover.objects.filter(pk=COMMERCIAL_CUTOVER_KEY).exists()
+    return _snapshot_from(definitions, pre_commercial_vip, _active_grants(family, at))
+
+
+def resolve_entitlements_for_families(families, *, at=None):
+    """Resolve many families with a constant entitlement query count.
+
+    This preserves the exact single-family resolver semantics while loading the
+    capability catalog, commercial-cutover marker and all active grants only once.
+    The returned mapping is keyed by family primary key.
+    """
+    family_list = list(families)
+    if not family_list:
+        return {}
+    at = at or timezone.now()
+    definitions = _definitions()
+    pre_commercial_vip = not EntitlementCutover.objects.filter(pk=COMMERCIAL_CUTOVER_KEY).exists()
+    grants = list(
+        EntitlementGrant.objects.filter(
+            family_id__in=[family.pk for family in family_list],
+            active=True,
+            revoked_at__isnull=True,
+        )
+        .filter(Q(starts_at__isnull=True) | Q(starts_at__lte=at))
+        .filter(Q(ends_at__isnull=True) | Q(ends_at__gt=at))
+        .order_by("family_id", "created_at", "id")
+    )
+    grants_by_family = {}
+    for grant in grants:
+        grants_by_family.setdefault(grant.family_id, []).append(grant)
+    return {
+        family.pk: _snapshot_from(definitions, pre_commercial_vip, grants_by_family.get(family.pk, ()))
+        for family in family_list
+    }
 
 
 def has_capability(family, capability_key, *, at=None):
