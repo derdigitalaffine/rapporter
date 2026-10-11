@@ -8,6 +8,7 @@ class FamilyConfig(AppConfig):
     def ready(self):
         # Feature models live in separate modules to keep the core model file merge-friendly.
         from . import models as core_models
+        from .birthday_context_models import BirthdayOccasion
         from .board_models import BoardImage, BoardPost
         from .context_models import ContextLink
         from .family_master_models import FamilyMasterData
@@ -15,6 +16,7 @@ class FamilyConfig(AppConfig):
         from .shopping_models import ShoppingListStoreProfile, ShoppingStore, ShoppingTemplate, ShoppingTemplateItem
         from .today_models import TodayLayout
         from .travel_models import Trip, TripPhoto
+        core_models.BirthdayOccasion = BirthdayOccasion
         core_models.BoardPost = BoardPost
         core_models.BoardImage = BoardImage
         core_models.ContextLink = ContextLink
