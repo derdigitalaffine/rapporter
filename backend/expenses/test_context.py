@@ -103,14 +103,37 @@ class ExpenseLedgerTripContextTests(TestCase):
         self.assertEqual(response.data["code"], "context_object_unavailable")
         self.assertFalse(ContextLink.objects.exists())
 
-    def test_guest_can_read_ledger_context_but_cannot_create_link(self):
+    def test_guest_can_read_existing_ledger_context_but_cannot_create_link(self):
+        created = self.client.post("/api/context-links/", self.payload(), format="json")
+        self.assertEqual(created.status_code, 201, created.data)
+
         guest_client = APIClient()
         guest_client.force_authenticate(self.guest)
+        listing = guest_client.get(
+            "/api/context-links/",
+            {
+                "family": str(self.family.id),
+                "anchor_type": "expense_ledger",
+                "anchor_id": str(self.ledger.id),
+            },
+        )
+        self.assertEqual(listing.status_code, 200, listing.data)
+        self.assertEqual(listing.data["count"], 1)
+        self.assertEqual(listing.data["results"][0]["relation"], "expense.trip")
 
-        blocked = guest_client.post("/api/context-links/", self.payload(), format="json")
+        other_ledger = ExpenseLedger.objects.create(
+            family=self.family,
+            name="Winterurlaub",
+            base_currency="EUR",
+        )
+        blocked = guest_client.post(
+            "/api/context-links/",
+            self.payload(ledger=other_ledger),
+            format="json",
+        )
         self.assertEqual(blocked.status_code, 403, blocked.data)
         self.assertEqual(blocked.data["code"], "context_link_forbidden")
-        self.assertFalse(ContextLink.objects.exists())
+        self.assertEqual(ContextLink.objects.count(), 1)
 
     def test_archived_ledger_keeps_lifecycle_and_existing_link_can_be_removed(self):
         created = self.client.post("/api/context-links/", self.payload(), format="json")
