@@ -1,0 +1,117 @@
+{
+  "schema_version": 1,
+  "version": "0.2.0",
+  "released_at": "2026-10-11",
+  "features": {
+    "de": [
+      {
+        "id": "family-access-tiers",
+        "title": "Familienzugang auf einen Blick",
+        "description": "Im Bereich Mehr ist jetzt sichtbar, welchen FamilyOS-Zugang eure Familie nutzt und welche Premium-Bereiche verfügbar sind."
+      },
+      {
+        "id": "more-languages",
+        "title": "Mehr Sprachen",
+        "description": "FamilyOS unterstützt zusätzlich Französisch, Niederländisch und Thai mit einer durchgängigen Sprachwahl."
+      },
+      {
+        "id": "todo-quick-actions",
+        "title": "Schnellere To-dos",
+        "description": "Aufgaben und Routinen teilen sich jetzt einheitliche Schnellaktionen, inklusive direktem Rückgängig und einem gemeinsamen Heute-Widget."
+      },
+      {
+        "id": "trip-expenses",
+        "title": "Reisekosten direkt bei der Reise",
+        "description": "Reisen können jetzt einen eigenen Ausgabenbereich öffnen, ohne einen zweiten Kosten-Datenbestand anzulegen."
+      }
+    ],
+    "en": [
+      {
+        "id": "family-access-tiers",
+        "title": "Family access at a glance",
+        "description": "The More area now shows which FamilyOS access tier your family uses and which premium areas are available."
+      },
+      {
+        "id": "more-languages",
+        "title": "More languages",
+        "description": "FamilyOS now also supports French, Dutch and Thai with a consistent language selection flow."
+      },
+      {
+        "id": "todo-quick-actions",
+        "title": "Faster to-dos",
+        "description": "Tasks and routines now share consistent quick actions, including immediate undo and one combined Today widget."
+      },
+      {
+        "id": "trip-expenses",
+        "title": "Trip expenses in context",
+        "description": "Trips can now open their own expense ledger without creating a second travel-specific expense data model."
+      }
+    ],
+    "fr": [
+      {
+        "id": "family-access-tiers",
+        "title": "L’accès familial en un coup d’œil",
+        "description": "La section Plus affiche désormais le niveau d’accès FamilyOS de votre famille et les espaces premium disponibles."
+      },
+      {
+        "id": "more-languages",
+        "title": "Plus de langues",
+        "description": "FamilyOS prend désormais aussi en charge le français, le néerlandais et le thaï avec une sélection de langue cohérente."
+      },
+      {
+        "id": "todo-quick-actions",
+        "title": "Des tâches plus rapides",
+        "description": "Les tâches et routines partagent maintenant les mêmes actions rapides, avec annulation immédiate et un widget Aujourd’hui commun."
+      },
+      {
+        "id": "trip-expenses",
+        "title": "Dépenses liées aux voyages",
+        "description": "Un voyage peut maintenant ouvrir son propre registre de dépenses sans créer un second modèle de données spécifique au voyage."
+      }
+    ],
+    "nl": [
+      {
+        "id": "family-access-tiers",
+        "title": "Gezinstoegang in één oogopslag",
+        "description": "In Meer zie je nu welk FamilyOS-toegangsniveau je gezin gebruikt en welke premiumonderdelen beschikbaar zijn."
+      },
+      {
+        "id": "more-languages",
+        "title": "Meer talen",
+        "description": "FamilyOS ondersteunt nu ook Frans, Nederlands en Thai met een consistente taalkeuze."
+      },
+      {
+        "id": "todo-quick-actions",
+        "title": "Snellere to-do’s",
+        "description": "Taken en routines delen nu dezelfde snelle acties, inclusief direct ongedaan maken en één gezamenlijke Vandaag-widget."
+      },
+      {
+        "id": "trip-expenses",
+        "title": "Reiskosten bij de reis",
+        "description": "Reizen kunnen nu hun eigen uitgavenboek openen zonder een tweede reisspecifiek uitgavenmodel te maken."
+      }
+    ],
+    "th": [
+      {
+        "id": "family-access-tiers",
+        "title": "ดูสิทธิ์ของครอบครัวได้ในทันที",
+        "description": "ในส่วนเพิ่มเติม ตอนนี้คุณเห็นระดับการเข้าถึง FamilyOS ของครอบครัวและพื้นที่พรีเมียมที่ใช้งานได้แล้ว"
+      },
+      {
+        "id": "more-languages",
+        "title": "รองรับภาษาเพิ่มขึ้น",
+        "description": "FamilyOS รองรับภาษาฝรั่งเศส ดัตช์ และไทยแล้ว พร้อมการเลือกภาษาที่สอดคล้องกันทั่วทั้งแอป"
+      },
+      {
+        "id": "todo-quick-actions",
+        "title": "จัดการสิ่งที่ต้องทำได้เร็วขึ้น",
+        "description": "งานและกิจวัตรใช้การทำงานด่วนแบบเดียวกันแล้ว พร้อมเลิกทำได้ทันทีและวิดเจ็ตวันนี้แบบรวม"
+      },
+      {
+        "id": "trip-expenses",
+        "title": "ค่าใช้จ่ายของทริปอยู่ในบริบทเดียวกัน",
+        "description": "ทริปสามารถเปิดบัญชีค่าใช้จ่ายของตนเองได้ โดยไม่ต้องสร้างโมเดลข้อมูลค่าใช้จ่ายสำหรับการเดินทางแยกอีกชุด"
+      }
+    ]
+  }
+}
