@@ -20,6 +20,7 @@ from auth_identity.service import (
 )
 
 from .auth_views import set_user_cookies
+from .invitation_audit import record_invite_audit, record_invite_expired_once
 from .invitation_serializers import SafeFamilyInvitationSerializer
 from .invitation_service import (
     invitation_token_digest,
@@ -85,11 +86,15 @@ def public_invite(invite):
     }
 
 
+def _invite_email_key(value):
+    return normalize_email(value).casefold()
+
+
 def validate_invite_email(invite, email):
     if not invite.email:
         return True
     try:
-        return normalize_email(invite.email) == normalize_email(email)
+        return _invite_email_key(invite.email) == _invite_email_key(email)
     except EmailIdentityError:
         return False
 
@@ -101,7 +106,7 @@ def verified_invite_identity_matches(invite, user):
     if not identity or not identity.verified_at:
         return False
     try:
-        return normalize_email(invite.email) == identity.email_normalized
+        return _invite_email_key(invite.email) == _invite_email_key(identity.email_normalized)
     except EmailIdentityError:
         return False
 
@@ -128,7 +133,14 @@ def accept_for_user(invite, user, display_name=""):
     invite.accepted_at = timezone.now()
     invite.accepted_by = user
     invite.save(update_fields=["accepted_at", "accepted_by", "updated_at"])
+    record_invite_audit("invite.accepted", invite, actor=user)
     return membership
+
+
+def _unavailable(invite):
+    if invite is not None:
+        record_invite_expired_once(invite)
+    return Response({"detail": INVITE_UNAVAILABLE_DETAIL}, status=status.HTTP_404_NOT_FOUND)
 
 
 class FamilyInvitationViewSet(viewsets.ModelViewSet):
@@ -178,6 +190,7 @@ class FamilyInvitationViewSet(viewsets.ModelViewSet):
             return Response({"detail": "Bereits angenommene Einladung kann nicht widerrufen werden."}, status=status.HTTP_400_BAD_REQUEST)
         invite.revoked_at = timezone.now()
         invite.save(update_fields=["revoked_at", "updated_at"])
+        record_invite_audit("invite.revoked", invite, actor=request.user)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(detail=True, methods=["post"])
@@ -187,7 +200,7 @@ class FamilyInvitationViewSet(viewsets.ModelViewSet):
         if not decision.allowed:
             return _rate_limited_response(decision)
         try:
-            invite, _token = rotate_invitation(invite)
+            invite, _token = rotate_invitation(invite, actor=request.user)
         except ValueError as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(self.get_serializer(invite).data)
@@ -201,7 +214,7 @@ def invitation_info(request, token):
         return _rate_limited_response(decision)
     invite = resolve_invitation(token)
     if not invite or not invite.is_active:
-        return Response({"detail": INVITE_UNAVAILABLE_DETAIL}, status=status.HTTP_404_NOT_FOUND)
+        return _unavailable(invite)
     return Response(public_invite(invite))
 
 
@@ -215,7 +228,7 @@ def invitation_register(request, token):
     with transaction.atomic():
         invite = resolve_invitation(token, for_update=True)
         if not invite or not invite.is_active:
-            return Response({"detail": INVITE_UNAVAILABLE_DETAIL}, status=status.HTTP_404_NOT_FOUND)
+            return _unavailable(invite)
         password = request.data.get("password") or ""
         display_name = (request.data.get("display_name") or invite.display_name or "").strip()
         legacy_username = (request.data.get("username") or "").strip()
@@ -267,7 +280,7 @@ def invitation_accept(request, token):
     with transaction.atomic():
         invite = resolve_invitation(token, for_update=True)
         if not invite or not invite.is_active:
-            return Response({"detail": INVITE_UNAVAILABLE_DETAIL}, status=status.HTTP_404_NOT_FOUND)
+            return _unavailable(invite)
         if not verified_invite_identity_matches(invite, request.user):
             return Response(
                 {"detail": "Diese Einladung erfordert die passende verifizierte E-Mail-Adresse."},
