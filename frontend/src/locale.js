@@ -1,5 +1,8 @@
+const LOCALES={de:'de-DE',en:'en-GB',fr:'fr-FR',nl:'nl-NL',th:'th-TH'};
+
 export function appLocale(language='de'){
- return String(language).toLowerCase().startsWith('en')?'en-GB':'de-DE';
+ const code=String(language||'de').toLowerCase().split('-')[0];
+ return LOCALES[code]||LOCALES.de;
 }
 
 export function formatDateTime(language,value,options={}){

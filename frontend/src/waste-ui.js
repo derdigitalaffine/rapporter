@@ -27,8 +27,16 @@ export function wasteKind(event){return wasteKinds(event)[0]||'unknown'}
 export function wasteClass(event){return `waste-${wasteKind(event)}`}
 export function isWasteEvent(event){return String(event?.type||'').includes('waste')}
 
+const WASTE_LABELS={
+ de:{rest:'Restmüll',yellow:'Gelbe Tonne',bio:'Biomüll',paper:'Papier',unknown:'Müllabfuhr'},
+ en:{rest:'Residual waste',yellow:'Yellow bin',bio:'Organic waste',paper:'Paper',unknown:'Waste collection'},
+ fr:{rest:'Ordures ménagères',yellow:'Bac jaune',bio:'Biodéchets',paper:'Papier',unknown:'Collecte des déchets'},
+ nl:{rest:'Restafval',yellow:'Gele bak',bio:'Gft-afval',paper:'Papier',unknown:'Afvalinzameling'},
+ th:{rest:'ขยะทั่วไป',yellow:'ถังขยะรีไซเคิล',bio:'ขยะอินทรีย์',paper:'กระดาษ',unknown:'การเก็บขยะ'},
+};
+
 export function wasteKindLabel(kind,language='de'){
- const de={rest:'Restmüll',yellow:'Gelbe Tonne',bio:'Biomüll',paper:'Papier',unknown:'Müllabfuhr'};
- const en={rest:'Residual waste',yellow:'Yellow bin',bio:'Organic waste',paper:'Paper',unknown:'Waste collection'};
- return (String(language).startsWith('de')?de:en)[kind]||(String(language).startsWith('de')?de.unknown:en.unknown);
+ const code=String(language||'de').toLowerCase().split('-')[0];
+ const labels=WASTE_LABELS[code]||WASTE_LABELS.de;
+ return labels[kind]||labels.unknown;
 }

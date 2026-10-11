@@ -34,3 +34,29 @@ test('DE to EN also changes calendar and integration locale-sensitive copy',asyn
  await expect(page.getByText(/Nächster automatischer Versuch/)).toHaveCount(0);
  await expect(page.locator('.integration-recovery small')).toContainText(/in \d+ (?:minute|minutes|hour|hours)/);
 });
+
+test('language control cycles through French Dutch and Thai and persists Thai',async({page})=>{
+ await boot(page);
+ await switchToEnglish(page);
+
+ await page.getByRole('button',{name:/Language/i}).click();
+ await expect(page.getByRole('heading',{name:'Plus',exact:true})).toBeVisible();
+ await expect(page.getByRole('button',{name:/Langue/i})).toBeVisible();
+
+ await page.getByRole('button',{name:/Langue/i}).click();
+ await expect(page.getByRole('heading',{name:'Meer',exact:true})).toBeVisible();
+ await expect(page.getByRole('button',{name:/Taal/i})).toBeVisible();
+
+ await page.getByRole('button',{name:/Taal/i}).click();
+ await expect(page.getByRole('heading',{name:'เพิ่มเติม',exact:true})).toBeVisible();
+ await expect(page.getByRole('button',{name:/ภาษา/})).toBeVisible();
+ await expect.poll(()=>page.evaluate(()=>localStorage.getItem('famuhle-language'))).toBe('th');
+
+ await page.locator('.bottom-nav').getByRole('button',{name:'ปฏิทิน',exact:true}).click();
+ await expect(page.getByText('ปฏิทินครอบครัว',{exact:true})).toBeVisible();
+ await expect(page.getByRole('button',{name:'สัปดาห์',exact:true})).toHaveAttribute('aria-pressed','true');
+
+ await page.reload();
+ await page.waitForLoadState('networkidle');
+ await expect.poll(()=>page.evaluate(()=>localStorage.getItem('famuhle-language'))).toBe('th');
+});
