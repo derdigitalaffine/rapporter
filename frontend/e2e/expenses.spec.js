@@ -112,8 +112,8 @@ async function installExpenseMocks(page){
   return store;
 }
 
-async function boot(page,path='/'){
-  await installApiMocks(page,{dismissOnboarding:true});
+async function boot(page,path='/',options={}){
+  await installApiMocks(page,{dismissOnboarding:true,...options});
   const store=await installExpenseMocks(page);
   await page.goto(path);await page.waitForLoadState('networkidle');await expect(page.locator('.app-shell')).toBeVisible();
   return store;
@@ -232,8 +232,7 @@ test('expenses · receipt upload remains available from quick add and becomes OC
 });
 
 test('expenses · shared funding controls are keyboard reachable and available in English',async({page})=>{
-  await page.addInitScript(()=>localStorage.setItem('famuhle-language','en'));
-  await boot(page,'/?page=expenses');
+  await boot(page,'/?page=expenses',{language:'en'});
   await page.locator('.expenses-toolbar').getByRole('button',{name:'Expense',exact:true}).click();
   const dialog=page.getByRole('dialog');
   await dialog.getByLabel('Amount').fill('15.00');
