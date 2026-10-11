@@ -4,7 +4,7 @@ from django.dispatch import receiver
 
 from .domain_notifications import notify_domain_event
 from .memory import remember_entry
-from .models import FamilyEvent, InboxItem, Membership, RoutineLog, ShoppingItem, ShoppingList, Task, TaskList
+from .models import FamilyEvent, InboxItem, IntegrationSource, Membership, RoutineLog, ShoppingItem, ShoppingList, Task, TaskList
 from .request_context import current_actor, current_path, mark_notification_once
 
 
@@ -16,6 +16,9 @@ def _system_request():
     path=current_path();return "/automation-rules/" in path or "/integration-hub/" in path or "/integrations/" in path
 
 def _member_name(membership):return membership.display_name or membership.user.get_short_name() or membership.user.username
+
+def _calendar_projection_source(source):
+    return source.kind in {IntegrationSource.Kind.ICS, IntegrationSource.Kind.WASTE}
 
 @receiver(pre_save,sender=Task)
 def task_before_save(sender,instance,**kwargs):instance._notification_previous=_previous(instance,Task,["title","notes","due_at","completed_at","assignee_id","task_list_id","priority"])
@@ -71,6 +74,8 @@ def shopping_item_after_delete(sender,instance,**kwargs):
 def family_event_before_save(sender,instance,**kwargs):instance._notification_previous=_previous(instance,FamilyEvent,["title","starts_at","ends_at","payload","type","source_id"])
 @receiver(post_save,sender=FamilyEvent)
 def family_event_after_save(sender,instance,created,**kwargs):
+    if instance.source_id and instance.external_id and _calendar_projection_source(instance.source):
+        FamilyEvent.objects.filter(family_id=instance.family_id,source__isnull=True,external_id=instance.external_id,type=instance.type).delete()
     actor=current_actor()
     if not actor or instance.source_id or instance.type!="calendar.event":return
     context={"item":instance.title,"event_id":instance.id}
@@ -80,7 +85,10 @@ def family_event_after_save(sender,instance,created,**kwargs):
 @receiver(pre_delete,sender=FamilyEvent)
 def family_event_before_delete(sender,instance,**kwargs):
     actor=current_actor()
-    if actor and not instance.source_id and instance.type=="calendar.event":notify_domain_event(instance.family,"calendar.event.deleted",actor=actor,context={"item":instance.title})
+    if actor and not instance.source_id and not instance.external_id and instance.type=="calendar.event":notify_domain_event(instance.family,"calendar.event.deleted",actor=actor,context={"item":instance.title})
+@receiver(pre_delete,sender=IntegrationSource)
+def integration_source_before_delete(sender,instance,**kwargs):
+    FamilyEvent.objects.filter(source=instance).delete()
 @receiver(post_save,sender=RoutineLog)
 def routine_log_after_save(sender,instance,created,**kwargs):
     actor=current_actor() or instance.done_by
