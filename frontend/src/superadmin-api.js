@@ -31,7 +31,13 @@ async function parseResponse(response){if(response.status===204)return null;let 
 
 export async function adminLogin(identifier,password){const response=await request('/auth/login/',{method:'POST',body:JSON.stringify({identifier:String(identifier||'').trim(),password})});const data=await parseResponse(response);resetExpired();return data}
 export async function adminLogout(){try{await request('/auth/logout/',{method:'POST'})}finally{resetExpired()}}
-export async function adminSession(){const response=await request('/auth/session/');if(!response.ok)throw apiError(response,null);resetExpired();return response.json()}
+export async function adminSession(){
+  let response=await request('/auth/session/');
+  if(response.status===401&&await refreshAdmin())response=await request('/auth/session/');
+  if(!response.ok)throw apiError(response,null);
+  resetExpired();
+  return response.json();
+}
 export async function adminApi(path,options={}){
   let response=await request(path,options);
   if(response.status===401&&await refreshAdmin())response=await request(path,options);
