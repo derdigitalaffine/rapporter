@@ -113,6 +113,84 @@ def create_primary_identity(user, email: str, *, verified=False) -> EmailIdentit
         raise EmailConflictError("Diese E-Mail-Adresse kann nicht verwendet werden.") from exc
 
 
+def set_primary_email_direct(user, email: str) -> EmailIdentity:
+    """Privileged correction of the canonical login/recovery email.
+
+    This deliberately bypasses the end-user verification round-trip and must
+    therefore only be called from a separately protected administrative flow.
+    Existing password-reset state is invalidated whenever an existing primary
+    identity is reused.
+    """
+    normalized = normalize_email(email)
+    if _email_conflicts(normalized, user_id=user.pk):
+        raise EmailConflictError("Diese E-Mail-Adresse kann nicht verwendet werden.")
+
+    User = get_user_model()
+    try:
+        with transaction.atomic():
+            locked_user = User.objects.select_for_update().get(pk=user.pk)
+            identities = list(EmailIdentity.objects.select_for_update().filter(user=locked_user))
+            primary = next((item for item in identities if item.kind == EmailIdentity.Kind.PRIMARY), None)
+            pending = next((item for item in identities if item.kind == EmailIdentity.Kind.PENDING), None)
+            now = timezone.now()
+
+            if pending and pending.email_normalized == normalized:
+                if primary:
+                    primary.delete()
+                pending.kind = EmailIdentity.Kind.PRIMARY
+                pending.verified_at = now
+                pending.verification_sent_at = None
+                pending.password_reset_version += 1
+                pending.password_reset_requested_at = None
+                pending.save(
+                    update_fields=[
+                        "kind",
+                        "verified_at",
+                        "verification_sent_at",
+                        "password_reset_version",
+                        "password_reset_requested_at",
+                        "updated_at",
+                    ]
+                )
+                identity = pending
+            elif primary:
+                if pending:
+                    pending.delete()
+                primary.email = normalized
+                primary.email_normalized = normalized
+                primary.verified_at = now
+                primary.password_reset_version += 1
+                primary.password_reset_requested_at = None
+                primary.save(
+                    update_fields=[
+                        "email",
+                        "email_normalized",
+                        "verified_at",
+                        "password_reset_version",
+                        "password_reset_requested_at",
+                        "updated_at",
+                    ]
+                )
+                identity = primary
+            else:
+                if pending:
+                    pending.delete()
+                identity = EmailIdentity.objects.create(
+                    user=locked_user,
+                    kind=EmailIdentity.Kind.PRIMARY,
+                    email=normalized,
+                    email_normalized=normalized,
+                    verified_at=now,
+                )
+
+            if locked_user.email != normalized:
+                locked_user.email = normalized
+                locked_user.save(update_fields=["email"])
+            return identity
+    except IntegrityError as exc:
+        raise EmailConflictError("Diese E-Mail-Adresse kann nicht verwendet werden.") from exc
+
+
 def request_pending_email(user, email: str) -> EmailIdentity:
     normalized = normalize_email(email)
     current = primary_identity(user)
