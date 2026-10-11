@@ -4,6 +4,7 @@ import {translation as nl,notes as nlNotes} from './i18n-extra/nl';
 import {translation as th,notes as thNotes} from './i18n-extra/th';
 import {nextAppLanguage,normalizeAppLanguage} from './language-options';
 
+const LANGUAGE_KEY='famuhle-language';
 const bundles={fr:{translation:fr,notes:frNotes},nl:{translation:nl,notes:nlNotes},th:{translation:th,notes:thNotes}};
 for(const [language,namespaces] of Object.entries(bundles)){
  for(const [namespace,resources] of Object.entries(namespaces))i18n.addResourceBundle(language,namespace,resources,true,true);
@@ -19,12 +20,18 @@ if(i18n.services?.languageUtils?.options)i18n.services.languageUtils.options.fal
 // surfaces. Keep that call contract working while extending it into the full
 // supported-language cycle. Explicit selectors can use changeAppLanguage().
 const changeLanguageDirect=i18n.changeLanguage.bind(i18n);
-i18n.changeAppLanguage=(language,...args)=>changeLanguageDirect(normalizeAppLanguage(language),...args);
+function applyLanguage(language,args){
+ const resolved=normalizeAppLanguage(language);
+ const result=changeLanguageDirect(resolved,...args);
+ queueMicrotask(()=>localStorage.setItem(LANGUAGE_KEY,resolved));
+ return result;
+}
+i18n.changeAppLanguage=(language,...args)=>applyLanguage(language,args);
 i18n.changeLanguage=(language,...args)=>{
  const current=normalizeAppLanguage(i18n.language);
  const requested=normalizeAppLanguage(language);
  const legacyToggleTarget=current==='de'?'en':'de';
- return changeLanguageDirect(requested===legacyToggleTarget?nextAppLanguage(current):requested,...args);
+ return applyLanguage(requested===legacyToggleTarget?nextAppLanguage(current):requested,args);
 };
 
 export default i18n;
