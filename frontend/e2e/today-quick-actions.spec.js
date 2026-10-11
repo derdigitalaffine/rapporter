@@ -45,13 +45,13 @@ test('Today shopping module action focuses the real item editor and Escape retur
   await expect(dialog).toHaveCount(0);await expect(page).toHaveURL(/127\.0\.0\.1:4173\/$/);expect(mutations).toBe(0);
 });
 
-test('Today context event action opens new event directly and Escape stays on Today',async({page})=>{
+test('Today Timeline keeps calendar navigation canonical instead of inventing a parallel create action',async({page})=>{
+  let mutations=0;page.on('request',request=>{if(isContentMutation(request))mutations++});
   await boot(page);
-  await page.locator('[data-today-widget="next"]').getByRole('button',{name:/Termin|Event/,exact:true}).click();
-  const dialog=page.getByRole('dialog');
-  await expect(dialog.getByRole('heading',{name:/Termin hinzufügen|Add event/})).toBeVisible();
-  await expect(dialog.getByLabel(/Titel|Title/)).toBeFocused();
-  await expect(page).toHaveURL(/127\.0\.0\.1:4173\/$/);
-  await page.keyboard.press('Escape');
-  await expect(dialog).toHaveCount(0);await expect(page).toHaveURL(/127\.0\.0\.1:4173\/$/);
+  const timeline=page.getByTestId('today-timeline');
+  await expect(timeline).toBeVisible();
+  await expect(timeline.getByRole('button',{name:/Termin|Event/,exact:true})).toHaveCount(0);
+  await timeline.getByRole('link',{name:/Kalender öffnen|Open calendar/}).click();
+  await expect(page).toHaveURL(/page=calendar/);
+  expect(mutations).toBe(0);
 });

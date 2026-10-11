@@ -30,9 +30,12 @@ class TodayLayoutTests(TestCase):
         self.url = f'/api/today-layout/?family={self.family.id}'
 
     def current_v1_payload(self, revision=0):
-        widgets = deepcopy(DEFAULT_WIDGETS)
-        for row in widgets:
-            row['size'] = 'full'
+        ids = ['week', *LEGACY_WIDGET_IDS, 'trip', 'pinboard']
+        widgets = []
+        for key in ids:
+            if any(row['id'] == key for row in widgets):
+                continue
+            widgets.append({'id': key, 'visible': True, 'size': 'full'})
         return {'version': 1, 'revision': revision, 'widgets': widgets}
 
     def split_legacy_payload(self, revision=0):
@@ -57,6 +60,7 @@ class TodayLayoutTests(TestCase):
         self.assertTrue(all(required <= set(entry) for entry in TODAY_WIDGET_REGISTRY))
         self.assertTrue(all(set(entry['supportedSizes']) <= {'compact', 'medium', 'wide'} for entry in TODAY_WIDGET_REGISTRY))
         self.assertTrue(all(entry['defaultSize'] in entry['supportedSizes'] for entry in TODAY_WIDGET_REGISTRY))
+        self.assertEqual(list(DEFAULT_WIDGET_ORDER[:5]), ['focus', 'timeline', 'week', 'todo', 'pinboard'])
 
     def test_default_roundtrip_is_v2_and_private(self):
         initial = self.client.get(self.url)
@@ -67,19 +71,25 @@ class TodayLayoutTests(TestCase):
         self.assertIn('todo', DEFAULT_WIDGET_ORDER)
         self.assertNotIn('tasks', DEFAULT_WIDGET_ORDER)
         self.assertNotIn('routines', DEFAULT_WIDGET_ORDER)
-        self.assertTrue(all(row['visible'] for row in initial.data['widgets']))
+        self.assertNotIn('priority', DEFAULT_WIDGET_ORDER)
+        self.assertNotIn('next', DEFAULT_WIDGET_ORDER)
+        self.assertEqual(
+            [row['id'] for row in initial.data['widgets'] if row['visible']],
+            ['focus', 'timeline', 'week', 'todo', 'pinboard'],
+        )
         self.assertEqual(
             {row['id']: row['size'] for row in initial.data['widgets']},
             {entry['id']: entry['defaultSize'] for entry in TODAY_WIDGET_REGISTRY},
         )
-        self.assertEqual(initial.data['widgets'][0]['settings'], DEFAULT_WEEK_SETTINGS)
+        week = next(row for row in initial.data['widgets'] if row['id'] == 'week')
+        self.assertEqual(week['settings'], DEFAULT_WEEK_SETTINGS)
         trip = next(row for row in initial.data['widgets'] if row['id'] == 'trip')
         self.assertEqual(trip['settings'], DEFAULT_TRIP_SETTINGS)
         self.assertFalse(TodayLayout.objects.exists())
 
         config = deepcopy(initial.data)
         config['widgets'].reverse()
-        config['widgets'][0].update(visible=False, size='compact')
+        config['widgets'][0].update(visible=True, size='compact')
         saved = self.client.put(self.url, config, format='json')
         self.assertEqual(saved.status_code, 200)
         self.assertEqual(saved.data['revision'], 1)
@@ -92,7 +102,7 @@ class TodayLayoutTests(TestCase):
         self.assertEqual(self.client.put(self.url, other_initial, format='json').status_code, 200)
         self.assertEqual(TodayLayout.objects.count(), 2)
 
-    def test_legacy_saved_layout_collapses_tasks_and_routines_and_maps_sizes(self):
+    def test_legacy_saved_layout_migrates_core_aliases_todo_and_sizes(self):
         legacy = [
             {
                 'id': key,
@@ -110,26 +120,30 @@ class TodayLayoutTests(TestCase):
         ids = [row['id'] for row in expanded]
         self.assertNotIn('tasks', ids)
         self.assertNotIn('routines', ids)
+        self.assertNotIn('priority', ids)
+        self.assertNotIn('next', ids)
+        self.assertIn('focus', ids)
+        self.assertIn('timeline', ids)
         todo = next(row for row in expanded if row['id'] == 'todo')
         self.assertEqual(todo, {'id': 'todo', 'visible': True, 'size': 'compact'})
         weather = next(row for row in expanded if row['id'] == 'weather')
         self.assertEqual(weather['size'], 'wide')
         self.assertFalse(weather['visible'])
-        self.assertEqual(expanded[0], {'id': 'week', 'visible': True, 'size': 'wide', 'settings': DEFAULT_WEEK_SETTINGS})
+        self.assertEqual(next(row for row in expanded if row['id'] == 'week')['settings'], DEFAULT_WEEK_SETTINGS)
         self.assertEqual(next(row for row in expanded if row['id'] == 'trip')['size'], 'medium')
         self.assertEqual(next(row for row in expanded if row['id'] == 'pinboard')['size'], 'compact')
 
-        weather_index = next(index for index, row in enumerate(expanded) if row['id'] == 'weather')
-        todo_index = next(index for index, row in enumerate(expanded) if row['id'] == 'todo')
-        shopping_index = next(index for index, row in enumerate(expanded) if row['id'] == 'shopping')
+        weather_index = ids.index('weather')
+        todo_index = ids.index('todo')
+        shopping_index = ids.index('shopping')
         self.assertLess(weather_index, todo_index)
         self.assertLess(todo_index, shopping_index)
-        priority_index = next(index for index, row in enumerate(expanded) if row['id'] == 'priority')
-        trip_index = next(index for index, row in enumerate(expanded) if row['id'] == 'trip')
-        self.assertEqual(trip_index, priority_index + 1)
-        next_index = next(index for index, row in enumerate(expanded) if row['id'] == 'next')
-        pinboard_index = next(index for index, row in enumerate(expanded) if row['id'] == 'pinboard')
-        self.assertEqual(pinboard_index, next_index + 1)
+        focus_index = ids.index('focus')
+        trip_index = ids.index('trip')
+        self.assertEqual(trip_index, focus_index + 1)
+        timeline_index = ids.index('timeline')
+        pinboard_index = ids.index('pinboard')
+        self.assertEqual(pinboard_index, timeline_index + 1)
         self.assertFalse(next(row for row in expanded if row['id'] == 'inbox')['visible'])
         self.assertFalse(next(row for row in expanded if row['id'] == 'loyalty')['visible'])
 
@@ -140,18 +154,44 @@ class TodayLayoutTests(TestCase):
         response = self.client.put(self.url, self.current_v1_payload(), format='json')
         self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(response.data['version'], TODAY_LAYOUT_VERSION)
-        self.assertTrue(all(row['size'] == 'wide' for row in response.data['widgets']))
+        ids = [row['id'] for row in response.data['widgets']]
+        self.assertNotIn('priority', ids)
+        self.assertNotIn('next', ids)
+        self.assertIn('focus', ids)
+        self.assertIn('timeline', ids)
+        self.assertEqual(next(row for row in response.data['widgets'] if row['id'] == 'focus')['size'], 'wide')
+        self.assertEqual(next(row for row in response.data['widgets'] if row['id'] == 'timeline')['size'], 'wide')
         stored = TodayLayout.objects.get(family=self.family, user=self.user)
-        self.assertTrue(all(row['size'] == 'wide' for row in stored.widgets))
+        self.assertNotIn('priority', [row['id'] for row in stored.widgets])
+        self.assertNotIn('next', [row['id'] for row in stored.widgets])
 
-    def test_split_legacy_put_collapses_to_todo(self):
+    def test_split_legacy_put_collapses_to_todo_and_core_aliases(self):
         response = self.client.put(self.url, self.split_legacy_payload(), format='json')
         self.assertEqual(response.status_code, 200, response.data)
         ids = [row['id'] for row in response.data['widgets']]
         self.assertNotIn('tasks', ids)
         self.assertNotIn('routines', ids)
+        self.assertNotIn('priority', ids)
+        self.assertNotIn('next', ids)
+        self.assertIn('focus', ids)
+        self.assertIn('timeline', ids)
         todo = next(row for row in response.data['widgets'] if row['id'] == 'todo')
         self.assertEqual(todo, {'id': 'todo', 'visible': True, 'size': 'compact'})
+
+    def test_v2_stale_core_aliases_are_accepted_and_canonicalized(self):
+        config = deepcopy(self.client.get(self.url).data)
+        focus_index = next(index for index, row in enumerate(config['widgets']) if row['id'] == 'focus')
+        timeline_index = next(index for index, row in enumerate(config['widgets']) if row['id'] == 'timeline')
+        config['widgets'][focus_index]['id'] = 'priority'
+        config['widgets'][timeline_index]['id'] = 'next'
+        saved = self.client.put(self.url, config, format='json')
+        self.assertEqual(saved.status_code, 200, saved.data)
+        ids = [row['id'] for row in saved.data['widgets']]
+        self.assertEqual(ids[focus_index], 'focus')
+        self.assertEqual(ids[timeline_index], 'timeline')
+        stored_ids = [row['id'] for row in TodayLayout.objects.get().widgets]
+        self.assertNotIn('priority', stored_ids)
+        self.assertNotIn('next', stored_ids)
 
     def test_v1_square_maps_to_medium_for_supported_widget(self):
         legacy = self.current_v1_payload()
@@ -216,19 +256,16 @@ class TodayLayoutTests(TestCase):
 
     def test_v2_medium_is_allowed_only_for_supported_widgets(self):
         valid = deepcopy(self.client.get(self.url).data)
-        trip = next(row for row in valid['widgets'] if row['id'] == 'trip')
-        trip['size'] = 'medium'
+        for key in ('trip', 'todo', 'week'):
+            next(row for row in valid['widgets'] if row['id'] == key)['size'] = 'medium'
         saved = self.client.put(self.url, valid, format='json')
         self.assertEqual(saved.status_code, 200)
-        self.assertEqual(next(row for row in saved.data['widgets'] if row['id'] == 'trip')['size'], 'medium')
+        for key in ('trip', 'todo', 'week'):
+            self.assertEqual(next(row for row in saved.data['widgets'] if row['id'] == key)['size'], 'medium')
 
-        invalid_todo = deepcopy(saved.data)
-        next(row for row in invalid_todo['widgets'] if row['id'] == 'todo')['size'] = 'medium'
-        self.assertEqual(self.client.put(self.url, invalid_todo, format='json').status_code, 400)
-
-        invalid_week = deepcopy(saved.data)
-        next(row for row in invalid_week['widgets'] if row['id'] == 'week')['size'] = 'medium'
-        self.assertEqual(self.client.put(self.url, invalid_week, format='json').status_code, 400)
+        invalid_focus = deepcopy(saved.data)
+        next(row for row in invalid_focus['widgets'] if row['id'] == 'focus')['size'] = 'medium'
+        self.assertEqual(self.client.put(self.url, invalid_focus, format='json').status_code, 400)
 
     def test_stale_writes_do_not_overwrite(self):
         initial = self.client.get(self.url).data
@@ -250,11 +287,12 @@ class TodayLayoutTests(TestCase):
             item = deepcopy(valid)
             item['widgets'][0][field] = value
             invalid.append(item)
+        week_index = next(index for index, row in enumerate(valid['widgets']) if row['id'] == 'week')
         item = deepcopy(valid)
-        item['widgets'][0]['settings']['events'] = 'yes'
+        item['widgets'][week_index]['settings']['events'] = 'yes'
         invalid.append(item)
         item = deepcopy(valid)
-        item['widgets'][0]['settings']['secret'] = True
+        item['widgets'][week_index]['settings']['secret'] = True
         invalid.append(item)
         trip_index = next(index for index, row in enumerate(valid['widgets']) if row['id'] == 'trip')
         item = deepcopy(valid)
@@ -263,9 +301,9 @@ class TodayLayoutTests(TestCase):
         item = deepcopy(valid)
         item['widgets'][trip_index]['settings']['secret'] = True
         invalid.append(item)
-        priority_index = next(index for index, row in enumerate(valid['widgets']) if row['id'] == 'priority')
+        focus_index = next(index for index, row in enumerate(valid['widgets']) if row['id'] == 'focus')
         item = deepcopy(valid)
-        item['widgets'][priority_index]['settings'] = deepcopy(DEFAULT_WEEK_SETTINGS)
+        item['widgets'][focus_index]['settings'] = deepcopy(DEFAULT_WEEK_SETTINGS)
         invalid.append(item)
         item = deepcopy(valid)
         item['widgets'][1] = item['widgets'][0]
