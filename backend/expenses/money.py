@@ -111,6 +111,11 @@ def balance_summary(family, currency="EUR", ledger=None):
     for expense in expenses:
         if expense.total_amount is None:
             continue
+        # Shared-family funding consumes budget but is intentionally outside the
+        # person-to-person debt graph. Ignore both payer and any stale legacy
+        # shares defensively so no settlement can be inferred from it.
+        if expense.funding_source == Expense.FundingSource.SHARED:
+            continue
         payer = summary.get(str(expense.paid_by_id))
         if payer:
             payer["paid"] += expense.total_amount
