@@ -12,7 +12,7 @@ from telemetry.models import AuditEvent
 from .development_service import ensure_u_exam_events
 from .family_modules import set_module
 from .pregnancy_service import create_managed_child
-from .reference_models import PediatricReferencePackage
+from .reference_models import PediatricPreventiveEventReference, PediatricReferencePackage
 from .reference_service import (
     DEFAULT_SOURCE_KEY,
     create_reference_draft,
@@ -148,21 +148,28 @@ class PediatricReferenceTests(TestCase):
         self.assertTrue(AuditEvent.objects.filter(event_key="pediatric_reference.published", target_id=str(first.id)).exists())
         self.assertTrue(AuditEvent.objects.filter(event_key="pediatric_reference.reactivated", target_id=str(first.id)).exists())
 
-    def test_preventive_event_keeps_the_reference_version_that_created_it(self):
+    def test_preventive_event_keeps_private_reference_version_that_created_it(self):
         first = publish_reference_package(self.admin, self.draft("2026.1").id)
         baby = self.baby()
         events = ensure_u_exam_events(self.owner, baby.id)
         self.assertEqual(len(events), 1)
         event = events[0]
-        self.assertEqual(event.payload["pediatric_reference"]["package_id"], str(first.id))
-        self.assertEqual(event.payload["pediatric_reference"]["source_version"], "2026.1")
+        self.assertNotIn("pediatric_reference", event.payload)
+        provenance = PediatricPreventiveEventReference.objects.get(event=event)
+        self.assertEqual(provenance.baby_id, baby.id)
+        self.assertEqual(provenance.reference_package_id, first.id)
+        self.assertEqual(provenance.source_version, "2026.1")
+        self.assertEqual(provenance.rule_key, "U2")
 
         second = publish_reference_package(self.admin, self.draft("2026.2", exam_target=8).id)
         repeated = ensure_u_exam_events(self.owner, baby.id)
         self.assertEqual(repeated[0].id, event.id)
-        repeated[0].refresh_from_db()
-        self.assertEqual(repeated[0].payload["pediatric_reference"]["package_id"], str(first.id))
+        provenance.refresh_from_db()
+        self.assertEqual(provenance.reference_package_id, first.id)
+        self.assertEqual(provenance.target_day, 6)
 
         newer_baby = self.baby("Noah")
         newer_event = ensure_u_exam_events(self.owner, newer_baby.id)[0]
-        self.assertEqual(newer_event.payload["pediatric_reference"]["package_id"], str(second.id))
+        newer_provenance = PediatricPreventiveEventReference.objects.get(event=newer_event)
+        self.assertEqual(newer_provenance.reference_package_id, second.id)
+        self.assertEqual(newer_provenance.target_day, 8)
