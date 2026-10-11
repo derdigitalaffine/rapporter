@@ -16,6 +16,12 @@ from family.models import Membership
 from .access import active_membership, can_manage_document, can_view_document, visible_documents
 from .models import Document, DocumentAccess, DocumentLink
 from .processing import enqueue_document
+from .search import (
+    document_search_queryset,
+    rebuild_document_search_index,
+    search_result_payload,
+    validate_person_filter,
+)
 from .serializers import document_payload
 from .storage import canonicalize_upload, open_canonical, remove_canonical, store_canonical
 
@@ -31,6 +37,26 @@ def _date(value):
     if not parsed:
         raise ValidationError({"document_date": "Ungültiges Datum."})
     return parsed
+
+
+def _query_date(value, field):
+    if value is None or value == "":
+        return None
+    parsed = parse_date(str(value))
+    if not parsed:
+        raise ValidationError({field: "Ungültiges Datum."})
+    return parsed
+
+
+def _query_bool(value, field):
+    if value is None or value == "":
+        return None
+    normalized = str(value).lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    raise ValidationError({field: "Boolescher Wert erwartet."})
 
 
 def _json_list(value, field):
@@ -165,11 +191,54 @@ def document_collection(request):
             _replace_access(document, access_rows)
             _replace_links(document, link_rows)
             enqueue_document(document)
+            rebuild_document_search_index(document.id)
     except Exception:
         remove_canonical(key)
         raise
     document = _document_or_404(request.user, document.id)
     return Response(document_payload(document, request.user), status=status.HTTP_202_ACCEPTED)
+
+
+@api_view(["GET"])
+def document_search(request):
+    family_id = request.query_params.get("family")
+    if not family_id:
+        return Response({"detail": "family is required"}, status=status.HTTP_400_BAD_REQUEST)
+    if not active_membership(request.user, family_id):
+        raise Http404
+
+    visibility = request.query_params.get("visibility") or ""
+    allowed_visibility = {choice for choice, _ in Document.Visibility.choices} | {"shared"}
+    if visibility and visibility not in allowed_visibility:
+        raise ValidationError({"visibility": "Ungültige Sichtbarkeit."})
+
+    person = request.query_params.get("person") or ""
+    if person and not validate_person_filter(family_id, person):
+        raise Http404
+
+    try:
+        limit = int(request.query_params.get("limit", 50))
+    except (TypeError, ValueError) as exc:
+        raise ValidationError({"limit": "Ganzzahl erwartet."}) from exc
+    limit = max(1, min(limit, 100))
+
+    filters = {
+        "kind": (request.query_params.get("kind") or "").strip(),
+        "visibility": visibility,
+        "person": person,
+        "date_from": _query_date(request.query_params.get("date_from"), "date_from"),
+        "date_to": _query_date(request.query_params.get("date_to"), "date_to"),
+        "correspondent": (request.query_params.get("correspondent") or "").strip(),
+        "pinned": _query_bool(request.query_params.get("pinned"), "pinned"),
+    }
+    query = (request.query_params.get("q") or "").strip()[:500]
+    documents = list(document_search_queryset(request.user, family_id, query=query, filters=filters)[:limit])
+    return Response(
+        {
+            "results": [search_result_payload(document, query=query) for document in documents],
+            "count": len(documents),
+        }
+    )
 
 
 @api_view(["GET", "PATCH", "DELETE"])
@@ -184,18 +253,22 @@ def document_detail(request, document_id):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     updates = []
+    search_metadata_changed = False
     if "title" in request.data:
         document.title = str(request.data.get("title") or "").strip()[:240] or "Dokument"
         updates.append("title")
+        search_metadata_changed = True
     if "kind" in request.data:
         document.kind = str(request.data.get("kind") or "generic").strip()[:64] or "generic"
         updates.append("kind")
+        search_metadata_changed = True
     if "document_date" in request.data:
         document.document_date = _date(request.data.get("document_date"))
         updates.append("document_date")
     if "correspondent" in request.data:
         document.correspondent = str(request.data.get("correspondent") or "").strip()[:180]
         updates.append("correspondent")
+        search_metadata_changed = True
     if "visibility" in request.data:
         visibility = request.data.get("visibility")
         if visibility not in {choice for choice, _ in Document.Visibility.choices}:
@@ -214,6 +287,8 @@ def document_detail(request, document_id):
             _replace_access(document, access_rows)
         if link_rows is not None:
             _replace_links(document, link_rows)
+        if search_metadata_changed:
+            rebuild_document_search_index(document.id)
     document = _document_or_404(request.user, document.id, require_manage=True)
     return Response(document_payload(document, request.user))
 

@@ -1,0 +1,14 @@
+/*
+ * Today layout v2 persists semantic sizes. The legacy v1 selectors remain in
+ * today-layout.css so old payloads still render correctly while they migrate.
+ * These rules give the v2 names the same responsive desktop interpretation.
+ */
+@media(min-width:768px){
+ .app-widget-grid.today-widget-grid>.today-widget[data-widget-size="wide"]{grid-column:span 6}
+ .app-widget-grid.today-widget-grid>.today-widget[data-widget-size="medium"]{grid-column:span 3}
+}
+
+@media(min-width:1180px){
+ .app-widget-grid.today-widget-grid>.today-widget[data-widget-size="wide"]{grid-column:span 12}
+ .app-widget-grid.today-widget-grid>.today-widget[data-widget-size="medium"]{grid-column:span 6}
+}

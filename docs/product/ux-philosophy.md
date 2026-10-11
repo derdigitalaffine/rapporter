@@ -69,6 +69,21 @@ Reuse the same primitives for:
 
 Do not invent a feature-specific navigation or modal system without a reviewed reason.
 
+### Action hierarchy is a product contract
+
+Every visible action must have a clear semantic role. Visual weight follows that role rather than the feature that owns the button.
+
+- **Primary** — the preferred progress/commit action in a local decision group. Avoid multiple equally weighted primaries next to each other without a documented product reason.
+- **Secondary** — an important alternative that must remain easy to find without competing with the primary action.
+- **Tertiary / ghost** — edit, navigation, optional and low-emphasis actions.
+- **Destructive** — risky or irreversible mutation. It must not look like a neutral primary action and follows the product's confirmation/undo rules.
+- **Icon-only** — only for established icon semantics; it always has an accessible name and at least a 44×44px hit target.
+- **Text link** — navigation or an intentionally light action; do not use link styling to hide a state-changing button.
+
+`design-system.css` is the source of truth for action color, radius, minimum hit target, focus, disabled and loading semantics. Feature CSS may position an action or adjust local spacing, but must not recreate a parallel primary/secondary/ghost visual language.
+
+Mouse, keyboard and touch must expose the same action semantics. Hover is an enhancement, never the only affordance. Loading/disabled states must prevent accidental duplicate submission and remain understandable without color alone.
+
 ## 8. Preserve functionality while simplifying
 
 UX consolidation must not silently delete features. Rare actions may move to `Mehr`, detail or context menus, but remain discoverable and tested.
@@ -89,6 +104,32 @@ Requirements:
 - 200% zoom without loss of core function;
 - phone landscape must remain a deliberate compact layout;
 - tablet/desktop use additional space intentionally rather than stretching phone UI.
+
+### Reference layout classes
+
+At minimum, responsive work is reviewed against:
+
+- **Compact:** 320×568, 390×844, 844×390
+- **Medium:** 768×1024, 1024×768, 1180×820
+- **Large:** 1280×800, 1440×900, 1920×1080
+- **Zoom:** desktop at 200% browser zoom
+
+These are reference classes, not device detection. The product remains fluid between them.
+
+### Desktop parity contract
+
+Mobile is the complete functional baseline; desktop is not a second application. Additional space is used when it improves scanning, comparison or simultaneous context.
+
+- A core surface at 1440/1920px must not merely be a stretched phone composition.
+- Content width stays intentionally bounded. Long text/list lines must not grow simply because space exists.
+- Forms and ordinary editors normally remain roughly 640–680px wide unless the task genuinely benefits from a broader workspace.
+- Dashboards may use semantic multi-column grids. Stored semantic preferences remain breakpoint-stable; CSS changes presentation, not user intent.
+- Responsive reflow must preserve a logical DOM and keyboard order. Do not use visual packing that makes focus jump against the reading order.
+- `overflow-x: hidden` is not a fix for broken intrinsic widths.
+- Primary actions stay reachable in every layout class.
+- Pointer precision must never reduce touch target size below the shared minimum.
+
+For Today and similar dashboards, semantic sizes describe information weight rather than fixed geometry: a compact or medium widget may share rows on larger surfaces while a wide widget spans the content area. A legacy square size must not force a large literal square when that harms information density.
 
 ## 10. Recognition over recall
 
@@ -128,7 +169,13 @@ For any user-facing change, verify:
 - Does it preserve existing functionality?
 - Does it follow the fixed primary navigation?
 - Does it reuse shared create/sheet/back/deep-link patterns?
+- Are action controls classified as primary/secondary/tertiary/destructive/icon-only instead of introducing a feature-specific button style?
 - Are permissions anticipated in UI and enforced on the server?
 - Is 390×844 usable with 44px+ primary targets and no overflow?
+- Has the layout also been checked at 1024×768 and 1440×900 when the change can affect responsive composition?
+- On a wide desktop, does the surface use space intentionally while preserving a sensible content max-width?
+- Are DOM/keyboard order and visual reading order still aligned after responsive reflow?
 - Are keyboard, screen-reader and 200% zoom supported where applicable?
 - Is user documentation updated or explicitly tracked?
+
+Cross-cutting tracking: #435 defines the desktop-parity rollout and #436 the app-wide action-control audit/migration.
