@@ -172,3 +172,69 @@ jobs:
             exit 1
           fi
       - run: docker compose build
+      - name: Smoke-test Superadmin production routes
+        env:
+          CADDYFILE: Caddyfile.proxy
+          HTTP_BIND: 127.0.0.1
+          HTTP_PORT: "18080"
+          PUBLIC_SCHEME: http
+          PUBLIC_HOST: 127.0.0.1
+        run: |
+          cleanup() {
+            docker compose down --remove-orphans >/dev/null 2>&1 || true
+          }
+          diagnose() {
+            echo "--- caddy status ---" >&2
+            docker compose ps -a >&2 || true
+            echo "--- caddy logs ---" >&2
+            docker compose logs --no-color caddy >&2 || true
+          }
+          fail() {
+            echo "Superadmin static-route smoke failed: $1" >&2
+            diagnose
+            exit 1
+          }
+          assert_contains() {
+            local url="$1" expected="$2" label="$3" body
+            if ! body="$(curl -fsSL "$url")"; then
+              fail "$label is not reachable"
+            fi
+            if ! grep -Fq "$expected" <<<"$body"; then
+              echo "$body" | head -40 >&2
+              fail "$label returned unexpected content"
+            fi
+          }
+
+          trap cleanup EXIT
+          docker compose up -d --no-deps caddy
+          ready=0
+          for _ in $(seq 1 20); do
+            if curl -fsS http://127.0.0.1:18080/ >/dev/null; then
+              ready=1
+              break
+            fi
+            if ! docker compose ps --status running --services | grep -qx caddy; then
+              fail "caddy exited during startup"
+            fi
+            sleep 1
+          done
+          test "$ready" = "1" || fail "caddy did not become ready"
+
+          bare_headers="$(curl -sS -D - -o /dev/null http://127.0.0.1:18080/superadmin | tr -d '\r')" || fail "/superadmin did not respond"
+          bare_status="$(awk 'NR==1 {print $2}' <<<"$bare_headers")"
+          bare_location="$(awk 'BEGIN{IGNORECASE=1} /^Location:/ {sub(/^[^:]+:[[:space:]]*/, ""); print; exit}' <<<"$bare_headers")"
+          echo "/superadmin status=$bare_status location=$bare_location"
+          case "$bare_status" in
+            301|302|307|308) ;;
+            *) fail "/superadmin did not redirect to the canonical trailing-slash URL" ;;
+          esac
+          case "$bare_location" in
+            /superadmin/|http://127.0.0.1:18080/superadmin/) ;;
+            *) fail "/superadmin redirected to an unexpected location: $bare_location" ;;
+          esac
+
+          assert_contains http://127.0.0.1:18080/superadmin '<title>FamilyOS Superadmin</title>' "/superadmin redirect target"
+          assert_contains http://127.0.0.1:18080/superadmin/ '<title>FamilyOS Superadmin</title>' "/superadmin/ shell"
+          assert_contains http://127.0.0.1:18080/superadmin/security '<title>FamilyOS Superadmin</title>' "direct Superadmin subroute"
+          assert_contains http://127.0.0.1:18080/superadmin/manifest.webmanifest '"start_url": "/superadmin/"' "Superadmin manifest"
+          assert_contains http://127.0.0.1:18080/superadmin/sw.js "const SHELL='/superadmin/'" "Superadmin service worker"

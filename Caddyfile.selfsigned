@@ -7,6 +7,15 @@
         reverse_proxy backend:8000
     }
 
+    redir /superadmin /superadmin/ 308
+
+    handle /superadmin/* {
+        root * /srv
+        header Cache-Control "no-cache, no-store, must-revalidate"
+        try_files {path} /superadmin/index.html
+        file_server
+    }
+
     @assets path /assets/*
     handle @assets {
         root * /srv
