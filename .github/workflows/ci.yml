@@ -142,9 +142,11 @@ jobs:
           pull_official "node:22-alpine"
           pull_official "caddy:2-alpine"
       - name: Validate shell setup tools
-        run: bash -n scripts/setup.sh scripts/ensure-vapid.sh scripts/test-vapid-setup.sh scripts/tls-mode.sh scripts/export-caddy-ca.sh scripts/configure-mail.sh
+        run: bash -n scripts/setup.sh scripts/ensure-vapid.sh scripts/test-vapid-setup.sh scripts/tls-mode.sh scripts/export-caddy-ca.sh scripts/configure-mail.sh scripts/configure-passkeys.sh scripts/test-passkey-config.sh
       - name: Verify automatic VAPID provisioning
         run: bash scripts/test-vapid-setup.sh
+      - name: Verify Passkey env upgrade helper
+        run: bash scripts/test-passkey-config.sh
       - name: Validate public Caddy config
         run: docker run --rm -e DOMAIN=familyos.example.com -v "$PWD/Caddyfile:/etc/caddy/Caddyfile:ro" caddy:2-alpine caddy validate --config /etc/caddy/Caddyfile
       - name: Validate internal TLS Caddy config

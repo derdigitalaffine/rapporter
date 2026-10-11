@@ -1,0 +1,74 @@
+from django.contrib.auth import get_user_model
+from django.db import transaction
+from django.db.models.deletion import ProtectedError
+from rest_framework import serializers, status
+from rest_framework.decorators import api_view
+from rest_framework.exceptions import ValidationError
+from rest_framework.response import Response
+
+from family.models import Membership
+
+from .child_identity_service import child_profile, require_child_guardian
+from .family_modules import require_module
+from .models import PregnancyBaby
+from .views import _serialize_baby
+
+
+User = get_user_model()
+
+
+class ChildRenameInput(serializers.Serializer):
+    display_name = serializers.CharField(max_length=80, trim_whitespace=True)
+
+    def validate_display_name(self, value):
+        value = value.strip()
+        if not value:
+            raise serializers.ValidationError("Name must not be empty.")
+        return value
+
+
+def _require_child_confirmation(request, baby):
+    if request.data.get("confirm") != "DELETE_CHILD":
+        raise ValidationError({"confirm": "Send DELETE_CHILD to remove this child from the family."})
+    if str(request.data.get("confirm_name") or "").strip() != baby.display_name:
+        raise ValidationError({"confirm_name": "Repeat the current child name exactly."})
+
+
+@api_view(["PATCH", "DELETE"])
+def baby_profile_detail(request, baby_id):
+    with transaction.atomic():
+        baby = child_profile(baby_id, for_update=True)
+        require_module(baby.family)
+        require_child_guardian(request.user, baby, manage=True)
+
+        if request.method == "PATCH":
+            serializer = ChildRenameInput(data=request.data)
+            serializer.is_valid(raise_exception=True)
+            display_name = serializer.validated_data["display_name"]
+            baby.display_name = display_name
+            baby.save(update_fields=["display_name", "updated_at"])
+            if baby.membership_id:
+                Membership.objects.filter(pk=baby.membership_id).update(display_name=display_name)
+            if baby.source_pregnancy_baby_id:
+                PregnancyBaby.objects.filter(pk=baby.source_pregnancy_baby_id).update(display_name=display_name)
+            baby.refresh_from_db()
+            return Response(_serialize_baby(baby))
+
+        _require_child_confirmation(request, baby)
+        membership = baby.membership
+        child_user = membership.user if membership else None
+        baby.delete()
+        if membership:
+            try:
+                membership.delete()
+            except ProtectedError as exc:
+                raise ValidationError({"detail": "Child cannot be removed while protected family data still references the membership."}) from exc
+
+        # A managed child starts as a technical user with an unusable password. If
+        # this was its only family membership, remove that otherwise-orphaned
+        # technical identity. Activated or reused user accounts are deliberately
+        # retained; deleting Pregnancy/Baby data is never an account deletion.
+        if child_user and child_user.username.startswith("child-") and not child_user.has_usable_password():
+            if not Membership.objects.filter(user_id=child_user.pk).exists():
+                User.objects.filter(pk=child_user.pk).delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)

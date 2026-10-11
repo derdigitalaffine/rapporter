@@ -1,7 +1,13 @@
 import {test,expect} from '@playwright/test';
 import {installApiMocks} from './mock-api.js';
 
-const isoIn=hours=>new Date(Date.now()+hours*3600000).toISOString();
+function todayAt(hour){
+  const now=new Date();
+  const parts=new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/Berlin',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'}).formatToParts(now);
+  const read=type=>Number(parts.find(part=>part.type===type)?.value||0);
+  const elapsed=((read('hour')*60+read('minute'))*60+read('second'))*1000;
+  return new Date(now.getTime()-elapsed+hour*3600000).toISOString();
+}
 const widgetIds=['priority','next','weather','tasks','shopping','routines','waste','inbox','birthdays','notes','loyalty'];
 
 function taskAction(task){
@@ -15,28 +21,29 @@ function routineAction(routine){
 
 async function bootReference(page,viewport={width:390,height:844}){
   await page.setViewportSize(viewport);
-  await installApiMocks(page,{dismissOnboarding:true});
-  const task={id:'home-task',family:'family-1',task_list:'tasks-1',title:'Paket abholen',notes:'',priority:'high',estimate_minutes:10,assignee:1,assignee_name:'Alex',list_name:'Alltag',due_at:isoIn(2),completed_at:null};
-  const routine={id:'routine-1',family:'family-1',name:'Pflanzen gießen',active:true,last_done_at:isoIn(-20),prediction:{status:'learning'}};
+  const state=await installApiMocks(page,{dismissOnboarding:true});
+  const task={id:'home-task',family:'family-1',task_list:'tasks-1',title:'Paket abholen',notes:'',priority:'high',estimate_minutes:10,assignee:1,assignee_name:'Alex',list_name:'Alltag',due_at:todayAt(14),completed_at:null};
+  const routine={id:'routine-1',family:'family-1',name:'Pflanzen gießen',active:true,last_done_at:todayAt(8),prediction:{status:'learning'}};
   const dashboard={
     tasks:[task],task_lists:[{id:'tasks-1',family:'family-1',name:'Alltag',open_count:1,done_count:0}],
     shopping_lists:[{id:'shop-1',family:'family-1',name:'Supermarkt',open_count:2,checked_count:0,items:[{id:'milk',name:'Milch',quantity:'1 l',category:'Kühlung',checked:false},{id:'bread',name:'Brot',quantity:'1',category:'Backwaren',checked:false}]}],
     routines:[routine],
     events:[
-      {id:'warn-1',family:'family-1',type:'public.warning',title:'Sturmwarnung',starts_at:isoIn(1),payload:{provider:'Warnamt'}},
-      {id:'waste-1',family:'family-1',type:'waste.paper',title:'Papiertonne',starts_at:isoIn(24),payload:{provider:'Stadt'}},
-      {id:'event-1',family:'family-1',type:'calendar.event',title:'Kinderarzt',starts_at:isoIn(4),payload:{location:'Praxis',provider:'FamilyOS'}}
+      {id:'warn-1',family:'family-1',type:'public.warning',title:'Sturmwarnung',starts_at:todayAt(12),ends_at:todayAt(13),payload:{provider:'Warnamt'}},
+      {id:'waste-1',family:'family-1',type:'waste.paper',title:'Papiertonne',starts_at:todayAt(22),payload:{provider:'Stadt'}},
+      {id:'event-1',family:'family-1',type:'calendar.event',title:'Kinderarzt',starts_at:todayAt(16),ends_at:todayAt(17),payload:{location:'Praxis',provider:'FamilyOS'}}
     ],
     weather:{current:{temperature:17,apparent_temperature:16,weather_code:2,wind_speed:8,observed_at:new Date().toISOString()}},birthdays:[],inbox_count:1,automation_count:0
   };
-  const inbox=[{id:'message-1',family:'family-1',status:'new',unread:true,source:'manual_message',title:'Bitte Brotdose mitnehmen',body:'Bitte Brotdose mitnehmen',created_by_name:'Sam',created_at:isoIn(-1)}];
+  state.events=dashboard.events;
+  const inbox=[{id:'message-1',family:'family-1',status:'new',unread:true,source:'manual_message',title:'Bitte Brotdose mitnehmen',body:'Bitte Brotdose mitnehmen',created_by_name:'Sam',created_at:todayAt(10)}];
   await page.route('**/api/dashboard/**',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(dashboard)}));
   await page.route('**/api/inbox/',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(inbox)}));
   await page.route('**/api/today-layout/**',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({version:1,revision:0,widgets:widgetIds.map(id=>({id,visible:true,size:'full'}))})}));
   await page.route('**/api/actions/**',route=>{const results=[taskAction(task),routineAction(routine)];return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({count:results.length,next:null,previous:null,results,ranking_version:'actions-v1',scope:'today'})})});
   await page.route('**/api/tasks/home-task/toggle/',route=>{task.completed_at=task.completed_at?null:new Date().toISOString();dashboard.tasks=task.completed_at?[]:[task];return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(task)})});
   await page.goto('/');await page.waitForLoadState('networkidle');
-  return {dashboard,inbox};
+  return {dashboard,inbox,state};
 }
 
 test('Today reference structure uses real family, week, weather, alerts and direct To-do actions',async({page})=>{
@@ -45,7 +52,7 @@ test('Today reference structure uses real family, week, weather, alerts and dire
   await expect(page.locator('.today-week li')).toHaveCount(7);
   await expect(page.locator('.today-week [aria-current="date"]')).toHaveCount(1);
   await expect(page.getByTestId('current-weather')).toContainText('17 °C');
-  await expect(page.getByText('Sturmwarnung',{exact:true}).first()).toBeVisible();
+  await expect(page.getByTestId('today-focus')).toContainText('Sturmwarnung');
   const todo=page.getByTestId('today-todos');
   await expect(todo.getByText('Paket abholen',{exact:true})).toBeVisible();
   await todo.getByRole('button',{name:'Erledigen: Paket abholen'}).click();
@@ -81,7 +88,7 @@ test('Today customize action is integrated in the hero and stays usable across v
   }
 
   await action.click();
-  await expect(page.getByRole('heading',{name:/Dein Heute-Raster|Your Today grid/})).toBeFocused();
+  await expect(page.getByRole('heading',{name:/Today anpassen|Customize Today/})).toBeFocused();
 });
 
 test('Today reference modules navigate to unified To-dos, waste calendar and concrete inbox message without overflow',async({page})=>{
@@ -101,14 +108,14 @@ test('Today reference modules navigate to unified To-dos, waste calendar and con
   await expect(page).toHaveURL(/page=inbox.*message=message-1/);
 });
 
-test('Today shows a waste collection only in the waste widget, not again in Up next',async({page})=>{
+test('Today shows waste only in its widget, not again in the canonical Timeline',async({page})=>{
   const {dashboard}=await bootReference(page);
-  dashboard.events=dashboard.events.filter(event=>event.id!=='warn-1');
+  dashboard.events.splice(0,dashboard.events.length,...dashboard.events.filter(event=>event.id!=='warn-1'));
   await page.reload();
   await page.waitForLoadState('networkidle');
 
-  await expect(page.getByTestId('today-context')).toContainText('Kinderarzt');
-  await expect(page.getByTestId('today-context')).not.toContainText('Papiertonne');
+  await expect(page.getByTestId('today-timeline')).toContainText('Kinderarzt');
+  await expect(page.getByTestId('today-timeline')).not.toContainText('Papiertonne');
   await expect(page.getByTestId('next-waste')).toContainText('Papiertonne');
   await expect(page.getByText('Papiertonne',{exact:true})).toHaveCount(1);
 });

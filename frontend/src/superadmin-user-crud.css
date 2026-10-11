@@ -1,0 +1,38 @@
+.user-crud-shell{min-height:100vh;background:var(--color-bg);color:var(--color-text)}
+.user-crud-top{position:sticky;top:0;z-index:30;min-height:68px;display:flex;justify-content:space-between;align-items:center;gap:var(--space-4);padding:8px max(20px,calc((100vw - 1480px)/2));padding-top:max(8px,env(safe-area-inset-top));background:color-mix(in srgb,var(--color-surface) 94%,transparent);backdrop-filter:blur(18px);border-bottom:1px solid var(--color-border)}
+.user-crud-top-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.user-crud-main{width:min(1480px,100%);margin:0 auto;padding:clamp(20px,3vw,40px);display:grid;gap:var(--space-5)}
+.user-crud-heading{display:flex;align-items:end;justify-content:space-between;gap:var(--space-4)}
+.user-crud-heading>div{max-width:760px}
+.user-crud-heading small,.user-crud-editor-head small,.user-crud-modal>small{font-size:.66rem;font-weight:900;text-transform:uppercase;letter-spacing:.11em;color:var(--color-muted)}
+.user-crud-heading h1,.user-crud-editor h2,.user-crud-modal h2{margin:4px 0 6px}
+.user-crud-heading p,.user-crud-modal p{margin:0;color:var(--color-muted);line-height:1.5}
+.user-crud-toolbar{padding:var(--space-3);display:flex;align-items:end;gap:var(--space-3);flex-wrap:wrap}
+.user-crud-toolbar label{flex:1 1 320px;display:grid;gap:5px;font-weight:800}
+.user-crud-toolbar input{width:100%}
+.user-crud-toolbar>span{margin-left:auto;color:var(--color-muted);font-weight:800;white-space:nowrap}
+.user-crud-editor{padding:var(--space-5);display:grid;gap:var(--space-4)}
+.user-crud-editor-head{display:flex;justify-content:space-between;align-items:start;gap:var(--space-3)}
+.user-crud-form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--space-3)}
+.user-crud-form-grid label,.user-crud-modal label{display:grid;gap:6px;font-weight:800}
+.user-crud-check{display:flex!important;align-items:center;gap:8px;align-self:end;min-height:46px}
+.user-crud-check input{width:18px;height:18px}
+.user-crud-editor-actions{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;margin-top:var(--space-3)}
+.user-crud-table-wrap{overflow:auto;padding:0}
+.user-crud-table{min-width:980px}
+.user-crud-row{display:grid;grid-template-columns:minmax(210px,1.25fr) minmax(220px,1.2fr) 140px minmax(150px,.8fr) minmax(330px,1.5fr);align-items:center;gap:var(--space-3);padding:13px 16px;border-top:1px solid var(--color-border)}
+.user-crud-row:first-child{border-top:0}
+.user-crud-row>div{min-width:0;display:grid;gap:3px}
+.user-crud-row strong,.user-crud-row span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.user-crud-row small{color:var(--color-muted)}
+.user-crud-header{position:sticky;top:0;z-index:2;background:var(--color-surface);font-size:.7rem;text-transform:uppercase;letter-spacing:.08em;font-weight:900;color:var(--color-muted)}
+.user-crud-actions{display:flex!important;align-items:center;justify-content:flex-end;gap:6px;flex-wrap:wrap}
+.user-crud-shell .danger{appearance:none;border:1px solid color-mix(in srgb,var(--color-danger) 70%,var(--color-border));background:var(--color-danger);color:#fff;border-radius:var(--radius-md);font-weight:900;min-height:44px;padding:0 16px;cursor:pointer}
+.user-crud-shell .danger.compact{min-height:38px;padding:0 12px}
+.user-crud-shell .danger:disabled{opacity:.52;cursor:not-allowed}
+.user-crud-modal-backdrop{position:fixed;inset:0;z-index:80;display:grid;place-items:center;padding:20px;background:rgba(8,20,23,.56);backdrop-filter:blur(8px)}
+.user-crud-modal{width:min(100%,580px);padding:clamp(22px,4vw,32px);display:grid;gap:var(--space-3);box-shadow:var(--shadow-lg)}
+.user-crud-modal form{display:grid;gap:var(--space-3)}
+.user-crud-modal input:not([type="checkbox"]){width:100%}
+.danger-check{padding:12px;border:1px solid color-mix(in srgb,var(--color-danger) 36%,var(--color-border));border-radius:var(--radius-md);background:color-mix(in srgb,var(--color-danger) 7%,var(--color-surface))}
+@media(max-width:760px){.user-crud-top{align-items:flex-start}.user-crud-top-actions{max-width:52%}.user-crud-main{padding:18px 12px}.user-crud-heading{align-items:stretch;flex-direction:column}.user-crud-heading>button{width:100%}.user-crud-form-grid{grid-template-columns:1fr}.user-crud-toolbar>span{margin-left:0}.user-crud-editor{padding:18px}.user-crud-modal-backdrop{padding:10px}.user-crud-modal{padding:20px}}

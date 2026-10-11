@@ -1,3 +1,4 @@
+import {openCreateAction} from './create-helpers';
 import {test,expect} from '@playwright/test';
 import {installApiMocks} from './mock-api.js';
 
@@ -64,15 +65,9 @@ async function bottom(page,label){await page.locator('.bottom-nav').getByRole('b
 
 async function restoreLegacyCalendarVisual(page){
   await page.locator('.calendar-commandbar').evaluate(element=>{element.style.display='none'});
+  await page.locator('.calendar-list-toolbar').evaluate(element=>{element.style.display='none'});
   await page.locator('.page-head .grow small').evaluate(element=>{element.textContent='Familienagenda'});
   await page.locator('.page-intro').evaluate(element=>{element.textContent='Familientermine, Schule, Müllabfuhr, Mobilität, Wetter und Warnungen an einem Ort.'});
-}
-
-async function openCreateFromQuickstart(page,label){
-  await page.locator('.global-create-fab').click();
-  const quickstart=page.getByRole('dialog',{name:'Neu hinzufügen'});
-  await expect(quickstart).toBeVisible();
-  await quickstart.getByRole('button',{name:new RegExp(label)}).first().click();
 }
 
 test('visual · Today',async({page})=>{await bootVisual(page);await expect(page.getByRole('heading',{name:/Musterfamilie/})).toBeVisible();await snapshot(page,'today')});
@@ -84,6 +79,6 @@ test('visual · Members',async({page})=>{await bootVisual(page,'/?page=members')
 test('visual · Integrations',async({page})=>{await bootVisual(page,'/?page=integrations');await expect(page.locator('.integration-health-card').filter({hasText:'Open-Meteo'})).toBeVisible();await snapshot(page,'integrations')});
 test('visual · Automations',async({page})=>{await bootVisual(page,'/?page=automations');await expect(page.locator('.automation-template').first()).toBeVisible();await snapshot(page,'automations')});
 test('visual · More',async({page})=>{await bootVisual(page);await bottom(page,'Mehr');await expect(page.getByRole('heading',{name:'Mehr',exact:true})).toBeVisible();await snapshot(page,'more')});
-test('visual · Task editor dialog',async({page})=>{await bootVisual(page,'/?page=tasks');await openCreateFromQuickstart(page,'Aufgabe');await expect(page.getByRole('dialog').getByRole('heading',{name:'Aufgabe hinzufügen'})).toBeVisible();await snapshot(page,'dialog-task-editor')});
-test('visual · Event editor dialog',async({page})=>{await bootVisual(page,'/?page=calendar');await openCreateFromQuickstart(page,'Termin');await expect(page.getByRole('dialog').getByRole('heading',{name:'Termin hinzufügen'})).toBeVisible();await snapshot(page,'dialog-event-editor')});
+test('visual · Task editor dialog',async({page})=>{await bootVisual(page,'/?page=tasks');await openCreateAction(page,'Aufgabe');await expect(page.getByRole('dialog').getByRole('heading',{name:'Aufgabe hinzufügen'})).toBeVisible();await snapshot(page,'dialog-task-editor')});
+test('visual · Event editor dialog',async({page})=>{await bootVisual(page,'/?page=calendar');await openCreateAction(page,'Termin');await expect(page.getByRole('dialog').getByRole('heading',{name:'Termin hinzufügen'})).toBeVisible();await snapshot(page,'dialog-event-editor')});
 test('invite success dialog stays responsive and secret-free',async({page})=>{await bootVisual(page,'/?page=members');await page.getByRole('button',{name:'Person einladen'}).click();let dialog=page.getByRole('dialog');await dialog.getByLabel('Anzeigename').fill('Oma');await dialog.getByLabel('E-Mail').fill('oma@example.test');await dialog.getByRole('button',{name:/Weiter zu Rolle/}).click();dialog=page.getByRole('dialog');await dialog.getByText('Gast',{exact:true}).first().click();await dialog.getByRole('button',{name:'Einladung senden'}).click();await expect(dialog.getByText(/Versand wird vorbereitet/i)).toBeVisible();await expect(dialog.getByText(/oma@example\.test/)).toBeVisible();await expect(dialog.locator('.invite-qr-image')).toHaveCount(0);await expect(dialog.getByRole('button',{name:/Link kopieren|Teilen/})).toHaveCount(0);const box=await dialog.boundingBox();const viewport=page.viewportSize();expect(box).not.toBeNull();expect(viewport).not.toBeNull();expect(box.x).toBeGreaterThanOrEqual(0);expect(box.y).toBeGreaterThanOrEqual(0);expect(box.x+box.width).toBeLessThanOrEqual(viewport.width+1);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=document.documentElement.clientWidth+1)).toBe(true)});

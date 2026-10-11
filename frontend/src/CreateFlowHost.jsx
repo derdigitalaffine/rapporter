@@ -10,10 +10,10 @@ import ContractEditor from './ContractEditor';
 import CorrespondenceEditor from './CorrespondenceEditor';
 import WishlistEditor from './WishlistEditor';
 import {BabyCreateSheet,PetCreateSheet} from './ModuleCreateSheets';
-import {recordCreateUsage} from './create-ranking-client';
+import {recordCreateUsage,createRankingScope} from './create-ranking-client';
 import {pageHref} from './navigation';
 
-export default function CreateFlowHost({action,family,data,context={},onClose,onRefresh,onNavigate}){
+export default function CreateFlowHost({userId,action,family,data,context={},onClose,onRefresh,onNavigate}){
  const [createdShoppingList,setCreatedShoppingList]=useState(null);
  if(!action||!family)return null;
  const taskLists=(data?.task_lists||[]).filter(list=>!list.archived);
@@ -24,7 +24,7 @@ export default function CreateFlowHost({action,family,data,context={},onClose,on
  const shoppingList=selectedShoppingList||(context.shoppingListId&&context.shoppingListId!=='all'?shoppingLists.find(list=>String(list.id)===String(context.shoppingListId)):shoppingLists[0]);
  function learnSuccessfulCreate(){
   const origin=typeof context.origin==='string'?context.origin:'';
-  recordCreateUsage({familyId:family.id,actionId:action,originPage:origin,contextBucket:origin}).catch(()=>{});
+  recordCreateUsage({scope:createRankingScope(family,userId),actionId:action,originPage:origin,contextBucket:origin}).catch(()=>{});
  }
  async function saved(){learnSuccessfulCreate();await onRefresh?.();onClose()}
  async function savedWithoutClose(){learnSuccessfulCreate();await onRefresh?.()}
