@@ -4,7 +4,7 @@ Issue: #205 (roadmap #223)
 
 ## Endpoint
 
-The existing `GET /api/superadmin/users/` contract is enriched in place; no new route is introduced.
+The existing `GET /api/superadmin/users/` contract is enriched in place; no new route is introduced and existing Superadmin user actions keep their URLs unchanged.
 
 Existing search and pagination remain compatible. The directory additionally supports:
 
