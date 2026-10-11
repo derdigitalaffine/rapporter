@@ -82,6 +82,14 @@ INVITE_KEYS = (
     KeyPolicy("network", 4),
     KeyPolicy("global", 50),
 )
+INVITE_RESEND_KEYS = (
+    KeyPolicy("user", 1),
+    KeyPolicy("family", 2),
+    KeyPolicy("invite", 1),
+    KeyPolicy("identifier", 1),
+    KeyPolicy("network", 4),
+    KeyPolicy("global", 50),
+)
 INVITE_PUBLIC_KEYS = (
     KeyPolicy("user", 1),
     KeyPolicy("network", 4),
@@ -115,7 +123,7 @@ POLICIES: dict[str, AbusePolicy] = {
         "invite.create", WindowPolicy(5, 60), WindowPolicy(30, 3600), INVITE_KEYS, 30, 900, "auth.invite.create"
     ),
     "invite.resend": AbusePolicy(
-        "invite.resend", WindowPolicy(3, 300), WindowPolicy(10, 3600), INVITE_KEYS, 60, 1800, "auth.invite.resend"
+        "invite.resend", WindowPolicy(3, 300), WindowPolicy(10, 3600), INVITE_RESEND_KEYS, 60, 1800, "auth.invite.resend"
     ),
     "invite.resolve": AbusePolicy(
         "invite.resolve", WindowPolicy(30, 60), WindowPolicy(200, 3600), INVITE_PUBLIC_KEYS, 15, 300, "auth.invite.resolve"
@@ -222,7 +230,7 @@ def network_identity(request) -> str:
     return str(ipaddress.ip_network(f"{address}/{prefix}", strict=False))
 
 
-def _identity_values(*, request=None, identifier=None, user=None, family_id=None) -> dict[str, str]:
+def _identity_values(*, request=None, identifier=None, user=None, family_id=None, invite_id=None) -> dict[str, str]:
     network = network_identity(request)
     normalized_identifier = normalize_identifier(identifier)
     user_id = getattr(user, "pk", None) if user is not None else None
@@ -236,6 +244,7 @@ def _identity_values(*, request=None, identifier=None, user=None, family_id=None
         "identifier": normalized_identifier,
         "user": str(user_id) if user_id is not None else "",
         "family": str(family_id) if family_id else "",
+        "invite": str(invite_id) if invite_id else "",
         "global": "instance",
     }
     if network and normalized_identifier:
@@ -245,8 +254,14 @@ def _identity_values(*, request=None, identifier=None, user=None, family_id=None
     return values
 
 
-def build_identity_keys(policy: AbusePolicy, *, request=None, identifier=None, user=None, family_id=None) -> tuple[IdentityKey, ...]:
-    values = _identity_values(request=request, identifier=identifier, user=user, family_id=family_id)
+def build_identity_keys(policy: AbusePolicy, *, request=None, identifier=None, user=None, family_id=None, invite_id=None) -> tuple[IdentityKey, ...]:
+    values = _identity_values(
+        request=request,
+        identifier=identifier,
+        user=user,
+        family_id=family_id,
+        invite_id=invite_id,
+    )
     keys = []
     for key_policy in policy.keys:
         value = values.get(key_policy.kind, "")
@@ -353,7 +368,7 @@ def _consume_bucket(*, policy: AbusePolicy, identity: IdentityKey, window_kind: 
     return 0
 
 
-def enforce(scope: str, *, request=None, identifier=None, user=None, family_id=None) -> AbuseDecision:
+def enforce(scope: str, *, request=None, identifier=None, user=None, family_id=None, invite_id=None) -> AbuseDecision:
     policy = get_policy(scope)
     identities = build_identity_keys(
         policy,
@@ -361,6 +376,7 @@ def enforce(scope: str, *, request=None, identifier=None, user=None, family_id=N
         identifier=identifier,
         user=user,
         family_id=family_id,
+        invite_id=invite_id,
     )
     now = timezone.now()
 
@@ -393,12 +409,19 @@ def enforce(scope: str, *, request=None, identifier=None, user=None, family_id=N
     return AbuseDecision(True, scope=scope)
 
 
-def forgive(scope: str, *, request=None, identifier=None, user=None, family_id=None, key_kinds: Iterable[str] = ("identifier", "network_identifier", "user")) -> None:
+def forgive(scope: str, *, request=None, identifier=None, user=None, family_id=None, invite_id=None, key_kinds: Iterable[str] = ("identifier", "network_identifier", "user")) -> None:
     policy = get_policy(scope)
     allowed_kinds = set(key_kinds)
     identities = [
         identity
-        for identity in build_identity_keys(policy, request=request, identifier=identifier, user=user, family_id=family_id)
+        for identity in build_identity_keys(
+            policy,
+            request=request,
+            identifier=identifier,
+            user=user,
+            family_id=family_id,
+            invite_id=invite_id,
+        )
         if identity.kind in allowed_kinds
     ]
     if not identities:
