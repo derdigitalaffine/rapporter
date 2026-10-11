@@ -4,6 +4,18 @@ from .models import Family, Membership, FamilyInvitation, TaskList, Task, TaskWo
 from .predictions import routine_prediction
 
 
+CALENDAR_SOURCE_ICONS = {"calendar", "members", "school", "transit", "weather", "waste", "warning", "route"}
+CALENDAR_SOURCE_COLORS = {"blue", "green", "purple", "orange", "red", "teal", "slate"}
+CALENDAR_SOURCE_DEFAULTS = {
+    IntegrationSource.Kind.ICS: {"icon": "calendar", "color": "blue"},
+    IntegrationSource.Kind.WASTE: {"icon": "waste", "color": "orange"},
+    IntegrationSource.Kind.WEATHER: {"icon": "weather", "color": "blue"},
+    IntegrationSource.Kind.WARNING: {"icon": "warning", "color": "red"},
+    IntegrationSource.Kind.TRANSIT: {"icon": "transit", "color": "purple"},
+    IntegrationSource.Kind.SCHOOL: {"icon": "school", "color": "purple"},
+}
+
+
 def _validate_family_access(serializer, attrs):
     family = attrs.get("family") or (getattr(serializer.instance, "family", None) if serializer.instance else None)
     request = serializer.context.get("request")
@@ -11,6 +23,51 @@ def _validate_family_access(serializer, attrs):
         if family.status != Family.Status.ACTIVE or not Membership.objects.filter(family=family, user=request.user).exists():
             raise PermissionDenied("Familie ist für diesen Benutzer nicht verfügbar.")
     return family
+
+
+def _validate_source_config(config):
+    if config is None:
+        return {}
+    if not isinstance(config, dict):
+        raise serializers.ValidationError({"config": "Integrationskonfiguration muss ein Objekt sein."})
+    config = dict(config)
+    presentation = config.get("presentation")
+    if presentation is None:
+        return config
+    if not isinstance(presentation, dict):
+        raise serializers.ValidationError({"config": {"presentation": "Darstellung muss ein Objekt sein."}})
+    unknown = set(presentation) - {"icon", "color", "label"}
+    if unknown:
+        raise serializers.ValidationError({"config": {"presentation": f"Unbekannte Darstellungsfelder: {', '.join(sorted(unknown))}."}})
+    normalized = {}
+    icon = presentation.get("icon")
+    if icon is not None:
+        if icon not in CALENDAR_SOURCE_ICONS:
+            raise serializers.ValidationError({"config": {"presentation": {"icon": "Nicht unterstütztes Kalender-Icon."}}})
+        normalized["icon"] = icon
+    color = presentation.get("color")
+    if color is not None:
+        if color not in CALENDAR_SOURCE_COLORS:
+            raise serializers.ValidationError({"config": {"presentation": {"color": "Nicht unterstützte Kalenderfarbe."}}})
+        normalized["color"] = color
+    if "label" in presentation:
+        label = str(presentation.get("label") or "").strip()
+        if len(label) > 80:
+            raise serializers.ValidationError({"config": {"presentation": {"label": "Kalenderbezeichnung darf höchstens 80 Zeichen lang sein."}}})
+        if label:
+            normalized["label"] = label
+    config["presentation"] = normalized
+    return config
+
+
+def _source_presentation(source):
+    defaults = CALENDAR_SOURCE_DEFAULTS.get(source.kind, {"icon": "calendar", "color": "slate"})
+    configured = (source.config or {}).get("presentation") if isinstance(source.config, dict) else None
+    configured = configured if isinstance(configured, dict) else {}
+    icon = configured.get("icon") if configured.get("icon") in CALENDAR_SOURCE_ICONS else defaults["icon"]
+    color = configured.get("color") if configured.get("color") in CALENDAR_SOURCE_COLORS else defaults["color"]
+    label = str(configured.get("label") or source.name or "Kalender").strip()[:80]
+    return {"icon": icon, "color": color, "label": label}
 
 
 def _membership_profile(obj):
@@ -247,6 +304,8 @@ class RoutineSerializer(serializers.ModelSerializer):
 class IntegrationSourceSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         _validate_family_access(self, attrs)
+        if "config" in attrs:
+            attrs["config"] = _validate_source_config(attrs.get("config"))
         return attrs
     def to_representation(self, instance):
         data = super().to_representation(instance)
@@ -257,6 +316,7 @@ class IntegrationSourceSerializer(serializers.ModelSerializer):
         if config.get("secret_endpoint") and data.get("endpoint"):
             data["endpoint"] = "••••••••"
         data["config"] = config
+        data["presentation"] = _source_presentation(instance)
         return data
     class Meta:
         model = IntegrationSource
@@ -271,6 +331,17 @@ class FamilyEventSerializer(serializers.ModelSerializer):
         if source and family and source.family_id != family.id:
             raise serializers.ValidationError({"source": "Quelle gehört nicht zu dieser Familie."})
         return attrs
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        if instance.source_id:
+            data["source_name"] = instance.source.name
+            data["source_kind"] = instance.source.kind
+            data["source_presentation"] = _source_presentation(instance.source)
+        else:
+            data["source_name"] = None
+            data["source_kind"] = None
+            data["source_presentation"] = None
+        return data
     class Meta:
         model = FamilyEvent
         fields = "__all__"
