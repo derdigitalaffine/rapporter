@@ -12,7 +12,7 @@ from .models import (
     Settlement,
     get_default_expense_ledger,
 )
-from .money import balance_summary, build_split
+from .money import balance_summary, build_split, money
 
 
 class LocalizedDecimalField(serializers.DecimalField):
@@ -47,6 +47,64 @@ def _request_can_access_family(request, family):
         user=request.user,
         family__status=Family.Status.ACTIVE,
     ).exists()
+
+
+FX_FIELDS = ("original_amount", "original_currency", "fx_rate")
+
+
+def _apply_frozen_fx(attrs, instance, ledger):
+    supplied = any(field in attrs for field in FX_FIELDS)
+    existing_fx = bool(instance and instance.fx_rate is not None)
+    ledger_changed = bool(instance and instance.ledger_id and instance.ledger_id != ledger.id)
+
+    if existing_fx and not supplied and ("total_amount" in attrs or "currency" in attrs):
+        raise serializers.ValidationError({
+            "total_amount": "Bei einer FX-Ausgabe werden Basisbetrag und -währung aus Originalbetrag und eingefrorenem Kurs berechnet."
+        })
+    if existing_fx and ledger_changed and "fx_rate" not in attrs:
+        raise serializers.ValidationError({
+            "fx_rate": "Beim Wechsel des Abrechnungskreises muss der Kurs für dessen Basiswährung ausdrücklich bestätigt werden."
+        })
+    if not supplied:
+        return attrs
+
+    original_amount = attrs.get("original_amount", getattr(instance, "original_amount", None))
+    original_currency = attrs.get("original_currency", getattr(instance, "original_currency", None))
+    fx_rate = attrs.get("fx_rate", getattr(instance, "fx_rate", None))
+    if original_amount is None or not original_currency or fx_rate is None:
+        raise serializers.ValidationError({
+            "fx": "Originalbetrag, Originalwährung und eingefrorener Kurs müssen gemeinsam angegeben werden."
+        })
+    if original_amount <= 0:
+        raise serializers.ValidationError({"original_amount": "Originalbetrag muss größer als 0 sein."})
+    if fx_rate <= 0:
+        raise serializers.ValidationError({"fx_rate": "FX-Kurs muss größer als 0 sein."})
+
+    original_currency = _validate_currency(original_currency)
+    base_currency = ledger.base_currency.upper()
+    if original_currency == base_currency and fx_rate != Decimal("1"):
+        raise serializers.ValidationError({
+            "fx_rate": "Bei identischer Original- und Basiswährung muss der Kurs 1 sein."
+        })
+
+    converted = money(original_amount * fx_rate)
+    if converted <= 0:
+        raise serializers.ValidationError({"fx_rate": "Der umgerechnete Betrag muss mindestens einen Cent ergeben."})
+    if "total_amount" in attrs and attrs["total_amount"] is not None and money(attrs["total_amount"]) != converted:
+        raise serializers.ValidationError({
+            "total_amount": f"Basisbetrag wird aus Originalbetrag und FX-Kurs berechnet und muss {converted:.2f} {base_currency} ergeben."
+        })
+    if "currency" in attrs and attrs["currency"] and attrs["currency"].upper() != base_currency:
+        raise serializers.ValidationError({
+            "currency": f"Im FX-Modus ist die gespeicherte Ausgabenwährung die Ledger-Basiswährung {base_currency}."
+        })
+
+    attrs["original_amount"] = original_amount
+    attrs["original_currency"] = original_currency
+    attrs["fx_rate"] = fx_rate
+    attrs["total_amount"] = converted
+    attrs["currency"] = base_currency
+    return attrs
 
 
 class ExpenseLedgerSerializer(serializers.ModelSerializer):
@@ -129,6 +187,9 @@ class ExpenseSerializer(serializers.ModelSerializer):
     paid_by_name = serializers.SerializerMethodField()
     receipt_available = serializers.SerializerMethodField()
     total_amount = LocalizedDecimalField(max_digits=12, decimal_places=2, allow_null=True, required=False)
+    original_amount = LocalizedDecimalField(max_digits=12, decimal_places=2, allow_null=True, required=False)
+    original_currency = serializers.CharField(max_length=3, allow_null=True, allow_blank=True, required=False)
+    fx_rate = LocalizedDecimalField(max_digits=20, decimal_places=10, allow_null=True, required=False)
     participants = serializers.ListField(child=serializers.UUIDField(), write_only=True, required=False)
     split_type = serializers.ChoiceField(choices=ExpenseShare.SplitType.choices, write_only=True, required=False, default=ExpenseShare.SplitType.EQUAL)
     split_values = serializers.DictField(child=LocalizedDecimalField(max_digits=12, decimal_places=4), write_only=True, required=False)
@@ -149,9 +210,24 @@ class ExpenseSerializer(serializers.ModelSerializer):
     def validate_currency(self, value):
         return _validate_currency(value)
 
+    def validate_original_currency(self, value):
+        if value in (None, ""):
+            return None
+        return _validate_currency(value)
+
     def validate_total_amount(self, value):
         if value is not None and value <= 0:
             raise serializers.ValidationError("Der Gesamtbetrag muss größer als 0 sein.")
+        return value
+
+    def validate_original_amount(self, value):
+        if value is not None and value <= 0:
+            raise serializers.ValidationError("Originalbetrag muss größer als 0 sein.")
+        return value
+
+    def validate_fx_rate(self, value):
+        if value is not None and value <= 0:
+            raise serializers.ValidationError("FX-Kurs muss größer als 0 sein.")
         return value
 
     def validate(self, attrs):
@@ -188,6 +264,7 @@ class ExpenseSerializer(serializers.ModelSerializer):
         if ledger.archived:
             raise serializers.ValidationError({"ledger": "Archivierter Abrechnungskreis kann nicht verwendet werden."})
         attrs["ledger"] = ledger
+        _apply_frozen_fx(attrs, self.instance, ledger)
 
         participants = attrs.get("participants")
         if funding_source == Expense.FundingSource.SHARED:
@@ -320,9 +397,9 @@ class ExpenseSerializer(serializers.ModelSerializer):
         model = Expense
         fields = [
             "id", "family", "ledger", "title", "merchant", "occurred_at", "total_amount", "currency",
-            "funding_source", "paid_by", "paid_by_name", "created_by", "client_request_id",
-            "receipt_status", "receipt_available", "source", "status", "notes", "shares", "extraction",
-            "participants", "split_type", "split_values", "finalize", "created_at", "updated_at",
+            "original_amount", "original_currency", "fx_rate", "funding_source", "paid_by", "paid_by_name",
+            "created_by", "client_request_id", "receipt_status", "receipt_available", "source", "status", "notes",
+            "shares", "extraction", "participants", "split_type", "split_values", "finalize", "created_at", "updated_at",
         ]
         read_only_fields = ["created_by", "receipt_status", "source", "status"]
         extra_kwargs = {
