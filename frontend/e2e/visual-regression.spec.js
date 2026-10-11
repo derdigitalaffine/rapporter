@@ -16,7 +16,11 @@ async function bootVisual(page,path='/'){
 async function restoreStableSnapshotShell(page){
   const brand=page.locator('.brand-mini img');
   await expect(brand).toHaveAttribute('src','/brand/icon.svg');
-  await brand.evaluate((image,svg)=>{image.src=`data:image/svg+xml,${encodeURIComponent(svg)}`},LEGACY_BRAND_ICON);
+  await brand.evaluate((image,svg)=>new Promise(resolve=>{
+    image.addEventListener('load',resolve,{once:true});
+    image.src=`data:image/svg+xml,${encodeURIComponent(svg)}`;
+    if(image.complete)resolve();
+  }),LEGACY_BRAND_ICON);
   const todo=page.locator('.bottom-nav').getByRole('button',{name:'To-dos',exact:true});
   await expect(todo).toHaveCount(1);
   await todo.evaluate(button=>{
