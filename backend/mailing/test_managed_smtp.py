@@ -67,3 +67,29 @@ class ManagedSmtpApiTests(TestCase):
         row = ManagedSmtpConfig.objects.get(pk=1)
         self.assertEqual(decrypt_password(row.password_encrypted), "keep-me")
         self.assertNotIn("keep-me", str(response.data))
+
+    @patch("mailing.superadmin_views._enforce_sensitive_action", return_value=SimpleNamespace(allowed=True))
+    def test_test_send_rejects_unconfigured_transport(self, _enforce):
+        client = APIClient();client.force_authenticate(self.admin)
+        response = client.post("/api/superadmin/smtp/test/", {"recipient": "target@example.test"}, format="json")
+        self.assertEqual(response.status_code, 409, response.data)
+        self.assertEqual(response.data["code"], "mail_not_configured")
+
+    @patch("mailing.superadmin_views._enforce_sensitive_action", return_value=SimpleNamespace(allowed=True))
+    @patch("mailing.superadmin_views.effective_connection")
+    def test_test_send_uses_managed_transport(self, effective_connection, _enforce):
+        target = Mock();target.send_messages.return_value = 1;effective_connection.return_value = target
+        ManagedSmtpConfig.objects.create(pk=1, enabled=True, host="smtp.example.test", port=587,
+            username="mailer", password_encrypted=encrypt_password("secret"), security="starttls",
+            from_email="managed@example.test", reply_to="reply@example.test")
+        client = APIClient();client.force_authenticate(self.admin)
+        response = client.post("/api/superadmin/smtp/test/", {"recipient": "target@example.test"}, format="json")
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertTrue(response.data["accepted"])
+        self.assertEqual(response.data["source"], "superadmin")
+        self.assertEqual(target.send_messages.call_count, 1)
+        message = target.send_messages.call_args.args[0][0]
+        self.assertEqual(message.from_email, "managed@example.test")
+        self.assertEqual(message.to, ["target@example.test"])
+        self.assertEqual(message.reply_to, ["reply@example.test"])
+        self.assertNotIn("secret", str(response.data))
