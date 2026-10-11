@@ -58,9 +58,38 @@ def can_interact_with_pin(user, pin):
 
 
 def effective_scope_for_user(user, pin):
-    if not pin_scope_allows(user, pin) or not source_object_visible(user, pin):
+    """Return the current effective audience class for an allowed viewer.
+
+    Native pins have no second authority, so their stored Pin scope is already the
+    effective scope. Reference pins are classified from the Memberships that pass
+    both the Pin scope and the canonical source ACL. This avoids reporting
+    ``family`` merely because the Pin shell says family when the source is private
+    or shared only with selected people.
+    """
+    if not pin_scope_allows(user, pin):
         return 'none'
-    return pin.visibility
+    if not pin.target_id:
+        return pin.visibility
+    if not source_object_visible(user, pin):
+        return 'none'
+
+    allowed_ids = set(visible_pin_memberships(pin).values_list('id', flat=True))
+    if not allowed_ids:
+        return 'none'
+
+    family_ids = set(
+        Membership.objects.filter(family_id=pin.family_id).values_list('id', flat=True)
+    )
+    if pin.visibility == BoardPost.Visibility.FAMILY and allowed_ids == family_ids:
+        return BoardPost.Visibility.FAMILY
+
+    author_membership_id = Membership.objects.filter(
+        family_id=pin.family_id,
+        user_id=pin.author_id,
+    ).values_list('id', flat=True).first()
+    if author_membership_id and allowed_ids == {author_membership_id}:
+        return BoardPost.Visibility.PRIVATE
+    return BoardPost.Visibility.SELECTED
 
 
 def visible_pin_memberships(pin):
