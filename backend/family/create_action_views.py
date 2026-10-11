@@ -196,6 +196,10 @@ def create_action_preferences(request):
     family, membership, error_response = _family_membership(request)
     if error_response is not None:
         return error_response
+    # Cookies can change in another tab while this tab still holds an old queue.
+    expected_membership = request.headers.get("X-Create-Membership")
+    if expected_membership is not None and expected_membership != str(membership.pk):
+        return Response({"detail": "Der Familienzugriff hat sich geändert."}, status=status.HTTP_403_FORBIDDEN)
     if request.method == "PATCH":
         return _preferences_patch(request, membership=membership)
     if request.method == "POST":

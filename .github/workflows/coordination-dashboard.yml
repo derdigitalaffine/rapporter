@@ -32,7 +32,9 @@ jobs:
             const repo = context.repo.repo;
             const controlIssue = 223;
             const dashboardMarker = '<!-- coordination-dashboard:v1 -->';
-            const claimMarker = '<!-- coordination:claim:v1 -->';
+            const claimV2Marker = '<!-- coordination:claim:v2 -->';
+            const claimV1Marker = '<!-- coordination:claim:v1 -->';
+            const handoffV2Marker = '<!-- coordination:handoff:v2 -->';
             const researchMarker = '<!-- external-research:v1 -->';
             const internalAssociations = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);
             const trustedMaintainerComment = (comment) => internalAssociations.has(comment.author_association || 'NONE');
@@ -69,6 +71,103 @@ jobs:
               .join('\n')
               .trim();
 
+            const labelsOf = (issue) => (issue.labels || [])
+              .map((label) => typeof label === 'string' ? label : label.name)
+              .filter(Boolean)
+              .map((label) => label.toLowerCase());
+
+            const fieldValue = (body, fieldName) => {
+              const escaped = fieldName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+              const pattern = new RegExp(`^\\s*(?:-\\s*)?${escaped}\\s*:\\s*(.*)$`, 'i');
+              for (const line of String(body || '').split('\n')) {
+                const match = line.match(pattern);
+                if (match) return match[1].trim();
+              }
+              return null;
+            };
+
+            const claimKind = (body) => {
+              const text = String(body || '');
+              if (text.includes(claimV2Marker)) return 'v2';
+              if (text.includes(claimV1Marker)) return 'v1';
+              if (/(?:^|\n)\s*(?:<!--\s*)?coordination:claim:v[12](?:\s*-->)?/i.test(text)) return 'bare';
+              return null;
+            };
+
+            const claimBadge = (kind) => {
+              if (kind === 'v2') return '✅ v2';
+              if (kind === 'v1') return '🟡 v1';
+              if (kind === 'bare') return '⚠️ malformed';
+              return '❌ fehlt';
+            };
+
+            const normalizePhase = (body) => {
+              const raw = String(fieldValue(body, 'Phase') || '').toLowerCase();
+              return ['discovery', 'implementation', 'review', 'blocked'].includes(raw) ? raw : 'unknown';
+            };
+
+            const normalizeBranch = (body) => {
+              let raw = fieldValue(body, 'Branch');
+              if (!raw) {
+                const combined = fieldValue(body, 'Branch/PR');
+                if (combined) raw = combined.replace(/\s+\/\s+(?:#\d+|pending|none)\s*$/i, '');
+              }
+              raw = String(raw || '').trim().replace(/^`|`$/g, '');
+              if (!raw || /^(none|pending|tbd|n\/a)$/i.test(raw)) return null;
+              return raw;
+            };
+
+            const coordinationKeys = (body) => {
+              const rawValue = fieldValue(body, 'Coordination keys');
+              if (rawValue === null) return { keys: [], explicit: false, explicitNone: false };
+              const raw = String(rawValue).trim();
+              if (/^(none|n\/a)$/i.test(raw)) return { keys: [], explicit: true, explicitNone: true };
+              const keys = [...new Set(raw.split(',')
+                .map((key) => key.trim().replace(/^`|`$/g, ''))
+                .filter((key) => /^[a-z0-9_-]+:[a-z0-9_./:-]+$/i.test(key))
+                .map((key) => key.toLowerCase()))];
+              return { keys, explicit: true, explicitNone: false };
+            };
+
+            // Relationships are machine contracts only when expressed as standalone
+            // declarative lines. Narrative prose such as "does not close #205" must
+            // never create a closing collision.
+            const issueReferences = (body) => {
+              const linked = new Set();
+              const closing = new Set();
+              for (const line of String(body || '').split('\n')) {
+                const closingLine = line.match(/^\s*(?:[-*]\s*)?(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\b\s*(.*)$/i);
+                if (closingLine) {
+                  for (const match of closingLine[1].matchAll(/#(\d+)/g)) {
+                    const issueNumber = Number(match[1]);
+                    closing.add(issueNumber);
+                    linked.add(issueNumber);
+                  }
+                  continue;
+                }
+                const linkedLine = line.match(/^\s*(?:[-*]\s*)?(?:ref(?:s|erences?)?|part\s+of)\b\s*(.*)$/i);
+                if (linkedLine) {
+                  for (const match of linkedLine[1].matchAll(/#(\d+)/g)) {
+                    linked.add(Number(match[1]));
+                  }
+                }
+              }
+              return { linked, closing };
+            };
+
+            // Parser contract checks: fail the workflow instead of silently
+            // reintroducing high-noise coordination false positives.
+            const parserChecks = [
+              ['negated narrative is not closing', issueReferences('This PR intentionally does not close #205.').closing.size === 0],
+              ['standalone closing line is closing', issueReferences('- Closes #205').closing.has(205)],
+              ['refs line links without closing', issueReferences('Refs #205 #223').linked.has(205) && issueReferences('Refs #205 #223').closing.size === 0],
+              ['exact v2 marker is canonical', claimKind(`${claimV2Marker}\n- Phase: discovery`) === 'v2'],
+              ['bare claim stays visible as malformed', claimKind('coordination:claim:v1\nbranch: test') === 'bare'],
+            ];
+            for (const [name, ok] of parserChecks) {
+              if (!ok) throw new Error(`Coordination parser contract failed: ${name}`);
+            }
+
             const allIssueLike = await github.paginate(github.rest.issues.listForRepo, {
               owner,
               repo,
@@ -82,39 +181,6 @@ jobs:
               state: 'open',
               per_page: 100,
             });
-
-            const labelsOf = (issue) => (issue.labels || [])
-              .map((label) => typeof label === 'string' ? label : label.name)
-              .filter(Boolean)
-              .map((label) => label.toLowerCase());
-
-            const issueReferences = (body) => {
-              const linked = new Set();
-              const closing = new Set();
-              const text = body || '';
-              const closingPattern = /(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#(\d+)/gi;
-              const linkedPattern = /(?:ref(?:s|erences?)?|part\s+of)\s+#(\d+)/gi;
-              for (const match of text.matchAll(closingPattern)) {
-                const issueNumber = Number(match[1]);
-                closing.add(issueNumber);
-                linked.add(issueNumber);
-              }
-              for (const match of text.matchAll(linkedPattern)) {
-                linked.add(Number(match[1]));
-              }
-              return { linked, closing };
-            };
-
-            const coordinationKeys = (body) => {
-              const line = (body || '').split('\n')
-                .find((value) => /^-\s*Coordination keys\s*:/i.test(value.trim()));
-              if (!line) return [];
-              const raw = line.replace(/^-\s*Coordination keys\s*:/i, '');
-              return [...new Set(raw.split(',')
-                .map((key) => key.trim().replace(/^`|`$/g, ''))
-                .filter((key) => /^[a-z0-9_-]+:[a-z0-9_./:-]+$/i.test(key))
-                .map((key) => key.toLowerCase()))];
-            };
 
             const commentCache = new Map();
             const commentsFor = async (issueNumber) => {
@@ -154,24 +220,77 @@ jobs:
             const activeRows = [];
             const staleClaims = [];
             const claimsWithoutPr = [];
+            const malformedClaims = [];
+            const invalidV2Claims = [];
+            const handoffCleanup = [];
             const now = Date.now();
             const staleAfterMs = 72 * 60 * 60 * 1000;
+            const noPrGraceMs = 6 * 60 * 60 * 1000;
 
             for (const issue of activeIssues) {
               const comments = await commentsFor(issue.number);
-              const claimComments = comments.filter((comment) => trustedMaintainerComment(comment)
-                && (comment.body || '').includes(claimMarker));
+              const claimComments = comments.filter((comment) => trustedMaintainerComment(comment) && claimKind(comment.body));
               const latestClaim = claimComments.at(-1);
-              const keys = latestClaim ? coordinationKeys(latestClaim.body) : [];
+              const kind = latestClaim ? claimKind(latestClaim.body) : null;
+              const keyData = latestClaim ? coordinationKeys(latestClaim.body) : { keys: [], explicit: false, explicitNone: false };
+              const phase = latestClaim ? normalizePhase(latestClaim.body) : 'unknown';
+              const branch = latestClaim ? normalizeBranch(latestClaim.body) : null;
               const linkedPrs = prData.filter((pr) => pr.linkedRefs.has(issue.number));
               const latestVisibleActivity = Math.max(
                 Date.parse(issue.updated_at || 0),
                 ...linkedPrs.map((pr) => Date.parse(pr.updatedAt || 0)),
               );
-              activeRows.push({ issue, hasClaim: Boolean(latestClaim), keys, linkedPrs });
-              if (linkedPrs.length === 0) claimsWithoutPr.push(issue);
+
+              const handoffComments = comments.filter((comment) => trustedMaintainerComment(comment)
+                && String(comment.body || '').includes(handoffV2Marker));
+              const latestHandoff = handoffComments.at(-1);
+              const disposition = latestHandoff
+                ? String(fieldValue(latestHandoff.body, 'Disposition') || '').toLowerCase()
+                : null;
+
+              const row = {
+                issue,
+                latestClaim,
+                claimKind: kind,
+                keys: keyData.keys,
+                keysExplicit: keyData.explicit,
+                explicitNoKeys: keyData.explicitNone,
+                phase,
+                branch,
+                linkedPrs,
+                disposition,
+              };
+              activeRows.push(row);
+
+              if (kind === 'bare') malformedClaims.push(issue);
+              if (kind === 'v2') {
+                const branchRequired = ['implementation', 'review'].includes(phase);
+                const prRequired = phase === 'review';
+                if (phase === 'unknown' || !keyData.explicit || (branchRequired && !branch) || (prRequired && linkedPrs.length === 0)) {
+                  invalidV2Claims.push(issue);
+                }
+              }
+
+              const claimAgeMs = latestClaim?.created_at ? now - Date.parse(latestClaim.created_at) : 0;
+              if (latestClaim
+                && linkedPrs.length === 0
+                && ['implementation', 'review', 'unknown'].includes(phase)
+                && claimAgeMs > noPrGraceMs) {
+                claimsWithoutPr.push(issue);
+              }
               if (now - latestVisibleActivity > staleAfterMs) staleClaims.push(issue);
+              if (['superseded', 'paused', 'abandoned', 'completed'].includes(disposition)) handoffCleanup.push(issue);
             }
+
+            const branchOwners = new Map();
+            for (const row of activeRows) {
+              if (!row.branch) continue;
+              const key = row.branch.toLowerCase();
+              if (!branchOwners.has(key)) branchOwners.set(key, { branch: row.branch, owners: [] });
+              branchOwners.get(key).owners.push(row.issue);
+            }
+            const branchCollisions = [...branchOwners.values()]
+              .filter(({ owners }) => owners.length > 1);
 
             const keyOwners = new Map();
             for (const row of activeRows) {
@@ -201,9 +320,7 @@ jobs:
                 const left = prData[i];
                 const right = prData[j];
                 const shared = [...left.files].filter((file) => right.files.has(file));
-                if (shared.length > 0) {
-                  fileOverlaps.push({ left, right, shared });
-                }
+                if (shared.length > 0) fileOverlaps.push({ left, right, shared });
               }
             }
 
@@ -220,7 +337,7 @@ jobs:
             for (const issue of externalFeatureCandidates) {
               const comments = await commentsFor(issue.number);
               if (!comments.some((comment) => trustedMaintainerComment(comment)
-                && (comment.body || '').includes(researchMarker))) {
+                && String(comment.body || '').includes(researchMarker))) {
                 missingResearch.push(issue);
               }
             }
@@ -231,7 +348,7 @@ jobs:
               '',
               `Automatisch aktualisiert: ${new Date().toISOString()} · Steuerissue: #223 · Protokoll: \`AGENTS.md\``,
               '',
-              '> Dieses Dashboard ist das gemeinsame Lagebild für Menschen und Agenten. Warnungen bedeuten: abstimmen, nicht blind stoppen.',
+              '> Dieses Dashboard ist das gemeinsame Lagebild für Menschen und Agenten. Warnungen bedeuten: abstimmen oder Metadaten reparieren, nicht blind stoppen.',
               '',
               '### Aktive Arbeit (`in progress`)',
             ];
@@ -242,21 +359,27 @@ jobs:
               for (const row of activeRows.slice(0, 50)) {
                 const prs = row.linkedPrs.length
                   ? row.linkedPrs.map((pr) => `#${pr.number}`).join(', ')
-                  : 'noch kein referenzierender offener PR';
-                const keys = row.keys.length ? row.keys.map((key) => `\`${safeCode(key)}\``).join(', ') : 'keine';
-                lines.push(`- #${row.issue.number} ${safeText(row.issue.title)} · Claim: ${row.hasClaim ? '✅' : '⚠️ fehlt'} · Keys: ${keys} · PR: ${prs}`);
+                  : 'kein referenzierender offener PR';
+                const keys = row.keys.length
+                  ? row.keys.map((key) => `\`${safeCode(key)}\``).join(', ')
+                  : row.explicitNoKeys ? '`none`' : 'nicht angegeben';
+                const branch = row.branch ? `\`${safeCode(row.branch)}\`` : 'none';
+                lines.push(`- #${row.issue.number} ${safeText(row.issue.title)} · Claim: ${claimBadge(row.claimKind)} · Phase: \`${safeCode(row.phase)}\` · Branch: ${branch} · Keys: ${keys} · PR: ${prs}`);
               }
             }
 
             lines.push('', '### Kollisionssignale');
-            if (semanticCollisions.length === 0 && sameIssueCollisions.length === 0 && fileOverlaps.length === 0) {
-              lines.push('- ✅ Keine semantischen Claim-, parallelen Closing-PR- oder exakten Dateikollisionen erkannt.');
+            if (branchCollisions.length === 0 && semanticCollisions.length === 0 && sameIssueCollisions.length === 0 && fileOverlaps.length === 0) {
+              lines.push('- ✅ Keine Branch-, semantischen Claim-, parallelen Closing-PR- oder exakten Dateikollisionen erkannt.');
+            }
+            for (const collision of branchCollisions.slice(0, 30)) {
+              lines.push(`- 🛑 Branch \`${safeCode(collision.branch)}\` wird parallel von ${collision.owners.map((issue) => `#${issue.number}`).join(', ')} beansprucht. Einen kanonischen Delivery-Track wählen und Doppelclaim vor weiterer Implementierung auflösen.`);
             }
             for (const collision of semanticCollisions.slice(0, 40)) {
               lines.push(`- ⚠️ Coordination Key \`${safeCode(collision.key)}\` wird parallel von ${collision.owners.map((issue) => `#${issue.number}`).join(', ')} beansprucht. Vertrag/Split im Thread klären.`);
             }
             for (const collision of sameIssueCollisions.slice(0, 25)) {
-              lines.push(`- ⚠️ Issue #${collision.issueNumber} wird gleichzeitig von ${collision.list.map((pr) => `#${pr.number}`).join(', ')} geschlossen. Split/Reihenfolge im Thread dokumentieren.`);
+              lines.push(`- ⚠️ Issue #${collision.issueNumber} wird durch deklarative Closing-Zeilen gleichzeitig von ${collision.list.map((pr) => `#${pr.number}`).join(', ')} geschlossen. Split/Reihenfolge prüfen.`);
             }
             for (const overlap of fileOverlaps.slice(0, 40)) {
               const shown = overlap.shared.slice(0, 5).map((file) => `\`${safeCode(file)}\``).join(', ');
@@ -265,14 +388,27 @@ jobs:
             }
 
             lines.push('', '### Aufmerksamkeit / Handoffs');
-            if (claimsWithoutPr.length === 0 && staleClaims.length === 0) {
-              lines.push('- ✅ Keine verwaisten oder >72h stillen aktiven Claims erkannt.');
+            if (malformedClaims.length === 0
+                && invalidV2Claims.length === 0
+                && claimsWithoutPr.length === 0
+                && staleClaims.length === 0
+                && handoffCleanup.length === 0) {
+              lines.push('- ✅ Keine malformed Claims, ungültigen v2-Claims, überfälligen PR-Links, stillen Claims oder Handoff-Cleanup-Probleme erkannt.');
             } else {
+              for (const issue of malformedClaims.slice(0, 30)) {
+                lines.push(`- 🧹 #${issue.number}: Claim ist sichtbar, aber Marker ist malformed/bare. Beim nächsten Touch auf den exakten \`<!-- coordination:claim:v2 -->\`-Contract reparieren; keinen zweiten Claim anlegen.`);
+              }
+              for (const issue of invalidV2Claims.slice(0, 30)) {
+                lines.push(`- 🧩 #${issue.number}: v2-Claim ist unvollständig (Phase/Branch/PR/Coordination-Keys gegen AGENTS.md prüfen).`);
+              }
               for (const issue of claimsWithoutPr.slice(0, 30)) {
-                lines.push(`- ℹ️ #${issue.number}: aktiv, aber noch kein referenzierender offener PR sichtbar.`);
+                lines.push(`- ℹ️ #${issue.number}: Implementation/Review seit >6h aktiv, aber noch kein referenzierender offener PR sichtbar. PR verlinken oder Phase/Status korrigieren.`);
               }
               for (const issue of staleClaims.slice(0, 30)) {
                 lines.push(`- 🕒 #${issue.number}: seit >72h keine sichtbare Issue-/verlinkte-PR-Aktivität; Claim prüfen oder Handoff dokumentieren.`);
+              }
+              for (const issue of handoffCleanup.slice(0, 30)) {
+                lines.push(`- 🧹 #${issue.number}: letzter v2-Handoff markiert Arbeit als nicht aktiv, Issue trägt aber weiter \`in progress\`. Label/Disposition bereinigen.`);
               }
             }
 
@@ -288,7 +424,7 @@ jobs:
             lines.push(
               '',
               '### Koordinationsregel',
-              'Vor Code: **#223 + Ziel-Issue + offene `in progress`-Issues + offene PRs prüfen.** Claims nutzen enge Coordination Keys. Bei Material-Overlap erst per Kommentar Split/Vertrag/Reihenfolge klären. Externe Reporter müssen die Konkurrenzanalyse nicht selbst liefern.',
+              'Vor Code: **#223 + Ziel-Issue + offene `in progress`-Issues + offene PRs prüfen.** Neue Arbeit nutzt den exakten `coordination:claim:v2`-Contract mit Phase, Branch und expliziten Coordination Keys. Gleicher Branch = sofort kanonischen Delivery-Track klären. Closing-Beziehungen nur als deklarative Standalone-Zeilen.',
               '',
               '_Maschinelle Hinweise sind absichtlich konservativ. Fachliche Unabhängigkeit oder ein abgestimmter Overlap darf weiter parallel laufen._',
             );

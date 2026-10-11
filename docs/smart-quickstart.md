@@ -66,3 +66,9 @@ The client caches the latest ranking payload per family. Successful offline/tran
 ## Accessibility and responsive behavior
 
 Quickstart keeps 44px+ controls, a focusable dialog, Escape/Back close behavior, and the existing overlay focus return. At 390px the quick grid uses two columns and collapses to one below 390px; no horizontal scrolling is required. Manual ordering never relies on drag-and-drop. Reduced-motion preferences remain respected by the shared design system.
+
+### Shared-browser identity isolation
+
+The browser profile and bounded usage queue are keyed by verified user, membership and family. Legacy family-only entries are discarded. Missing session identity uses stable defaults and cannot replay usage. Logout/session expiry removes local Quickstart data and invalidates in-flight responses; a new session cannot adopt or replay another account’s signals. A denied membership response removes that scope’s profile and queue. Concurrent replay removes only acknowledged receipts so newly queued events survive.
+
+Requests also carry the expected membership in `X-Create-Membership`. The server compares it with the authenticated membership before reading or writing, preventing a stale tab from replaying another account’s queue after a shared-cookie login switch. The header is an extra consistency guard, never authorization.

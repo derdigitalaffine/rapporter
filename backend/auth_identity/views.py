@@ -7,6 +7,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
 from auth_abuse.service import enforce, forgive
+from telemetry.service import try_record_audit_event
 
 from .models import EmailIdentity
 from .service import (
@@ -114,5 +115,15 @@ def verify_email(request):
         return Response(
             {"detail": "Bestätigungslink ist ungültig oder abgelaufen."},
             status=status.HTTP_400_BAD_REQUEST,
+        )
+    if changed:
+        try_record_audit_event(
+            "auth.email.verified",
+            actor=identity.user,
+            actor_class="user",
+            outcome="success",
+            reason="user_request",
+            target_type="user",
+            target_id=str(identity.user_id),
         )
     return Response({"verified": True, "changed": changed, "kind": identity.kind})

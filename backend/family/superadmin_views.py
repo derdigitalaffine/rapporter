@@ -1,6 +1,7 @@
 from datetime import timedelta
 
 from django.db import transaction
+from django.db.models import Count, Max, Q
 from django.utils import timezone
 from django.utils.text import slugify
 from rest_framework import permissions, status
@@ -8,15 +9,33 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
 from auth_abuse.service import enforce
+from auth_identity.models import EmailIdentity
 from auth_identity.service import EmailIdentityError, normalize_email
 from auth_sessions.service import require_fresh_session
+from entitlements.services import resolve_entitlements, resolve_entitlements_for_families
+from telemetry.models import AuditEvent, UsageEvent
 
-from .invitation_delivery import invitation_delivery_summary
+from .invitation_delivery import invitation_delivery_summary, prime_invitation_delivery_summaries
 from .invitation_service import issue_invitation
-from .models import Family, Membership
+from .models import Family, IntegrationSource, Membership
 
 
 RATE_LIMIT_DETAIL = "Zu viele Anfragen. Bitte später erneut versuchen."
+FAMILY_DETAIL_AUDIT_LIMIT = 30
+FAMILY_DETAIL_INVITE_LIMIT = 50
+FAMILY_DEFAULT_PAGE_SIZE = 100
+FAMILY_MAX_PAGE_SIZE = 200
+FAMILY_SORTS = {
+    "name": ("name", "created_at"),
+    "-name": ("-name", "created_at"),
+    "created_at": ("created_at", "id"),
+    "-created_at": ("-created_at", "id"),
+    "last_activity": ("last_activity_at", "id"),
+    "-last_activity": ("-last_activity_at", "id"),
+    "members": ("member_count", "id"),
+    "-members": ("-member_count", "id"),
+}
+FAMILY_STATUSES = {Family.Status.ACTIVE, Family.Status.SUSPENDED}
 
 
 class IsSuperAdmin(permissions.BasePermission):
@@ -49,14 +68,106 @@ def _normalized_required_email(value):
         return ""
 
 
+def _primary_identity(user):
+    return next(
+        (identity for identity in user.email_identities.all() if identity.kind == EmailIdentity.Kind.PRIMARY),
+        None,
+    )
+
+
+def _family_pagination(request):
+    if "limit" not in request.query_params and "offset" not in request.query_params:
+        return None
+    try:
+        limit = int(request.query_params.get("limit") or FAMILY_DEFAULT_PAGE_SIZE)
+        offset = int(request.query_params.get("offset") or 0)
+    except (TypeError, ValueError):
+        return Response(
+            {"detail": "Family pagination requires integer limit/offset values."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    if limit < 1 or limit > FAMILY_MAX_PAGE_SIZE:
+        return Response(
+            {
+                "detail": "Unsupported family page size.",
+                "minimum_limit": 1,
+                "maximum_limit": FAMILY_MAX_PAGE_SIZE,
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    if offset < 0:
+        return Response(
+            {"detail": "Family pagination offset must be non-negative."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    return limit, offset
+
+
+def _families_queryset():
+    now = timezone.now()
+    return (
+        Family.objects.prefetch_related(
+            "memberships__user__email_identities",
+            "invitations",
+        )
+        .annotate(
+            member_count=Count("memberships", distinct=True),
+            owner_count=Count(
+                "memberships",
+                filter=Q(memberships__role=Membership.Role.OWNER),
+                distinct=True,
+            ),
+            verified_owner_count=Count(
+                "memberships",
+                filter=Q(
+                    memberships__role=Membership.Role.OWNER,
+                    memberships__user__email_identities__kind=EmailIdentity.Kind.PRIMARY,
+                    memberships__user__email_identities__verified_at__isnull=False,
+                ),
+                distinct=True,
+            ),
+            pending_invite_count=Count(
+                "invitations",
+                filter=Q(
+                    invitations__accepted_at__isnull=True,
+                    invitations__revoked_at__isnull=True,
+                    invitations__expires_at__gt=now,
+                ),
+                distinct=True,
+            ),
+            last_activity_at=Max("usage_events__occurred_at"),
+        )
+    )
+
+
+def _prime_family_rows(families):
+    family_list = list(families)
+    if not family_list:
+        return family_list
+    snapshots = resolve_entitlements_for_families(family_list)
+    now = timezone.now()
+    pending_invites = []
+    for family in family_list:
+        family._superadmin_entitlement_snapshot = snapshots[family.pk]
+        pending_invites.extend(
+            invite
+            for invite in family.invitations.all()
+            if invite.accepted_at is None and invite.revoked_at is None and invite.expires_at > now
+        )
+    prime_invitation_delivery_summaries(pending_invites)
+    return family_list
+
+
 def _family_row(family):
-    owners = family.memberships.filter(role=Membership.Role.OWNER).select_related("user")
-    pending = family.invitations.filter(
-        role=Membership.Role.OWNER,
-        accepted_at__isnull=True,
-        revoked_at__isnull=True,
-        expires_at__gt=timezone.now(),
-    ).order_by("-created_at")
+    now = timezone.now()
+    memberships = list(family.memberships.all())
+    owners = [item for item in memberships if item.role == Membership.Role.OWNER]
+    pending = [
+        item
+        for item in family.invitations.all()
+        if item.accepted_at is None and item.revoked_at is None and item.expires_at > now
+    ]
+    pending.sort(key=lambda item: item.created_at, reverse=True)
     pending_rows = []
     for item in pending:
         delivery = invitation_delivery_summary(item)
@@ -70,6 +181,20 @@ def _family_row(family):
                 "last_sent_at": delivery["last_sent_at"],
             }
         )
+    owner_rows = []
+    for item in owners:
+        primary = _primary_identity(item.user)
+        owner_rows.append(
+            {
+                "username": item.user.username,
+                "email": primary.email if primary else item.user.email,
+                "display_name": item.display_name,
+                "email_verified": bool(primary and primary.verified_at),
+            }
+        )
+    entitlement_snapshot = getattr(family, "_superadmin_entitlement_snapshot", None)
+    if entitlement_snapshot is None:
+        entitlement_snapshot = resolve_entitlements(family)
     return {
         "id": str(family.id),
         "name": family.name,
@@ -77,14 +202,127 @@ def _family_row(family):
         "locale": family.locale,
         "timezone": family.timezone,
         "status": family.status,
-        "member_count": family.memberships.count(),
-        "owners": [
-            {"username": item.user.username, "email": item.user.email, "display_name": item.display_name}
-            for item in owners
-        ],
+        "member_count": int(getattr(family, "member_count", len(memberships)) or 0),
+        "owner_count": int(getattr(family, "owner_count", len(owners)) or 0),
+        "verified_owner_count": int(
+            getattr(family, "verified_owner_count", sum(1 for row in owner_rows if row["email_verified"])) or 0
+        ),
+        "pending_invite_count": int(getattr(family, "pending_invite_count", len(pending)) or 0),
+        "last_activity_at": getattr(family, "last_activity_at", None),
+        "entitlements": entitlement_snapshot.as_dict(),
+        "owners": owner_rows,
         "pending_owner_invites": pending_rows,
         "created_at": family.created_at,
         "updated_at": family.updated_at,
+    }
+
+
+def _membership_rows(family):
+    rows = []
+    for membership in family.memberships.all():
+        primary = _primary_identity(membership.user)
+        rows.append(
+            {
+                "id": str(membership.id),
+                "user_id": membership.user_id,
+                "username": membership.user.username,
+                "display_name": membership.display_name,
+                "role": membership.role,
+                "account_active": membership.user.is_active,
+                "email": primary.email if primary else membership.user.email,
+                "email_verified": bool(primary and primary.verified_at),
+            }
+        )
+    rows.sort(key=lambda row: (row["role"] != Membership.Role.OWNER, (row["display_name"] or row["username"]).casefold(), row["id"]))
+    return rows
+
+
+def _invite_state(invite, now):
+    if invite.accepted_at is not None:
+        return "accepted"
+    if invite.revoked_at is not None:
+        return "revoked"
+    if invite.expires_at <= now:
+        return "expired"
+    return "pending"
+
+
+def _family_detail_payload(family):
+    now = timezone.now()
+    activity = UsageEvent.objects.filter(family=family, event_key="activity.foreground")
+    modules = list(
+        UsageEvent.objects.filter(
+            family=family,
+            event_key="module.used",
+            occurred_at__gte=now - timedelta(days=30),
+        )
+        .values("dimension_key")
+        .annotate(active_users=Count("user_id", distinct=True), last_used_at=Max("occurred_at"))
+        .order_by("dimension_key")
+    )
+    integration_rows = IntegrationSource.objects.filter(family=family)
+    integration_enabled = integration_rows.filter(enabled=True)
+    integration_degraded = integration_enabled.filter(Q(consecutive_failures__gt=0) | Q(last_sync_status="failed"))
+    latest_integration_success = integration_enabled.aggregate(last=Max("last_success_at"))["last"]
+
+    invite_rows = []
+    invites = sorted(list(family.invitations.all()), key=lambda item: (item.created_at, str(item.id)), reverse=True)
+    for invite in invites[:FAMILY_DETAIL_INVITE_LIMIT]:
+        invite_rows.append(
+            {
+                "id": str(invite.id),
+                "role": invite.role,
+                "email": invite.email,
+                "display_name": invite.display_name,
+                "state": _invite_state(invite, now),
+                "created_at": invite.created_at,
+                "expires_at": invite.expires_at,
+                "accepted_at": invite.accepted_at,
+                "revoked_at": invite.revoked_at,
+            }
+        )
+
+    audit_rows = list(
+        AuditEvent.objects.filter(family=family, actor_class=AuditEvent.ActorClass.SUPERADMIN)
+        .order_by("-occurred_at", "-id")
+        .values("occurred_at", "event_key", "outcome", "reason", "target_type")[:FAMILY_DETAIL_AUDIT_LIMIT]
+    )
+
+    return {
+        "family": _family_row(family),
+        "memberships": _membership_rows(family),
+        "activity": {
+            "active_users_7d": activity.filter(occurred_at__gte=now - timedelta(days=7)).values("user_id").distinct().count(),
+            "active_users_30d": activity.filter(occurred_at__gte=now - timedelta(days=30)).values("user_id").distinct().count(),
+            "last_activity_at": activity.aggregate(last=Max("occurred_at"))["last"],
+            "module_adoption_30d": modules,
+        },
+        "invitations": {
+            "total": len(invites),
+            "returned": len(invite_rows),
+            "limit": FAMILY_DETAIL_INVITE_LIMIT,
+            "results": invite_rows,
+        },
+        "integrations": {
+            "enabled": integration_enabled.count(),
+            "degraded": integration_degraded.count(),
+            "latest_success_at": latest_integration_success,
+        },
+        "superadmin_audit": {
+            "limit": FAMILY_DETAIL_AUDIT_LIMIT,
+            "results": audit_rows,
+        },
+        "privacy": {
+            "content_scope": "administrative_metadata_only",
+            "excluded": [
+                "family_content",
+                "integration_config",
+                "integration_endpoints",
+                "raw_audit_metadata",
+                "tokens",
+                "credential_material",
+            ],
+        },
     }
 
 
@@ -103,8 +341,56 @@ def _unique_slug(name):
 @permission_classes([IsSuperAdmin])
 def superadmin_families(request):
     if request.method == "GET":
-        rows = Family.objects.prefetch_related("memberships__user", "invitations").order_by("name", "created_at")
-        return Response([_family_row(family) for family in rows])
+        rows = _families_queryset()
+        query = str(request.query_params.get("q") or "").strip()
+        if query:
+            rows = rows.filter(
+                Q(name__icontains=query)
+                | Q(slug__icontains=query)
+                | Q(memberships__display_name__icontains=query)
+                | Q(memberships__user__username__icontains=query)
+                | Q(memberships__user__email__icontains=query)
+                | Q(memberships__user__email_identities__email__icontains=query)
+            ).distinct()
+
+        family_status = str(request.query_params.get("status") or "").strip().lower()
+        if family_status:
+            if family_status not in FAMILY_STATUSES:
+                return Response(
+                    {"detail": "Unsupported family status.", "allowed_statuses": sorted(FAMILY_STATUSES)},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            rows = rows.filter(status=family_status)
+
+        sort_key = str(request.query_params.get("sort") or "name").strip().lower()
+        ordering = FAMILY_SORTS.get(sort_key)
+        if not ordering:
+            return Response(
+                {"detail": "Unsupported family sort.", "allowed_sorts": list(FAMILY_SORTS)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        pagination = _family_pagination(request)
+        if isinstance(pagination, Response):
+            return pagination
+        ordered_rows = rows.order_by(*ordering)
+        if pagination is not None:
+            limit, offset = pagination
+            total = ordered_rows.count()
+            page = _prime_family_rows(ordered_rows[offset : offset + limit])
+            return Response(
+                {
+                    "count": total,
+                    "limit": limit,
+                    "offset": offset,
+                    "sort": sort_key,
+                    "status": family_status or None,
+                    "results": [_family_row(family) for family in page],
+                }
+            )
+
+        legacy_rows = _prime_family_rows(ordered_rows)
+        return Response([_family_row(family) for family in legacy_rows])
 
     decision = _enforce_sensitive_action(request)
     if not decision.allowed:
@@ -148,16 +434,22 @@ def superadmin_families(request):
     )
 
 
-@api_view(["PATCH"])
+@api_view(["GET", "PATCH"])
 @permission_classes([IsSuperAdmin])
 def superadmin_family_detail(request, family_id):
-    decision = _enforce_sensitive_action(request)
-    if not decision.allowed:
-        return _rate_limited_response(decision)
+    if request.method == "PATCH":
+        decision = _enforce_sensitive_action(request)
+        if not decision.allowed:
+            return _rate_limited_response(decision)
 
-    family = Family.objects.filter(id=family_id).first()
+    family = _families_queryset().filter(id=family_id).first()
     if not family:
         return Response({"detail": "Familie nicht gefunden."}, status=status.HTTP_404_NOT_FOUND)
+
+    if request.method == "GET":
+        _prime_family_rows([family])
+        return Response(_family_detail_payload(family))
+
     requested = request.data.get("status")
     if requested not in Family.Status.values:
         return Response({"detail": "Ungültiger Familienstatus."}, status=status.HTTP_400_BAD_REQUEST)

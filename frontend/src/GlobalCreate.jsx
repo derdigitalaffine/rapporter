@@ -5,13 +5,13 @@ import './create-smart.css';
 import {api} from './api';
 import {Icon} from './icons';
 import {availableCreateActions,CREATE_PAGES,createActionById,normalizeCreateRankingProfile,rankCreateActions,resolveDirectCreateAction} from './create-actions';
-import {CREATE_RANKING_UPDATED_EVENT,fetchCreateRanking,flushCreateUsageQueue,loadCachedCreateRanking} from './create-ranking-client';
+import {CREATE_RANKING_UPDATED_EVENT,createRankingScope,createRankingScopeKey,fetchCreateRanking,flushCreateUsageQueue,loadCachedCreateRanking} from './create-ranking-client';
 import {CREATE_REQUEST_EVENT} from './create-request';
 
 const CAPABILITIES={loyalty:true,messages:false};
 const EMPTY_MODULES={baby:null,pets:null};
 
-export default function GlobalCreate({page,family,role,context={},onCreate,suppressed=false}){
+export default function GlobalCreate({userId,page,family,role,context={},onCreate,suppressed=false}){
   const {t}=useTranslation();
   const fabRef=useRef(null);const firstActionRef=useRef(null);const pendingAction=useRef(null);const previousSuppressed=useRef(suppressed);
   const [paletteOpen,setPaletteOpen]=useState(false);const [showAll,setShowAll]=useState(false);const [frozenQuick,setFrozenQuick]=useState([]);const [keyboardOpen,setKeyboardOpen]=useState(false);const [externalDialog,setExternalDialog]=useState(false);const [restoreFocus,setRestoreFocus]=useState(false);const [moduleState,setModuleState]=useState({familyId:null,...EMPTY_MODULES});
@@ -27,17 +27,19 @@ export default function GlobalCreate({page,family,role,context={},onCreate,suppr
     ]).then(([baby,pets])=>{if(live)setModuleState({familyId,baby,pets})});
     return()=>{live=false};
   },[family?.id]);
+  const rankingScope=useMemo(()=>createRankingScope(family,userId),[family,userId]);
+  const scopeKey=createRankingScopeKey(rankingScope);
   useEffect(()=>{
-    const familyId=family?.id;
-    if(!familyId){setRankingProfile(normalizeCreateRankingProfile({}));return}
-    setRankingProfile(loadCachedCreateRanking(familyId));
-    fetchCreateRanking(familyId).then(setRankingProfile).catch(()=>{});
-    flushCreateUsageQueue(familyId).catch(()=>{});
-    const update=event=>{if(String(event.detail?.familyId)===String(familyId)&&event.detail?.profile)setRankingProfile(normalizeCreateRankingProfile(event.detail.profile))};
-    const online=()=>flushCreateUsageQueue(familyId).catch(()=>{});
+    let live=true;
+    if(!rankingScope){setRankingProfile(normalizeCreateRankingProfile({}));return}
+    setRankingProfile(loadCachedCreateRanking(rankingScope));
+    fetchCreateRanking(rankingScope).then(profile=>{if(live&&profile)setRankingProfile(profile)}).catch(()=>{});
+    flushCreateUsageQueue(rankingScope).catch(()=>{});
+    const update=event=>{if(event.detail?.scopeKey===scopeKey&&event.detail?.profile)setRankingProfile(normalizeCreateRankingProfile(event.detail.profile))};
+    const online=()=>flushCreateUsageQueue(rankingScope).catch(()=>{});
     window.addEventListener(CREATE_RANKING_UPDATED_EVENT,update);window.addEventListener('online',online);
-    return()=>{window.removeEventListener(CREATE_RANKING_UPDATED_EVENT,update);window.removeEventListener('online',online)};
-  },[family?.id]);
+    return()=>{live=false;window.removeEventListener(CREATE_RANKING_UPDATED_EVENT,update);window.removeEventListener('online',online)};
+  },[scopeKey]);
   const modules=moduleState.familyId===family?.id?moduleState:EMPTY_MODULES;
   const options=useMemo(()=>({role,capabilities:CAPABILITIES,modules}),[role,modules]);
   const actions=useMemo(()=>availableCreateActions(options),[options]);

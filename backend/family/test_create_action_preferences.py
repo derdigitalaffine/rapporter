@@ -126,3 +126,19 @@ class CreateActionPreferenceTests(TestCase):
         response = self.client.patch(self.url(self.other), {"smart_ranking_enabled": False}, format="json")
         self.assertEqual(response.status_code, 403)
         self.assertFalse(CreateActionPreference.objects.filter(membership=self.other_membership).exists())
+
+    def test_shared_browser_cookie_switch_cannot_read_patch_or_replay_previous_membership(self):
+        Membership.objects.create(family=self.family, user=self.bob, role=Membership.Role.ADULT)
+        self.client.force_authenticate(self.bob)
+        self.client.credentials(HTTP_X_CREATE_MEMBERSHIP=str(self.membership.pk))
+        self.assertEqual(self.client.get(self.url()).status_code, 403)
+        self.assertEqual(self.client.patch(self.url(), {"direct_mode": True}, format="json").status_code, 403)
+        self.assertEqual(self.usage().status_code, 403)
+        self.assertFalse(CreateActionPreference.objects.exists())
+        self.assertFalse(CreateActionStat.objects.exists())
+        self.assertFalse(CreateActionUsageReceipt.objects.exists())
+
+    def test_verified_membership_header_accepts_own_profile(self):
+        self.client.credentials(HTTP_X_CREATE_MEMBERSHIP=str(self.membership.pk))
+        self.assertEqual(self.client.get(self.url()).status_code, 200)
+        self.assertEqual(self.usage().status_code, 201)

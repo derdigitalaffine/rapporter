@@ -4,29 +4,31 @@ import './create-i18n';
 import './create-smart.css';
 import {api} from './api';
 import {availableCreateActions,normalizeCreateRankingProfile} from './create-actions';
-import {fetchCreateRanking,loadCachedCreateRanking,patchCreateRanking} from './create-ranking-client';
+import {createRankingScope,createRankingScopeKey,fetchCreateRanking,loadCachedCreateRanking,patchCreateRanking} from './create-ranking-client';
 import {toast} from './feedback';
 import {Icon} from './icons';
 
 const CAPABILITIES={loyalty:true,messages:false};
 const EMPTY_MODULES={baby:null,pets:null};
 
-export default function QuickstartSettings({family,role}){
+export default function QuickstartSettings({family,role,userId}){
  const {t}=useTranslation();
  const familyId=family?.id;
+ const scope=createRankingScope(family,userId);
+ const scopeKey=createRankingScopeKey(scope);
  const [profile,setProfile]=useState(()=>normalizeCreateRankingProfile({}));
  const [modules,setModules]=useState(EMPTY_MODULES);
  const [busy,setBusy]=useState(false);
  useEffect(()=>{
   let live=true;if(!familyId)return()=>{live=false};
-  setProfile(loadCachedCreateRanking(familyId));
+  setProfile(loadCachedCreateRanking(scope));
   Promise.all([
-   fetchCreateRanking(familyId).catch(()=>null),
+   fetchCreateRanking(scope).catch(()=>null),
    api(`/baby/module/?family=${encodeURIComponent(familyId)}`).catch(()=>null),
    api(`/pets/module/?family=${encodeURIComponent(familyId)}`).catch(()=>null),
   ]).then(([next,baby,pets])=>{if(!live)return;if(next)setProfile(next);setModules({baby,pets})});
   return()=>{live=false};
- },[familyId]);
+ },[scopeKey]);
  const actions=useMemo(()=>availableCreateActions({role,capabilities:CAPABILITIES,modules}),[role,modules]);
  const preferences=profile.preferences;
  const actionById=useMemo(()=>new Map(actions.map(action=>[action.id,action])),[actions]);
@@ -38,7 +40,7 @@ export default function QuickstartSettings({family,role}){
  },[actions,actionById,preferences.manual_order]);
  async function save(patch,message='createUi.settingsSaved'){
   if(!familyId||busy)return;setBusy(true);
-  try{const next=await patchCreateRanking(familyId,patch);setProfile(next);toast(t(message),{type:'success'})}
+  try{const next=await patchCreateRanking(scope,patch);if(next)setProfile(next);toast(t(message),{type:'success'})}
   catch(error){toast(error.message||t('createUi.settingsFailed'),{type:'error'})}
   finally{setBusy(false)}
  }

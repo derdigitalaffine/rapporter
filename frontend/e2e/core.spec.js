@@ -1,18 +1,45 @@
-import {test,expect} from '@playwright/test';
-import AxeBuilder from '@axe-core/playwright';
-import {installApiMocks} from './mock-api.js';
+import {openCreateAction} from './create-helpers';
+import {test,expect} from '@playwr…19481 tokens truncated…m './ModuleCreateSheets';
+import {recordCreateUsage,createRankingScope} from './create-ranking-client';
+import {pageHref} from './navigation';
 
-async function boot(page,{path='/',authenticated=true,language='de',dismissOnboarding=true}={}){await installApiMocks(page,{authenticated,language,dismissOnboarding});await page.goto(path);await page.waitForLoadState('networkidle')}
-async function expectNoSevereA11y(page,scope='main'){const scan=new AxeBuilder({page}).include(scope).withTags(['wcag2a','wcag2aa','wcag21a','wcag21aa']);const results=await scan.analyze();const severe=results.violations.filter(item=>['critical','serious'].includes(item.impact));expect(severe,JSON.stringify(severe.map(item=>({id:item.id,impact:item.impact,help:item.help,nodes:item.nodes.map(node=>node.target)})),null,2)).toEqual([])}
-async function capture(page,testInfo,name){const path=testInfo.outputPath(`${name}.png`);await page.screenshot({path,fullPage:true});await testInfo.attach(name,{path,contentType:'image/png'})}
-async function openBottom(page,label){await page.locator('.bottom-nav').getByRole('button',{name:new RegExp(`^${label}$`)}).click()}
-
-test('email login, Today and DE/EN smoke',async({page},testInfo)=>{await boot(page,{authenticated:false});await page.getByLabel(/E-Mail-Adresse/).fill('alex@example.test');await page.getByLabel('Passwort').fill('correct-horse-battery-staple');await page.getByRole('button',{name:'Anmelden',exact:true}).click();await expect(page.locator('.bottom-nav')).toBeVisible();await expect(page.getByRole('heading',{name:/Musterfamilie/i})).toBeVisible();await expectNoSevereA11y(page);await capture(page,testInfo,'today-de');await openBottom(page,'Mehr');await page.getByRole('button',{name:/Sprache/i}).click();await expect(page.getByRole('heading',{name:'More',exact:true})).toBeVisible();await expect(page.locator('.bottom-nav').getByText('Today',{exact:true})).toBeVisible();await expectNoSevereA11y(page);await capture(page,testInfo,'more-en')});
-test('task quick add, edit focus, Escape and completion',async({page},testInfo)=>{await boot(page,{path:'/?page=tasks'});const quick=page.locator('.smart-input input');await quick.fill('Spülmaschine ausräumen');await quick.press('Enter');const row=page.locator('.smart-row').filter({hasText:'Spülmaschine ausräumen'});await expect(row).toBeVisible();await row.locator('.row-main-button').click();const dialog=page.getByRole('dialog');await expect(dialog).toBeVisible();await expect(dialog.locator('input').first()).toBeFocused();await page.keyboard.press('Escape');await expect(dialog).toBeHidden();await expect(row.locator('.row-main-button')).toBeFocused();await row.locator('.smart-check').click();await expect(row).toBeHidden();await expectNoSevereA11y(page);await capture(page,testInfo,'tasks')});
-test('shopping add, in-store completion and edit',async({page},testInfo)=>{await boot(page);await openBottom(page,'Einkauf');const quick=page.locator('.smart-input input');await quick.fill('Brot');await quick.press('Enter');await expect(page.getByText('Brot',{exact:true})).toBeVisible();await page.getByRole('button',{name:/Im Laden/i}).click();await expect(page.locator('.store-focus')).toBeVisible();const milk=page.locator('.store-row').filter({hasText:'Milch'});await milk.locator('.store-check').click();await expect(page.getByRole('button',{name:'1 im Wagen'})).toBeVisible();await page.getByRole('button',{name:'Zur Planung'}).click();const bread=page.locator('.smart-row').filter({hasText:'Brot'});await bread.locator('.row-main-button').click();const dialog=page.getByRole('dialog');await dialog.getByLabel('Menge').fill('2');await dialog.getByRole('button',{name:'Speichern',exact:true}).click();await expect(page.getByText('2',{exact:true}).first()).toBeVisible();await expectNoSevereA11y(page);await capture(page,testInfo,'shopping')});
-test('calendar hides past events by default and can reveal them',async({page})=>{await boot(page,{path:'/?page=calendar'});await page.getByRole('button',{name:'Liste',exact:true}).click();await expect(page.getByText('Kinderarzt',{exact:true})).toBeVisible();await expect(page.getByText('Gestern erledigt',{exact:true})).toHaveCount(0);const history=page.getByRole('button',{name:'Vergangene anzeigen'});await expect(history).toBeVisible();await history.click();await expect(page.getByText('Gestern erledigt',{exact:true})).toBeVisible();await expect(page.getByRole('button',{name:'Vergangene ausblenden'})).toHaveAttribute('aria-pressed','true')});
-test('calendar create, edit and delete',async({page},testInfo)=>{await boot(page,{path:'/?page=calendar'});await page.getByRole('button',{name:'Liste',exact:true}).click();await page.getByRole('button',{name:'Termin hinzufügen'}).click();let dialog=page.getByRole('dialog');await dialog.getByLabel('Titel').fill('Elternabend');await dialog.getByRole('button',{name:'Speichern',exact:true}).click();await expect(page.getByText('Elternabend',{exact:true})).toBeVisible();await page.locator('.agenda-event').filter({hasText:'Elternabend'}).click();dialog=page.getByRole('dialog');await dialog.getByRole('button',{name:'Termin bearbeiten'}).click();dialog=page.getByRole('dialog');await dialog.getByLabel('Titel').fill('Elternabend Schule');await dialog.getByRole('button',{name:'Speichern',exact:true}).click();await expect(page.getByText('Elternabend Schule',{exact:true})).toBeVisible();await page.locator('.agenda-event').filter({hasText:'Elternabend Schule'}).click();await page.getByRole('dialog').getByRole('button',{name:'Termin bearbeiten'}).click();await page.getByRole('dialog').getByRole('button',{name:'Termin löschen'}).click();const confirm=page.getByRole('alertdialog');await expect(confirm).toBeVisible();await confirm.getByRole('button',{name:'Termin löschen'}).click();await expect(page.getByText('Elternabend Schule',{exact:true})).toHaveCount(0);await expectNoSevereA11y(page);await capture(page,testInfo,'calendar')});
-test('family invitation reaches clear email delivery success state',async({page},testInfo)=>{await boot(page,{path:'/?page=members'});await page.getByRole('button',{name:'Person einladen'}).click();let dialog=page.getByRole('dialog');await dialog.getByLabel('Anzeigename').fill('Oma');await dialog.getByLabel('E-Mail').fill('oma@example.test');await dialog.getByRole('button',{name:/Weiter zu Rolle/}).click();await dialog.getByText('Gast',{exact:true}).first().click();await dialog.getByRole('button',{name:'Einladung senden'}).click();await expect(dialog.getByText(/Versand wird vorbereitet/i)).toBeVisible();await expect(dialog.getByText(/oma@example\.test/)).toBeVisible();await expect(dialog.getByRole('button',{name:'Teilen'})).toHaveCount(0);await expect(dialog.getByRole('button',{name:'Link kopieren'})).toHaveCount(0);await expectNoSevereA11y(page);await capture(page,testInfo,'family-invite')});
-test('automation template can be activated',async({page},testInfo)=>{await boot(page,{path:'/?page=automations'});const template=page.locator('.automation-template').first();await expect(template).toBeVisible();await template.click();await expect(page.locator('.rule-row').filter({hasText:'Müll rausstellen'})).toBeVisible();await expectNoSevereA11y(page);await capture(page,testInfo,'automations')});
-test('integration error state has a working retry',async({page},testInfo)=>{await boot(page,{path:'/?page=integrations'});const card=page.locator('.integration-health-card').filter({hasText:'Open-Meteo'});await expect(card).toContainText('Synchronisierung fehlgeschlagen');await expect(card).toContainText('Zeitüberschreitung beim Abruf');await card.getByRole('button',{name:'Erneut versuchen'}).click();await expect(card).not.toContainText('Synchronisierung fehlgeschlagen');await expectNoSevereA11y(page);await capture(page,testInfo,'integrations')});
-test('service worker registers and never caches API responses',async({page})=>{await boot(page);const result=await page.evaluate(async()=>{if(!('serviceWorker' in navigator))return {supported:false};const registration=await navigator.serviceWorker.ready;const keys=await caches.keys();const urls=[];for(const key of keys){const cache=await caches.open(key);for(const request of await cache.keys())urls.push(new URL(request.url).pathname)}return {supported:true,scope:registration.scope,keys,urls}});expect(result.supported).toBe(true);expect(result.keys.some(key=>key.startsWith('familyos-'))).toBe(true);expect(result.urls.some(path=>path.startsWith('/api/'))).toBe(false)});
+export default function CreateFlowHost({userId,action,family,data,context={},onClose,onRefresh,onNavigate}){
+ const [createdShoppingList,setCreatedShoppingList]=useState(null);
+ if(!action||!family)return null;
+ const taskLists=(data?.task_lists||[]).filter(list=>!list.archived);
+ const shoppingLists=[...(data?.shopping_lists||[]).filter(list=>!list.archived),...(createdShoppingList?[createdShoppingList]:[])].filter((list,index,all)=>all.findIndex(row=>String(row.id)===String(list.id))===index);
+ const selectedTaskList=taskLists.find(list=>context.activeListLabel?.includes(list.name));
+ const selectedShoppingList=shoppingLists.find(list=>context.activeListLabel?.includes(list.name));
+ const taskListId=selectedTaskList?.id||(context.taskListId&&context.taskListId!=='all'?context.taskListId:taskLists[0]?.id||'');
+ const shoppingList=selectedShoppingList||(context.shoppingListId&&context.shoppingListId!=='all'?shoppingLists.find(list=>String(list.id)===String(context.shoppingListId)):shoppingLists[0]);
+ function learnSuccessfulCreate(){
+  const origin=typeof context.origin==='string'?context.origin:'';
+  recordCreateUsage({scope:createRankingScope(family,userId),actionId:action,originPage:origin,contextBucket:origin}).catch(()=>{});
+ }
+ async function saved(){learnSuccessfulCreate();await onRefresh?.();onClose()}
+ async function savedWithoutClose(){learnSuccessfulCreate();await onRefresh?.()}
+ function openModule(page){
+  if(onNavigate){onNavigate(page);return}
+  const state={...(history.state||{}),page,appNavigation:true};delete state.createFlow;delete state.createPalette;
+  history.replaceState(state,'',pageHref(page));
+  window.dispatchEvent(new PopStateEvent('popstate',{state}));
+ }
+ if(action==='birthday')return <BirthdayEditor family={family} onClose={onClose} onSaved={saved}/>;
+ if(action==='baby')return <BabyCreateSheet family={family} onClose={onClose} onOpenPage={openModule} onSuccessfulCreate={learnSuccessfulCreate}/>;
+ if(action==='pets')return <PetCreateSheet family={family} onClose={onClose} onOpenPage={openModule} onSuccessfulCreate={learnSuccessfulCreate}/>;
+ if(action==='task')return <TaskEditor family={family} lists={taskLists} members={family.memberships||[]} defaultListId={taskListId} onClose={onClose} onSaved={saved}/>;
+ if(action==='shoppingItem'){
+  if(!shoppingLists.length)return <ListEditor type="shopping" family={family} onClose={onClose} onSaved={async list=>{setCreatedShoppingList(list);await onRefresh?.()}}/>;
+  return <ShoppingEditor shoppingList={shoppingList} lists={shoppingLists} onClose={onClose} onSaved={saved}/>;
+ }
+ if(action==='event')return <EventEditor family={family} onClose={onClose} onSaved={saved}/>;
+ if(action==='expense')return <ExpenseEditor family={family} initialMode={context.mode==='receipt'?'receipt':'quick'} onClose={onClose} onSaved={saved} onUndo={onRefresh}/>;
+ if(action==='contract')return <ContractEditor family={family} onClose={onClose} onSaved={saved}/>;
+ if(action==='correspondence')return <CorrespondenceEditor family={family} shoppingLists={shoppingLists} onClose={onClose} onSaved={saved}/>;
+ if(action==='wish')return <WishlistEditor family={family} context={context} onClose={onClose} onSaved={savedWithoutClose}/>;
+ if(action==='taskList')return <ListEditor type="task" family={family} onClose={onClose} onSaved={saved}/>;
+ if(action==='shoppingList')return <ListEditor type="shopping" family={family} onClose={onClose} onSaved={saved}/>;
+ if(action==='routine')return <RoutineEditor family={family} onClose={onClose} onSaved={saved}/>;
+ if(action==='loyalty')return <LoyaltyCardEditor family={family} onClose={onClose} onSaved={saved}/>;
+ return null;
+}
