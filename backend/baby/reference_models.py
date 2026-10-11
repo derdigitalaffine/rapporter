@@ -1,6 +1,7 @@
 import uuid
 
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.db import models
 
 
@@ -62,3 +63,49 @@ class PediatricReferencePackage(models.Model):
                 name="baby_ped_ref_lookup_idx",
             )
         ]
+
+    def save(self, *args, **kwargs):
+        if self.pk:
+            previous = type(self).objects.filter(pk=self.pk).values(
+                "status",
+                "source_key",
+                "source_title",
+                "source_version",
+                "locale",
+                "published_at",
+                "effective_from",
+                "effective_to",
+                "imported_at",
+                "checksum",
+                "payload",
+                "reason",
+                "notes",
+                "created_by_id",
+                "published_by_id",
+            ).first()
+            if previous and previous["status"] in {self.Status.PUBLISHED, self.Status.SUPERSEDED}:
+                protected = (
+                    "source_key",
+                    "source_title",
+                    "source_version",
+                    "locale",
+                    "published_at",
+                    "effective_from",
+                    "effective_to",
+                    "imported_at",
+                    "checksum",
+                    "payload",
+                    "reason",
+                    "notes",
+                    "created_by_id",
+                    "published_by_id",
+                )
+                for field in protected:
+                    if previous[field] != getattr(self, field):
+                        raise ValidationError("Published pediatric reference packages are immutable.")
+        return super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        if self.status != self.Status.DRAFT:
+            raise ValidationError("Published pediatric reference packages cannot be deleted.")
+        return super().delete(*args, **kwargs)
