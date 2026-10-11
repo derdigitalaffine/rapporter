@@ -43,20 +43,27 @@ requireText('src/additional-language-i18n.js',["fr:['en']","nl:['en']","th:['en'
 requireText('src/weather-ui.js',['fr:{','nl:{','th:{']);
 requireText('src/waste-ui.js',['fr:{','nl:{','th:{']);
 
-const translationFiles=[
- 'src/i18n-extra/fr.js','src/i18n-extra/fr-care.js','src/i18n-extra/fr-features.js',
- 'src/i18n-extra/nl.js','src/i18n-extra/nl-care.js','src/i18n-extra/nl-features.js',
- 'src/i18n-extra/th.js','src/i18n-extra/th-care.js','src/i18n-extra/th-features.js',
+const translationGroups=[
+ ['src/i18n-extra/fr.js','src/i18n-extra/nl.js','src/i18n-extra/th.js'],
+ ['src/i18n-extra/fr-care.js','src/i18n-extra/nl-care.js','src/i18n-extra/th-care.js'],
+ ['src/i18n-extra/fr-features.js','src/i18n-extra/nl-features.js','src/i18n-extra/th-features.js'],
 ];
-for(const rel of translationFiles){
- const text=fs.readFileSync(path.join(root,rel),'utf8');
- if(!text.includes('export const translation={')){
-  console.error(`[i18n] ${rel}: translation bundle export missing`);
-  failed=true;
- }
- if(!text.includes('{{count}}')||!text.includes('{{name}}')){
-  console.error(`[i18n] ${rel}: interpolation placeholders were unexpectedly lost`);
-  failed=true;
+function placeholders(text){return [...new Set(text.match(/\{\{[^}]+\}\}/g)||[])].sort()}
+for(const group of translationGroups){
+ const expected=placeholders(fs.readFileSync(path.join(root,group[0]),'utf8'));
+ for(const rel of group){
+  const text=fs.readFileSync(path.join(root,rel),'utf8');
+  if(!text.includes('export const translation={')){
+   console.error(`[i18n] ${rel}: translation bundle export missing`);
+   failed=true;
+  }
+  const actual=placeholders(text);
+  if(JSON.stringify(actual)!==JSON.stringify(expected)){
+   console.error(`[i18n] ${rel}: interpolation placeholders differ from ${group[0]}`);
+   console.error(`[i18n] expected ${expected.join(', ')||'(none)'}`);
+   console.error(`[i18n] actual   ${actual.join(', ')||'(none)'}`);
+   failed=true;
+  }
  }
 }
 
