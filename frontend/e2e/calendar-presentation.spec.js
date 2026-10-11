@@ -99,6 +99,5 @@ test('named ICS sources stay separately visible and filterable',async({page})=>{
  await expect(page.getByText('Elterntermin',{exact:true})).toBeVisible();
  await expect(page.getByText('Kindertermin',{exact:true})).toHaveCount(0);
  await page.getByText('Elterntermin',{exact:true}).click();
- await expect(page.getByText('Elternkalender',{exact:true})).toBeVisible();
- await expect(page.getByText('Elternkalender',{exact:true})).toHaveCount(2);
+ await expect(page.locator('.calendar-detail').getByText('Elternkalender',{exact:true})).toHaveCount(2);
 });
