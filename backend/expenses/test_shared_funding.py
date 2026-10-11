@@ -151,7 +151,7 @@ class SharedFundingTests(TestCase):
         response = self.client.post("/api/expenses/", self._member_payload(), format="json")
         self.assertEqual(response.status_code, 201, response.data)
         self.assertEqual(response.data["funding_source"], Expense.FundingSource.MEMBER)
-        self.assertEqual(response.data["paid_by"], str(self.owner.id))
+        self.assertEqual(str(response.data["paid_by"]), str(self.owner.id))
         self.assertEqual(len(response.data["shares"]), 2)
 
         balance = self.client.get(f"/api/expenses/balance/?family={self.family.id}&currency=EUR")
@@ -194,7 +194,7 @@ class SharedFundingTests(TestCase):
             format="json",
         )
         self.assertEqual(member.status_code, 200, member.data)
-        self.assertEqual(member.data["paid_by"], str(self.owner.id))
+        self.assertEqual(str(member.data["paid_by"]), str(self.owner.id))
         self.assertEqual(len(member.data["shares"]), 2)
 
         balance = self.client.get(f"/api/expenses/balance/?family={self.family.id}&currency=EUR")
