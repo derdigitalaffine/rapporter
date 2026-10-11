@@ -10,6 +10,7 @@ import ContractEditor from './ContractEditor';
 import CorrespondenceEditor from './CorrespondenceEditor';
 import WishlistEditor from './WishlistEditor';
 import {BabyCreateSheet,PetCreateSheet} from './ModuleCreateSheets';
+import {recordCreateUsage} from './create-ranking-client';
 import {pageHref} from './navigation';
 
 export default function CreateFlowHost({action,family,data,context={},onClose,onRefresh,onNavigate}){
@@ -21,7 +22,13 @@ export default function CreateFlowHost({action,family,data,context={},onClose,on
  const selectedShoppingList=shoppingLists.find(list=>context.activeListLabel?.includes(list.name));
  const taskListId=selectedTaskList?.id||(context.taskListId&&context.taskListId!=='all'?context.taskListId:taskLists[0]?.id||'');
  const shoppingList=selectedShoppingList||(context.shoppingListId&&context.shoppingListId!=='all'?shoppingLists.find(list=>String(list.id)===String(context.shoppingListId)):shoppingLists[0]);
- async function saved(){await onRefresh?.();onClose()}
+ function learnSuccessfulCreate(){
+  if(action==='baby'||action==='pets')return;
+  const origin=typeof context.origin==='string'?context.origin:'';
+  recordCreateUsage({familyId:family.id,actionId:action,originPage:origin,contextBucket:origin}).catch(()=>{});
+ }
+ async function saved(){learnSuccessfulCreate();await onRefresh?.();onClose()}
+ async function savedWithoutClose(){learnSuccessfulCreate();await onRefresh?.()}
  function openModule(page){
   if(onNavigate){onNavigate(page);return}
   const state={...(history.state||{}),page,appNavigation:true};delete state.createFlow;delete state.createPalette;
@@ -40,7 +47,7 @@ export default function CreateFlowHost({action,family,data,context={},onClose,on
  if(action==='expense')return <ExpenseEditor family={family} initialMode={context.mode==='receipt'?'receipt':'quick'} onClose={onClose} onSaved={saved} onUndo={onRefresh}/>;
  if(action==='contract')return <ContractEditor family={family} onClose={onClose} onSaved={saved}/>;
  if(action==='correspondence')return <CorrespondenceEditor family={family} shoppingLists={shoppingLists} onClose={onClose} onSaved={saved}/>;
- if(action==='wish')return <WishlistEditor family={family} context={context} onClose={onClose} onSaved={onRefresh}/>;
+ if(action==='wish')return <WishlistEditor family={family} context={context} onClose={onClose} onSaved={savedWithoutClose}/>;
  if(action==='taskList')return <ListEditor type="task" family={family} onClose={onClose} onSaved={saved}/>;
  if(action==='shoppingList')return <ListEditor type="shopping" family={family} onClose={onClose} onSaved={saved}/>;
  if(action==='routine')return <RoutineEditor family={family} onClose={onClose} onSaved={saved}/>;
