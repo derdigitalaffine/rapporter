@@ -1,6 +1,8 @@
 from datetime import timedelta
+from statistics import median
 
 from django.contrib.auth import get_user_model
+from django.db.models import Min, Q
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
@@ -15,6 +17,14 @@ from .service import METRIC_ACTIVE_FAMILIES, METRIC_ACTIVE_USERS
 
 
 PERIODS = {"24h": 1, "7d": 7, "30d": 30, "90d": 90, "365d": 365}
+INVITE_FUNNEL_EVENT_KEYS = (
+    "invite.created",
+    "invite.sent",
+    "invite.email_failed",
+    "invite.accepted",
+    "invite.expired",
+    "invite.revoked",
+)
 
 
 def _window(days, *, now=None):
@@ -28,6 +38,14 @@ def _window(days, *, now=None):
 def _change(current, previous):
     delta = current - previous
     percentage = None if previous == 0 else round((delta / previous) * 100, 1)
+    return {"value": current, "previous": previous, "delta": delta, "change_pct": percentage}
+
+
+def _nullable_change(current, previous):
+    delta = None if current is None or previous is None else current - previous
+    percentage = None
+    if current is not None and previous not in (None, 0):
+        percentage = round(((current - previous) / previous) * 100, 1)
     return {"value": current, "previous": previous, "delta": delta, "change_pct": percentage}
 
 
@@ -74,6 +92,60 @@ def _audit_count(event_key, start, end, **filters):
     ).count()
 
 
+def _invite_funnel(start, end, *, role=None):
+    events = AuditEvent.objects.filter(
+        target_type="invite",
+        event_key__in=INVITE_FUNNEL_EVENT_KEYS,
+        occurred_at__gte=start,
+        occurred_at__lt=end,
+    )
+    if role:
+        events = events.filter(metadata__role=role)
+
+    rows = list(
+        events.values("target_id")
+        .annotate(
+            created_at=Min("occurred_at", filter=Q(event_key="invite.created")),
+            sent_at=Min("occurred_at", filter=Q(event_key="invite.sent")),
+            email_failed_at=Min("occurred_at", filter=Q(event_key="invite.email_failed")),
+            accepted_at=Min("occurred_at", filter=Q(event_key="invite.accepted")),
+            expired_at=Min("occurred_at", filter=Q(event_key="invite.expired")),
+            revoked_at=Min("occurred_at", filter=Q(event_key="invite.revoked")),
+        )
+        .filter(created_at__isnull=False)
+    )
+    durations = [
+        int((row["accepted_at"] - row["created_at"]).total_seconds())
+        for row in rows
+        if row["accepted_at"] is not None and row["accepted_at"] >= row["created_at"]
+    ]
+    result = {
+        "created": len(rows),
+        "sent": sum(1 for row in rows if row["sent_at"] is not None),
+        "accepted": sum(1 for row in rows if row["accepted_at"] is not None),
+        "email_failed": sum(1 for row in rows if row["email_failed_at"] is not None),
+        "expired": sum(1 for row in rows if row["expired_at"] is not None),
+        "revoked": sum(1 for row in rows if row["revoked_at"] is not None),
+    }
+    result["send_to_accept_rate_pct"] = _rate(result["accepted"], result["sent"])
+    result["median_seconds_to_accept"] = None if not durations else int(round(median(durations)))
+    return result
+
+
+def _funnel_comparison(current, previous, *, include_terminal=True):
+    keys = ["created", "sent", "accepted", "email_failed"]
+    if include_terminal:
+        keys.extend(["expired", "revoked"])
+    result = {key: _change(current[key], previous[key]) for key in keys}
+    result["send_to_accept_rate_pct"] = _nullable_change(
+        current["send_to_accept_rate_pct"], previous["send_to_accept_rate_pct"]
+    )
+    result["median_seconds_to_accept"] = _nullable_change(
+        current["median_seconds_to_accept"], previous["median_seconds_to_accept"]
+    )
+    return result
+
+
 def _security_counts(start, end):
     login_success = _audit_count("auth.login.succeeded", start, end)
     login_failure = _audit_count("auth.login.failed", start, end)
@@ -111,6 +183,10 @@ def superadmin_analytics_overview(request):
     start, end, previous_start = _window(days)
     current_activity = _active_counts(start, end)
     previous_activity = _active_counts(previous_start, start)
+    current_funnel = _invite_funnel(start, end)
+    previous_funnel = _invite_funnel(previous_start, start)
+    current_owner_funnel = _invite_funnel(start, end, role="owner")
+    previous_owner_funnel = _invite_funnel(previous_start, start, role="owner")
 
     User = get_user_model()
     current_new_users = User.objects.filter(date_joined__gte=start, date_joined__lt=end).count()
@@ -151,11 +227,26 @@ def superadmin_analytics_overview(request):
                 "new_users": _change(current_new_users, previous_new_users),
                 "new_families": _change(current_new_families, previous_new_families),
             },
+            "onboarding": {
+                "invites": _funnel_comparison(current_funnel, previous_funnel),
+                "owner_invites": _funnel_comparison(
+                    current_owner_funnel,
+                    previous_owner_funnel,
+                    include_terminal=False,
+                ),
+                "measurement": {
+                    "cohort": "Invites with invite.created in the selected period; later funnel stages must also occur inside that same selected period.",
+                    "opened_or_read": "not_measured",
+                    "opened_or_read_reason": "No privacy-safe canonical open/read event exists; SMTP sent is not treated as a read receipt.",
+                },
+            },
             "timeseries": _daily_series(start, end),
             "definitions": {
                 "active_user": "Authenticated user with at least one activity.foreground usage event in the selected period.",
                 "active_family": "Family with at least one activity.foreground usage event in the selected period.",
                 "verified_email_user": "User with a verified primary EmailIdentity.",
+                "invite_send_to_accept_rate": "Distinct created invites accepted in-period divided by distinct created invites with invite.sent in-period; null when no invite was sent.",
+                "invite_median_seconds_to_accept": "Median elapsed seconds from invite.created to invite.accepted for accepted invites in the selected created-in-period cohort.",
                 "comparison": "Immediately preceding period of equal length; change_pct is null when the previous value is zero.",
                 "timeseries": "Daily distinct activity from telemetry DailyRollup; no private family content is queried.",
             },
