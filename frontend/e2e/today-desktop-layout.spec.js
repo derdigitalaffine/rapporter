@@ -82,7 +82,7 @@ test('Today uses semantic desktop spans and keeps DOM order across breakpoints',
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=document.documentElement.clientWidth)).toBe(true);
 });
 
-test('reset defaults create a deliberate hierarchy and Today actions use canonical variants',async({page})=>{
+test('reset defaults create the core-first hierarchy and Today actions use canonical variants',async({page})=>{
  await boot(page,{width:1440,height:900});
  const edit=page.getByRole('button',{name:'Anpassen'});
  await expect(edit).toHaveClass(/secondary/);
@@ -90,11 +90,15 @@ test('reset defaults create a deliberate hierarchy and Today actions use canonic
  const editor=page.getByRole('region',{name:'Anpassen'});
 
  await editor.getByRole('button',{name:'Standard wiederherstellen'}).click();
- await expect(editor.getByRole('combobox',{name:'Wochenkompass · Größe'})).toHaveValue('wide');
- await expect(editor.getByRole('combobox',{name:'Reise · Größe'})).toHaveValue('medium');
+ await expect(editor.getByRole('combobox',{name:'Jetzt wichtig · Größe'})).toHaveValue('wide');
+ await expect(editor.getByRole('combobox',{name:'Tagesverlauf · Größe'})).toHaveValue('wide');
+ await expect(editor.getByRole('combobox',{name:'Wochenkompass · Größe'})).toHaveValue('medium');
+ await expect(editor.getByRole('combobox',{name:'To-dos · Größe'})).toHaveValue('compact');
  await expect(editor.getByRole('combobox',{name:'Pinnwand · Größe'})).toHaveValue('compact');
- await expect(editor.getByRole('combobox',{name:'Einkauf · Größe'})).toHaveValue('compact');
- await expect(editor.getByRole('combobox',{name:'Wetter · Größe'}).locator('option[value="medium"]')).toHaveText('Mittel');
+ await expect(editor.locator('[data-editor-widget-id="trip"]')).toHaveCount(0);
+ await expect(editor.locator('[data-library-widget="trip"]')).toBeVisible();
+ await expect(editor.locator('[data-library-widget="weather"]')).toBeVisible();
+ await expect(editor.locator('[data-library-widget="shopping"]')).toBeVisible();
 
  await expect(editor.getByRole('button',{name:'Standard wiederherstellen'})).toHaveClass(/ghost/);
  await expect(editor.getByRole('button',{name:'Abbrechen',exact:true})).toHaveClass(/secondary/);
