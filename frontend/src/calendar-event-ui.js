@@ -128,11 +128,17 @@ export function eventDayKeys(event,timeZone='UTC'){
  const civilStart=event?.payload?.date_start;
  const civilEnd=event?.payload?.date_end_exclusive;
  if(civilStart)return eachCivilDay(civilStart,civilEnd);
- const start=zonedDateKey(event?.starts_at,timeZone);
+ const startValue=event?.starts_at?new Date(event.starts_at):null;
+ const start=zonedDateKey(startValue,timeZone);
  if(!start)return [];
- const end=zonedDateKey(event?.ends_at,timeZone);
+ const endValue=event?.ends_at?new Date(event.ends_at):null;
+ if(!endValue||Number.isNaN(endValue.getTime())||!startValue||Number.isNaN(startValue.getTime())||endValue<=startValue)return [start];
+ // Calendar DTEND/end timestamps are exclusive. Sampling the last occupied
+ // millisecond keeps a true cross-midnight event on both civil days while an
+ // event ending exactly at local midnight does not leak into the next day.
+ const occupiedEnd=new Date(endValue.getTime()-1);
+ const end=zonedDateKey(occupiedEnd,timeZone);
  if(!end||end===start)return [start];
- const keys=eachCivilDay(start,null);
  const [sy,sm,sd]=start.split('-').map(Number);
  const [ey,em,ed]=end.split('-').map(Number);
  const cursor=new Date(Date.UTC(sy,sm-1,sd,12));
@@ -142,7 +148,7 @@ export function eventDayKeys(event,timeZone='UTC'){
   result.push(`${cursor.getUTCFullYear()}-${String(cursor.getUTCMonth()+1).padStart(2,'0')}-${String(cursor.getUTCDate()).padStart(2,'0')}`);
   cursor.setUTCDate(cursor.getUTCDate()+1);
  }
- return result.length?result:keys;
+ return result.length?result:[start];
 }
 
 export function eventVisibleInWeek(event,settings={events:true,waste:true,holidays:true,special:true}){
