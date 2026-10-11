@@ -21,6 +21,13 @@ from .models import Family, FamilyInvitation
 
 TOKEN_DOMAIN = "familyos.family-invitation.v1"
 DEFAULT_INVITE_LIFETIME = timedelta(days=7)
+ROLE_LABELS = {
+    "owner": {"de": "Owner", "en": "Owner"},
+    "adult": {"de": "Erwachsene Person", "en": "Adult"},
+    "teen": {"de": "Teenager", "en": "Teen"},
+    "child": {"de": "Kind", "en": "Child"},
+    "guest": {"de": "Gast", "en": "Guest"},
+}
 
 
 def _token_key() -> bytes:
@@ -71,6 +78,25 @@ def _reference_id(invite: FamilyInvitation, nonce: str) -> str:
     return f"{invite.pk}:{nonce}"
 
 
+def _inviter_label(invite: FamilyInvitation) -> str:
+    inviter = invite.invited_by
+    if inviter is None:
+        return "FamilyOS"
+    full_name = str(inviter.get_full_name() or "").strip()
+    return full_name or str(inviter.username or "FamilyOS")
+
+
+def _invitation_mail_details(invite: FamilyInvitation, locale: str) -> str:
+    role = ROLE_LABELS.get(invite.role, {}).get(locale, invite.role)
+    expiry = timezone.localtime(invite.expires_at)
+    inviter = _inviter_label(invite)
+    if locale == "en":
+        expires = expiry.strftime("%Y-%m-%d %H:%M %Z")
+        return f"Family: {invite.family.name} · Invited by: {inviter} · Role: {role} · Expires: {expires}"
+    expires = expiry.strftime("%d.%m.%Y %H:%M %Z")
+    return f"Familie: {invite.family.name} · Eingeladen von: {inviter} · Rolle: {role} · Gültig bis: {expires}"
+
+
 def queue_invitation_email(invite: FamilyInvitation, nonce: str):
     if not invite.email:
         return None
@@ -85,7 +111,7 @@ def queue_invitation_email(invite: FamilyInvitation, nonce: str):
         locale=locale,
         context={
             "action_label": "Accept invitation" if locale == "en" else "Einladung annehmen",
-            "details": f"Family: {invite.family.name}" if locale == "en" else f"Familie: {invite.family.name}",
+            "details": _invitation_mail_details(invite, locale),
         },
         reference_type="family.invitation",
         reference_id=_reference_id(invite, nonce),
