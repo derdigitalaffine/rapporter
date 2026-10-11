@@ -6,6 +6,7 @@ from statistics import median
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.db.models import Count, Q
 
 from .models import AuditEvent, UsageEvent
 
@@ -37,19 +38,39 @@ def _audit_retention_days():
     return max(0, int(getattr(settings, "TELEMETRY_AUDIT_RETENTION_DAYS", 180)))
 
 
-def _activity_counts(start, end):
-    rows = UsageEvent.objects.filter(
-        event_key="activity.foreground",
-        occurred_at__gte=start,
-        occurred_at__lt=end,
-    )
-    return {
-        "users": rows.values("user_id").distinct().count(),
-        "families": rows.values("family_id").distinct().count(),
-    }
+def _rolling_aggregate(end):
+    activity = UsageEvent.objects.filter(event_key="activity.foreground", occurred_at__lt=end)
+    filters = {}
+    for days in (1, 7, 30):
+        current_start = end - timedelta(days=days)
+        previous_start = current_start - timedelta(days=days)
+        filters[f"users_{days}d"] = Count(
+            "user_id",
+            distinct=True,
+            filter=Q(occurred_at__gte=current_start, occurred_at__lt=end),
+        )
+        filters[f"users_prev_{days}d"] = Count(
+            "user_id",
+            distinct=True,
+            filter=Q(occurred_at__gte=previous_start, occurred_at__lt=current_start),
+        )
+    for days in (7, 30):
+        current_start = end - timedelta(days=days)
+        previous_start = current_start - timedelta(days=days)
+        filters[f"families_{days}d"] = Count(
+            "family_id",
+            distinct=True,
+            filter=Q(occurred_at__gte=current_start, occurred_at__lt=end),
+        )
+        filters[f"families_prev_{days}d"] = Count(
+            "family_id",
+            distinct=True,
+            filter=Q(occurred_at__gte=previous_start, occurred_at__lt=current_start),
+        )
+    return activity.aggregate(**filters)
 
 
-def _rolling_metric(end, *, days, key):
+def _rolling_metric(values, end, *, days, key):
     retention_days = _usage_retention_days()
     retention_cutoff = end - timedelta(days=retention_days)
     current_start = end - timedelta(days=days)
@@ -57,8 +78,8 @@ def _rolling_metric(end, *, days, key):
     current_complete = current_start >= retention_cutoff
     previous_complete = previous_start >= retention_cutoff
 
-    current = _activity_counts(current_start, end)[key] if current_complete else None
-    previous = _activity_counts(previous_start, current_start)[key] if previous_complete else None
+    current = values[f"{key}_{days}d"] if current_complete else None
+    previous = values[f"{key}_prev_{days}d"] if previous_complete else None
     result = _nullable_change(current, previous)
     result.update(
         {
@@ -75,15 +96,17 @@ def _rolling_metric(end, *, days, key):
 
 def rolling_engagement(end):
     """Fixed rolling engagement windows anchored at the overview response end."""
+    values = _rolling_aggregate(end)
     return {
-        "dau": _rolling_metric(end, days=1, key="users"),
-        "wau": _rolling_metric(end, days=7, key="users"),
-        "mau": _rolling_metric(end, days=30, key="users"),
-        "active_families_7d": _rolling_metric(end, days=7, key="families"),
-        "active_families_30d": _rolling_metric(end, days=30, key="families"),
+        "dau": _rolling_metric(values, end, days=1, key="users"),
+        "wau": _rolling_metric(values, end, days=7, key="users"),
+        "mau": _rolling_metric(values, end, days=30, key="users"),
+        "active_families_7d": _rolling_metric(values, end, days=7, key="families"),
+        "active_families_30d": _rolling_metric(values, end, days=30, key="families"),
         "measurement": {
             "anchor": "period.end",
             "source": "distinct activity.foreground raw telemetry",
+            "query_shape": "single conditional aggregate query for 1d/7d/30d current and comparison windows",
             "privacy": "aggregate distinct counts only; no family content or identifiers are serialized",
         },
     }
