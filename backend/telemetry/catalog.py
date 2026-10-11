@@ -40,6 +40,7 @@ TARGET_TYPES = frozenset(
         "entitlement",
         "mail",
         "push",
+        "reference_data",
     }
 )
 MODULE_KEYS = frozenset(
@@ -90,6 +91,9 @@ AUDIT_EVENT_SPECS = {
     "superadmin.export.created": AuditSpec(frozenset({"export_kind"})),
     "entitlement.granted": AuditSpec(frozenset({"origin"})),
     "entitlement.revoked": AuditSpec(frozenset({"origin"})),
+    "pediatric_reference.published": AuditSpec(frozenset({"source_key"})),
+    "pediatric_reference.superseded": AuditSpec(frozenset({"source_key"})),
+    "pediatric_reference.reactivated": AuditSpec(frozenset({"source_key"})),
     "mail.sent": AuditSpec(),
     "mail.failed": AuditSpec(frozenset({"error_class"})),
     "push.sent": AuditSpec(),
@@ -148,7 +152,7 @@ def _validate_metadata_value(key, value):
         if value not in {"owner", "adult", "teen", "child", "guest"}:
             raise TelemetrySchemaError("invalid_metadata_role")
         return value
-    if key in {"scope", "export_kind", "origin", "error_class"}:
+    if key in {"scope", "export_kind", "origin", "error_class", "source_key"}:
         return _safe_slug(value, field=f"metadata_{key}")
     raise TelemetrySchemaError("unknown_metadata_key")
 
