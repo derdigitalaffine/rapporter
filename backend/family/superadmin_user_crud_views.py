@@ -19,10 +19,9 @@ from auth_identity.service import (
 from telemetry.service import try_record_audit_event
 
 from .superadmin_user_views import (
-    USER_DEFAULT_PAGE_SIZE,
-    USER_MAX_PAGE_SIZE,
     USER_SORTS,
-    _parse_positive_int,
+    USER_STATUSES,
+    _bounded_int,
     _target_user,
     _user_detail_payload,
     _user_row,
@@ -42,10 +41,7 @@ def _error(detail, *, code, http_status=status.HTTP_400_BAD_REQUEST):
 
 
 def _sensitive_guard(request):
-    try:
-        decision = _enforce_sensitive_action(request)
-    except Exception:
-        raise
+    decision = _enforce_sensitive_action(request)
     if not decision.allowed:
         return _rate_limited_response(decision)
     return None
@@ -72,7 +68,11 @@ def _validate_password(value, *, user=None, required=False):
         validate_password(password, user=user)
     except ValidationError as exc:
         return None, Response(
-            {"detail": "Passwort erfüllt die Sicherheitsanforderungen nicht.", "code": "invalid_password", "errors": list(exc.messages)},
+            {
+                "detail": "Passwort erfüllt die Sicherheitsanforderungen nicht.",
+                "code": "invalid_password",
+                "errors": list(exc.messages),
+            },
             status=status.HTTP_400_BAD_REQUEST,
         )
     return password, None
@@ -103,34 +103,49 @@ def _audit(event_key, request, target_id):
 
 
 def _list_users(request):
-    query = str(request.query_params.get("q") or "").strip()
-    account_status = str(request.query_params.get("status") or "").strip().lower()
-    sort = str(request.query_params.get("sort") or "-last_activity").strip()
-    if sort not in USER_SORTS:
-        return _error("Unsupported user sort.", code="invalid_sort")
-
-    limit = _parse_positive_int(request.query_params.get("limit"), USER_DEFAULT_PAGE_SIZE)
-    offset = _parse_positive_int(request.query_params.get("offset"), 0, allow_zero=True)
-    if limit is None or limit > USER_MAX_PAGE_SIZE or offset is None:
-        return _error("Invalid pagination.", code="invalid_pagination")
-
     queryset = _users_queryset()
+    query = str(request.query_params.get("q") or "").strip()
     if query:
-        filters = Q(username__icontains=query) | Q(email__icontains=query)
-        if query.isdigit():
-            filters |= Q(pk=int(query))
-        queryset = queryset.filter(filters)
-    if account_status == "active":
-        queryset = queryset.filter(is_active=True)
-    elif account_status == "inactive":
-        queryset = queryset.filter(is_active=False)
-    elif account_status:
-        return _error("Unsupported user status.", code="invalid_status")
+        queryset = queryset.filter(
+            Q(username__icontains=query)
+            | Q(email__icontains=query)
+            | Q(email_identities__email__icontains=query)
+            | Q(family_memberships__display_name__icontains=query)
+            | Q(family_memberships__family__name__icontains=query)
+        ).distinct()
 
-    queryset = queryset.order_by(*USER_SORTS[sort]).distinct()
-    count = queryset.count()
-    users = list(queryset[offset : offset + limit])
-    return Response({"count": count, "limit": limit, "offset": offset, "results": [_row(user) for user in users]})
+    user_status = str(request.query_params.get("status") or "").lower().strip()
+    if user_status:
+        if user_status not in USER_STATUSES:
+            return Response(
+                {"detail": "Unsupported user status.", "allowed_statuses": list(USER_STATUSES)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        queryset = queryset.filter(is_active=USER_STATUSES[user_status])
+
+    sort_key = str(request.query_params.get("sort") or "username").lower().strip()
+    ordering = USER_SORTS.get(sort_key)
+    if not ordering:
+        return Response(
+            {"detail": "Unsupported user sort.", "allowed_sorts": list(USER_SORTS)},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    queryset = queryset.order_by(*ordering)
+
+    total = queryset.count()
+    limit = _bounded_int(request.query_params.get("limit"), default=100, minimum=1)
+    offset = _bounded_int(request.query_params.get("offset"), default=0, minimum=0, maximum=1000000)
+    rows = list(queryset[offset : offset + limit])
+    return Response(
+        {
+            "count": total,
+            "limit": limit,
+            "offset": offset,
+            "sort": sort_key,
+            "status": user_status or None,
+            "results": [_row(user) for user in rows],
+        }
+    )
 
 
 def _create_user(request):
@@ -142,7 +157,11 @@ def _create_user(request):
     if not username:
         return _error("Benutzername ist erforderlich.", code="username_required")
     if _username_conflict(username):
-        return _error("Benutzername ist bereits vergeben.", code="username_conflict", http_status=status.HTTP_409_CONFLICT)
+        return _error(
+            "Benutzername ist bereits vergeben.",
+            code="username_conflict",
+            http_status=status.HTTP_409_CONFLICT,
+        )
 
     password, password_error = _validate_password(request.data.get("password"), required=True)
     if password_error:
@@ -171,10 +190,20 @@ def _create_user(request):
             if email_supplied and email:
                 create_primary_identity(user, email, verified=True)
             _audit("superadmin.user.created", request, user.pk)
-    except (EmailConflictError, EmailIdentityError):
-        return _error("E-Mail-Adresse ist ungültig oder bereits vergeben.", code="email_conflict", http_status=status.HTTP_409_CONFLICT)
+    except EmailConflictError:
+        return _error(
+            "E-Mail-Adresse ist bereits vergeben.",
+            code="email_conflict",
+            http_status=status.HTTP_409_CONFLICT,
+        )
+    except EmailIdentityError:
+        return _error("E-Mail-Adresse ist ungültig.", code="invalid_email")
     except IntegrityError:
-        return _error("Benutzer konnte wegen eines Datenkonflikts nicht angelegt werden.", code="user_conflict", http_status=status.HTTP_409_CONFLICT)
+        return _error(
+            "Benutzer konnte wegen eines Datenkonflikts nicht angelegt werden.",
+            code="user_conflict",
+            http_status=status.HTTP_409_CONFLICT,
+        )
 
     user = _users_queryset().get(pk=user.pk)
     return Response({"user": _row(user)}, status=status.HTTP_201_CREATED)
@@ -190,7 +219,11 @@ def _update_user(request, target):
     if not username:
         return _error("Benutzername ist erforderlich.", code="username_required")
     if _username_conflict(username, exclude_pk=target.pk):
-        return _error("Benutzername ist bereits vergeben.", code="username_conflict", http_status=status.HTTP_409_CONFLICT)
+        return _error(
+            "Benutzername ist bereits vergeben.",
+            code="username_conflict",
+            http_status=status.HTTP_409_CONFLICT,
+        )
 
     next_active = bool(data.get("is_active", target.is_active))
     next_superuser = bool(data.get("is_superuser", target.is_superuser))
@@ -200,7 +233,11 @@ def _update_user(request, target):
             code="self_protection",
             http_status=status.HTTP_409_CONFLICT,
         )
-    if _would_remove_last_active_superadmin(target, next_active=next_active, next_superuser=next_superuser):
+    if _would_remove_last_active_superadmin(
+        target,
+        next_active=next_active,
+        next_superuser=next_superuser,
+    ):
         return _error(
             "Mindestens ein aktiver Superadmin muss erhalten bleiben.",
             code="last_active_superadmin",
@@ -213,7 +250,11 @@ def _update_user(request, target):
 
     was_active = target.is_active
     was_superuser = target.is_superuser
+    old_username = target.username
+    old_first_name = target.first_name
+    old_last_name = target.last_name
     email_changed = False
+
     try:
         with transaction.atomic():
             locked = get_user_model().objects.select_for_update().get(pk=target.pk)
@@ -229,23 +270,45 @@ def _update_user(request, target):
 
             if "email" in data:
                 email = str(data.get("email") or "").strip()
-                if email:
-                    set_primary_email_direct(locked, email)
-                else:
-                    EmailIdentity.objects.filter(user=locked).delete()
-                    if locked.email:
+                current_email = str(locked.email or "").strip()
+                if email != current_email:
+                    if email:
+                        set_primary_email_direct(locked, email)
+                    else:
+                        EmailIdentity.objects.filter(user=locked).delete()
                         locked.email = ""
                         locked.save(update_fields=["email"])
-                email_changed = True
+                    email_changed = True
 
             if was_active != next_active:
-                _audit("superadmin.user.reactivated" if next_active else "superadmin.user.deactivated", request, locked.pk)
-            if was_superuser != next_superuser or username != target.username or password or email_changed or locked.first_name != target.first_name or locked.last_name != target.last_name:
+                _audit(
+                    "superadmin.user.reactivated" if next_active else "superadmin.user.deactivated",
+                    request,
+                    locked.pk,
+                )
+            if (
+                was_superuser != next_superuser
+                or username != old_username
+                or password
+                or email_changed
+                or locked.first_name != old_first_name
+                or locked.last_name != old_last_name
+            ):
                 _audit("superadmin.user.updated", request, locked.pk)
-    except (EmailConflictError, EmailIdentityError):
-        return _error("E-Mail-Adresse ist ungültig oder bereits vergeben.", code="email_conflict", http_status=status.HTTP_409_CONFLICT)
+    except EmailConflictError:
+        return _error(
+            "E-Mail-Adresse ist bereits vergeben.",
+            code="email_conflict",
+            http_status=status.HTTP_409_CONFLICT,
+        )
+    except EmailIdentityError:
+        return _error("E-Mail-Adresse ist ungültig.", code="invalid_email")
     except IntegrityError:
-        return _error("Benutzer konnte wegen eines Datenkonflikts nicht gespeichert werden.", code="user_conflict", http_status=status.HTTP_409_CONFLICT)
+        return _error(
+            "Benutzer konnte wegen eines Datenkonflikts nicht gespeichert werden.",
+            code="user_conflict",
+            http_status=status.HTTP_409_CONFLICT,
+        )
 
     updated = _users_queryset().get(pk=target.pk)
     return Response({"user": _row(updated)})
@@ -256,9 +319,17 @@ def _delete_user(request, target):
     if guard:
         return guard
     if target.pk == request.user.pk:
-        return _error("Der aktuell angemeldete Superadmin kann sich nicht selbst löschen.", code="self_protection", http_status=status.HTTP_409_CONFLICT)
+        return _error(
+            "Der aktuell angemeldete Superadmin kann sich nicht selbst löschen.",
+            code="self_protection",
+            http_status=status.HTTP_409_CONFLICT,
+        )
     if target.is_superuser and target.is_active and not _active_superadmin_would_remain(target):
-        return _error("Mindestens ein aktiver Superadmin muss erhalten bleiben.", code="last_active_superadmin", http_status=status.HTTP_409_CONFLICT)
+        return _error(
+            "Mindestens ein aktiver Superadmin muss erhalten bleiben.",
+            code="last_active_superadmin",
+            http_status=status.HTTP_409_CONFLICT,
+        )
 
     confirmed = request.data.get("confirm") is True
     typed_username = str(request.data.get("confirm_username") or "")
@@ -274,7 +345,11 @@ def _delete_user(request, target):
     with transaction.atomic():
         locked = get_user_model().objects.select_for_update().get(pk=target_id)
         if locked.username != target_username:
-            return _error("Benutzerdaten haben sich geändert. Bitte Löschung erneut bestätigen.", code="confirmation_stale", http_status=status.HTTP_409_CONFLICT)
+            return _error(
+                "Benutzerdaten haben sich geändert. Bitte Löschung erneut bestätigen.",
+                code="confirmation_stale",
+                http_status=status.HTTP_409_CONFLICT,
+            )
         deleted_count, deleted_by_model = locked.delete()
         _audit("superadmin.user.purged", request, target_id)
 
@@ -301,9 +376,11 @@ def superadmin_users_crud(request):
 def superadmin_user_crud_detail(request, user_id):
     target = _target_user(user_id)
     if target is None:
-        return Response({"detail": "User not found."}, status=status.HTTP_404_NOT_FOUND)
+        return Response({"detail": "Nutzer nicht gefunden."}, status=status.HTTP_404_NOT_FOUND)
     if request.method == "GET":
-        return Response(_user_detail_payload(target))
+        payload = _user_detail_payload(target)
+        payload["user"].update({"first_name": target.first_name, "last_name": target.last_name})
+        return Response(payload)
     if request.method == "PATCH":
         return _update_user(request, target)
     return _delete_user(request, target)
