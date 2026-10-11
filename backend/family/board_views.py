@@ -144,9 +144,10 @@ class BoardSerializer(serializers.ModelSerializer):
         return self.get_can_edit(obj)
 
     def get_can_share_source(self, obj):
-        # Source ACLs belong to their canonical domain. The pinboard never mutates
-        # them implicitly; domain-specific explicit share actions can opt in later.
-        return False
+        if self._source_unavailable(obj):
+            return False
+        target = self._target_for(obj)
+        return bool(isinstance(target, dict) and target.get('can_share_source'))
 
     def get_target(self, obj):
         return self._target_for(obj)
