@@ -197,6 +197,28 @@ class ChildIdentityTests(TestCase):
         self.assertIsNone(first.membership_id)
         self.assertIsNone(second.membership_id)
 
+    def test_legacy_reconcile_does_not_duplicate_linked_identity_or_infer_guardian(self):
+        user_count = User.objects.count()
+        duplicate_of_linked = BabyProfile.objects.create(
+            family=self.family,
+            display_name=" MIA ",
+            birth_date=date(2022, 4, 5),
+            created_by=self.owner,
+        )
+        no_guardian_seed = BabyProfile.objects.create(
+            family=self.other_family,
+            display_name="Legacy Other",
+            birth_date=date(2017, 2, 3),
+            created_by=self.outsider,
+        )
+        result = reconcile_orphan_child_identities(apply=True)
+        self.assertIn(str(duplicate_of_linked.id), result["review"])
+        self.assertIn(str(no_guardian_seed.id), result["review"])
+        duplicate_of_linked.refresh_from_db(); no_guardian_seed.refresh_from_db()
+        self.assertIsNone(duplicate_of_linked.membership_id)
+        self.assertIsNone(no_guardian_seed.membership_id)
+        self.assertEqual(User.objects.count(), user_count)
+
 
 class ChildIdentityConcurrencyTests(TransactionTestCase):
     reset_sequences = True
