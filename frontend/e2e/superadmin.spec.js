@@ -23,3 +23,50 @@ test('superadmin creates tenant, owner registers from emailed invite and lands o
  await expect.poll(()=>registrationBody).not.toBeNull();expect(registrationBody).toMatchObject({email:'pat@example.test',password:'owner-password-123',display_name:'Pat'});expect(registrationBody).not.toHaveProperty('username');
  await expect(ownerPage).toHaveURL(/\?page=profile$/);const identityCard=ownerPage.getByTestId('email-identity-card');await expect(identityCard).toContainText('pat@example.test');await expect(identityCard).toContainText('E-Mail noch nicht bestätigt');await expect(ownerPage.getByText('Superadmin',{exact:true})).toHaveCount(0);await ownerPage.getByRole('button',{name:'Zurück'}).click();await expect(ownerPage.getByText('Familie Zwei · Europe/Berlin',{exact:true})).toBeVisible();
 });
+
+test('superadmin SMTP stays redacted, reauths save and test, and fits 390px',async({page})=>{
+ await page.setViewportSize({width:390,height:844});
+ await installApiMocks(page);
+ let saved=null;let tested=null;let saveAttempts=0;let testAttempts=0;let reauthCount=0;
+ const smtp={enabled:true,host:'smtp.example.test',port:587,username:'mailer',password_set:true,security:'starttls',timeout:10,from_email:'mail@example.test',reply_to:'reply@example.test',effective_source:'superadmin',configured:true};
+ await page.route('**/api/auth/session/',route=>json(route,{authenticated:true,user:{id:99,username:'root',email:'root@example.test',is_superadmin:true}}));
+ await page.route('**/api/superadmin/families/',route=>json(route,[]));
+ await page.route('**/api/superadmin/smtp/',async route=>{
+  const method=route.request().method();
+  if(method==='GET')return json(route,smtp);
+  if(method==='PUT'){
+   saveAttempts+=1;
+   if(saveAttempts===1)return json(route,{detail:'fresh reauthentication required'},403);
+   saved=route.request().postDataJSON();
+   return json(route,{...smtp,...saved,password_set:true,password:undefined});
+  }
+  return json(route,{detail:'not found'},404);
+ });
+ await page.route('**/api/superadmin/smtp/test/',async route=>{
+  testAttempts+=1;
+  if(testAttempts===1)return json(route,{detail:'fresh reauthentication required'},403);
+  tested=route.request().postDataJSON();return json(route,{ok:true,accepted:true,source:'superadmin'});
+ });
+ await page.route('**/api/auth/reauth/password/',async route=>{reauthCount+=1;expect(route.request().postDataJSON()).toEqual({password:'admin-password'});return json(route,{ok:true})});
+ await page.goto('/');
+ await expect(page.getByRole('heading',{name:'Transaktionsmail'})).toBeVisible();
+ const password=page.locator('.superadmin-smtp input[type="password"]');
+ await expect(password).toHaveValue('');
+ await expect(password).toHaveAttribute('placeholder','Gespeichert · leer lassen zum Behalten');
+ await page.getByLabel('SMTP-Host').fill('smtp.changed.test');
+ await page.getByRole('button',{name:/SMTP speichern/}).click();
+ await expect(page.getByRole('heading',{name:'Identität erneut bestätigen'})).toBeVisible();
+ await page.getByLabel('Aktuelles Passwort').fill('admin-password');
+ await page.getByRole('button',{name:'Bestätigen'}).click();
+ await expect.poll(()=>saved).not.toBeNull();
+ expect(saved.host).toBe('smtp.changed.test');expect(saved.password).toBe('');
+ await expect(password).toHaveValue('');
+ await page.getByLabel('Testadresse').fill('target@example.test');
+ await page.getByRole('button',{name:'Testmail senden'}).click();
+ await expect(page.getByRole('heading',{name:'Identität erneut bestätigen'})).toBeVisible();
+ await page.getByLabel('Aktuelles Passwort').fill('admin-password');
+ await page.getByRole('button',{name:'Bestätigen'}).click();
+ await expect.poll(()=>tested).not.toBeNull();expect(tested).toEqual({recipient:'target@example.test'});expect(reauthCount).toBe(2);
+ const overflow=await page.evaluate(()=>document.documentElement.scrollWidth-window.innerWidth);
+ expect(overflow).toBeLessThanOrEqual(0);
+});
