@@ -32,7 +32,8 @@ test('library separates placed widgets from registry-backed additions and preser
  await expect(editor.getByRole('heading',{name:'Dein Heute'})).toBeVisible();
  await expect(editor.getByRole('heading',{name:'Widgets hinzufügen'})).toBeVisible();
  await expect(editor.locator('[data-editor-widget-id="weather"]')).toBeVisible();
- await expect(editor.locator('[data-editor-widget-id="priority"]')).toBeVisible();
+ await expect(editor.locator('[data-editor-widget-id="focus"]')).toBeVisible();
+ await expect(editor.locator('[data-editor-widget-id="priority"]')).toHaveCount(0);
  await expect(editor.locator('[data-editor-widget-id="future-private"]')).toHaveCount(0);
  await expect(editor.locator('[data-library-widget="future-private"]')).toHaveCount(0);
  const pinboardCard=editor.locator('[data-library-widget="pinboard"]');
@@ -53,6 +54,8 @@ test('library separates placed widgets from registry-backed additions and preser
  await expect(editor).toHaveCount(0);
  const saved=getLayout();
  expect(saved.version).toBe(2);
+ expect(saved.widgets.find(row=>row.id==='focus')?.visible).toBe(true);
+ expect(saved.widgets.some(row=>row.id==='priority')).toBe(false);
  expect(saved.widgets.find(row=>row.id==='pinboard')?.visible).toBe(true);
  expect(saved.widgets.find(row=>row.id==='future-private')).toEqual({id:'future-private',visible:true,size:'medium'});
 });
