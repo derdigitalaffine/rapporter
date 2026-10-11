@@ -4,7 +4,14 @@ from django.db import IntegrityError, transaction
 from rest_framework import serializers
 
 from family.models import Family, Membership
-from .models import Expense, ExpenseShare, ReceiptExtraction, Settlement
+from .models import (
+    Expense,
+    ExpenseLedger,
+    ExpenseShare,
+    ReceiptExtraction,
+    Settlement,
+    get_default_expense_ledger,
+)
 from .money import balance_summary, build_split
 
 
@@ -21,6 +28,68 @@ class LocalizedDecimalField(serializers.DecimalField):
                 text = text.replace(",", ".")
             data = text
         return super().to_internal_value(data)
+
+
+def _validate_currency(value):
+    value = (value or "EUR").upper()
+    if len(value) != 3 or not value.isalpha():
+        raise serializers.ValidationError("Währung muss ein ISO-4217-Code mit drei Buchstaben sein.")
+    return value
+
+
+def _request_can_access_family(request, family):
+    if not request or not request.user.is_authenticated:
+        return False
+    if request.user.is_superuser:
+        return True
+    return Membership.objects.filter(
+        family=family,
+        user=request.user,
+        family__status=Family.Status.ACTIVE,
+    ).exists()
+
+
+class ExpenseLedgerSerializer(serializers.ModelSerializer):
+    budget_amount = LocalizedDecimalField(
+        max_digits=12,
+        decimal_places=2,
+        allow_null=True,
+        required=False,
+    )
+
+    def validate_base_currency(self, value):
+        return _validate_currency(value)
+
+    def validate_budget_amount(self, value):
+        if value is not None and value < 0:
+            raise serializers.ValidationError("Budget darf nicht negativ sein.")
+        return value
+
+    def validate(self, attrs):
+        request = self.context.get("request")
+        family = attrs.get("family") or getattr(self.instance, "family", None)
+        if not family or not _request_can_access_family(request, family):
+            raise serializers.ValidationError({"family": "Familie ist für diesen Benutzer nicht verfügbar."})
+        if self.instance and "family" in attrs and family.id != self.instance.family_id:
+            raise serializers.ValidationError({"family": "Die Familie eines Abrechnungskreises kann nicht geändert werden."})
+        if self.instance and self.instance.is_default and attrs.get("archived") is True:
+            raise serializers.ValidationError({"archived": "Der Standard-Abrechnungskreis kann nicht archiviert werden."})
+        return attrs
+
+    class Meta:
+        model = ExpenseLedger
+        fields = [
+            "id",
+            "family",
+            "name",
+            "base_currency",
+            "budget_amount",
+            "is_default",
+            "archived",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["is_default", "created_at", "updated_at"]
 
 
 class ExpenseShareSerializer(serializers.ModelSerializer):
@@ -71,10 +140,7 @@ class ExpenseSerializer(serializers.ModelSerializer):
         return bool(obj.receipt_document_id or obj.receipt_mime)
 
     def validate_currency(self, value):
-        value = (value or "EUR").upper()
-        if len(value) != 3 or not value.isalpha():
-            raise serializers.ValidationError("Währung muss ein ISO-4217-Code mit drei Buchstaben sein.")
-        return value
+        return _validate_currency(value)
 
     def validate_total_amount(self, value):
         if value is not None and value <= 0:
@@ -95,6 +161,15 @@ class ExpenseSerializer(serializers.ModelSerializer):
         if not paid_by or paid_by.family_id != family.id:
             raise serializers.ValidationError({"paid_by": "Zahler gehört nicht zu dieser Familie."})
         attrs["paid_by"] = paid_by
+
+        ledger = attrs.get("ledger") or getattr(self.instance, "ledger", None)
+        if ledger is None:
+            ledger = get_default_expense_ledger(family)
+        if ledger.family_id != family.id:
+            raise serializers.ValidationError({"ledger": "Abrechnungskreis gehört nicht zu dieser Familie."})
+        if ledger.archived:
+            raise serializers.ValidationError({"ledger": "Archivierter Abrechnungskreis kann nicht verwendet werden."})
+        attrs["ledger"] = ledger
 
         participants = attrs.get("participants")
         if participants is not None:
@@ -208,13 +283,16 @@ class ExpenseSerializer(serializers.ModelSerializer):
     class Meta:
         model = Expense
         fields = [
-            "id", "family", "title", "merchant", "occurred_at", "total_amount", "currency",
+            "id", "family", "ledger", "title", "merchant", "occurred_at", "total_amount", "currency",
             "paid_by", "paid_by_name", "created_by", "client_request_id", "receipt_status", "receipt_available", "source",
             "status", "notes", "shares", "extraction", "participants", "split_type", "split_values",
             "finalize", "created_at", "updated_at",
         ]
         read_only_fields = ["created_by", "receipt_status", "source", "status"]
-        extra_kwargs = {"paid_by": {"required": False}}
+        extra_kwargs = {
+            "paid_by": {"required": False},
+            "ledger": {"required": False, "allow_null": True},
+        }
         validators = []
 
 
@@ -229,15 +307,12 @@ class SettlementSerializer(serializers.ModelSerializer):
         return obj.to_member.display_name or obj.to_member.user.username
 
     def validate_currency(self, value):
-        value = (value or "EUR").upper()
-        if len(value) != 3 or not value.isalpha():
-            raise serializers.ValidationError("Währung muss ein ISO-4217-Code mit drei Buchstaben sein.")
-        return value
+        return _validate_currency(value)
 
     def validate(self, attrs):
         request = self.context.get("request")
         family = attrs.get("family") or getattr(self.instance, "family", None)
-        allowed = family and (request.user.is_superuser or Membership.objects.filter(family=family, user=request.user, family__status=Family.Status.ACTIVE).exists())
+        allowed = family and _request_can_access_family(request, family)
         if not allowed:
             raise serializers.ValidationError({"family": "Familie ist für diesen Benutzer nicht verfügbar."})
         sender = attrs.get("from_member") or getattr(self.instance, "from_member", None)
@@ -246,12 +321,22 @@ class SettlementSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Beide Personen müssen zur Familie gehören.")
         if sender.id == receiver.id:
             raise serializers.ValidationError("Sender und Empfänger dürfen nicht identisch sein.")
+
+        ledger = attrs.get("ledger") or getattr(self.instance, "ledger", None)
+        if ledger is None:
+            ledger = get_default_expense_ledger(family)
+        if ledger.family_id != family.id:
+            raise serializers.ValidationError({"ledger": "Abrechnungskreis gehört nicht zu dieser Familie."})
+        if ledger.archived:
+            raise serializers.ValidationError({"ledger": "Archivierter Abrechnungskreis kann nicht verwendet werden."})
+        attrs["ledger"] = ledger
+
         amount = attrs.get("amount", getattr(self.instance, "amount", Decimal("0")))
         if amount <= 0:
             raise serializers.ValidationError({"amount": "Betrag muss größer als 0 sein."})
 
         currency = attrs.get("currency") or getattr(self.instance, "currency", "EUR")
-        summary = balance_summary(family, currency)
+        summary = balance_summary(family, currency, ledger=ledger)
         sender_row = summary.get(str(sender.id))
         receiver_row = summary.get(str(receiver.id))
         sender_balance = sender_row["balance"] if sender_row else Decimal("0.00")
@@ -265,5 +350,9 @@ class SettlementSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Settlement
-        fields = ["id", "family", "from_member", "from_name", "to_member", "to_name", "amount", "currency", "settled_at", "created_by", "note", "voided_at", "created_at"]
+        fields = [
+            "id", "family", "ledger", "from_member", "from_name", "to_member", "to_name",
+            "amount", "currency", "settled_at", "created_by", "note", "voided_at", "created_at",
+        ]
         read_only_fields = ["created_by", "voided_at"]
+        extra_kwargs = {"ledger": {"required": False, "allow_null": True}}
