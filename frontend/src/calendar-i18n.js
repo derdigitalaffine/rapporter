@@ -3,6 +3,7 @@ import i18n from './i18n';
 const de={
  officialSource:'Amtliche Ferientermine',agenda:'Familienagenda',familyCalendar:'Familienkalender',sources:'Kalenderquellen',showPast:'Vergangene anzeigen',hidePast:'Vergangene ausblenden',
  sourceFamily:'Familie',sourceBirthdays:'Geburtstage',sourceWarnings:'Warnungen',sourceWaste:'Müll',sourceWeather:'Wetter',sourceTransit:'ÖPNV',sourceSchool:'Schule',sourceCalendar:'Kalender',
+ sourceHealthOne:'Eine Kalenderquelle braucht Aufmerksamkeit',sourceHealthMany:'{{count}} Kalenderquellen brauchen Aufmerksamkeit',sourceHealthOpen:'Integrationen öffnen',
  nextWaste:'Nächste Müllabfuhr',
  noSourceEntries:'Für diese Quelle gibt es aktuell keine Einträge.',showAllSources:'Alle Quellen zeigen',allDay:'Ganztägig',
  undatedUpper:'OHNE DATUM',todayUpper:'HEUTE',tomorrowUpper:'MORGEN',yesterdayUpper:'GESTERN',undated:'Ohne Datum',noDate:'Kein Datum',
@@ -12,6 +13,7 @@ const de={
 const en={
  officialSource:'Official holiday dates',agenda:'Family agenda',familyCalendar:'Family calendar',sources:'Calendar sources',showPast:'Show past',hidePast:'Hide past',
  sourceFamily:'Family',sourceBirthdays:'Birthdays',sourceWarnings:'Warnings',sourceWaste:'Waste',sourceWeather:'Weather',sourceTransit:'Transit',sourceSchool:'School',sourceCalendar:'Calendar',
+ sourceHealthOne:'One calendar source needs attention',sourceHealthMany:'{{count}} calendar sources need attention',sourceHealthOpen:'Open integrations',
  nextWaste:'Next waste collections',
  noSourceEntries:'There are currently no entries for this source.',showAllSources:'Show all sources',allDay:'All day',
  undatedUpper:'NO DATE',todayUpper:'TODAY',tomorrowUpper:'TOMORROW',yesterdayUpper:'YESTERDAY',undated:'No date',noDate:'No date',

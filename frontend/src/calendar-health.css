@@ -1,0 +1,8 @@
+.calendar-source-health{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:center;max-width:100%;min-width:0;padding:10px 12px;border:1px solid color-mix(in srgb,var(--color-warning) 26%,var(--line));border-radius:15px;background:var(--color-warning-soft);color:var(--ink)}
+.calendar-source-health-icon{width:36px;height:36px;border-radius:12px;display:grid;place-items:center;background:var(--surface);color:var(--color-warning);flex:none}
+.calendar-source-health-copy{display:grid;gap:2px;min-width:0}
+.calendar-source-health-copy strong{font-size:.82rem;line-height:1.25}
+.calendar-source-health-copy span{min-width:0;color:var(--muted);font-size:.72rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.calendar-source-health-link{min-height:44px;display:inline-flex;align-items:center;justify-content:center;gap:5px;padding:0 10px;border-radius:11px;color:var(--ink);font-size:.74rem;font-weight:850;text-decoration:none;white-space:nowrap;background:var(--surface);border:1px solid var(--line)}
+.calendar-source-health-link:hover,.calendar-source-health-link:focus-visible{background:var(--soft)}
+@media(max-width:620px){.calendar-source-health{grid-template-columns:auto minmax(0,1fr)}.calendar-source-health-link{grid-column:1/-1;width:100%}}
