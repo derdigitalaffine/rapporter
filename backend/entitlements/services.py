@@ -15,6 +15,7 @@ from .models import CapabilityDefinition, EntitlementCutover, EntitlementGrant, 
 
 MAX_CAPABILITIES_PER_GRANT = 64
 MAX_METADATA_BYTES = 4096
+PRE_COMMERCIAL_ORIGIN_SUMMARY = "pre_commercial_vip"
 ORIGIN_ORDER = {
     EntitlementGrant.Origin.LEGACY_GRANDFATHERED: 0,
     EntitlementGrant.Origin.PURCHASED_LIFETIME: 1,
@@ -61,10 +62,23 @@ def _active_grants(family, at):
 
 
 def resolve_entitlements(family, *, at=None):
-    """Resolve licensing only; module activation remains a separate product state."""
+    """Resolve licensing only; module activation remains a separate product state.
+
+    Before the explicit commercial cutover all families intentionally receive the
+    full VIP capability set. The cutover marker is the single switch that hands
+    access control back to persisted grants/default Light capabilities. Existing
+    families are grandfathered by ``apply_commercial_cutover`` at that boundary,
+    while families created afterwards can follow future commercial policy without
+    another resolver special case.
+    """
     at = at or timezone.now()
     definitions = _definitions()
-    capabilities = {key for key, definition in definitions.items() if definition.default_light}
+    pre_commercial_vip = not EntitlementCutover.objects.filter(pk=COMMERCIAL_CUTOVER_KEY).exists()
+    capabilities = (
+        set(definitions)
+        if pre_commercial_vip
+        else {key for key, definition in definitions.items() if definition.default_light}
+    )
     grants = _active_grants(family, at)
 
     for grant in grants:
@@ -75,13 +89,15 @@ def resolve_entitlements(family, *, at=None):
                 capabilities.add(key)
 
     origins = tuple(sorted({grant.origin for grant in grants}, key=lambda value: (ORIGIN_ORDER.get(value, 99), value)))
-    if not origins:
+    if pre_commercial_vip:
+        origin_summary = PRE_COMMERCIAL_ORIGIN_SUMMARY
+    elif not origins:
         origin_summary = "default_light"
     else:
         origin_summary = origins[0]
 
     premium_keys = {key for key, definition in definitions.items() if definition.premium}
-    if any(grant.plan_key == "vip" for grant in grants):
+    if pre_commercial_vip or any(grant.plan_key == "vip" for grant in grants):
         tier = "vip"
         display_name = "VIP"
     elif premium_keys.intersection(capabilities):
