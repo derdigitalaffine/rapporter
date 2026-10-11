@@ -65,6 +65,10 @@ class PinAdapter:
     def lifecycle_state(self, target):
         return 'available' if target is not None else 'unavailable'
 
+    def decorate_preview(self, preview, target, user):
+        """Attach non-ACL-widening source capabilities to an authorized preview."""
+        return preview
+
     def resolve_many(self, posts, user):
         posts = [post for post in posts if post.target_id]
         if not posts:
@@ -77,11 +81,13 @@ class PinAdapter:
             **{f'{self.family_lookup}__in': family_ids},
         )
         by_key = {(self.target_family_id(row), row.id): row for row in rows}
-        return {
-            post.id: self.preview(by_key[(post.family_id, post.target_id)])
-            for post in posts
-            if (post.family_id, post.target_id) in by_key
-        }
+        result = {}
+        for post in posts:
+            target = by_key.get((post.family_id, post.target_id))
+            if target is None:
+                continue
+            result[post.id] = self.decorate_preview(self.preview(target), target, user)
+        return result
 
 
 class ContextBackedPinAdapter(PinAdapter):
@@ -125,11 +131,13 @@ class ContextBackedPinAdapter(PinAdapter):
             rows = scoped if rows is None else rows | scoped
         rows = rows.distinct()
         by_key = {(self.target_family_id(row), row.id): row for row in rows}
-        return {
-            post.id: self.preview(by_key[(post.family_id, post.target_id)])
-            for post in posts
-            if (post.family_id, post.target_id) in by_key
-        }
+        result = {}
+        for post in posts:
+            target = by_key.get((post.family_id, post.target_id))
+            if target is None:
+                continue
+            result[post.id] = self.decorate_preview(self.preview(target), target, user)
+        return result
 
 
 class CalendarEventPinAdapter(PinAdapter):
@@ -206,6 +214,15 @@ class NotePinAdapter(PinAdapter):
             'subtitle': preview,
             'url': f'/?page=notes&note={row.id}',
         }
+
+    def decorate_preview(self, preview, row, user):
+        if row.author_id == user.id:
+            return {
+                **preview,
+                'can_share_source': True,
+                'source_share_url': f'/?page=notes&note={row.id}&share=1',
+            }
+        return preview
 
 
 class ShoppingItemPinAdapter(PinAdapter):
@@ -318,11 +335,13 @@ class DocumentPinAdapter(PinAdapter):
         family_ids = {post.family_id for post in posts}
         rows = self._visible(user, family_ids, include_archived=True).filter(pk__in=target_ids)
         by_key = {(row.family_id, row.id): row for row in rows}
-        return {
-            post.id: self.preview(by_key[(post.family_id, post.target_id)])
-            for post in posts
-            if (post.family_id, post.target_id) in by_key
-        }
+        result = {}
+        for post in posts:
+            target = by_key.get((post.family_id, post.target_id))
+            if target is None:
+                continue
+            result[post.id] = self.decorate_preview(self.preview(target), target, user)
+        return result
 
 
 PIN_ADAPTERS = {}
