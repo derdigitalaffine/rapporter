@@ -2,6 +2,14 @@ from django.contrib import admin
 from django.urls import include, path
 
 from auth_identity.password_reset_views import password_reset_confirm, password_reset_request
+from auth_sessions.admin_views import (
+    superadmin_login,
+    superadmin_logout,
+    superadmin_reauthenticate_password,
+    superadmin_refresh,
+    superadmin_session,
+    superadmin_sessions,
+)
 from auth_sessions.views import reauthenticate_password, revoke_other_sessions, session_detail, session_list
 from family.auth_views import login_view, logout_view, refresh_view, session_view
 from family.superadmin_user_views import superadmin_user_email_change, superadmin_user_password_reset, superadmin_users
@@ -21,6 +29,12 @@ urlpatterns = [
     path("api/auth/sessions/revoke-others/", revoke_other_sessions, name="auth_session_revoke_others"),
     path("api/auth/reauth/password/", reauthenticate_password, name="auth_reauth_password"),
     path("api/auth/email/", include("auth_identity.urls")),
+    path("api/superadmin/auth/login/", superadmin_login, name="superadmin_auth_login"),
+    path("api/superadmin/auth/refresh/", superadmin_refresh, name="superadmin_auth_refresh"),
+    path("api/superadmin/auth/logout/", superadmin_logout, name="superadmin_auth_logout"),
+    path("api/superadmin/auth/session/", superadmin_session, name="superadmin_auth_session"),
+    path("api/superadmin/auth/sessions/", superadmin_sessions, name="superadmin_auth_sessions"),
+    path("api/superadmin/auth/reauth/password/", superadmin_reauthenticate_password, name="superadmin_auth_reauth_password"),
     path("api/superadmin/users/", superadmin_users, name="superadmin_users"),
     path("api/superadmin/users/<int:user_id>/email-change/", superadmin_user_email_change, name="superadmin_user_email_change"),
     path("api/superadmin/users/<int:user_id>/password-reset/", superadmin_user_password_reset, name="superadmin_user_password_reset"),

@@ -4,7 +4,7 @@ import {join,relative} from 'node:path';
 import {fileURLToPath} from 'node:url';
 
 const distDir=fileURLToPath(new URL('../dist/',import.meta.url));
-const workerPath=join(distDir,'sw.js');
+const workerPaths=[join(distDir,'sw.js'),join(distDir,'superadmin','sw.js')];
 
 async function filesUnder(directory){
   const entries=await readdir(directory,{withFileTypes:true});
@@ -17,7 +17,8 @@ async function filesUnder(directory){
   return files;
 }
 
-const files=(await filesUnder(distDir)).filter(path=>path!==workerPath).sort();
+const workerSet=new Set(workerPaths);
+const files=(await filesUnder(distDir)).filter(path=>!workerSet.has(path)).sort();
 const hash=createHash('sha256');
 for(const path of files){
   hash.update(relative(distDir,path));
@@ -26,8 +27,10 @@ for(const path of files){
   hash.update('\0');
 }
 const buildId=hash.digest('hex').slice(0,12);
-const worker=await readFile(workerPath,'utf8');
-const stamped=worker.replaceAll('__BUILD_ID__',buildId);
-if(stamped===worker)throw new Error('Service worker build placeholder missing.');
-await writeFile(workerPath,stamped,'utf8');
-console.log(`Stamped service worker build ${buildId}`);
+for(const workerPath of workerPaths){
+  const worker=await readFile(workerPath,'utf8');
+  const stamped=worker.replaceAll('__BUILD_ID__',buildId);
+  if(stamped===worker)throw new Error(`Service worker build placeholder missing: ${relative(distDir,workerPath)}`);
+  await writeFile(workerPath,stamped,'utf8');
+}
+console.log(`Stamped service workers build ${buildId}`);

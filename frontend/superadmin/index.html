@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+  <meta name="theme-color" content="#173c43"/>
+  <meta name="description" content="FamilyOS Superadmin – Plattformbetrieb und Administration."/>
+  <meta name="referrer" content="no-referrer"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="default"/>
+  <meta name="apple-mobile-web-app-title" content="FamilyOS Admin"/>
+  <link rel="manifest" href="/superadmin/manifest.webmanifest"/>
+  <link rel="icon" href="/brand/icon.svg"/>
+  <link rel="apple-touch-icon" href="/brand/icon-192.png"/>
+  <title>FamilyOS Superadmin</title>
+</head>
+<body>
+  <div id="root">
+    <main style="min-height:100vh;display:grid;place-items:center;padding:24px;background:#f7f3e8;color:#173c43;font-family:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">
+      <section style="max-width:520px;text-align:center">
+        <img src="/brand/icon.svg" alt="" width="72" height="72"/>
+        <h1 style="margin:16px 0 8px">Superadmin wird geladen …</h1>
+        <p style="line-height:1.5">Die Admin-PWA verwendet eine eigene Anmeldung und teilt keine aktive FamilyOS-Sitzung.</p>
+      </section>
+    </main>
+  </div>
+  <noscript>FamilyOS Superadmin benötigt JavaScript.</noscript>
+  <script type="module" src="/src/superadmin-main.jsx"></script>
+</body>
+</html>
