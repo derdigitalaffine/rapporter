@@ -22,14 +22,14 @@ test('stale password session reauthenticates, adds a passkey and then signs in p
   if(path==='/api/auth/passkeys/registration/options/'&&method==='POST'){
    registrationOptionsCalls+=1;
    if(registrationOptionsCalls===1)return json(route,{detail:'Bitte bestätige deine Identität erneut.'},403);
-   return json(route,{challenge_id:'register-1',options:{challenge,rp:{id:'127.0.0.1',name:'FamilyOS'},user:{id:'dXNlci0x',name:'alex@example.test',displayName:'Alex'},pubKeyCredParams:[{type:'public-key',alg:-7},{type:'public-key',alg:-257}],timeout:60000,attestation:'none',authenticatorSelection:{residentKey:'required',userVerification:'required'},excludeCredentials:[]}});
+   return json(route,{challenge_id:'register-1',options:{challenge,rp:{id:'localhost',name:'FamilyOS'},user:{id:'dXNlci0x',name:'alex@example.test',displayName:'Alex'},pubKeyCredParams:[{type:'public-key',alg:-7},{type:'public-key',alg:-257}],timeout:60000,attestation:'none',authenticatorSelection:{residentKey:'required',userVerification:'required'},excludeCredentials:[]}});
   }
   if(path==='/api/auth/passkeys/registration/verify/'&&method==='POST'){
    registeredCredential=body.credential;
    rows=[{id:'11111111-1111-4111-8111-111111111111',name:body.name,transports:registeredCredential?.response?.transports||[],device_type:'multi_device',backed_up:true,created_at:now,last_used_at:null}];
    return json(route,rows[0],201);
   }
-  if(path==='/api/auth/passkeys/authentication/options/'&&method==='POST')return json(route,{challenge_id:'login-1',options:{challenge,rpId:'127.0.0.1',timeout:60000,userVerification:'required'}});
+  if(path==='/api/auth/passkeys/authentication/options/'&&method==='POST')return json(route,{challenge_id:'login-1',options:{challenge,rpId:'localhost',timeout:60000,userVerification:'required'}});
   if(path==='/api/auth/passkeys/authentication/verify/'&&method==='POST'){
    expect(body.challenge_id).toBe('login-1');expect(body.credential?.id).toBeTruthy();expect(body.credential?.response?.signature).toBeTruthy();
    return json(route,{authenticated:true,email_verified:true,email_action_required:false,session:{id:'passkey-session'}});
@@ -37,7 +37,7 @@ test('stale password session reauthenticates, adds a passkey and then signs in p
   return json(route,{});
  });
  try{
-  await page.goto('/?page=profile');await page.waitForLoadState('networkidle');
+  await page.goto('http://localhost:4173/?page=profile');await page.waitForLoadState('networkidle');
   const card=page.getByTestId('passkey-security');
   await expect(card.getByRole('heading',{name:'Passkeys'})).toBeVisible();
   await card.getByLabel('Name des Passkeys').fill('Test-Laptop');
