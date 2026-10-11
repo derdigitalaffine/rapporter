@@ -3,6 +3,7 @@ import uuid
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
+from django.utils import timezone
 
 
 class PediatricReferencePackage(models.Model):
@@ -65,6 +66,11 @@ class PediatricReferencePackage(models.Model):
         ]
 
     def save(self, *args, **kwargs):
+        # A package can be reviewed/imported ahead of time, but publishing is
+        # the activation step in this MVP. Keeping future-effective packages in
+        # draft prevents them from superseding today's valid package early.
+        if self.status == self.Status.PUBLISHED and self.effective_from and self.effective_from > timezone.localdate():
+            raise ValidationError("Future-effective pediatric reference packages must remain draft until their effective date.")
         if self.pk:
             previous = type(self).objects.filter(pk=self.pk).values(
                 "status",
