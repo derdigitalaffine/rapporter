@@ -2,10 +2,17 @@ import i18n from './i18n';
 import {translation as fr,notes as frNotes} from './i18n-extra/fr';
 import {translation as nl,notes as nlNotes} from './i18n-extra/nl';
 import {translation as th,notes as thNotes} from './i18n-extra/th';
+import {translation as frCare} from './i18n-extra/fr-care';
+import {translation as nlCare} from './i18n-extra/nl-care';
+import {translation as thCare} from './i18n-extra/th-care';
 import {nextAppLanguage,normalizeAppLanguage} from './language-options';
 
 const LANGUAGE_KEY='famuhle-language';
-const bundles={fr:{translation:fr,notes:frNotes},nl:{translation:nl,notes:nlNotes},th:{translation:th,notes:thNotes}};
+const bundles={
+ fr:{translation:{...fr,...frCare},notes:frNotes},
+ nl:{translation:{...nl,...nlCare},notes:nlNotes},
+ th:{translation:{...th,...thCare},notes:thNotes},
+};
 for(const [language,namespaces] of Object.entries(bundles)){
  for(const [namespace,resources] of Object.entries(namespaces))i18n.addResourceBundle(language,namespace,resources,true,true);
 }
