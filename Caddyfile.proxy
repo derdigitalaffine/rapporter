@@ -13,13 +13,9 @@
         }
     }
 
-    @superadmin_bare path /superadmin
-    handle @superadmin_bare {
-        redir /superadmin/ 308
-    }
+    redir /superadmin /superadmin/ 308
 
-    @superadmin path /superadmin/*
-    handle @superadmin {
+    handle /superadmin/* {
         root * /srv
         header Cache-Control "no-cache, no-store, must-revalidate"
         try_files {path} /superadmin/index.html
