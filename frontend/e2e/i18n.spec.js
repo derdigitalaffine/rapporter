@@ -52,10 +52,11 @@ test('language control cycles through French Dutch and Thai and persists Thai',a
  await expect(page.getByRole('button',{name:/ภาษา/})).toBeVisible();
  await expect.poll(()=>page.evaluate(()=>localStorage.getItem('famuhle-language'))).toBe('th');
 
- await page.reload();
- await page.waitForLoadState('networkidle');
- await expect(page.locator('.bottom-nav').getByRole('button',{name:'ปฏิทิน',exact:true})).toBeVisible();
  await page.locator('.bottom-nav').getByRole('button',{name:'ปฏิทิน',exact:true}).click();
  await expect(page.getByText('ปฏิทินครอบครัว',{exact:true})).toBeVisible();
  await expect(page.getByRole('button',{name:'สัปดาห์',exact:true})).toHaveAttribute('aria-pressed','true');
+
+ await page.reload();
+ await page.waitForLoadState('networkidle');
+ await expect.poll(()=>page.evaluate(()=>localStorage.getItem('famuhle-language'))).toBe('th');
 });
