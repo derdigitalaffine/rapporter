@@ -91,7 +91,7 @@ export default function TodoHub({family,data,onCreate}){
  },[family?.id,text.loadFailed,view]);
  useEffect(()=>{if(view==='today'||view==='upcoming')refresh(view);else setLoading(false)},[view,refresh]);
  useEffect(()=>{setTaskList(data?.task_lists?.[0]?.id||'')},[family?.id,data?.task_lists]);
- useEffect(()=>{if(lastAction)requestAnimationFrame(()=>undoRef.current?.focus())},[lastAction]);
+ useEffect(()=>{if(lastAction&&!loading)requestAnimationFrame(()=>undoRef.current?.focus())},[lastAction,loading]);
 
  function setView(next){
   if(!VIEWS.has(next))return;
