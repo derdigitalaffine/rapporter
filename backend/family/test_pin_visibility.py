@@ -144,7 +144,7 @@ class PinVisibilityTests(TestCase):
         self.assertFalse(hidden['can_edit'])
         self.assertFalse(hidden['can_reorder'])
         self.assertFalse(hidden['can_change_pin_visibility'])
-        self.assertTrue(hidden['can_delete'])
+        self.assertFalse(hidden['can_delete'])
         self.assertNotIn('Sensitive pin caption', str(hidden))
         self.assertFalse(can_view_pin(self.selected, pin))
         self.assertEqual(effective_scope_for_user(self.selected, pin), 'none')
