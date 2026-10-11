@@ -43,7 +43,7 @@ test('PWA update waits while a task editor has unsaved input and activates only 
   await expect.poll(()=>page.evaluate(()=>window.__pwaActivationRequests)).toBe(1);
 });
 
-test('service worker exposes controlled activation and still excludes private API responses',async({page})=>{
+test('service worker is build-versioned, exposes controlled activation and excludes private API responses',async({page})=>{
   await boot(page);
   const result=await page.evaluate(async()=>{
     if(!('serviceWorker' in navigator))return {supported:false};
@@ -60,11 +60,13 @@ test('service worker exposes controlled activation and still excludes private AP
       supported:true,
       active:Boolean(registration.active),
       controlledActivation:source.includes("event.data?.type==='SKIP_WAITING'")&&!source.includes('self.skipWaiting();\n  event.waitUntil(cacheAppShell())'),
+      stampedBuild:/familyos-build-[0-9a-f]{12}/.test(source)&&!source.includes('__BUILD_ID__'),
       privateCached:urls.some(path=>path.startsWith('/api/')),
     };
   });
   expect(result.supported).toBe(true);
   expect(result.active).toBe(true);
   expect(result.controlledActivation).toBe(true);
+  expect(result.stampedBuild).toBe(true);
   expect(result.privateCached).toBe(false);
 });
