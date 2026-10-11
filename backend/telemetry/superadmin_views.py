@@ -2,14 +2,14 @@ from datetime import timedelta
 from statistics import median
 
 from django.contrib.auth import get_user_model
-from django.db.models import Min, Q
+from django.db.models import Count, Exists, Min, OuterRef, Q
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
 from auth_identity.models import EmailIdentity
-from family.models import Family
+from family.models import Family, FamilyInvitation
 from family.superadmin_views import IsSuperAdmin
 
 from .models import AuditEvent, DailyRollup, UsageEvent
@@ -25,6 +25,9 @@ INVITE_FUNNEL_EVENT_KEYS = (
     "invite.expired",
     "invite.revoked",
 )
+ACTIVATION_DEFINITION_VERSION = "membership-v1"
+ACTIVATION_WINDOW_DAYS = 7
+RETENTION_SMALL_COHORT_MIN = 5
 
 
 def _window(days, *, now=None):
@@ -146,6 +149,140 @@ def _funnel_comparison(current, previous, *, include_terminal=True):
     return result
 
 
+def _activation_metrics(start, end):
+    activation_end = OuterRef("accepted_at") + timedelta(days=ACTIVATION_WINDOW_DAYS)
+    verified_primary = EmailIdentity.objects.filter(
+        user_id=OuterRef("accepted_by_id"),
+        kind=EmailIdentity.Kind.PRIMARY,
+        verified_at__isnull=False,
+        verified_at__lt=activation_end,
+    )
+    meaningful_activity = UsageEvent.objects.filter(
+        user_id=OuterRef("accepted_by_id"),
+        family_id=OuterRef("family_id"),
+        event_key="activity.foreground",
+        occurred_at__gte=OuterRef("accepted_at"),
+        occurred_at__lt=activation_end,
+    )
+    cohort = FamilyInvitation.objects.filter(
+        accepted_by__isnull=False,
+        accepted_at__gte=start,
+        accepted_at__lt=end,
+    ).annotate(
+        email_verified_for_activation=Exists(verified_primary),
+        meaningful_activity_for_activation=Exists(meaningful_activity),
+    )
+    accepted = cohort.count()
+    verified = cohort.filter(email_verified_for_activation=True).count()
+    active = cohort.filter(meaningful_activity_for_activation=True).count()
+    activated = cohort.filter(
+        email_verified_for_activation=True,
+        meaningful_activity_for_activation=True,
+    ).count()
+    return {
+        "accepted_memberships": accepted,
+        "email_verified": verified,
+        "meaningful_activity_within_7d": active,
+        "activated": activated,
+        "activation_rate_pct": _rate(activated, accepted),
+    }
+
+
+def _activation_comparison(current, previous):
+    return {
+        "accepted_memberships": _change(current["accepted_memberships"], previous["accepted_memberships"]),
+        "email_verified": _change(current["email_verified"], previous["email_verified"]),
+        "meaningful_activity_within_7d": _change(
+            current["meaningful_activity_within_7d"], previous["meaningful_activity_within_7d"]
+        ),
+        "activated": _change(current["activated"], previous["activated"]),
+        "activation_rate_pct": _nullable_change(
+            current["activation_rate_pct"], previous["activation_rate_pct"]
+        ),
+    }
+
+
+def _retention_result(eligible, retained):
+    suppressed = 0 < eligible < RETENTION_SMALL_COHORT_MIN
+    return {
+        "eligible": eligible,
+        "retained": retained,
+        "rate_pct": None if suppressed else _rate(retained, eligible),
+        "small_cohort_suppressed": suppressed,
+    }
+
+
+def _user_retention(start, end, horizon_days):
+    mature_before = end - timedelta(days=horizon_days + 1)
+    activity = UsageEvent.objects.filter(
+        user_id=OuterRef("pk"),
+        event_key="activity.foreground",
+        occurred_at__gte=OuterRef("date_joined") + timedelta(days=horizon_days),
+        occurred_at__lt=OuterRef("date_joined") + timedelta(days=horizon_days + 1),
+    )
+    cohort = (
+        get_user_model()
+        .objects.filter(
+            date_joined__gte=start,
+            date_joined__lt=end,
+            date_joined__lte=mature_before,
+        )
+        .annotate(retained_at_horizon=Exists(activity))
+    )
+    eligible = cohort.count()
+    return _retention_result(eligible, cohort.filter(retained_at_horizon=True).count())
+
+
+def _family_retention(start, end, horizon_days):
+    mature_before = end - timedelta(days=horizon_days + 1)
+    activity = UsageEvent.objects.filter(
+        family_id=OuterRef("pk"),
+        event_key="activity.foreground",
+        occurred_at__gte=OuterRef("created_at") + timedelta(days=horizon_days),
+        occurred_at__lt=OuterRef("created_at") + timedelta(days=horizon_days + 1),
+    )
+    cohort = Family.objects.filter(
+        created_at__gte=start,
+        created_at__lt=end,
+        created_at__lte=mature_before,
+    ).annotate(retained_at_horizon=Exists(activity))
+    eligible = cohort.count()
+    return _retention_result(eligible, cohort.filter(retained_at_horizon=True).count())
+
+
+def _retention_comparison(current, previous):
+    return {
+        "eligible": _change(current["eligible"], previous["eligible"]),
+        "retained": _change(current["retained"], previous["retained"]),
+        "rate_pct": _nullable_change(current["rate_pct"], previous["rate_pct"]),
+        "small_cohort_suppressed": current["small_cohort_suppressed"],
+    }
+
+
+def _retention_metrics(start, end, previous_start):
+    user_current = {days: _user_retention(start, end, days) for days in (1, 7, 30)}
+    user_previous = {days: _user_retention(previous_start, start, days) for days in (1, 7, 30)}
+    family_current = {days: _family_retention(start, end, days) for days in (7, 30, 90)}
+    family_previous = {days: _family_retention(previous_start, start, days) for days in (7, 30, 90)}
+    return {
+        "users": {
+            f"d{days}": _retention_comparison(user_current[days], user_previous[days])
+            for days in (1, 7, 30)
+        },
+        "families": {
+            f"d{days}": _retention_comparison(family_current[days], family_previous[days])
+            for days in (7, 30, 90)
+        },
+        "measurement": {
+            "user_cohort": "Accounts created inside the selected period; each horizon only includes accounts old enough for the full day-N observation window.",
+            "family_cohort": "Families created inside the selected period; each horizon only includes families old enough for the full day-N observation window.",
+            "returning_activity": "At least one canonical activity.foreground event during the exact UTC day-N window after cohort creation.",
+            "small_cohort_min": RETENTION_SMALL_COHORT_MIN,
+            "small_cohort_policy": "Rates are null for non-empty eligible cohorts smaller than the threshold; eligible and retained counts remain visible.",
+        },
+    }
+
+
 def _security_counts(start, end):
     login_success = _audit_count("auth.login.succeeded", start, end)
     login_failure = _audit_count("auth.login.failed", start, end)
@@ -187,6 +324,8 @@ def superadmin_analytics_overview(request):
     previous_funnel = _invite_funnel(previous_start, start)
     current_owner_funnel = _invite_funnel(start, end, role="owner")
     previous_owner_funnel = _invite_funnel(previous_start, start, role="owner")
+    current_activation = _activation_metrics(start, end)
+    previous_activation = _activation_metrics(previous_start, start)
 
     User = get_user_model()
     current_new_users = User.objects.filter(date_joined__gte=start, date_joined__lt=end).count()
@@ -234,12 +373,20 @@ def superadmin_analytics_overview(request):
                     previous_owner_funnel,
                     include_terminal=False,
                 ),
+                "activation": {
+                    "definition_version": ACTIVATION_DEFINITION_VERSION,
+                    "window_days": ACTIVATION_WINDOW_DAYS,
+                    **_activation_comparison(current_activation, previous_activation),
+                },
                 "measurement": {
-                    "cohort": "Invites with invite.created in the selected period; later funnel stages must also occur inside that same selected period.",
+                    "cohort": "Invites with invite.created in the selected period; later invite-funnel stages must also occur inside that same selected period.",
+                    "activation_cohort": "Accepted FamilyInvitation memberships whose accepted_at is inside the selected period.",
+                    "activation_definition": "Membership accepted, primary email verified no later than 7 days after acceptance, and canonical activity.foreground in the same family within 7 days after acceptance.",
                     "opened_or_read": "not_measured",
                     "opened_or_read_reason": "No privacy-safe canonical open/read event exists; SMTP sent is not treated as a read receipt.",
                 },
             },
+            "retention": _retention_metrics(start, end, previous_start),
             "timeseries": _daily_series(start, end),
             "definitions": {
                 "active_user": "Authenticated user with at least one activity.foreground usage event in the selected period.",
@@ -247,7 +394,9 @@ def superadmin_analytics_overview(request):
                 "verified_email_user": "User with a verified primary EmailIdentity.",
                 "invite_send_to_accept_rate": "Distinct created invites accepted in-period divided by distinct created invites with invite.sent in-period; null when no invite was sent.",
                 "invite_median_seconds_to_accept": "Median elapsed seconds from invite.created to invite.accepted for accepted invites in the selected created-in-period cohort.",
-                "comparison": "Immediately preceding period of equal length; change_pct is null when the previous value is zero.",
+                "activation_rate": "Activated accepted memberships divided by accepted memberships in the selected period; activation definition is versioned as membership-v1.",
+                "retention_rate": "Returning subjects divided by mature eligible subjects for the exact day-N window; rates are suppressed for non-empty cohorts smaller than five.",
+                "comparison": "Immediately preceding period of equal length; change_pct is null when the previous value is zero or either compared rate is suppressed/unavailable.",
                 "timeseries": "Daily distinct activity from telemetry DailyRollup; no private family content is queried.",
             },
         }
