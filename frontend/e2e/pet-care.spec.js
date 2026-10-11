@@ -5,6 +5,7 @@ async function installPetMocks(page,operations,{showNav=true}={}){
  const moduleState={key:'pet_care',enabled:true,authorized:true,can_manage:true,show_in_main_navigation:showNav,permissions:{can_care:true,health_manage:true}};
  const pets=[{id:'pet-1',family:'family-1',name:'Luna',species:'Hund',breed:'Labrador',sex:'female',quick_actions:[],active:true,microchip_id:'',insurance_provider:'',insurance_number:'',primary_vet_name:'Praxis',primary_vet_phone:'',allergies:'',important_notes:''},{id:'pet-2',family:'family-1',name:'Milo',species:'Katze',breed:'',sex:'male',quick_actions:[],active:true,microchip_id:'',insurance_provider:'',insurance_number:'',primary_vet_name:'',primary_vet_phone:'',allergies:'',important_notes:''}];
  const logs={'pet-1':[],'pet-2':[]};let next=1;
+ await page.route('**/api/entitlements/**',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({family:'family-1',tier:'premium',display_name:'Premium',capabilities:['family_management','calendar','todo','shopping','pinboard','notes','pets'],origin_summary:'test',origins:['test']})}));
  await page.route('**/api/pets/**',async route=>{
   const request=route.request();const url=new URL(request.url());const path=url.pathname.replace(/^\/api/,'');const method=request.method();let body={};try{body=request.postDataJSON()||{}}catch{}
   const ok=value=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(value)});
