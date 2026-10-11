@@ -1,6 +1,8 @@
 import uuid
 
 from django.conf import settings
+from django.contrib.postgres.indexes import GinIndex
+from django.contrib.postgres.search import SearchVectorField
 from django.db import models
 from django.utils import timezone
 
@@ -167,3 +169,31 @@ class ExtractedField(models.Model):
                 name="docfield_confidence_0_1",
             ),
         ]
+
+
+class DocumentSearchIndex(models.Model):
+    """Derived, disposable search material for one canonical document.
+
+    The index never grants access by itself. Every search starts with the
+    Documents-domain ACL queryset and only then joins this material.
+    """
+
+    document = models.OneToOneField(
+        Document,
+        primary_key=True,
+        on_delete=models.CASCADE,
+        related_name="search_index",
+    )
+    search_text = models.TextField(blank=True, default="")
+    search_vector = SearchVectorField(null=True)
+    indexed_processing_run = models.ForeignKey(
+        DocumentProcessingRun,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [GinIndex(fields=["search_vector"], name="doc_search_vector_gin")]
