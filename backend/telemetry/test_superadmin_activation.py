@@ -163,6 +163,20 @@ class SuperadminActivationMetricsTests(TestCase):
         self.assertTrue(result["mau"]["coverage"]["current_complete"])
         self.assertTrue(result["mau"]["coverage"]["comparison_complete"])
 
+    def test_rolling_engagement_uses_one_aggregate_query(self):
+        end = timezone.now()
+        user = self._user("rolling-query-budget", end - timedelta(days=100))
+        self._activity(user, end - timedelta(hours=2))
+
+        with self.assertNumQueries(1):
+            result = rolling_engagement(end)
+
+        self.assertEqual(result["dau"]["value"], 1)
+        self.assertEqual(
+            result["measurement"]["query_shape"],
+            "single conditional aggregate query for 1d/7d/30d current and comparison windows",
+        )
+
     @override_settings(TELEMETRY_USAGE_RETENTION_DAYS=30)
     def test_rolling_engagement_does_not_fake_missing_comparison_history(self):
         end = timezone.now()
