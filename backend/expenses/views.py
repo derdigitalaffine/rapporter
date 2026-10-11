@@ -1,13 +1,17 @@
+from uuid import UUID
+
+from django.db.models import Q
 from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
 from family.models import Family, Membership
 from .document_receipts import canonicalize_receipt_upload, create_receipt_draft, queue_receipt_processing
-from .models import Expense, Settlement
+from .models import Expense, ExpenseLedger, Settlement, get_default_expense_ledger
 from .money import balance_summary, simplify_balances
-from .serializers import ExpenseSerializer, SettlementSerializer
+from .serializers import ExpenseLedgerSerializer, ExpenseSerializer, SettlementSerializer
 
 
 def _member_payload(row):
@@ -23,6 +27,68 @@ def _member_payload(row):
     }
 
 
+def _ledger_for_request(request, family):
+    ledger_id = request.query_params.get("ledger")
+    if not ledger_id:
+        return get_default_expense_ledger(family)
+    try:
+        ledger_uuid = UUID(str(ledger_id))
+    except (TypeError, ValueError, AttributeError):
+        raise ValidationError({"ledger": "Ungültiger Abrechnungskreis."})
+    ledger = ExpenseLedger.objects.filter(
+        id=ledger_uuid,
+        family=family,
+        archived=False,
+    ).first()
+    if not ledger:
+        # Do not reveal whether a guessed ledger exists in another family.
+        raise ValidationError({"ledger": "Abrechnungskreis ist für diese Familie nicht verfügbar."})
+    return ledger
+
+
+def _filter_family_ledger(queryset, family_id, ledger_id):
+    if not family_id:
+        if not ledger_id:
+            return queryset
+        try:
+            UUID(str(ledger_id))
+        except (TypeError, ValueError, AttributeError):
+            return queryset.none()
+        return queryset.filter(ledger_id=ledger_id)
+    queryset = queryset.filter(family_id=family_id)
+    if ledger_id:
+        try:
+            UUID(str(ledger_id))
+        except (TypeError, ValueError, AttributeError):
+            return queryset.none()
+        return queryset.filter(ledger_id=ledger_id)
+    return queryset.filter(Q(ledger__isnull=True) | Q(ledger__is_default=True))
+
+
+class ExpenseLedgerViewSet(viewsets.ModelViewSet):
+    serializer_class = ExpenseLedgerSerializer
+    http_method_names = ["get", "post", "patch", "head", "options"]
+
+    def get_queryset(self):
+        user = self.request.user
+        queryset = ExpenseLedger.objects.select_related("family")
+        if not user.is_superuser:
+            queryset = queryset.filter(
+                family__memberships__user=user,
+                family__status=Family.Status.ACTIVE,
+            )
+        family_id = self.request.query_params.get("family")
+        if family_id:
+            family_queryset = Family.objects.filter(id=family_id, status=Family.Status.ACTIVE)
+            if not user.is_superuser:
+                family_queryset = family_queryset.filter(memberships__user=user)
+            family = family_queryset.distinct().first()
+            if family:
+                get_default_expense_ledger(family)
+            queryset = queryset.filter(family_id=family_id)
+        return queryset.distinct()
+
+
 class ExpenseViewSet(viewsets.ModelViewSet):
     serializer_class = ExpenseSerializer
 
@@ -32,6 +98,7 @@ class ExpenseViewSet(viewsets.ModelViewSet):
             Expense.objects.defer("receipt_content")
             .select_related(
                 "family",
+                "ledger",
                 "paid_by",
                 "paid_by__user",
                 "created_by",
@@ -43,8 +110,8 @@ class ExpenseViewSet(viewsets.ModelViewSet):
         if not user.is_superuser:
             queryset = queryset.filter(family__memberships__user=user, family__status=Family.Status.ACTIVE)
         family_id = self.request.query_params.get("family")
-        if family_id:
-            queryset = queryset.filter(family_id=family_id)
+        ledger_id = self.request.query_params.get("ledger")
+        queryset = _filter_family_ledger(queryset, family_id, ledger_id)
         if self.action == "list":
             queryset = queryset.filter(status=Expense.Status.POSTED)
         return queryset.distinct()
@@ -52,11 +119,13 @@ class ExpenseViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=["get"])
     def balance(self, request):
         family = self._family(request)
-        currency = (request.query_params.get("currency") or "EUR").upper()
-        summary = balance_summary(family, currency)
+        ledger = _ledger_for_request(request, family)
+        currency = (request.query_params.get("currency") or ledger.base_currency).upper()
+        summary = balance_summary(family, currency, ledger=ledger)
         open_amount = sum((row["balance"] for row in summary.values() if row["balance"] > 0), start=0)
         return Response({
             "family": str(family.id),
+            "ledger": str(ledger.id),
             "currency": currency,
             "open_amount": str(open_amount),
             "members": [_member_payload(row) for row in summary.values()],
@@ -65,12 +134,14 @@ class ExpenseViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=["get"], url_path="settlement-plan")
     def settlement_plan(self, request):
         family = self._family(request)
-        currency = (request.query_params.get("currency") or "EUR").upper()
-        summary = balance_summary(family, currency)
+        ledger = _ledger_for_request(request, family)
+        currency = (request.query_params.get("currency") or ledger.base_currency).upper()
+        summary = balance_summary(family, currency, ledger=ledger)
         names = {member_id: row["member"].display_name or row["member"].user.username for member_id, row in summary.items()}
         transfers = simplify_balances(summary)
         return Response({
             "family": str(family.id),
+            "ledger": str(ledger.id),
             "currency": currency,
             "transfers": [
                 {
@@ -114,6 +185,9 @@ class ExpenseViewSet(viewsets.ModelViewSet):
             canonical=canonical,
             quality_warnings=quality_warnings,
         )
+        if expense.ledger_id is None:
+            expense.ledger = get_default_expense_ledger(family)
+            expense.save(update_fields=["ledger", "updated_at"])
         data = ExpenseSerializer(expense, context={"request": request}).data
         data["quality_warnings"] = quality_warnings
         return Response(data, status=status.HTTP_202_ACCEPTED)
@@ -149,13 +223,20 @@ class SettlementViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        queryset = Settlement.objects.select_related("family", "from_member", "from_member__user", "to_member", "to_member__user", "created_by")
+        queryset = Settlement.objects.select_related(
+            "family",
+            "ledger",
+            "from_member",
+            "from_member__user",
+            "to_member",
+            "to_member__user",
+            "created_by",
+        )
         if not user.is_superuser:
             queryset = queryset.filter(family__memberships__user=user, family__status=Family.Status.ACTIVE)
         family_id = self.request.query_params.get("family")
-        if family_id:
-            queryset = queryset.filter(family_id=family_id)
-        return queryset.distinct()
+        ledger_id = self.request.query_params.get("ledger")
+        return _filter_family_ledger(queryset, family_id, ledger_id).distinct()
 
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)

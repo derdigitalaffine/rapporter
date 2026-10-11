@@ -18,6 +18,8 @@ class EmailIdentity(models.Model):
     verified_at = models.DateTimeField(null=True, blank=True)
     verification_sent_at = models.DateTimeField(null=True, blank=True)
     verification_version = models.PositiveIntegerField(default=0)
+    password_reset_version = models.PositiveIntegerField(default=0)
+    password_reset_requested_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
