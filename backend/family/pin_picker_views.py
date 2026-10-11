@@ -1,0 +1,107 @@
+from django.db.models import Q
+from rest_framework.decorators import api_view
+from rest_framework.exceptions import PermissionDenied, ValidationError
+from rest_framework.response import Response
+
+from .models import Family, Membership
+from .pin_adapters import get_pin_adapter
+
+
+PAGE_SIZE = 20
+MAX_PAGE_SIZE = 50
+SEARCH_FIELDS = {
+    'event': ('title',),
+    'task': ('title',),
+    'routine': ('name',),
+    'note_ref': ('title', 'body'),
+    'shopping': ('name',),
+    'shopping_list': ('name', 'store'),
+    'trip': ('title', 'destination'),
+    'document': ('title', 'correspondent'),
+}
+
+
+def _positive_int(value, *, default, maximum=None, field):
+    if value in (None, ''):
+        return default
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        raise ValidationError({field: 'Muss eine positive Ganzzahl sein.'})
+    if parsed < 1:
+        raise ValidationError({field: 'Muss eine positive Ganzzahl sein.'})
+    return min(parsed, maximum) if maximum else parsed
+
+
+def _picker_queryset(adapter, user, family_id):
+    # Context- and Document-backed adapters deliberately require an explicit
+    # family scope. Reuse their canonical visibility authorities instead of
+    # reconstructing ACL rules in the picker.
+    if getattr(adapter, 'context_type', None):
+        return adapter.context_adapter.visible_queryset(user, family_id)
+    if hasattr(adapter, '_visible'):
+        return adapter._visible(user, [family_id])
+    return adapter.queryset(user).filter(**{adapter.family_lookup: family_id})
+
+
+def _search(queryset, kind, query):
+    query = (query or '').strip()
+    if not query:
+        return queryset
+    fields = SEARCH_FIELDS.get(kind, ())
+    predicate = Q()
+    for field in fields:
+        predicate |= Q(**{f'{field}__icontains': query})
+    return queryset.filter(predicate) if fields else queryset.none()
+
+
+@api_view(['GET'])
+def pin_picker(request):
+    family_id = request.query_params.get('family')
+    kind = request.query_params.get('kind')
+    if not family_id:
+        raise ValidationError({'family': 'Familie fehlt.'})
+    if not kind:
+        raise ValidationError({'kind': 'Pin-Typ fehlt.'})
+
+    adapter = get_pin_adapter(kind)
+    if adapter is None:
+        raise ValidationError({'kind': 'Unbekannter Pin-Typ.'})
+
+    membership = Membership.objects.filter(
+        family_id=family_id,
+        family__status=Family.Status.ACTIVE,
+        user=request.user,
+    ).first()
+    if membership is None:
+        raise PermissionDenied('Kein Zugriff auf diese Familie.')
+    if membership.role == Membership.Role.GUEST:
+        raise PermissionDenied('Diese Rolle darf keine Pins erstellen.')
+
+    page = _positive_int(request.query_params.get('page'), default=1, field='page')
+    page_size = _positive_int(
+        request.query_params.get('page_size'),
+        default=PAGE_SIZE,
+        maximum=MAX_PAGE_SIZE,
+        field='page_size',
+    )
+    queryset = _search(_picker_queryset(adapter, request.user, family_id), kind, request.query_params.get('q'))
+    queryset = queryset.order_by('-updated_at', '-id')
+
+    # Fetch a bounded window and apply the adapter's canonical can_pin rule to
+    # each candidate. This keeps archived/inactive targets out without copying
+    # adapter-specific lifecycle policy into the endpoint.
+    wanted = page * page_size + 1
+    candidates = list(queryset[: max(wanted * 2, PAGE_SIZE + 1)])
+    pinnable = [row for row in candidates if adapter.can_pin(request.user, family_id, row.id)]
+    start = (page - 1) * page_size
+    selected = pinnable[start : start + page_size]
+    has_next = len(pinnable) > start + page_size
+
+    return Response({
+        'kind': kind,
+        'page': page,
+        'page_size': page_size,
+        'has_next': has_next,
+        'results': [adapter.preview(row) for row in selected],
+    })
