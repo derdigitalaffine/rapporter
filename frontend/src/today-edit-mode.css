@@ -1,0 +1,12 @@
+.today-layout-widget-main{display:grid;grid-template-columns:44px minmax(0,1fr) auto;align-items:center;gap:10px}
+.today-drag-handle{width:44px;height:44px;display:grid;place-items:center;border:1px solid var(--line);border-radius:12px;background:var(--soft);color:var(--muted);font-size:1.15rem;font-weight:900;line-height:1;cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none}
+.today-drag-handle:hover,.today-drag-handle:focus-visible,.today-drag-handle[aria-pressed="true"]{border-color:color-mix(in srgb,var(--green) 48%,var(--line));background:var(--green-soft);color:var(--green)}
+.today-drag-handle:active,.today-layout-editor li.is-dragging .today-drag-handle{cursor:grabbing}
+.today-layout-editor li{position:relative}
+.today-layout-editor li.is-dragging{opacity:.68}
+.today-layout-editor li.drag-before::before,.today-layout-editor li.drag-after::after{content:"";position:absolute;left:0;right:0;height:3px;border-radius:99px;background:var(--green);pointer-events:none}
+.today-layout-editor li.drag-before::before{top:-2px}
+.today-layout-editor li.drag-after::after{bottom:-2px}
+.today-reorder-status{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}
+@media(max-width:480px){.today-layout-widget-main{grid-template-columns:44px minmax(0,1fr)}.today-layout-controls{grid-column:2;justify-self:end;margin-left:0}.today-layout-editor label{min-width:0}.today-layout-editor label span{overflow-wrap:anywhere}}
+@media(prefers-reduced-motion:reduce){.today-layout-editor li,.today-drag-handle{transition:none!important}}
