@@ -13,8 +13,8 @@ export function nextCivilDateKey(timeZone='UTC',now=new Date()){
  return `${next.getUTCFullYear()}-${String(next.getUTCMonth()+1).padStart(2,'0')}-${String(next.getUTCDate()).padStart(2,'0')}`;
 }
 
-function storeFor(familyId){
- const key=String(familyId||'');
+function storeFor(familyId,timeZone='UTC'){
+ const key=`${String(familyId||'')}|${timeZone}`;
  if(!stores.has(key))stores.set(key,{actions:[],events:[],loading:false,loaded:false,actionFailed:false,calendarFailed:false,day:'',generation:0,promise:null,listeners:new Set()});
  return stores.get(key);
 }
@@ -26,11 +26,12 @@ async function loadTomorrowData(family,{force=false}={}){
  if(!familyId)return {actions:[],events:[],loading:false,loaded:false,actionFailed:false,calendarFailed:false,day:''};
  const timeZone=family?.timezone||'UTC';
  const day=nextCivilDateKey(timeZone);
- const store=storeFor(familyId);
+ const store=storeFor(familyId,timeZone);
  if(!force&&store.day===day){
   if(store.loading&&store.promise)return store.promise;
   if(store.loaded)return snapshot(store);
  }
+ if(store.day&&store.day!==day){store.actions=[];store.events=[];store.loaded=false;store.promise=null}
  const generation=store.generation+1;
  store.generation=generation;store.day=day;store.loading=true;store.actionFailed=false;store.calendarFailed=false;emit(store);
  const actionRequest=api(`/actions/?family=${encodeURIComponent(familyId)}&scope=upcoming`);
@@ -58,14 +59,15 @@ async function loadTomorrowData(family,{force=false}={}){
 export function useTomorrowData(family){
  const familyId=String(family?.id||'');
  const timeZone=family?.timezone||'UTC';
- const [view,setView]=useState(()=>({familyId,state:snapshot(storeFor(familyId))}));
- const state=view.familyId===familyId?view.state:snapshot(storeFor(familyId));
+ const key=`${familyId}|${timeZone}`;
+ const [view,setView]=useState(()=>({key,state:snapshot(storeFor(familyId,timeZone))}));
+ const state=view.key===key?view.state:snapshot(storeFor(familyId,timeZone));
  useEffect(()=>{
-  const store=storeFor(familyId);let active=true;
-  const listener=value=>{if(active)setView({familyId,state:value})};
-  store.listeners.add(listener);setView({familyId,state:snapshot(store)});loadTomorrowData(family);
+  const store=storeFor(familyId,timeZone);let active=true;
+  const listener=value=>{if(active)setView({key,state:value})};
+  store.listeners.add(listener);setView({key,state:snapshot(store)});loadTomorrowData(family);
   return()=>{active=false;store.listeners.delete(listener)};
- },[familyId,timeZone]);
- const refresh=useCallback(()=>loadTomorrowData(family,{force:true}),[familyId,timeZone]);
+ },[key]);
+ const refresh=useCallback(()=>loadTomorrowData(family,{force:true}),[key]);
  return {...state,refresh};
 }
