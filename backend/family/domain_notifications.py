@@ -103,7 +103,7 @@ def notify_domain_event(
     exclude_users=None,
     url=None,
 ):
-    """Resolve recipients and record unread activity without affecting the originating mutation."""
+    """Resolve recipients, persist in-app activity, then fan out optional push delivery."""
     spec = EVENT_SPECS.get(event_type)
     if not spec:
         return {"sent": 0, "errors": 0, "recipients": 0}
@@ -112,11 +112,15 @@ def notify_domain_event(
     locale = "en" if str(getattr(family, "locale", "de")).lower().startswith("en") else "de"
     title = spec["title"][locale].format_map(context)
     body = spec["body"][locale].format_map(context)
+    target_url = url or _target_url(event_type, context)
     actor_id = str(getattr(actor, "id", "")) if actor else ""
     targets = _user_ids(target_users)
     excluded = _user_ids(exclude_users)
     if actor_id:
         excluded.add(actor_id)
+
+    # Import lazily so Family app initialization does not depend on the notifications app registry.
+    from notifications.services import record_notification
 
     memberships = list(Membership.objects.filter(family=family).select_related("user"))
     pref_rows = NotificationPreference.objects.filter(membership__in=memberships)
@@ -124,8 +128,24 @@ def notify_domain_event(
     sent = errors = recipients = 0
     for membership in memberships:
         user_id = str(membership.user_id)
-        if user_id in excluded or (targets and user_id not in targets):
+        if user_id in excluded or (targets and user_id not in targets) or not membership.user.is_active:
             continue
+
+        # In-app is a distinct channel. Push preferences, quiet hours and digest
+        # policy must never erase the canonical activity row.
+        unread_count = None
+        try:
+            _, unread_count = record_notification(
+                recipient=membership,
+                event_type=event_type,
+                title=title,
+                body=body,
+                resource_url=target_url,
+            )
+        except Exception:
+            # Notification fan-out must not make the originating domain mutation fail.
+            pass
+
         if not _preference_enabled(membership, spec, pref_cache):
             continue
         from .notification_digests import delivery_policy, enqueue_notification
@@ -134,15 +154,16 @@ def notify_domain_event(
             continue
         recipients += 1
         try:
-            unread_count = increment_badge(membership.user)
+            if unread_count is None:
+                unread_count = increment_badge(membership.user)
             if policy == "queue":
-                enqueue_notification(membership, event_type, context, url=url)
+                enqueue_notification(membership, event_type, context, url=target_url)
                 continue
             result = send_user_push(
                 membership.user,
                 title,
                 body,
-                url or _target_url(event_type, context),
+                target_url,
                 tag=f"fam-uh-le:{event_type}",
                 badge_count=unread_count,
             )
