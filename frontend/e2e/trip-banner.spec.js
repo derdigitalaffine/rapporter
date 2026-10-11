@@ -29,7 +29,10 @@ test('legacy Today layout restores next trip as a real grid widget',async({page}
  await expect(banner).toContainText('Berlin');
  await expect(banner).toContainText('Noch 3 Tage');
  await page.getByRole('button',{name:'Anpassen'}).click();
- await expect(page.getByRole('region',{name:'Anpassen'}).getByLabel('Reise',{exact:true})).toBeChecked();
+ const editor=page.getByRole('region',{name:'Anpassen'});
+ const tripRow=editor.locator('[data-editor-widget-id="trip"]');
+ await expect(tripRow).toBeVisible();
+ await expect(tripRow.getByRole('combobox',{name:'Reise · Größe'})).toHaveValue('medium');
  await page.getByRole('button',{name:'Abbrechen',exact:true}).click();
  await banner.click();
  await expect(page).toHaveURL(/page=trips/);

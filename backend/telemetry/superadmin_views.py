@@ -156,6 +156,7 @@ def _activation_metrics(start, end):
         kind=EmailIdentity.Kind.PRIMARY,
         verified_at__isnull=False,
         verified_at__lt=activation_end,
+        verified_at__lte=end,
     )
     meaningful_activity = UsageEvent.objects.filter(
         user_id=OuterRef("accepted_by_id"),
@@ -163,7 +164,7 @@ def _activation_metrics(start, end):
         event_key="activity.foreground",
         occurred_at__gte=OuterRef("accepted_at"),
         occurred_at__lt=activation_end,
-    )
+    ).filter(occurred_at__lt=end)
     cohort = FamilyInvitation.objects.filter(
         accepted_by__isnull=False,
         accepted_at__gte=start,
@@ -172,13 +173,16 @@ def _activation_metrics(start, end):
         email_verified_for_activation=Exists(verified_primary),
         meaningful_activity_for_activation=Exists(meaningful_activity),
     )
-    accepted = cohort.count()
-    verified = cohort.filter(email_verified_for_activation=True).count()
-    active = cohort.filter(meaningful_activity_for_activation=True).count()
-    activated = cohort.filter(
-        email_verified_for_activation=True,
-        meaningful_activity_for_activation=True,
-    ).count()
+    counts = cohort.aggregate(
+        accepted=Count("pk"),
+        verified=Count("pk", filter=Q(email_verified_for_activation=True)),
+        active=Count("pk", filter=Q(meaningful_activity_for_activation=True)),
+        activated=Count("pk", filter=Q(
+            email_verified_for_activation=True,
+            meaningful_activity_for_activation=True,
+        )),
+    )
+    accepted, verified, active, activated = (counts[key] for key in ("accepted", "verified", "active", "activated"))
     return {
         "accepted_memberships": accepted,
         "email_verified": verified,
@@ -229,8 +233,11 @@ def _user_retention(start, end, horizon_days):
         )
         .annotate(retained_at_horizon=Exists(activity))
     )
-    eligible = cohort.count()
-    return _retention_result(eligible, cohort.filter(retained_at_horizon=True).count())
+    counts = cohort.aggregate(
+        eligible=Count("pk"),
+        retained=Count("pk", filter=Q(retained_at_horizon=True)),
+    )
+    return _retention_result(counts["eligible"], counts["retained"])
 
 
 def _family_retention(start, end, horizon_days):
@@ -246,8 +253,11 @@ def _family_retention(start, end, horizon_days):
         created_at__lt=end,
         created_at__lte=mature_before,
     ).annotate(retained_at_horizon=Exists(activity))
-    eligible = cohort.count()
-    return _retention_result(eligible, cohort.filter(retained_at_horizon=True).count())
+    counts = cohort.aggregate(
+        eligible=Count("pk"),
+        retained=Count("pk", filter=Q(retained_at_horizon=True)),
+    )
+    return _retention_result(counts["eligible"], counts["retained"])
 
 
 def _retention_comparison(current, previous):

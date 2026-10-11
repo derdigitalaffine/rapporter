@@ -186,3 +186,38 @@ class SuperadminActivationRetentionTests(TestCase):
         self.assertEqual(user_d7["retained"]["value"], 3)
         self.assertIsNone(user_d7["rate_pct"]["value"])
         self.assertTrue(user_d7["small_cohort_suppressed"])
+
+    def test_activation_does_not_count_verification_or_activity_after_snapshot(self):
+        from .superadmin_views import _activation_metrics
+        User = get_user_model()
+        snapshot = timezone.now()
+        family = Family.objects.create(name="Snapshot", slug="snapshot")
+        for index in range(2):
+            user = User.objects.create_user(username=f"snapshot-{index}")
+            accepted = snapshot - timedelta(days=1)
+            EmailIdentity.objects.create(
+                user=user, kind=EmailIdentity.Kind.PRIMARY,
+                email=f"snapshot-{index}@example.test", email_normalized=f"snapshot-{index}@example.test",
+                verified_at=snapshot + timedelta(hours=1) if index == 0 else accepted,
+            )
+            FamilyInvitation.objects.create(
+                family=family, role=Membership.Role.ADULT, email=f"snapshot-{index}@example.test",
+                expires_at=snapshot + timedelta(days=2), accepted_at=accepted, accepted_by=user,
+            )
+            self._usage(user=user, family=family, occurred_at=accepted if index == 0 else snapshot + timedelta(hours=1))
+        with self.assertNumQueries(1):
+            metrics = _activation_metrics(snapshot - timedelta(days=30), snapshot)
+        self.assertEqual(metrics["accepted_memberships"], 2)
+        self.assertEqual(metrics["email_verified"], 1)
+        self.assertEqual(metrics["meaningful_activity_within_7d"], 1)
+        self.assertEqual(metrics["activated"], 0)
+
+    def test_retention_has_constant_single_query_per_cohort_and_horizon(self):
+        from .superadmin_views import _user_retention, _family_retention
+        snapshot = timezone.now()
+        with self.assertNumQueries(1):
+            users = _user_retention(snapshot - timedelta(days=30), snapshot, 7)
+        with self.assertNumQueries(1):
+            families = _family_retention(snapshot - timedelta(days=30), snapshot, 7)
+        self.assertEqual(users["eligible"], 0)
+        self.assertIsNone(families["rate_pct"])

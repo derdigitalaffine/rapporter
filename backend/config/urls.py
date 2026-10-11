@@ -12,6 +12,7 @@ from auth_sessions.admin_views import (
 )
 from auth_sessions.views import reauthenticate_password, revoke_other_sessions, session_detail, session_list
 from family.auth_views import login_view, logout_view, refresh_view, session_view
+from family.superadmin_analytics_views import superadmin_matomo_report, superadmin_matomo_status
 from family.superadmin_user_views import (
     superadmin_user_email_change,
     superadmin_user_email_direct,
@@ -47,6 +48,8 @@ urlpatterns = [
     path("api/superadmin/auth/sessions/", superadmin_sessions, name="superadmin_auth_sessions"),
     path("api/superadmin/auth/reauth/password/", superadmin_reauthenticate_password, name="superadmin_auth_reauth_password"),
     path("api/superadmin/analytics/overview/", superadmin_analytics_overview, name="superadmin_analytics_overview"),
+    path("api/superadmin/analytics/matomo/status/", superadmin_matomo_status, name="superadmin_matomo_status"),
+    path("api/superadmin/analytics/matomo/report/", superadmin_matomo_report, name="superadmin_matomo_report"),
     path("api/superadmin/audit/", superadmin_audit_events, name="superadmin_audit_events"),
     path("api/superadmin/security/summary/", superadmin_security_summary, name="superadmin_security_summary"),
     path("api/superadmin/delivery/summary/", superadmin_delivery_summary, name="superadmin_delivery_summary"),
