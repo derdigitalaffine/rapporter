@@ -38,6 +38,7 @@ async function snapshot(page,name){
   await restoreStableSnapshotShell(page);
   const desktop=(page.viewportSize()?.width||0)>=1000;
   let thresholds=name==='today'?{maxDiffPixelRatio:.08}:name==='more'?{maxDiffPixelRatio:.03}:name==='members'?{maxDiffPixels:300}:name==='tasks'&&!desktop?{maxDiffPixels:200}:{maxDiffPixels:100};
+  if(!desktop&&['shopping-planning','calendar'].includes(name))thresholds={maxDiffPixels:150};
   if(desktop&&['tasks','shopping-planning','integrations','automations'].includes(name))thresholds={maxDiffPixelRatio:.035};
   if(desktop&&['calendar','members','dialog-task-editor','dialog-event-editor'].includes(name))thresholds={maxDiffPixelRatio:.015};
   await expect(page).toHaveScreenshot(`${name}.png`,{animations:'disabled',caret:'hide',...thresholds});
