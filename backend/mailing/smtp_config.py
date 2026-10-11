@@ -64,14 +64,38 @@ def effective_connection():
     return get_connection(backend=cfg["backend"], fail_silently=False)
 
 
+def _managed_is_configured(row):
+    if not row.host or not row.from_email:
+        return False
+    if not row.username:
+        return True
+    if not row.password_encrypted:
+        return False
+    try:
+        decrypt_password(row.password_encrypted)
+    except ValueError:
+        return False
+    return True
+
+
 def public_config():
     row = ManagedSmtpConfig.objects.filter(pk=1).first()
-    effective = effective_mail_config()
+    if row and row.enabled:
+        effective_source = "superadmin"
+        configured = _managed_is_configured(row)
+    else:
+        effective = effective_mail_config()
+        effective_source = effective["source"]
+        configured = (
+            bool(effective["host"] and effective["from_email"])
+            if effective["backend"].endswith("smtp.EmailBackend")
+            else not effective["backend"].endswith("dummy.EmailBackend")
+        )
     return {
         "enabled": bool(row and row.enabled), "host": row.host if row else "", "port": row.port if row else 587,
         "username": row.username if row else "", "password_set": bool(row and row.password_encrypted),
         "security": row.security if row else ManagedSmtpConfig.Security.STARTTLS, "timeout": row.timeout if row else 10,
         "from_email": row.from_email if row else "", "reply_to": row.reply_to if row else "",
-        "effective_source": effective["source"],
-        "configured": bool(effective["host"] and effective["from_email"]) if effective["backend"].endswith("smtp.EmailBackend") else not effective["backend"].endswith("dummy.EmailBackend"),
+        "effective_source": effective_source,
+        "configured": configured,
     }
