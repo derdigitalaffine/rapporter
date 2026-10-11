@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import extra_views, media_views, secure_views, views
+from . import extra_views, media_views, reference_views, secure_views, views
 
 
 urlpatterns = [
@@ -30,4 +30,11 @@ urlpatterns = [
     path("baby/profiles/<uuid:baby_id>/report/", views.baby_report),
     path("baby/media/", media_views.private_media_upload),
     path("baby/media/<uuid:media_id>/", media_views.private_media_detail),
+    path("baby/reference-packages/", reference_views.reference_packages),
+    path("baby/reference-packages/current/", reference_views.current_reference_package),
+    path("baby/reference-packages/<uuid:package_id>/", reference_views.reference_package_detail),
+    path("baby/reference-packages/<uuid:package_id>/validate/", reference_views.validate_reference),
+    path("baby/reference-packages/<uuid:package_id>/publish/", reference_views.publish_reference),
+    path("baby/reference-packages/<uuid:package_id>/supersede/", reference_views.supersede_reference),
+    path("baby/reference-packages/<uuid:package_id>/reactivate/", reference_views.reactivate_reference),
 ]
