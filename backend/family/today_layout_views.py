@@ -9,17 +9,24 @@ from rest_framework.response import Response
 
 from .models import Family, Membership, TodayLayout
 
+# Keep accepting the original split Task/Routine ids so stale clients and stored
+# personal layouts migrate without losing order or visibility choices.
 LEGACY_WIDGET_IDS = ('weather', 'priority', 'waste', 'next', 'tasks', 'shopping', 'routines', 'birthdays', 'notes')
-PRE_PINBOARD_WIDGET_IDS = LEGACY_WIDGET_IDS + ('loyalty', 'inbox')
+DEPRECATED_TODO_WIDGET_IDS = frozenset(('tasks', 'routines'))
+BASE_WIDGET_IDS = ('weather', 'priority', 'waste', 'next', 'todo', 'shopping', 'birthdays', 'notes')
+PRE_PINBOARD_WIDGET_IDS = BASE_WIDGET_IDS + ('loyalty', 'inbox')
 WIDGET_IDS = PRE_PINBOARD_WIDGET_IDS + ('trip', 'week', 'pinboard')
-SQUARE_WIDGET_IDS = frozenset(('trip', 'next', 'weather', 'routines', 'waste', 'inbox', 'birthdays', 'notes', 'loyalty'))
+INPUT_WIDGET_IDS = frozenset(WIDGET_IDS + tuple(DEPRECATED_TODO_WIDGET_IDS))
+SQUARE_WIDGET_IDS = frozenset(('trip', 'next', 'weather', 'waste', 'inbox', 'birthdays', 'notes', 'loyalty'))
+INPUT_SQUARE_WIDGET_IDS = SQUARE_WIDGET_IDS | {'routines'}
 DEFAULT_WEEK_SETTINGS = {'events': True, 'waste': True, 'holidays': True, 'special': True}
 DEFAULT_TRIP_SETTINGS = {'show_wishes': False}
 DEFAULT_WIDGET_SETTINGS = {
     'week': DEFAULT_WEEK_SETTINGS,
     'trip': DEFAULT_TRIP_SETTINGS,
 }
-DEFAULT_WIDGET_ORDER = ('week', 'priority', 'trip', 'next', 'pinboard', 'weather', 'tasks', 'shopping', 'routines', 'waste', 'inbox', 'birthdays', 'notes', 'loyalty')
+DEFAULT_WIDGET_ORDER = ('week', 'priority', 'trip', 'next', 'pinboard', 'weather', 'todo', 'shopping', 'waste', 'inbox', 'birthdays', 'notes', 'loyalty')
+REQUIRED_STABLE_WIDGET_IDS = frozenset(key for key in LEGACY_WIDGET_IDS if key not in DEPRECATED_TODO_WIDGET_IDS)
 
 
 def _default_widget(key, *, visible=True):
@@ -48,9 +55,39 @@ def _normalize_saved_widget(row):
     return clean
 
 
+def _migrate_todo_widgets(rows):
+    """Collapse the former Tasks/Routines cards into one canonical To-do card."""
+    todo = next((row for row in rows if isinstance(row, dict) and row.get('id') == 'todo'), None)
+    legacy = [
+        (index, row)
+        for index, row in enumerate(rows)
+        if isinstance(row, dict) and row.get('id') in DEPRECATED_TODO_WIDGET_IDS
+    ]
+    if todo is not None:
+        return [row for row in rows if not (isinstance(row, dict) and row.get('id') in DEPRECATED_TODO_WIDGET_IDS)]
+    if not legacy:
+        return rows
+
+    legacy_rows = [row for _, row in legacy]
+    visible = any(row.get('visible') is True for row in legacy_rows)
+    tasks_row = next((row for row in legacy_rows if row.get('id') == 'tasks'), None)
+    preferred = tasks_row.get('size') if tasks_row and tasks_row.get('size') in ('full', 'compact') else None
+    if preferred is None:
+        preferred = next((row.get('size') for row in legacy_rows if row.get('size') in ('full', 'compact')), 'full')
+    combined = {'id': 'todo', 'visible': visible, 'size': preferred}
+    first = min(index for index, _ in legacy)
+    cleaned = [row for row in rows if not (isinstance(row, dict) and row.get('id') in DEPRECATED_TODO_WIDGET_IDS)]
+    insert_at = sum(
+        1 for row in rows[:first]
+        if not (isinstance(row, dict) and row.get('id') in DEPRECATED_TODO_WIDGET_IDS)
+    )
+    cleaned.insert(insert_at, combined)
+    return cleaned
+
+
 def _expanded_widgets(widgets):
-    """Preserve saved settings while adding newly introduced Today surfaces safely."""
-    rows = [_normalize_saved_widget(row) for row in deepcopy(widgets)]
+    """Preserve saved settings while adding/migrating Today surfaces safely."""
+    rows = _migrate_todo_widgets([_normalize_saved_widget(row) for row in deepcopy(widgets)])
     seen = {row.get('id') for row in rows if isinstance(row, dict)}
 
     if 'week' not in seen:
@@ -87,11 +124,11 @@ def _validate_widget(widget, seen):
     allowed = {'id', 'visible', 'size'} | ({'settings'} if defaults is not None else set())
     if set(widget) - allowed or not {'id', 'visible', 'size'} <= set(widget):
         return False
-    if not isinstance(key, str) or key not in WIDGET_IDS or key in seen:
+    if not isinstance(key, str) or key not in INPUT_WIDGET_IDS or key in seen:
         return False
     if type(widget['visible']) is not bool or widget['size'] not in ('full', 'compact', 'square'):
         return False
-    if widget['size'] == 'square' and key not in SQUARE_WIDGET_IDS:
+    if widget['size'] == 'square' and key not in INPUT_SQUARE_WIDGET_IDS:
         return False
     if defaults is not None:
         settings = widget.get('settings', defaults)
@@ -102,6 +139,11 @@ def _validate_widget(widget, seen):
         return False
     seen.add(key)
     return True
+
+
+def _has_required_widgets(seen):
+    has_todo_shape = 'todo' in seen or DEPRECATED_TODO_WIDGET_IDS <= seen
+    return REQUIRED_STABLE_WIDGET_IDS <= seen and has_todo_shape
 
 
 @api_view(['GET', 'PUT'])
@@ -122,10 +164,10 @@ def today_layout(request):
     if type(data['version']) is not int or data['version'] != 1 or type(data['revision']) is not int or data['revision'] < 0:
         return Response({'detail': 'Invalid layout version or revision.'}, status=400)
     widgets = data['widgets']
-    if not isinstance(widgets, list) or not len(LEGACY_WIDGET_IDS) <= len(widgets) <= len(WIDGET_IDS):
+    if not isinstance(widgets, list) or not len(BASE_WIDGET_IDS) <= len(widgets) <= len(INPUT_WIDGET_IDS):
         return Response({'detail': 'Supply supported widgets exactly once.'}, status=400)
     seen = set()
-    if not all(_validate_widget(widget, seen) for widget in widgets) or any(key not in seen for key in LEGACY_WIDGET_IDS):
+    if not all(_validate_widget(widget, seen) for widget in widgets) or not _has_required_widgets(seen):
         return Response({'detail': 'Invalid widget configuration.'}, status=400)
     normalized = _expanded_widgets(widgets)
     with transaction.atomic():
