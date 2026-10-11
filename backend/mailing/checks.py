@@ -7,7 +7,7 @@ def mailing_configuration_checks(app_configs, **kwargs):
     errors = []
     use_tls = bool(getattr(settings, "EMAIL_USE_TLS", False))
     use_ssl = bool(getattr(settings, "EMAIL_USE_SSL", False))
-    backend = getattr(settings, "EMAIL_BACKEND", "")
+    backend = getattr(settings, "EMAIL_ENV_BACKEND", getattr(settings, "EMAIL_BACKEND", ""))
     if use_tls and use_ssl:
         errors.append(Error("EMAIL_USE_TLS and EMAIL_USE_SSL cannot both be enabled.", id="mailing.E001"))
     if backend.endswith("smtp.EmailBackend"):
