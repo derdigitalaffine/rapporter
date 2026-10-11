@@ -51,12 +51,13 @@ async function loadTodayCoreData(family,{force=false}={}){
 export function useTodayCoreData(family){
  const familyId=String(family?.id||'');
  const timeZone=family?.timezone||'UTC';
- const [state,setState]=useState(()=>snapshot(storeFor(familyId)));
+ const [view,setView]=useState(()=>({familyId,state:snapshot(storeFor(familyId))}));
+ const state=view.familyId===familyId?view.state:snapshot(storeFor(familyId));
  useEffect(()=>{
   const store=storeFor(familyId);
   let active=true;
-  const listener=value=>{if(active)setState(value)};
-  store.listeners.add(listener);setState(snapshot(store));
+  const listener=value=>{if(active)setView({familyId,state:value})};
+  store.listeners.add(listener);setView({familyId,state:snapshot(store)});
   loadTodayCoreData(family);
   return()=>{active=false;store.listeners.delete(listener)};
  },[familyId,timeZone]);
