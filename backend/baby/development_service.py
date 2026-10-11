@@ -12,6 +12,7 @@ from family.models import FamilyEvent
 from .family_modules import care_access
 from .growth_service import corrected_age_days, chronological_age_days
 from .models import AppointmentQuestion, BabyProfile, DevelopmentObservation, DevelopmentReference
+from .reference_service import all_preventive_exam_keys, preventive_exam_rules
 
 
 CDC_SOURCE_KEY = "cdc_act_early"
@@ -46,9 +47,9 @@ REFERENCE_ROWS = [
     (24, "cognitive", "uses-switches-knobs", "Probiert einfache Schalter oder Drehknöpfe aus", "Explores simple switches or knobs"),
 ]
 
-# Planning suggestions inside the currently effective G-BA examination windows.
-# U10 was resolved in August 2026 but was not yet in force when this reference
-# version was implemented, so it is deliberately not activated prematurely.
+# Legacy names retained for backwards compatibility with callers/tests that may
+# still import these constants. Runtime scheduling is sourced from the versioned
+# reference package service below.
 U_EXAMS = [
     ("U2", 6, "3.–10. Lebenstag"),
     ("U3", 31, "4.–5. Lebenswoche"),
@@ -165,9 +166,18 @@ def ensure_u_exam_events(user, baby_id):
     zone = ZoneInfo(baby.family.timezone)
     created = []
     now = timezone.now()
-    for name, days, label in U_EXAMS:
-        event_date = baby.birth_date + timedelta(days=days)
+    reference_locale = "de-DE" if baby.family.locale.startswith("de") else baby.family.locale
+    for rule in preventive_exam_rules(locale=reference_locale):
+        name = rule["key"]
+        event_date = baby.birth_date + timedelta(days=rule["target_day"])
         starts_at = datetime.combine(event_date, time(hour=9), tzinfo=zone)
+        reference = dict(rule["reference"])
+        reference.update(
+            {
+                "rule_key": name,
+                "age_window": {"start_day": rule["start_day"], "end_day": rule["end_day"], "target_day": rule["target_day"]},
+            }
+        )
         event, _ = FamilyEvent.objects.get_or_create(
             family=baby.family,
             external_id=_private_event_token(baby, name),
@@ -176,7 +186,11 @@ def ensure_u_exam_events(user, baby_id):
                 "title": "Vorsorgetermin" if baby.family.locale.startswith("de") else "Check-up",
                 "starts_at": starts_at,
                 "actionable": True,
-                "payload": {"deep_link": "/?page=baby&view=development", "private_context": True},
+                "payload": {
+                    "deep_link": "/?page=baby&view=development",
+                    "private_context": True,
+                    "pediatric_reference": reference,
+                },
             },
         )
         if event.starts_at >= now - timedelta(days=30):
@@ -187,7 +201,7 @@ def ensure_u_exam_events(user, baby_id):
 def add_appointment_question(user, baby_id, *, event_id, text):
     baby = _baby_for_user(user, baby_id)
     event = FamilyEvent.objects.filter(pk=event_id, family=baby.family).first()
-    valid_tokens = {_private_event_token(baby, name) for name, _, _ in U_EXAMS}
+    valid_tokens = {_private_event_token(baby, name) for name in all_preventive_exam_keys()}
     if not event or event.external_id not in valid_tokens:
         raise ValidationError({"event": "Preventive appointment not found for this baby."})
     value = str(text or "").strip()
