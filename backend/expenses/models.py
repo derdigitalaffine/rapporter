@@ -89,6 +89,10 @@ class Expense(TimestampedModel):
         MANUAL = "manual", "Manual"
         RECEIPT = "receipt", "Receipt"
 
+    class FundingSource(models.TextChoices):
+        MEMBER = "member", "Member"
+        SHARED = "shared", "Shared"
+
     class ReceiptStatus(models.TextChoices):
         NONE = "none", "None"
         QUEUED = "queued", "Queued"
@@ -110,7 +114,18 @@ class Expense(TimestampedModel):
     occurred_at = models.DateTimeField(default=timezone.now)
     total_amount = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
     currency = models.CharField(max_length=3, default="EUR")
-    paid_by = models.ForeignKey(Membership, on_delete=models.PROTECT, related_name="expenses_paid")
+    funding_source = models.CharField(
+        max_length=16,
+        choices=FundingSource.choices,
+        default=FundingSource.MEMBER,
+    )
+    paid_by = models.ForeignKey(
+        Membership,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="expenses_paid",
+    )
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name="family_expenses_created")
     client_request_id = models.UUIDField(null=True, blank=True)
     # Expand/migrate/cutover: legacy binary fields remain available for rollback
@@ -140,6 +155,13 @@ class Expense(TimestampedModel):
                 fields=["family", "created_by", "client_request_id"],
                 condition=models.Q(client_request_id__isnull=False),
                 name="expense_client_request_uniq",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(funding_source=FundingSource.MEMBER, paid_by__isnull=False)
+                    | models.Q(funding_source=FundingSource.SHARED, paid_by__isnull=True)
+                ),
+                name="expense_funding_source_consistent",
             ),
         ]
 
