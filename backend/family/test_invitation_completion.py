@@ -3,7 +3,9 @@ from datetime import timedelta
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.utils import timezone
+from rest_framework.test import APIClient
 
+from auth_abuse.service import build_identity_keys, get_policy
 from auth_identity.models import EmailIdentity
 from mailing.models import TransactionalEmail
 from telemetry.models import AuditEvent
@@ -73,6 +75,39 @@ class InvitationCompletionTests(TestCase):
         guest, _ = self.issue(role=Membership.Role.GUEST)
         adult, _ = self.issue(role=Membership.Role.ADULT)
         self.assertNotEqual(guest.pk, adult.pk)
+
+    def test_invitation_mail_context_contains_required_onboarding_details_without_secret(self):
+        invite, token = self.issue()
+        row = TransactionalEmail.objects.get(
+            reference_type="family.invitation",
+            reference_id__startswith=f"{invite.pk}:",
+        )
+        details = row.context["details"]
+        self.assertIn(self.family.name, details)
+        self.assertIn(self.inviter.username, details)
+        self.assertIn("Gast", details)
+        self.assertIn("Gültig bis", details)
+        self.assertNotIn(invite.email, details)
+        self.assertNotIn(token, details)
+        self.assertNotIn(invite.token, details)
+
+    def test_resend_policy_has_recipient_identity_key(self):
+        policy = get_policy("invite.resend")
+        first = build_identity_keys(
+            policy,
+            identifier="Guest@example.test",
+            user=self.inviter,
+            family_id=self.family.pk,
+        )
+        second = build_identity_keys(
+            policy,
+            identifier="other@example.test",
+            user=self.inviter,
+            family_id=self.family.pk,
+        )
+        first_identifier = next(key for key in first if key.kind == "identifier")
+        second_identifier = next(key for key in second if key.kind == "identifier")
+        self.assertNotEqual(first_identifier.digest, second_identifier.digest)
 
     def test_serializer_projects_outbox_status_without_exposing_token(self):
         invite, _token = self.issue()
@@ -151,6 +186,49 @@ class InvitationCompletionTests(TestCase):
         self.assertTrue(
             AuditEvent.objects.filter(event_key="invite.accepted", target_id=str(invite.pk), actor=user).exists()
         )
+
+    def test_revocation_invalidates_public_token_and_is_audited(self):
+        invite, token = self.issue()
+        client = APIClient()
+        client.force_authenticate(self.inviter)
+        revoked = client.delete(f"/api/invitations/{invite.pk}/")
+        self.assertEqual(revoked.status_code, 204)
+        self.assertIsNone(resolve_invitation(token).is_active if resolve_invitation(token) else None)
+        public = APIClient().get(f"/api/invite/{token}/")
+        self.assertEqual(public.status_code, 404)
+        self.assertTrue(
+            AuditEvent.objects.filter(event_key="invite.revoked", target_id=str(invite.pk), actor=self.inviter).exists()
+        )
+
+    def test_invite_list_is_tenant_isolated(self):
+        User = get_user_model()
+        other_owner = User.objects.create_user(
+            username="other-owner",
+            email="other-owner@example.test",
+            password="test-password-123",
+        )
+        other_family = Family.objects.create(name="Other Family", slug="other-family")
+        Membership.objects.create(
+            family=other_family,
+            user=other_owner,
+            role=Membership.Role.OWNER,
+            display_name="Other Owner",
+        )
+        other_invite, _token = issue_invitation(
+            family=other_family,
+            invited_by=other_owner,
+            role=Membership.Role.GUEST,
+            email="other-guest@example.test",
+        )
+        self.issue()
+
+        client = APIClient()
+        client.force_authenticate(self.inviter)
+        response = client.get("/api/invitations/")
+        self.assertEqual(response.status_code, 200)
+        rows = response.data.get("results", response.data)
+        self.assertTrue(rows)
+        self.assertNotIn(str(other_invite.pk), {str(row["id"]) for row in rows})
 
     def test_expiry_audit_is_idempotent(self):
         invite, _token = self.issue(expires_at=timezone.now() - timedelta(minutes=1))
