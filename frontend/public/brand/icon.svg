@@ -1,15 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" role="img" aria-labelledby="title desc">
   <title id="title">FamilyOS</title>
-  <desc id="desc">FamilyOS – Familie unter einem Hausdach</desc>
-  <rect width="256" height="256" rx="58" fill="#fff9f2"/>
-  <path d="M54 101.5 128 46l74 55.5" fill="none" stroke="#ff8a47" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M158 51c13-20 34-29 55-23-3 23-18 42-47 46z" fill="#7faa68"/>
-  <circle cx="128" cy="101" r="21" fill="#16343a"/>
-  <circle cx="84" cy="118" r="17.5" fill="#4d8990"/>
-  <circle cx="172" cy="118" r="17.5" fill="#ff8a47"/>
-  <path d="M100 181c1-31 11-55 28-55s27 24 28 55z" fill="#16343a"/>
-  <path d="M62 181c1-28 9-48 22-48s22 20 23 48z" fill="#4d8990"/>
-  <path d="M149 181c1-28 10-48 23-48s21 20 22 48z" fill="#ff8a47"/>
-  <path d="M92 181c2-25 12-42 27-42s25 17 27 42z" fill="#7faa68"/>
-  <text x="128" y="220" text-anchor="middle" fill="#16343a" font-family="Nunito, Noto Sans, Inter, system-ui, sans-serif" font-size="29" font-weight="900" letter-spacing="-1.15">FamilyOS</text>
+  <desc id="desc">FamilyOS – bringt Ordnung in den Familienalltag</desc>
+  <image width="192" height="192" href="/brand/icon-192.png"/>
 </svg>

@@ -1,15 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" role="img" aria-labelledby="title desc">
   <title id="title">FamilyOS</title>
-  <desc id="desc">Maskierbares FamilyOS-App-Symbol</desc>
-  <rect width="256" height="256" fill="#173c43"/>
-  <path d="M58 98.5 128 47l70 51.5" fill="none" stroke="#ff8a47" stroke-width="15" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M157 52c12-18 31-26 50-21-3 21-16 37-43 41z" fill="#7faa68"/>
-  <circle cx="128" cy="100" r="19.5" fill="#fff9f2"/>
-  <circle cx="87" cy="116" r="16" fill="#4d8990"/>
-  <circle cx="169" cy="116" r="16" fill="#ff8a47"/>
-  <path d="M103 176c1-29 10-51 25-51s24 22 25 51z" fill="#fff9f2"/>
-  <path d="M67 176c1-25 9-44 20-44s20 19 21 44z" fill="#4d8990"/>
-  <path d="M148 176c1-25 9-44 21-44s19 19 20 44z" fill="#ff8a47"/>
-  <path d="M95 176c2-23 11-39 24-39s23 16 25 39z" fill="#7faa68"/>
-  <text x="128" y="214" text-anchor="middle" fill="#fff9f2" font-family="Nunito, Noto Sans, Inter, system-ui, sans-serif" font-size="27" font-weight="900" letter-spacing="-1.05">FamilyOS</text>
+  <desc id="desc">Maskierbares FamilyOS-App-Symbol – Ordnung im Familienalltag</desc>
+  <image width="192" height="192" href="/brand/icon-192-maskable.png"/>
 </svg>
