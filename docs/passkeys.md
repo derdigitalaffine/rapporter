@@ -11,7 +11,7 @@ Passkeys are an authentication method on top of the existing FamilyOS security c
 - `auth_abuse` remains the only rate-limit implementation. Passkey endpoints consume the existing `login.passkey.*` and `webauthn.registration.options` scopes.
 - WebAuthn private keys and biometric material never reach FamilyOS. The server stores only the credential ID, public key, sign counter and minimal lifecycle metadata.
 
-The server library is pinned to `webauthn==3.0.1` (Duo Labs `py_webauthn`) rather than implementing WebAuthn cryptography locally.
+The server library is pinned to `webauthn==2.8.0` (Duo Labs `py_webauthn`) rather than implementing WebAuthn cryptography locally. This release is intentionally selected because it is compatible with the repository's existing `cryptography>=46,<47` security stack.
 
 ## Configuration
 
