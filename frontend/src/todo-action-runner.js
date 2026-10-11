@@ -48,6 +48,10 @@ function isAllowed(item,action){
 
 export async function runTodoSecondary(item,action){
   if(!isAllowed(item,action))throw new Error('todo_action_not_allowed');
+  if(item.kind==='task'&&action.id==='delete'&&action.method==='DELETE'){
+    await api(actionApiPath(action.href),{method:'DELETE'});
+    return {id:'delete'};
+  }
   if(item.kind==='routine'&&action.id==='snooze'&&action.method==='POST'){
     await api(actionApiPath(action.href),{method:'POST',body:body({hours:24})});
     return {id:'snooze'};
