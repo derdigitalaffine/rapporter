@@ -1,7 +1,14 @@
+import re
+
+from django.utils import timezone
 from rest_framework import serializers
 
 from .models import Membership
 from .models_features import LoyaltyCard, NotificationPreference
+from .pass_catalog import PASS_ICON_KEYS, auto_accent
+
+
+HEX_COLOR = re.compile(r"^#[0-9A-Fa-f]{6}$")
 
 
 class NotificationPreferenceSerializer(serializers.ModelSerializer):
@@ -43,16 +50,23 @@ class LoyaltyCardSerializer(serializers.ModelSerializer):
     holder_display = serializers.SerializerMethodField()
     created_by_name = serializers.CharField(source="created_by.username", read_only=True)
     can_edit = serializers.SerializerMethodField()
+    resolved_color = serializers.SerializerMethodField()
+    lifecycle_status = serializers.SerializerMethodField()
+    can_restore = serializers.SerializerMethodField()
 
     class Meta:
         model = LoyaltyCard
         fields = [
-            "id", "family", "name", "logo", "color", "holder_name", "holder_membership",
-            "holder_display", "customer_number", "barcode_value", "barcode_format", "note",
-            "created_by", "created_by_name", "shared_with", "shared_with_ids", "favorite",
-            "sort_order", "archived", "can_edit", "created_at", "updated_at",
+            "id", "family", "name", "pass_type", "logo", "icon_key", "color", "color_mode", "resolved_color",
+            "holder_name", "holder_membership", "holder_display", "customer_number", "barcode_value", "barcode_format",
+            "note", "created_by", "created_by_name", "shared_with", "shared_with_ids", "favorite", "sort_order",
+            "archived", "archived_at", "archive_reason", "used_at", "restore_until", "undo_window_minutes",
+            "event_ends_at", "lifecycle_status", "can_restore", "can_edit", "created_at", "updated_at",
         ]
-        read_only_fields = ["created_by", "created_at", "updated_at", "can_edit"]
+        read_only_fields = [
+            "created_by", "archived", "archived_at", "archive_reason", "used_at", "restore_until",
+            "lifecycle_status", "can_restore", "resolved_color", "created_at", "updated_at", "can_edit",
+        ]
         extra_kwargs = {"barcode_value": {"write_only": False}}
 
     def get_shared_with(self, obj):
@@ -85,6 +99,54 @@ class LoyaltyCardSerializer(serializers.ModelSerializer):
             user=request.user,
             role=Membership.Role.OWNER,
         ).exists()
+
+    def get_resolved_color(self, obj):
+        if obj.color_mode == LoyaltyCard.ColorMode.AUTO:
+            return auto_accent(obj.icon_key, obj.color or "#6750A4")
+        return obj.color or "#6750A4"
+
+    def get_lifecycle_status(self, obj):
+        if not obj.archived:
+            return "active"
+        if obj.archive_reason == LoyaltyCard.ArchiveReason.EVENT_ENDED:
+            return "event_ended"
+        if obj.used_at:
+            return "used"
+        return "archived"
+
+    def get_can_restore(self, obj):
+        return bool(
+            obj.archived
+            and obj.archive_reason == LoyaltyCard.ArchiveReason.USED
+            and obj.restore_until
+            and obj.restore_until > timezone.now()
+        )
+
+    def validate_logo(self, value):
+        # Legacy values stay readable and can be round-tripped unchanged. New branding
+        # must use icon_key so persisted data can never become a CSS/HTML class channel.
+        if not value:
+            return ""
+        if self.instance and value == self.instance.logo:
+            return value
+        raise serializers.ValidationError("Neue Icons müssen aus der festen Icon-Registry gewählt werden.")
+
+    def validate_icon_key(self, value):
+        value = str(value or "").strip()
+        if value and value not in PASS_ICON_KEYS:
+            raise serializers.ValidationError("Unbekanntes Icon.")
+        return value
+
+    def validate_color(self, value):
+        value = str(value or "").strip()
+        if not HEX_COLOR.fullmatch(value):
+            raise serializers.ValidationError("Farbe muss als #RRGGBB angegeben werden.")
+        return value.upper()
+
+    def validate_undo_window_minutes(self, value):
+        if value < 1 or value > 1440:
+            raise serializers.ValidationError("Undo-Zeitfenster muss zwischen 1 und 1440 Minuten liegen.")
+        return value
 
     def validate(self, attrs):
         request = self.context.get("request")
