@@ -10,9 +10,12 @@ from .money import _ledger_scope, money
 @transaction.atomic
 def replace_budget_allocations(expense, rows):
     """Atomically replace all budget allocations for one posted expense."""
+    # Lock only the expense row. `ledger` is nullable during the migration-safe
+    # compatibility window; joining it into SELECT ... FOR UPDATE produces a
+    # LEFT JOIN that PostgreSQL cannot lock on its nullable side.
     expense = (
         Expense.objects.select_for_update()
-        .select_related("family", "ledger")
+        .select_related("family")
         .get(pk=expense.pk)
     )
     if expense.status != Expense.Status.POSTED or expense.total_amount is None:
