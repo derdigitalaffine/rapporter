@@ -171,7 +171,7 @@ test('expenses · details expose shared funding, ledger and one standard budget 
   expect(store.expenses[0].funding_source).toBe('shared');
   expect(store.expenses[0].paid_by).toBeNull();
   expect(store.expenses[0].shares).toHaveLength(0);
-  expect(store.allocations.get(store.expenses[0].id)).toEqual([{budget:'budget-home',budget_name:'Haushalt',amount_in_budget_currency:'42.50'}]);
+  await expect.poll(()=>store.allocations.get(store.expenses[0]?.id)).toEqual([{budget:'budget-home',budget_name:'Haushalt',amount_in_budget_currency:'42.50'}]);
   await expect(page.locator('.expense-row-main small').first()).toContainText('gemeinsam bezahlt');
   await expect(page.locator('.expense-row-amount small').first()).toHaveText('ohne Personensplit');
   await expect(page.locator('.balance-total')).toContainText('Alles ausgeglichen');
