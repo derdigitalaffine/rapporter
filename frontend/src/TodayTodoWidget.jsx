@@ -16,7 +16,7 @@ export default function TodayTodoWidget({family,language,compact=false}){
   const core=useTodayCoreData(family);const items=core.actions||[];const loading=core.loading&&!core.loaded;
   const [error,setError]=useState('');const [notice,setNotice]=useState('');const [busyId,setBusyId]=useState('');const [lastAction,setLastAction]=useState(null);const undoRef=useRef(null);
   useEffect(()=>{setNotice('');setLastAction(null);setError('')},[family?.id]);
-  useEffect(()=>{if(lastAction&&!loading)requestAnimationFrame(()=>undoRef.current?.focus())},[lastAction,loading]);
+  useEffect(()=>{if(lastAction&&!loading&&!busyId)requestAnimationFrame(()=>undoRef.current?.focus())},[lastAction,loading,busyId]);
 
   async function refresh(){setError('');await core.refresh()}
   async function onPrimary(item){
