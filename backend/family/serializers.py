@@ -2,6 +2,7 @@ from rest_framework import serializers
 from rest_framework.exceptions import PermissionDenied
 from .models import Family, Membership, FamilyInvitation, TaskList, Task, TaskWorkflowColumn, ShoppingList, ShoppingItem, Routine, RoutineLog, IntegrationSource, FamilyEvent, InboxItem, InboxReceipt, AutomationRule, AutomationExecution
 from .predictions import routine_prediction
+from .calendar_sources import safe_calendar_source_metadata, validate_calendar_source_config
 
 
 def _validate_family_access(serializer, attrs):
@@ -247,6 +248,11 @@ class RoutineSerializer(serializers.ModelSerializer):
 class IntegrationSourceSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         _validate_family_access(self, attrs)
+        if "config" in attrs:
+            try:
+                attrs["config"] = validate_calendar_source_config(attrs.get("config"))
+            except ValueError as exc:
+                raise serializers.ValidationError({"config": str(exc)}) from exc
         return attrs
     def to_representation(self, instance):
         data = super().to_representation(instance)
@@ -264,6 +270,11 @@ class IntegrationSourceSerializer(serializers.ModelSerializer):
 
 
 class FamilyEventSerializer(serializers.ModelSerializer):
+    source_meta = serializers.SerializerMethodField()
+
+    def get_source_meta(self, obj):
+        return safe_calendar_source_metadata(obj.source)
+
     def validate(self, attrs):
         _validate_family_access(self, attrs)
         source = attrs.get("source") if "source" in attrs else (self.instance.source if self.instance else None)
