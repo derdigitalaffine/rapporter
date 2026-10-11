@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client';
 import '@fontsource-variable/nunito';
 import './brand-i18n';
 import './ux-i18n';
+import './additional-language-i18n';
 import './styles.css';
 import './sheets.css';
 import './smart.css';
