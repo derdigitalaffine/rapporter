@@ -82,3 +82,23 @@ test('Today and mobile calendar distinguish appointments, waste, birthdays and s
  await expect(strip.locator('button.has-holiday')).toBeVisible();
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
 });
+
+test('named ICS sources stay separately visible and filterable',async({page})=>{
+ const state=await installApiMocks(page);
+ const day=addCivilDay(berlinDayKey(),1);
+ state.events.push(
+  {id:'ics-parents',family:state.family.id,source:'source-parents',source_name:'Eltern',source_kind:'ics',source_presentation:{icon:'members',color:'green',label:'Elternkalender'},type:'calendar.event',title:'Elterntermin',starts_at:`${day}T10:00:00Z`,ends_at:`${day}T11:00:00Z`,actionable:false,payload:{}},
+  {id:'ics-kids',family:state.family.id,source:'source-kids',source_name:'Kinder',source_kind:'ics',source_presentation:{icon:'school',color:'purple',label:'Kinderkalender'},type:'calendar.event',title:'Kindertermin',starts_at:`${day}T12:00:00Z`,ends_at:`${day}T13:00:00Z`,actionable:false,payload:{}},
+ );
+ await page.goto('/?page=calendar&view=list');
+ const parents=page.getByRole('button',{name:'Elternkalender',exact:true});
+ const kids=page.getByRole('button',{name:'Kinderkalender',exact:true});
+ await expect(parents).toBeVisible();
+ await expect(kids).toBeVisible();
+ await parents.click();
+ await expect(page.getByText('Elterntermin',{exact:true})).toBeVisible();
+ await expect(page.getByText('Kindertermin',{exact:true})).toHaveCount(0);
+ await page.getByText('Elterntermin',{exact:true}).click();
+ await expect(page.getByText('Elternkalender',{exact:true})).toBeVisible();
+ await expect(page.getByText('Elternkalender',{exact:true})).toHaveCount(2);
+});
