@@ -12,7 +12,13 @@ from auth_sessions.admin_views import (
 )
 from auth_sessions.views import reauthenticate_password, revoke_other_sessions, session_detail, session_list
 from family.auth_views import login_view, logout_view, refresh_view, session_view
-from family.superadmin_user_views import superadmin_user_email_change, superadmin_user_password_reset, superadmin_users
+from family.superadmin_user_views import (
+    superadmin_user_email_change,
+    superadmin_user_email_direct,
+    superadmin_user_password_reset,
+    superadmin_user_password_reset_link,
+    superadmin_users,
+)
 from mailing.views import superadmin_mail_health, superadmin_mail_journal
 from mailing.superadmin_views import superadmin_smtp_config, superadmin_smtp_test
 
@@ -38,7 +44,9 @@ urlpatterns = [
     path("api/superadmin/auth/reauth/password/", superadmin_reauthenticate_password, name="superadmin_auth_reauth_password"),
     path("api/superadmin/users/", superadmin_users, name="superadmin_users"),
     path("api/superadmin/users/<int:user_id>/email-change/", superadmin_user_email_change, name="superadmin_user_email_change"),
+    path("api/superadmin/users/<int:user_id>/email-direct/", superadmin_user_email_direct, name="superadmin_user_email_direct"),
     path("api/superadmin/users/<int:user_id>/password-reset/", superadmin_user_password_reset, name="superadmin_user_password_reset"),
+    path("api/superadmin/users/<int:user_id>/password-reset-link/", superadmin_user_password_reset_link, name="superadmin_user_password_reset_link"),
     path("api/superadmin/mail-health/", superadmin_mail_health, name="superadmin_mail_health"),
     path("api/superadmin/mail-journal/", superadmin_mail_journal, name="superadmin_mail_journal"),
     path("api/superadmin/smtp/", superadmin_smtp_config, name="superadmin_smtp_config"),

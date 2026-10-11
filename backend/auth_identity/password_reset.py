@@ -57,6 +57,37 @@ def _parse_reference(reference_id):
         return None, None
 
 
+def create_password_reset_reference(user) -> str:
+    """Create fresh canonical reset state for a concrete eligible user.
+
+    The returned reference is intentionally not itself a bearer token. Callers
+    can pass it to ``password_reset_path`` to obtain the normal versioned Django
+    reset URL. Creating a new reference invalidates any older reset URL.
+    """
+    if not user or not getattr(user, "pk", None) or not user.is_active:
+        return ""
+    now = timezone.now()
+    with transaction.atomic():
+        identity = (
+            EmailIdentity.objects.select_for_update()
+            .select_related("user")
+            .filter(
+                user_id=user.pk,
+                kind=EmailIdentity.Kind.PRIMARY,
+                verified_at__isnull=False,
+            )
+            .first()
+        )
+        if not identity or not identity.user.is_active:
+            return ""
+        identity.password_reset_version += 1
+        identity.password_reset_requested_at = now
+        identity.save(
+            update_fields=["password_reset_version", "password_reset_requested_at", "updated_at"]
+        )
+        return f"{identity.pk}:{identity.password_reset_version}"
+
+
 def request_password_reset(email, *, locale="de") -> bool:
     """Queue a reset mail for an eligible account without exposing eligibility."""
     # Apply the same password-hash work to every public request so an unknown
