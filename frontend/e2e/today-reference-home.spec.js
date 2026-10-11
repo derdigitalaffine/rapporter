@@ -81,7 +81,7 @@ test('Today customize action is integrated in the hero and stays usable across v
   }
 
   await action.click();
-  await expect(page.getByRole('heading',{name:/Dein Heute-Raster|Your Today grid/})).toBeFocused();
+  await expect(page.getByRole('heading',{name:/Today anpassen|Customize Today/})).toBeFocused();
 });
 
 test('Today reference modules navigate to unified To-dos, waste calendar and concrete inbox message without overflow',async({page})=>{
