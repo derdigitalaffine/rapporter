@@ -82,6 +82,13 @@ INVITE_KEYS = (
     KeyPolicy("network", 4),
     KeyPolicy("global", 50),
 )
+INVITE_RESEND_KEYS = (
+    KeyPolicy("user", 1),
+    KeyPolicy("family", 2),
+    KeyPolicy("identifier", 1),
+    KeyPolicy("network", 4),
+    KeyPolicy("global", 50),
+)
 INVITE_PUBLIC_KEYS = (
     KeyPolicy("user", 1),
     KeyPolicy("network", 4),
@@ -115,7 +122,7 @@ POLICIES: dict[str, AbusePolicy] = {
         "invite.create", WindowPolicy(5, 60), WindowPolicy(30, 3600), INVITE_KEYS, 30, 900, "auth.invite.create"
     ),
     "invite.resend": AbusePolicy(
-        "invite.resend", WindowPolicy(3, 300), WindowPolicy(10, 3600), INVITE_KEYS, 60, 1800, "auth.invite.resend"
+        "invite.resend", WindowPolicy(3, 300), WindowPolicy(10, 3600), INVITE_RESEND_KEYS, 60, 1800, "auth.invite.resend"
     ),
     "invite.resolve": AbusePolicy(
         "invite.resolve", WindowPolicy(30, 60), WindowPolicy(200, 3600), INVITE_PUBLIC_KEYS, 15, 300, "auth.invite.resolve"
