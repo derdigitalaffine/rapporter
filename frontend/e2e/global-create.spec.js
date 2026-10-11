@@ -18,7 +18,7 @@ async function bootPage(page,target,viewport={width:390,height:844},ranking=base
 async function fab(page){const button=page.locator('.global-create-fab');await expect(button).toBeVisible();return button}
 async function palette(page){const dialog=page.getByRole('dialog',{name:'Neu hinzufügen'});await expect(dialog).toBeVisible();return dialog}
 async function boxesDoNotOverlap(a,b){const x=await a.boundingBox(),y=await b.boundingBox();expect(x).not.toBeNull();expect(y).not.toBeNull();const overlap=!(x.x+x.width<=y.x||y.x+y.width<=x.x||x.y+x.height<=y.y||y.y+y.height<=x.y);expect(overlap).toBe(false)}
-const isContentMutation=request=>['POST','PATCH','DELETE'].includes(request.method())&&request.url().includes('/api/')&&!request.url().includes('/api/push/badge/')&&!request.url().includes('/api/create-actions/');
+const isContentMutation=request=>['POST','PATCH','DELETE'].includes(request.method())&&request.url().includes('/api/')&&!request.url().includes('/api/push/badge/')&&!request.url().includes('/api/analytics/product-event/')&&!request.url().includes('/api/create-actions/');
 
 test('default FAB opens frozen quickstart and learns only after successful task save',async({page})=>{
  const usage=[];let created=null;await boot(page,{width:390,height:844},baseProfile,payload=>usage.push(payload));
