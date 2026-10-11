@@ -156,7 +156,10 @@ class DocumentSearchTests(TestCase):
         self.processed(other, "fremder Familieninhalt")
 
         response = self.search(self.alice, family=self.other_family.id, q="Familieninhalt")
-        self.assertEqual(response.status_code, 404)
+        # DEFAULT_PERMISSION_CLASSES rejects explicit foreign tenants before the
+        # search view is entered; keep this aligned with ActiveTenantAccess.
+        self.assertEqual(response.status_code, 403)
+        self.assertNotIn(str(other.id), str(response.data))
 
     def test_filters_apply_after_authorization(self):
         target = self.document(
