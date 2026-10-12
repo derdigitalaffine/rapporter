@@ -15,6 +15,7 @@ export default function ShoppingPlanningList({items,onReorder,onToggle,onEdit,on
   const [announcement,setAnnouncement]=useState('');
   const dragRef=useRef(null);
   useEffect(()=>setOrdered(sourceOpen),[sourceOpen]);
+  useEffect(()=>()=>stopPointerListeners(),[]);
 
   function fullOrderIds(nextOpen){
     const queue=[...nextOpen];
@@ -31,10 +32,18 @@ export default function ShoppingPlanningList({items,onReorder,onToggle,onEdit,on
     const target=index+delta;if(index<0||target<0||target>=ordered.length)return;
     const previous=[...ordered],next=[...ordered];next.splice(index,1);next.splice(target,0,item);void persist(next,previous,item);
   }
+  function stopPointerListeners(){
+    window.removeEventListener('pointermove',pointerMove);
+    window.removeEventListener('pointerup',pointerUp);
+    window.removeEventListener('pointercancel',pointerCancel);
+  }
   function pointerDown(event,item){
     if(event.button!==undefined&&event.button!==0)return;
-    event.currentTarget.setPointerCapture?.(event.pointerId);
+    event.preventDefault();
     dragRef.current={id:String(item.id),previous:[...ordered],current:[...ordered],last:String(item.id)};
+    window.addEventListener('pointermove',pointerMove);
+    window.addEventListener('pointerup',pointerUp,{once:true});
+    window.addEventListener('pointercancel',pointerCancel,{once:true});
   }
   function pointerMove(event){
     const drag=dragRef.current;if(!drag)return;
@@ -47,10 +56,13 @@ export default function ShoppingPlanningList({items,onReorder,onToggle,onEdit,on
     });
   }
   function pointerUp(){
-    const drag=dragRef.current;if(!drag)return;dragRef.current=null;
+    const drag=dragRef.current;stopPointerListeners();if(!drag)return;dragRef.current=null;
     const next=drag.current||ordered;const moved=next.find(item=>String(item.id)===drag.id);if(!moved)return;
     const before=drag.previous.map(item=>String(item.id)).join('|'),after=next.map(item=>String(item.id)).join('|');
     if(before!==after)void persist(next,drag.previous,moved);
+  }
+  function pointerCancel(){
+    stopPointerListeners();dragRef.current=null;setOrdered(sourceOpen);
   }
 
   if(!loaded)return empty;
@@ -58,7 +70,7 @@ export default function ShoppingPlanningList({items,onReorder,onToggle,onEdit,on
   return <section className="shopping-order-list" aria-label={t('shoppingOrder.label')}>
     <span className="sr-only" aria-live="polite" aria-atomic="true">{announcement}</span>
     {ordered.map((item,index)=><article className={`smart-row shopping-row shopping-order-row ${item._offlinePending?'pending-sync':''}`} key={item.id} data-shopping-order-id={item.id}>
-      <button type="button" className="shopping-drag-handle" aria-label={t('shoppingOrder.drag',{name:item.name})} onPointerDown={event=>pointerDown(event,item)} onPointerMove={pointerMove} onPointerUp={pointerUp} onPointerCancel={()=>{dragRef.current=null;setOrdered(sourceOpen)}}><Icon name="drag"/></button>
+      <button type="button" className="shopping-drag-handle" aria-label={t('shoppingOrder.drag',{name:item.name})} onPointerDown={event=>pointerDown(event,item)}><Icon name="drag"/></button>
       <button className="smart-check" onClick={()=>onToggle(item)} aria-label={`${item.name} · ${t('complete')}`}><Icon name="check"/></button>
       <button className="smart-row-main row-main-button" onClick={()=>onEdit(item)}><div className="smart-title"><strong>{item.name}</strong>{item._offlinePending&&<span className="shopping-pending-badge"><Icon name="offline" size={12}/>{t('shoppingOffline.pending')}</span>}{item.favorite&&<span className="favorite-badge"><Icon name="favorite"/> {t('favorite')}</span>}</div><div className="smart-meta shopping-meta">{item.quantity&&<span className="shopping-quantity">{item.quantity}</span>}{item.category&&<span>{item.category}</span>}{item.aisle&&<span><Icon name="location"/>{item.aisle}</span>}{item.added_by_name&&<span><Icon name="user"/>{item.added_by_name}</span>}</div>{item.note&&<p>{item.note}</p>}</button>
       <div className="shopping-order-actions"><button type="button" disabled={index===0} onClick={()=>move(item,-1)} aria-label={t('shoppingOrder.moveUp',{name:item.name})}>↑</button><button type="button" disabled={index===ordered.length-1} onClick={()=>move(item,1)} aria-label={t('shoppingOrder.moveDown',{name:item.name})}>↓</button></div>
