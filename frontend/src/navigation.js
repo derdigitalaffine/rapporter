@@ -1,4 +1,4 @@
-export const APP_PAGES=new Set(['notes','documents','board','birthdays','trips','decisions','wishlists','home','todo','tasks','shopping','routines','baby','pets','more','calendar','weather','expenses','contracts','inbox','integrations','members','profile','automations','notifications','loyalty']);
+export const APP_PAGES=new Set(['notes','documents','board','birthdays','trips','decisions','wishlists','games','home','todo','tasks','shopping','routines','baby','pets','more','calendar','weather','expenses','contracts','inbox','integrations','members','profile','automations','notifications','loyalty']);
 
 export function pageFromLocation(search=location.search){
  const params=new URLSearchParams(search);
@@ -10,8 +10,9 @@ export function pageFromLocation(search=location.search){
 export function pageHref(page,current=location.href){
  const next=APP_PAGES.has(page)?page:'home';
  const url=new URL(current,location.origin);
- if(url.searchParams.get('page')!==next){for(const key of ['routine','birthday','mode','list','task','item','wishlist','family','todo','ledger'])url.searchParams.delete(key)}
+ if(url.searchParams.get('page')!==next){for(const key of ['routine','birthday','mode','list','task','item','wishlist','family','todo','ledger','game'])url.searchParams.delete(key)}
  if(next!=='notes')url.searchParams.delete('note');
+ if(next!=='games')url.searchParams.delete('game');
  url.searchParams.delete('integration_connected');
  url.searchParams.delete('integration_error');
  if(next==='home')url.searchParams.delete('page');
