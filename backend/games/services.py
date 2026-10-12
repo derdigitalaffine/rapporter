@@ -85,7 +85,7 @@ def notify_finished(match):
 
 def _task_assignment(match):
     return (
-        GameTaskAssignment.objects.select_for_update()
+        GameTaskAssignment.objects.select_for_update(of=("self",))
         .select_related("task", "expected_assignee", "applied_assignee")
         .filter(match=match)
         .first()
