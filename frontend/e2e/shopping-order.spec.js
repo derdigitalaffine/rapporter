@@ -26,7 +26,7 @@ async function bootOrder(page){
 
 async function names(page){return page.locator('.shopping-order-row .smart-title strong').allTextContents()}
 
-test('planning reorder is keyboard-operable, 44px touch-safe and reload-persistent',async({page})=>{
+test('planning reorder stays visible, touch-safe and reload-persistent while row chrome stays quiet',async({page})=>{
   await page.setViewportSize({width:390,height:844});
   const {writes}=await bootOrder(page);
   const moveDown=page.getByRole('button',{name:'Milch nach unten'});
@@ -34,6 +34,10 @@ test('planning reorder is keyboard-operable, 44px touch-safe and reload-persiste
   const moveBox=await moveDown.boundingBox();const dragBox=await dragHandle.boundingBox();
   expect(moveBox?.width).toBeGreaterThanOrEqual(44);expect(moveBox?.height).toBeGreaterThanOrEqual(44);
   expect(dragBox?.width).toBeGreaterThanOrEqual(44);expect(dragBox?.height).toBeGreaterThanOrEqual(44);
+  await expect(page.locator('.shopping-order-row .favorite-badge')).toHaveCount(0);
+  await expect(page.locator('.shopping-order-row > .row-action')).toHaveCount(0);
+  await expect(page.locator('.shopping-progress-line')).toHaveCount(0);
+  await expect(page.locator('.shopping-progress-track')).toHaveCount(0);
   await moveDown.focus();await page.keyboard.press('Enter');
   await expect.poll(()=>writes.length).toBe(1);
   expect(writes[0]).toEqual(['item-bread','item-milk','item-eggs']);
