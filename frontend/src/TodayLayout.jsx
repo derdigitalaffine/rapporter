@@ -217,7 +217,7 @@ export default function TodayLayout({family,header,onboarding,widgets}){
  };
  // Missing module/permission implementations stay in the saved layout but never
  // render a preview or a Library card. This keeps disabled/future widgets lossless.
- const active=(draft||saved.widgets).filter(widget=>widget.visible&&(widget.id!=='games'||loaded===family.id)&&(builtin(widget.id)||availableWidgets[widget.id]));
+ const active=(draft||saved.widgets).filter(widget=>widget.visible&&(!['games','pinboard'].includes(widget.id)||loaded===family.id)&&(builtin(widget.id)||availableWidgets[widget.id]));
  const content=widget=>widget.id==='situation'?<TodaySituation family={family} language={language} widgetSize={widget.size}/>:widget.id==='focus'?<TodayFocusWidget family={family} language={language}/>:widget.id==='timeline'?<TodayTimelineWidget family={family} language={language}/>:widget.id==='tomorrow'?<TodayTomorrowWidget family={family} language={language} widgetSize={widget.size}/>:widget.id==='family-load'?<TodayFamilyLoadWidget family={family} language={language} widgetSize={widget.size}/>:widget.id==='week'?<WeekCompassWidget family={family} language={language} settings={widget.settings||settingsFor('week')} compact={widget.size==='compact'}/>:widget.id==='pinboard'?<PinboardTodayWidget family={family} language={language} compact={widget.size==='compact'}/>:widget.id==='todo'?<TodayTodoWidget family={family} language={language} compact={widget.size==='compact'}/>:availableWidgets[widget.id];
  const render=widget=>{
   const value=content(widget);const editProps=longPressProps(widget);

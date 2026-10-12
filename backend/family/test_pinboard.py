@@ -50,6 +50,29 @@ class PinboardReferenceTests(TestCase):
         self.assertEqual(response.data['target']['kind'], 'task')
         self.assertIn('/?page=tasks', response.data['target']['url'])
 
+    def test_calendar_pin_contains_only_validated_date_preview_metadata(self):
+        from django.utils import timezone
+        event = FamilyEvent.objects.create(family=self.family, type='school.holiday', title='Ferien', starts_at=timezone.now(), ends_at=timezone.now(), payload={'date_start': '2026-10-12', 'date_end_exclusive': '2026-10-19', 'private_extra': 'Never project this'})
+        pin = BoardPost.objects.create(family=self.family, author=self.owner, kind='event', target_id=event.id)
+        response = self.client.get(f'/api/board/{pin.id}/')
+        self.assertEqual(response.status_code, 200)
+        target = response.data['target']
+        self.assertEqual(target['date_start'], '2026-10-12')
+        self.assertEqual(target['date_end_exclusive'], '2026-10-19')
+        self.assertIn('ends_at', target)
+        self.assertNotIn('private_extra', target)
+        self.assertNotIn('Never project this', str(target))
+        event.payload = {'date_start': 'invalid', 'date_end_exclusive': {'secret': True}}
+        event.save(update_fields=['payload'])
+        response = self.client.get(f'/api/board/{pin.id}/')
+        self.assertNotIn('date_start', response.data['target'])
+        self.assertNotIn('date_end_exclusive', response.data['target'])
+        event.delete()
+        response = self.client.get(f'/api/board/{pin.id}/')
+        self.assertFalse(response.data['target']['available'])
+        self.assertNotIn('ends_at', response.data['target'])
+        self.assertNotIn('date_start', response.data['target'])
+
     def test_existing_event_note_and_shopping_adapters_resolve(self):
         event = FamilyEvent.objects.create(family=self.family, type='family', title='Elternabend')
         shopping_list = ShoppingList.objects.create(family=self.family, name='Drogerie')
