@@ -1,7 +1,6 @@
 import io
 import json
 import uuid
-from importlib import import_module
 
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
@@ -199,7 +198,7 @@ class PinboardMigrationCompatibilityTests(TestCase):
 
         self.client.force_authenticate(self.outsider)
         response = self.client.get(f"/api/board/{post.id}/?family={self.family.id}")
-        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.status_code, 403)
 
 
 class PinboardLegacyUpgradeRollbackTests(TransactionTestCase):
