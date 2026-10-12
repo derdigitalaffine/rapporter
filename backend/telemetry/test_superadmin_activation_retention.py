@@ -1,7 +1,8 @@
 from datetime import timedelta
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
 
@@ -221,3 +222,48 @@ class SuperadminActivationRetentionTests(TestCase):
             families = _family_retention(snapshot - timedelta(days=30), snapshot, 7)
         self.assertEqual(users["eligible"], 0)
         self.assertIsNone(families["rate_pct"])
+
+    @override_settings(TELEMETRY_USAGE_RETENTION_DAYS=60)
+    def test_retention_excludes_purged_observation_windows_in_large_periods(self):
+        from .superadmin_views import _user_retention, _family_retention
+        User = get_user_model()
+        snapshot = timezone.now()
+        old = snapshot - timedelta(days=120)
+        observable = snapshot - timedelta(days=25)
+        for index, created in enumerate([old, observable]):
+            user = User.objects.create_user(username=f"coverage-{index}")
+            User.objects.filter(pk=user.pk).update(date_joined=created)
+            family = Family.objects.create(name=f"Coverage {index}", slug=f"coverage-{index}")
+            Family.objects.filter(pk=family.pk).update(created_at=created)
+        with self.assertNumQueries(1):
+            users = _user_retention(snapshot - timedelta(days=365), snapshot, 7)
+        with self.assertNumQueries(1):
+            families = _family_retention(snapshot - timedelta(days=365), snapshot, 7)
+        self.assertEqual(users["eligible"], 1)
+        self.assertEqual(families["eligible"], 1)
+        self.assertEqual(users["retained"], 0)
+
+    @override_settings(TELEMETRY_USAGE_RETENTION_DAYS=0)
+    def test_retention_without_raw_observation_coverage_is_unavailable(self):
+        from .superadmin_views import _user_retention
+        snapshot = timezone.now()
+        self.assertIsNone(_user_retention(snapshot - timedelta(days=365), snapshot, 1)["rate_pct"])
+
+    @override_settings(TELEMETRY_USAGE_RETENTION_DAYS=60)
+    def test_retention_includes_exact_complete_window_cutoff_only(self):
+        from .superadmin_views import _user_retention, _family_retention
+        User = get_user_model()
+        snapshot = timezone.now()
+        boundary = snapshot - timedelta(days=67)
+        for index, created in enumerate([boundary, boundary - timedelta(microseconds=1)]):
+            user = User.objects.create_user(username=f"boundary-{index}")
+            User.objects.filter(pk=user.pk).update(date_joined=created)
+            family = Family.objects.create(name=f"Boundary {index}", slug=f"boundary-{index}")
+            Family.objects.filter(pk=family.pk).update(created_at=created)
+        with patch("telemetry.superadmin_views.timezone.now", return_value=snapshot):
+            with self.assertNumQueries(1):
+                users = _user_retention(snapshot - timedelta(days=365), snapshot, 7)
+            with self.assertNumQueries(1):
+                families = _family_retention(snapshot - timedelta(days=365), snapshot, 7)
+        self.assertEqual(users["eligible"], 1)
+        self.assertEqual(families["eligible"], 1)

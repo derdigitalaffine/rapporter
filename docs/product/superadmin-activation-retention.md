@@ -44,3 +44,5 @@ This slice intentionally does not add weekly/monthly cohort tables, custom/all-t
 ## Snapshot and query budget
 
 Activation ignores verification/activity timestamps after the selected observation snapshot, including a future-dated canonical row. Current and previous cohorts therefore cannot borrow observations from after their respective period ends. Each activation cohort and each retention cohort/horizon uses one conditional aggregate query; query count is independent of the number of subjects. No per-subject queries or identifiers are emitted.
+
+Retention eligibility is additionally limited to complete observation windows inside `TELEMETRY_USAGE_RETENTION_DAYS` (default 60). Older signup subjects whose day-N observations may have been purged are excluded rather than counted as non-returning. The response exposes configured retention days, the observation cutoff, and the coverage definition. A 90d/365d selection therefore measures only the observable mature subset, not an exhaustive historic retention claim.

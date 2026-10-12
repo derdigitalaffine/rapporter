@@ -1,6 +1,7 @@
 from datetime import timedelta
 from statistics import median
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db.models import Count, Exists, Min, OuterRef, Q
 from django.utils import timezone
@@ -216,7 +217,12 @@ def _retention_result(eligible, retained):
     }
 
 
+def _usage_retention_cutoff():
+    return timezone.now() - timedelta(days=max(0, int(getattr(settings, "TELEMETRY_USAGE_RETENTION_DAYS", 60))))
+
+
 def _user_retention(start, end, horizon_days):
+    observed_cohort_start = _usage_retention_cutoff() - timedelta(days=horizon_days)
     mature_before = end - timedelta(days=horizon_days + 1)
     activity = UsageEvent.objects.filter(
         user_id=OuterRef("pk"),
@@ -227,7 +233,7 @@ def _user_retention(start, end, horizon_days):
     cohort = (
         get_user_model()
         .objects.filter(
-            date_joined__gte=start,
+            date_joined__gte=max(start, observed_cohort_start),
             date_joined__lt=end,
             date_joined__lte=mature_before,
         )
@@ -241,6 +247,7 @@ def _user_retention(start, end, horizon_days):
 
 
 def _family_retention(start, end, horizon_days):
+    observed_cohort_start = _usage_retention_cutoff() - timedelta(days=horizon_days)
     mature_before = end - timedelta(days=horizon_days + 1)
     activity = UsageEvent.objects.filter(
         family_id=OuterRef("pk"),
@@ -249,7 +256,7 @@ def _family_retention(start, end, horizon_days):
         occurred_at__lt=OuterRef("created_at") + timedelta(days=horizon_days + 1),
     )
     cohort = Family.objects.filter(
-        created_at__gte=start,
+        created_at__gte=max(start, observed_cohort_start),
         created_at__lt=end,
         created_at__lte=mature_before,
     ).annotate(retained_at_horizon=Exists(activity))
@@ -288,6 +295,9 @@ def _retention_metrics(start, end, previous_start):
             "family_cohort": "Families created inside the selected period; each horizon only includes families old enough for the full day-N observation window.",
             "returning_activity": "At least one canonical activity.foreground event during the exact UTC day-N window after cohort creation.",
             "small_cohort_min": RETENTION_SMALL_COHORT_MIN,
+            "usage_retention_days": max(0, int(getattr(settings, "TELEMETRY_USAGE_RETENTION_DAYS", 60))),
+            "observation_cutoff": _usage_retention_cutoff(),
+            "coverage": "Only mature cohorts whose complete day-N window is inside configured raw-usage retention are eligible; purged observations are never treated as non-returning activity.",
             "small_cohort_policy": "Rates are null for non-empty eligible cohorts smaller than the threshold; eligible and retained counts remain visible.",
         },
     }
