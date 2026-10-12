@@ -94,7 +94,7 @@ test('reset defaults create the core-first hierarchy and Today actions use canon
  await expect(editor.getByRole('combobox',{name:'Tagesverlauf · Größe'})).toHaveValue('wide');
  await expect(editor.getByRole('combobox',{name:'Wochenkompass · Größe'})).toHaveValue('medium');
  await expect(editor.getByRole('combobox',{name:'To-dos · Größe'})).toHaveValue('compact');
- await expect(editor.getByRole('combobox',{name:'Pinnwand · Größe'})).toHaveValue('compact');
+ await expect(editor.getByRole('combobox',{name:'Pinnwand · Größe'})).toHaveValue('medium');
  await expect(editor.locator('[data-editor-widget-id="trip"]')).toHaveCount(0);
  await expect(editor.locator('[data-library-widget="trip"]')).toBeVisible();
  await expect(editor.locator('[data-library-widget="weather"]')).toBeVisible();
