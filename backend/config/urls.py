@@ -76,4 +76,5 @@ urlpatterns = [
     path("api/", include("decisions.urls")),
     path("api/", include("wishlists.urls")),
     path("api/", include("notifications.urls")),
+    path("api/", include("games.urls")),
 ]
