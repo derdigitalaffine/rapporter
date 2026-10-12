@@ -16,10 +16,10 @@ function legacyLayout(){
  };
 }
 
-async function boot(page,{width=1440,height=900}={}){
+async function boot(page,{width=1440,height=900,initialLayout=null}={}){
  await page.setViewportSize({width,height});
  await installApiMocks(page,{language:'de'});
- let layout=legacyLayout();
+ let layout=initialLayout||legacyLayout();
  await page.route('**/api/today-layout/**',async route=>{
   if(route.request().method()==='PUT'){
    layout={...route.request().postDataJSON(),revision:layout.revision+1};
@@ -109,4 +109,17 @@ test('reset defaults create the core-first hierarchy and Today actions use canon
  const moveDown=editor.getByRole('button',{name:/Nach unten/}).first();
  await expect(moveDown).toHaveClass(/ghost/);
  await expect(moveDown).toHaveClass(/icon-button/);
+});
+
+test('saved wide Pinboard remains valid while new defaults use medium',async({page})=>{
+ const saved={version:2,revision:9,widgets:[{id:'pinboard',visible:true,size:'wide'}]};
+ const {getLayout}=await boot(page,{initialLayout:saved});
+ const pinboard=page.locator('[data-today-widget="pinboard"]');
+ await expect(pinboard).toHaveAttribute('data-widget-size','wide');
+ await page.getByRole('button',{name:'Anpassen'}).click();
+ const editor=page.getByRole('region',{name:'Anpassen'});
+ await expect(editor.getByRole('combobox',{name:'Pinnwand · Größe'})).toHaveValue('wide');
+ expect(getLayout().revision).toBe(9);
+ await editor.getByRole('button',{name:'Abbrechen',exact:true}).click();
+ await expect(pinboard).toHaveAttribute('data-widget-size','wide');
 });
