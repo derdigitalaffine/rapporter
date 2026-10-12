@@ -1,6 +1,7 @@
 import {useEffect,useState} from 'react';
 import {useTranslation} from 'react-i18next';
-import {api,isAuthenticated} from './api';
+import {api,isAuthenticated,AUTH_CHANGED_EVENT} from './api';
+import {assignmentCopy,taskDuelAction,openTaskDuel} from './game-assignment-i18n';
 import {Icon} from './icons';
 
 const TARGET_KEYS=['task','list','item','event','routine'];
@@ -46,14 +47,16 @@ function detailValues(target){
 const sectionKey={tasks:'tasks',shopping:'shopping',calendar:'calendar',inbox:'inbox',routines:'routines'};
 
 export default function DeepLinkTarget(){
-  const {t}=useTranslation();
+  const {t,i18n}=useTranslation();
+  const words=assignmentCopy(i18n.language);
   const [resolved,setResolved]=useState(null);
   const [revision,setRevision]=useState(0);
 
   useEffect(()=>{
     const onRoute=()=>setRevision(value=>value+1);
-    window.addEventListener('popstate',onRoute);
-    return()=>window.removeEventListener('popstate',onRoute);
+    const auth=event=>{if(event.detail?.authenticated===false)setResolved(null);onRoute()};
+    window.addEventListener('popstate',onRoute);window.addEventListener(AUTH_CHANGED_EVENT,auth);
+    return()=>{window.removeEventListener('popstate',onRoute);window.removeEventListener(AUTH_CHANGED_EVENT,auth)};
   },[]);
 
   useEffect(()=>{
@@ -61,9 +64,13 @@ export default function DeepLinkTarget(){
     const spec=targetFromLocation();
     setResolved(null);
     if(!spec||!isAuthenticated())return()=>{cancelled=true};
-    api(spec.endpoint).then(target=>{
+    api(spec.endpoint).then(async target=>{
       if(cancelled||!target||Array.isArray(target))return;
-      setResolved({spec,target});
+      let duel=null;
+      if(spec.key==='task'&&target.family){
+        try{const projection=await api(`/actions/?family=${encodeURIComponent(target.family)}&scope=all&kind=tasks&task=${encodeURIComponent(target.id)}`);duel=taskDuelAction(projection,target.id)}catch(error){if([401,403,404].includes(error.status))throw error}
+      }
+      if(!cancelled)setResolved({spec,target,duel});
     }).catch(()=>{
       if(!cancelled)setResolved(null);
     });
@@ -71,7 +78,7 @@ export default function DeepLinkTarget(){
   },[revision]);
 
   if(!resolved)return null;
-  const {spec,target}=resolved;
+  const {spec,target,duel}=resolved;
   const title=target.title||target.name||target.display_name||t(sectionKey[spec.page]||'more');
   const details=detailValues(target);
   const close=()=>{
@@ -88,6 +95,7 @@ export default function DeepLinkTarget(){
         <div><small>{t(sectionKey[spec.page]||'more')}</small><h2 id="deep-link-title">{title}</h2></div>
         <button className="sheet-close" onClick={close} aria-label={t('back')}><Icon name="close"/></button>
       </div>
+      {duel&&<button type="button" className="secondary" onClick={()=>openTaskDuel(duel.href)}><Icon name="members"/>{words.duel}</button>}
       {details.length>0&&<div className="stack">{details.map((value,index)=><div className="card body-copy" key={`${index}-${value}`}>{value}</div>)}</div>}
     </section>
   </div>;

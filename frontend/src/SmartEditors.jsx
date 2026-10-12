@@ -39,7 +39,7 @@ export function TaskEditor({task=null,family,lists=[],members=[],defaultListId='
   </FormRow>
   <FormSection legend={words.context}>
     <FormField id="task-assignee" label={t('assignee')}><select value={v.assignee} onChange={e=>set('assignee',e.target.value)}><option value="">{t('nobody')}</option>{members.map(m=><option key={m.user} value={m.user}>{m.display_name||m.username}</option>)}</select></FormField>
-  {isNew&&!confirmedTask&&<FormField id="task-duel-prepare" label={words.prepare} description={words.prepareHint}><input type="checkbox" checked={prepare} disabled={busy} onChange={e=>setPrepare(e.target.checked)}/></FormField>}
+  {isNew&&!confirmedTask&&<div><label className="toggle-label"><input id="task-duel-prepare" type="checkbox" checked={prepare} disabled={busy} aria-describedby="task-duel-hint" onChange={e=>setPrepare(e.target.checked)}/><span>{words.prepare}</span></label><p id="task-duel-hint" className="form-field__description">{words.prepareHint}</p></div>}
   {!isNew&&duel&&<button type="button" className="secondary" disabled={busy} onClick={openExistingDuel}><Icon name="members"/>{words.duel}</button>}
   </FormSection>
   <ProgressiveFieldGroup label={t('moreDetails')} defaultOpen={!isNew}>
