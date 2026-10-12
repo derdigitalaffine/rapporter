@@ -191,3 +191,23 @@ class GameEligibilityTests(TestCase):
         self.assertEqual(response.data["actions"], [])
         self.client.force_authenticate(self.bob)
         self.assertEqual(self.client.get(path).data["count"], 1)
+
+    def test_outcome_validates_locked_task_instead_of_earlier_related_snapshot(self):
+        from django.utils import timezone
+        from unittest.mock import patch
+        created = self.challenge(stake=True)
+        match = GameMatch.objects.get(id=created.data["id"])
+        stake = GameTaskAssignment.objects.select_related("task").get(match=match)
+        self.assertIsNone(stake.task.completed_at)
+        stake.opponent_confirmed_at = timezone.now()
+        stake.save()
+        Task.objects.filter(id=stake.task_id).update(completed_at=timezone.now())
+        match.status = GameMatch.Status.FINISHED
+        match.winner = self.bob_member
+        match.save()
+        with transaction.atomic(), patch("games.services._task_assignment", return_value=stake):
+            apply_task_assignment(match)
+        stake.refresh_from_db()
+        self.task.refresh_from_db()
+        self.assertEqual(stake.invalidation_reason, "task_unavailable")
+        self.assertIsNone(self.task.assignee_id)
