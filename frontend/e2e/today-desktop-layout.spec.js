@@ -2,7 +2,7 @@ import {test,expect} from '@playwright/test';
 import {installApiMocks} from './mock-api.js';
 
 const familyId='family-1';
-const legacyIds=['weather','priority','waste','next','tasks','shopping','routines','birthdays','notes'];
+const legacyIds=['weather','priority','waste','next','tasks','shopping','routines','birthdays','notes','pinboard'];
 
 function legacyLayout(){
  return {
@@ -11,7 +11,7 @@ function legacyLayout(){
   widgets:legacyIds.map(id=>({
    id,
    visible:true,
-   size:id==='weather'?'compact':id==='next'?'square':'full',
+   size:id==='weather'||id==='pinboard'?'compact':id==='next'?'square':'full',
   })),
  };
 }
@@ -42,12 +42,12 @@ async function gridMetrics(page){
   return {
    columns:getComputedStyle(grid).gridTemplateColumns.split(' ').filter(Boolean).length,
    flow:getComputedStyle(grid).gridAutoFlow,
-   wide:ratio('[data-widget-size="wide"]'),
-   // Situation is intentionally a full-width dashboard signal even though its
-   // information-density setting is compact. Measure a normal compact widget.
-   compact:ratio('[data-widget-size="compact"]:not([data-today-widget="situation"])'),
-   medium:ratio('[data-widget-size="medium"]'),
-   order:[...grid.querySelectorAll('[data-today-widget]')].map(element=>element.dataset.todayWidget),
+   // Measure known direct Today wrappers rather than arbitrary nested density
+   // markers from self-managed/external widgets.
+   wide:ratio(':scope > [data-today-widget="focus"][data-widget-size="wide"]'),
+   compact:ratio(':scope > [data-today-widget="pinboard"][data-widget-size="compact"]'),
+   medium:ratio(':scope > [data-today-widget="week"][data-widget-size="medium"]'),
+   order:[...grid.querySelectorAll(':scope > [data-today-widget]')].map(element=>element.dataset.todayWidget),
   };
  });
 }
