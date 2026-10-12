@@ -4,7 +4,16 @@ from django.utils import timezone
 from family.models import Membership, Task
 from notifications.services import record_notification
 
-from .models import BattleshipBoard, BattleshipShot, GameMatch, GameTaskAssignment, RockPaperScissorsRound
+from .models import (
+    BattleshipBoard,
+    BattleshipShot,
+    ConnectFourMove,
+    GameMatch,
+    GameTaskAssignment,
+    QuizQuestion,
+    QuizRound,
+    RockPaperScissorsRound,
+)
 
 
 FLEET = [5, 4, 3, 3, 2]
@@ -130,7 +139,6 @@ def apply_task_assignment(match):
         stake.invalidation_reason = "task_unavailable"
         stake.save(update_fields=["invalidated_at", "invalidation_reason", "updated_at"])
         return stake
-
     if task.assignee_id != stake.expected_assignee_id:
         stake.invalidated_at = now
         stake.invalidation_reason = "task_assignment_changed"
@@ -146,6 +154,28 @@ def apply_task_assignment(match):
     stake.applied_at = now
     stake.save(update_fields=["applied_assignee", "applied_at", "updated_at"])
     return stake
+
+
+def _finish_match(match, winner=None, *, draw=False):
+    match.status = GameMatch.Status.FINISHED
+    match.winner = None if draw else winner
+    match.is_draw = draw
+    match.finished_at = timezone.now()
+    match.current_turn = None
+    match.save()
+    apply_task_assignment(match)
+    notify_finished(match)
+
+
+def ensure_quiz_round(match):
+    existing = QuizRound.objects.select_related("question").filter(match=match, number=match.current_round).first()
+    if existing:
+        return existing
+    used = QuizRound.objects.filter(match=match).values_list("question_id", flat=True)
+    question = QuizQuestion.objects.filter(mode=match.quiz_mode, active=True).exclude(id__in=used).order_by("id").first()
+    if not question:
+        raise GameError("quiz_question_unavailable")
+    return QuizRound.objects.create(match=match, number=match.current_round, question=question)
 
 
 def accept_match(match_id, actor, *, task_assignment_confirmed=False):
@@ -170,11 +200,20 @@ def accept_match(match_id, actor, *, task_assignment_confirmed=False):
             stake.save(update_fields=["opponent_confirmed_at", "updated_at"])
         match.status = GameMatch.Status.ACTIVE
         match.accepted_at = timezone.now()
+        if match.game_type == GameMatch.GameType.CONNECT_FOUR:
+            match.current_turn = match.challenger
         match.save()
+        if match.game_type == GameMatch.GameType.QUIZ:
+            ensure_quiz_round(match)
         notify_started(match)
         if match.game_type == GameMatch.GameType.BATTLESHIP:
             notify_turn(match, match.challenger, setup=True)
             notify_turn(match, match.opponent, setup=True)
+        elif match.game_type == GameMatch.GameType.CONNECT_FOUR:
+            notify_turn(match, match.challenger)
+        elif match.game_type == GameMatch.GameType.QUIZ:
+            notify_turn(match, match.challenger)
+            notify_turn(match, match.opponent)
     return match
 
 
@@ -236,20 +275,57 @@ def submit_rps_choice(match_id, actor, choice):
         if match.current_round >= match.rps_round_count:
             challenger_wins = RockPaperScissorsRound.objects.filter(match=match, winner=match.challenger).count()
             opponent_wins = RockPaperScissorsRound.objects.filter(match=match, winner=match.opponent).count()
-            match.status = GameMatch.Status.FINISHED
-            match.finished_at = timezone.now()
             if challenger_wins == opponent_wins:
-                match.is_draw = True
-                match.winner = None
+                _finish_match(match, draw=True)
             else:
-                match.is_draw = False
-                match.winner = match.challenger if challenger_wins > opponent_wins else match.opponent
-            match.save()
-            apply_task_assignment(match)
-            notify_finished(match)
+                _finish_match(match, match.challenger if challenger_wins > opponent_wins else match.opponent)
         else:
             match.current_round += 1
             match.save()
+            notify_turn(match, match.challenger)
+            notify_turn(match, match.opponent)
+    return match
+
+
+def submit_quiz_answer(match_id, actor, answer_index):
+    if isinstance(answer_index, bool) or not isinstance(answer_index, int):
+        raise GameError("invalid_quiz_answer")
+    with transaction.atomic():
+        match = GameMatch.objects.select_for_update().select_related("family", "challenger__user", "opponent__user").get(id=match_id)
+        if actor.id not in match.participant_ids():
+            raise GameError("match_unavailable")
+        if match.game_type != GameMatch.GameType.QUIZ or match.status != GameMatch.Status.ACTIVE:
+            raise GameError("quiz_not_active")
+        round_row = ensure_quiz_round(match)
+        option_count = len(round_row.question.options_de or [])
+        if answer_index < 0 or answer_index >= option_count:
+            raise GameError("invalid_quiz_answer")
+        field = "challenger_answer" if actor.id == match.challenger_id else "opponent_answer"
+        if getattr(round_row, field) is not None:
+            raise GameError("answer_already_submitted")
+        setattr(round_row, field, answer_index)
+        round_row.save(update_fields=[field, "updated_at"])
+        other = match.opponent_for(actor)
+        if round_row.challenger_answer is None or round_row.opponent_answer is None:
+            notify_turn(match, other)
+            return match
+
+        round_row.challenger_correct = round_row.challenger_answer == round_row.question.correct_index
+        round_row.opponent_correct = round_row.opponent_answer == round_row.question.correct_index
+        round_row.resolved_at = timezone.now()
+        round_row.save(update_fields=["challenger_correct", "opponent_correct", "resolved_at", "updated_at"])
+
+        if match.current_round >= match.quiz_round_count:
+            challenger_score = QuizRound.objects.filter(match=match, challenger_correct=True).count()
+            opponent_score = QuizRound.objects.filter(match=match, opponent_correct=True).count()
+            if challenger_score == opponent_score:
+                _finish_match(match, draw=True)
+            else:
+                _finish_match(match, match.challenger if challenger_score > opponent_score else match.opponent)
+        else:
+            match.current_round += 1
+            match.save(update_fields=["current_round", "updated_at"])
+            ensure_quiz_round(match)
             notify_turn(match, match.challenger)
             notify_turn(match, match.opponent)
     return match
@@ -357,16 +433,55 @@ def fire_shot(match_id, actor, x, y):
         )
         all_cells = {tuple(cell) for row in board.ships for cell in row.get("cells", [])}
         if ship and all_cells <= hit_points:
-            match.status = GameMatch.Status.FINISHED
-            match.winner = actor
-            match.is_draw = False
-            match.finished_at = timezone.now()
-            match.current_turn = None
-            match.save()
-            apply_task_assignment(match)
-            notify_finished(match)
+            _finish_match(match, actor)
         else:
             match.current_turn = target
             match.save()
+            notify_turn(match, target)
+    return match
+
+
+def _connect_four_winner(moves, player_id, column, row):
+    occupied = {(move.column, move.row) for move in moves if move.player_id == player_id}
+    occupied.add((column, row))
+    for dx, dy in ((1, 0), (0, 1), (1, 1), (1, -1)):
+        run = 1
+        for direction in (-1, 1):
+            x, y = column + dx * direction, row + dy * direction
+            while (x, y) in occupied:
+                run += 1
+                x += dx * direction
+                y += dy * direction
+        if run >= 4:
+            return True
+    return False
+
+
+def drop_connect_four(match_id, actor, column):
+    if isinstance(column, bool) or not isinstance(column, int) or not 0 <= column <= 6:
+        raise GameError("invalid_column")
+    with transaction.atomic():
+        match = GameMatch.objects.select_for_update().select_related("family", "challenger__user", "opponent__user").get(id=match_id)
+        if actor.id not in match.participant_ids():
+            raise GameError("match_unavailable")
+        if match.game_type != GameMatch.GameType.CONNECT_FOUR or match.status != GameMatch.Status.ACTIVE:
+            raise GameError("connect_four_not_active")
+        if match.current_turn_id != actor.id:
+            raise GameError("not_your_turn")
+        moves = list(ConnectFourMove.objects.select_for_update().filter(match=match))
+        used_rows = {move.row for move in moves if move.column == column}
+        row = next((candidate for candidate in range(5, -1, -1) if candidate not in used_rows), None)
+        if row is None:
+            raise GameError("column_full")
+        sequence = len(moves) + 1
+        ConnectFourMove.objects.create(match=match, player=actor, column=column, row=row, sequence=sequence)
+        if _connect_four_winner(moves, actor.id, column, row):
+            _finish_match(match, actor)
+        elif sequence >= 42:
+            _finish_match(match, draw=True)
+        else:
+            target = match.opponent_for(actor)
+            match.current_turn = target
+            match.save(update_fields=["current_turn", "updated_at"])
             notify_turn(match, target)
     return match
