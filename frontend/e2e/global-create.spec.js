@@ -64,7 +64,10 @@ for(const [language,forYou,pinned,allActions,settingsTitle,smartRanking,settings
 }
 
 test('preference changes give immediate feedback and roll back a rejected save',async({page})=>{
- await bootPage(page,'profile');
+ await page.setViewportSize({width:390,height:844});await installApiMocks(page,{dismissOnboarding:true});await rankingRoute(page);
+ await page.route('**/api/profile/**',route=>route.fulfill({json:{user_id:1,family:'family-1',membership_id:'member-1',username:'alex',display_name:'Alex',role:'owner',birthday_visibility:'day_month'}}));
+ await page.route('**/api/family-settings/**',route=>route.fulfill({json:{family:'family-1',name:'Musterfamilie',slug:'musterfamilie',can_edit:false}}));
+ await page.goto('/?page=profile');
  const smart=page.locator('.quickstart-settings .quickstart-setting-toggle input').first();
  await expect(smart).toBeEnabled();await expect(smart).toBeChecked();
  let release;const pending=new Promise(resolve=>{release=resolve});let started=false;
