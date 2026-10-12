@@ -88,6 +88,22 @@ class ActionProjectionTests(TestCase):
         self.assertEqual(row["context"]["workflow"]["kind"], "active")
         self.assertEqual(row["primary_action"]["href"], f"/api/tasks/{task.id}/toggle/")
 
+    def test_open_task_projects_duel_link_but_completed_task_does_not(self):
+        open_task = self.task("Ausspielen")
+        completed_task = self.task("Schon erledigt", completed_at=self.now)
+
+        rows = project_actions(user=self.alice, family=self.family, scope="all", kind="tasks", now=self.now)
+        by_id = {row["id"]: row for row in rows}
+        open_actions = {action["id"]: action for action in by_id[f"task:{open_task.id}"]["allowed_actions"]}
+        completed_actions = {action["id"]: action for action in by_id[f"task:{completed_task.id}"]["allowed_actions"]}
+
+        self.assertEqual(open_actions["duel"]["method"], "GET")
+        self.assertEqual(
+            open_actions["duel"]["href"],
+            f"/?page=games&family={self.family.id}&task={open_task.id}",
+        )
+        self.assertNotIn("duel", completed_actions)
+
     def test_typed_ids_cannot_be_reinterpreted_across_domains(self):
         task = self.task("Collision", due_at=self.now)
         routine = Routine.objects.create(id=task.id, family=self.family, name="Same UUID", target_count=1, target_period_days=1)
