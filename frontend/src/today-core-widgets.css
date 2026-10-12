@@ -32,5 +32,5 @@
 .today-timeline-now{display:flex;align-items:center;gap:7px;margin-top:8px;font-size:.72rem;color:var(--muted)}
 .today-timeline-now>span{width:28px;height:2px;border-radius:999px;background:var(--accent,var(--primary))}
 @media(max-width:480px){.today-situation-signals{gap:5px}.today-timeline-all-day{grid-template-columns:1fr}.today-timeline-all-day>span{padding-top:0}.today-timeline-list:before{left:57px}.today-timeline-list li>a{grid-template-columns:42px 12px minmax(0,1fr) 16px}.today-timeline-list time{font-size:.7rem}}
-@media(max-width:359px){.today-situation-signal{width:42px;height:42px;flex-basis:42px}.today-focus-list li>a{grid-template-columns:36px minmax(0,1fr) 16px}.today-focus-icon{width:36px;height:36px}.today-timeline-list:before{left:51px}.today-timeline-list li>a{grid-template-columns:36px 10px minmax(0,1fr) 14px;gap:6px}}
+@media(max-width:359px){.today-focus-list li>a{grid-template-columns:36px minmax(0,1fr) 16px}.today-focus-icon{width:36px;height:36px}.today-timeline-list:before{left:51px}.today-timeline-list li>a{grid-template-columns:36px 10px minmax(0,1fr) 14px;gap:6px}}
 @media(prefers-reduced-motion:reduce){.today-focus-list li>a,.today-timeline-list li>a,.today-situation-signal{scroll-behavior:auto}}
