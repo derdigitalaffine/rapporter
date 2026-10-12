@@ -9,17 +9,23 @@ async function freezeToday(page){
  await page.addInitScript(now=>{const RealDate=Date;globalThis.Date=class extends RealDate{constructor(...args){super(...(args.length?args:[now]))}static now(){return new RealDate(now).getTime()} }},FIXED_NOW);
 }
 function actionRows(state){
- return state.tasks.map(task=>({
+ const tasks=state.tasks.map(task=>({
   id:`task:${task.id}`,family:familyId,kind:'task',title:task.title,state:task.completed_at?'done_today':'due',due_at:task.due_at,next_due_at:task.completed_at?null:task.due_at,completed_at:task.completed_at,
   assignee:task.assignee?{id:task.assignee,username:task.assignee_name||'alex'}:null,priority:task.priority||'normal',urgency:task.completed_at?'none':'high',context:{source:'manual',list:{id:task.task_list,name:task.list_name},workflow:null},repeat:null,tags:[],
   primary_action:{id:task.completed_at?'reopen':'complete',method:'POST',href:`/api/tasks/${task.id}/toggle/`},allowed_actions:[{id:task.completed_at?'reopen':'complete',method:'POST',href:`/api/tasks/${task.id}/toggle/`},{id:'edit',method:'PATCH',href:`/api/tasks/${task.id}/`}],deep_link:`/?page=tasks&task=${task.id}`,ranking:{version:'actions-v1',bucket:task.completed_at?6:1,reasons:[task.completed_at?'done_today':'due_now']}
  }));
+ const routines=state.routines.map(routine=>({
+  id:`routine:${routine.id}`,family:familyId,kind:'routine',title:routine.title,state:routine.done?'done_today':'overdue',due_at:null,next_due_at:routine.done?null:isoIn(-2),completed_at:routine.done?FIXED_NOW:null,assignee:null,priority:'normal',urgency:routine.done?'none':'high',context:{source:'routine'},repeat:{frequency:'daily'},tags:[],
+  primary_action:{id:'record_done',method:'POST',href:`/api/routines/${routine.id}/logs/`},allowed_actions:[{id:'record_done',method:'POST',href:`/api/routines/${routine.id}/logs/`}],deep_link:`/?page=routines&routine=${routine.id}`,ranking:{version:'actions-v1',bucket:routine.done?6:1,reasons:[routine.done?'done_today':'overdue']}
+ }));
+ return [...tasks,...routines];
 }
-async function boot(page){
+async function boot(page,{withOverdueRoutine=false}={}){
  await page.setViewportSize({width:390,height:844});
  await freezeToday(page);
  const state=await installApiMocks(page,{dismissOnboarding:true});
  state.tasks[0].due_at=isoIn(2);
+ if(withOverdueRoutine)state.routines.push({id:'routine-1',title:'Müll rausstellen',done:false});
  state.events=[
   {id:'event-1',family:familyId,source:null,type:'calendar.event',title:'Kinderarzt',starts_at:isoIn(4),ends_at:isoIn(5),payload:{provider:'fam-uh-le',location:'Praxis'}},
   {id:'warning-today',family:familyId,source:null,type:'public.warning',title:'Sturmwarnung',starts_at:isoIn(1),ends_at:isoIn(4),payload:{provider:'Warnamt'}},
@@ -30,6 +36,13 @@ async function boot(page){
   actionRequests+=1;const rows=actionRows(state);
   return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({count:rows.length,next:null,previous:null,results:rows,ranking_version:'actions-v1',scope:'today'})});
  });
+ await page.route('**/api/routines/*/logs/**',route=>{
+  const method=route.request().method();const routine=state.routines[0];
+  if(!routine)return route.fallback();
+  if(method==='POST'){routine.done=true;return route.fulfill({status:201,contentType:'application/json',body:JSON.stringify({id:'routine-log-1'})})}
+  if(method==='DELETE'){routine.done=false;return route.fulfill({status:204,body:''})}
+  return route.fallback();
+ });
  await page.goto('/');
  await expect(page.getByTestId('today-situation')).toBeVisible();
  await expect(page.getByTestId('today-focus')).toBeVisible();
@@ -37,9 +50,11 @@ async function boot(page){
  return {state,actionRequests:()=>actionRequests};
 }
 
-test('legacy priority and next migrate to canonical Focus and Timeline with one shared action read',async({page})=>{
+test('legacy priority and next migrate to canonical Focus, Timeline and editable Day status with one shared action read',async({page})=>{
  const {state,actionRequests}=await boot(page);
- await expect(page.getByTestId('today-situation')).toContainText('Ding heute offen');
+ const situation=page.getByTestId('today-situation');
+ await expect(situation.getByRole('link',{name:'1 offener Punkt heute'})).toBeVisible();
+ await expect(situation).not.toContainText('Ding');
  const focus=page.getByTestId('today-focus');
  await expect(focus).toContainText('Sturmwarnung');
  await expect(focus).toContainText('Wäsche aufhängen');
@@ -54,27 +69,49 @@ test('legacy priority and next migrate to canonical Focus and Timeline with one 
 
  await page.getByRole('button',{name:'Anpassen'}).click();
  const editor=page.getByRole('region',{name:'Anpassen'});
+ const situationRow=editor.locator('[data-editor-widget-id="situation"]');
+ await expect(situationRow).toBeVisible();
+ await expect(situationRow.getByRole('combobox',{name:'Tageslage · Größe'}).locator('option')).toHaveText(['Kompakt','Mittel']);
  await expect(editor.locator('[data-editor-widget-id="focus"]')).toBeVisible();
  await expect(editor.locator('[data-editor-widget-id="timeline"]')).toBeVisible();
  await expect(editor.locator('[data-editor-widget-id="priority"]')).toHaveCount(0);
  await expect(editor.locator('[data-editor-widget-id="next"]')).toHaveCount(0);
  await editor.getByRole('button',{name:'Speichern',exact:true}).click();
  expect(state.todayLayout.version).toBe(2);
+ expect(state.todayLayout.widgets.find(row=>row.id==='situation')).toEqual(expect.objectContaining({visible:true,size:'compact'}));
  expect(state.todayLayout.widgets.some(row=>row.id==='focus')).toBe(true);
  expect(state.todayLayout.widgets.some(row=>row.id==='timeline')).toBe(true);
  expect(state.todayLayout.widgets.some(row=>['priority','next'].includes(row.id))).toBe(false);
 });
 
-test('completing a shared Today action refreshes To-do, Focus, Timeline and Situation together',async({page})=>{
+test('completing a shared Today action refreshes To-do, Focus, Timeline and Day status together',async({page})=>{
  const {actionRequests}=await boot(page);
- const focus=page.getByTestId('today-focus');const timeline=page.getByTestId('today-timeline');const todo=page.getByTestId('today-todos');
+ const focus=page.getByTestId('today-focus');const timeline=page.getByTestId('today-timeline');const todo=page.getByTestId('today-todos');const situation=page.getByTestId('today-situation');
  await expect(focus.getByText('Wäsche aufhängen',{exact:true})).toBeVisible();
  await expect(timeline.getByText('Wäsche aufhängen',{exact:true})).toBeVisible();
+ await expect(situation.getByRole('link',{name:'1 offener Punkt heute'})).toBeVisible();
  await expect.poll(actionRequests).toBe(1);
  await todo.getByRole('button',{name:'Erledigen: Wäsche aufhängen'}).click();
  await expect(todo.getByRole('button',{name:/Rückgängig/})).toBeFocused();
  await expect(focus.getByText('Wäsche aufhängen',{exact:true})).toHaveCount(0);
  await expect(timeline.getByText('Wäsche aufhängen',{exact:true})).toHaveCount(0);
- await expect(page.getByTestId('today-situation')).not.toContainText('Ding heute offen');
+ await expect(situation.getByRole('link',{name:/offener Punkt|offene Punkte/})).toHaveCount(0);
  await expect.poll(actionRequests).toBe(2);
+});
+
+test('Day status exposes overdue routines as icon-only one-click actions with undo',async({page})=>{
+ const {actionRequests}=await boot(page,{withOverdueRoutine:true});
+ const situation=page.getByTestId('today-situation');
+ const routine= situation.getByRole('button',{name:'Erledigen: Müll rausstellen'});
+ await expect(routine).toBeVisible();
+ await expect(routine).toHaveText('');
+ await expect(situation.getByRole('link',{name:'2 offene Punkte heute'})).toBeVisible();
+ await routine.click();
+ await expect(situation.getByRole('button',{name:'Erledigen: Müll rausstellen'})).toHaveCount(0);
+ const undo=situation.getByRole('button',{name:'Rückgängig: Müll rausstellen'});
+ await expect(undo).toBeVisible();
+ await expect.poll(actionRequests).toBe(2);
+ await undo.click();
+ await expect(situation.getByRole('button',{name:'Erledigen: Müll rausstellen'})).toBeVisible();
+ await expect.poll(actionRequests).toBe(3);
 });
