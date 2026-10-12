@@ -39,9 +39,9 @@ def delivery_policy(pref, family, event_type, now=None):
 def enqueue_notification(membership, event_type, context, *, url=None):
     now = timezone.now()
     shopping = event_type.startswith("shopping.")
-    resource = str(context.get("list_id", "family")) if shopping else str(context.get("task_id") or context.get("event_id") or context.get("inbox_id") or "family")
+    resource = str(context.get("list_id", "family")) if shopping else str(context.get("pin_id") or context.get("task_id") or context.get("event_id") or context.get("inbox_id") or "family")
     bucket = f"{event_type.split('.')[0]}:{resource}"
-    key = str(context.get("item_id") or context.get("task_id") or context.get("event_id") or context.get("inbox_id") or context.get("routine_id") or event_type)
+    key = str(context.get("comment_id") or context.get("pin_id") or context.get("item_id") or context.get("task_id") or context.get("event_id") or context.get("inbox_id") or context.get("routine_id") or event_type)
     # A membership row exists before the batch does: lock it to serialize concurrent creates.
     with transaction.atomic():
         Membership.objects.select_for_update().get(pk=membership.pk)
@@ -81,6 +81,20 @@ def _visible_events(batch, pref):
             continue
         if pref and pref.detail_level == "important" and kind not in IMPORTANT:
             continue
+        if kind.startswith("pin."):
+            from django.core.exceptions import ValidationError
+            from .board_models import BoardPost, PinComment, PinInteractionState
+            from .pin_visibility import can_interact_with_pin
+            try:
+                pin = BoardPost.objects.select_related('family', 'author').filter(pk=ctx.get('pin_id'), family=member.family).first()
+                if not pin or not can_interact_with_pin(member.user, pin):
+                    continue
+                if ctx.get('comment_id') and not PinComment.objects.filter(pk=ctx['comment_id'], pin=pin, deleted_at__isnull=True).exists():
+                    continue
+            except (ValidationError, ValueError, TypeError):
+                continue
+            if kind == 'pin.comment' and PinInteractionState.objects.filter(pin=pin, membership=member, muted=True).exists():
+                continue
         if kind.startswith("shopping.") and ctx.get("list_id"):
             if not ShoppingList.objects.filter(pk=ctx["list_id"], family=member.family).exists():
                 continue

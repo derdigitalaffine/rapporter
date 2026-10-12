@@ -1,10 +1,11 @@
-import {useEffect,useMemo,useState} from 'react';
+import {useEffect,useMemo,useRef,useState} from 'react';
 import {useTranslation} from 'react-i18next';
-import {api} from './api';
+import {api,AUTH_CHANGED_EVENT} from './api';
 import {Icon} from './icons';
 import {useFamilyPermissions} from './family-permissions';
 import {confirmAction} from './feedback';
 import FileDropZone from './FileDropZone';
+import PinInteractionBar from './PinInteractions';
 import {formatPinEventMeta,pinAuthorHue,pinAuthorInitial,pinIconName,pinTypeLabel} from './pinboard-ui';
 import './board.css';
 
@@ -22,19 +23,26 @@ export default function BoardHub({family,onBack}){
  Object.assign(w,SHARING_COPY[i18n.language.split('-')[0]]||{});
  const [rows,setRows]=useState([]),[next,setNext]=useState(null),[loading,setLoading]=useState(true),[error,setError]=useState(''),[compose,setCompose]=useState(false),[editing,setEditing]=useState(null),[kind,setKind]=useState('note'),[text,setText]=useState(''),[files,setFiles]=useState([]),[targetId,setTargetId]=useState(''),[choices,setChoices]=useState([]),[choiceQuery,setChoiceQuery]=useState(''),[choicesBusy,setChoicesBusy]=useState(false),[busy,setBusy]=useState(false),[eventRows,setEventRows]=useState([]),[visibility,setVisibility]=useState('family'),[selectedMembershipIds,setSelectedMembershipIds]=useState([]);
  const {role}=useFamilyPermissions(family);const canPost=!!role&&role!=='guest';const members=family?.memberships||[];
+ const [rowScope,setRowScope]=useState(null);
+ const visibleRows=rowScope===familyId?rows:[],visibleNext=rowScope===familyId?next:null;
+ const boardLease=useRef({familyId,active:true,request:0});
+ if(boardLease.current.familyId!==familyId){boardLease.current.active=false;boardLease.current={familyId,active:true,request:0}}
+ useEffect(()=>{const lease=boardLease.current;lease.active=true;const auth=event=>{if(event.detail?.authenticated===false){lease.active=false;setRows([]);setNext(null)}};window.addEventListener(AUTH_CHANGED_EVENT,auth);return()=>{lease.active=false;window.removeEventListener(AUTH_CHANGED_EVENT,auth)}},[familyId]);
  const eventById=useMemo(()=>new Map(eventRows.map(row=>[String(row.id),row])),[eventRows]);
 
  async function load(path=`/board/?family=${encodeURIComponent(familyId)}`,append=false){
+  const lease=boardLease.current,request=++lease.request;if(!lease.active)return;const current=()=>lease.active&&lease===boardLease.current&&lease.request===request;
   setLoading(true);setError('');
   try{
    const data=await api(path);let incoming=unwrap(data);const target=new URLSearchParams(location.search).get('post');
    if(!append&&target&&!incoming.some(row=>String(row.id)===target)){try{const focused=await api(`/board/${encodeURIComponent(target)}/?family=${encodeURIComponent(familyId)}`);incoming=[focused,...incoming]}catch{}}
-   setRows(previous=>append?[...previous,...incoming]:incoming);
+   if(!current())return;
+   setRowScope(familyId);setRows(previous=>append?[...previous,...incoming]:incoming);
    if(target)setTimeout(()=>document.getElementById(`pin-${target}`)?.scrollIntoView({block:'nearest'}),100);
    setNext(data?.next?new URL(data.next,location.origin).pathname.replace(/^\/api/,'')+new URL(data.next,location.origin).search:null);
-  }catch(e){setError(e.message||w.failed)}finally{setLoading(false)}
+  }catch(e){if(current()){setRows([]);setNext(null);setError(e.message||w.failed)}}finally{if(current())setLoading(false)}
  }
- useEffect(()=>{if(!familyId)return;load();if(new URLSearchParams(location.search).get('compose')==='1'&&canPost)setCompose(true)},[familyId,canPost]);
+ useEffect(()=>{setRows([]);setNext(null);if(!familyId)return;load();if(new URLSearchParams(location.search).get('compose')==='1'&&canPost)setCompose(true)},[familyId,canPost]);
  useEffect(()=>{let current=true;if(!familyId)return()=>{};api('/events/').then(result=>{if(current)setEventRows(unwrap(result).filter(row=>String(row.family)===String(familyId)))}).catch(()=>{if(current)setEventRows([])});return()=>{current=false}},[familyId]);
  useEffect(()=>{if(compose&&!editing&&!['note','photo'].includes(kind))loadChoices(kind)},[compose,kind,editing,familyId]);
 
@@ -77,13 +85,15 @@ export default function BoardHub({family,onBack}){
  async function move(row,delta){const index=rows.findIndex(item=>item.id===row.id),other=index+delta;if(index<0||other<0||other>=rows.length)return;const before=rows;const reordered=[...rows];[reordered[index],reordered[other]]=[reordered[other],reordered[index]];setRows(reordered);try{await api('/board/reorder/',{method:'POST',body:JSON.stringify({family:familyId,ids:reordered.map(item=>item.id)})})}catch(e){setRows(before);setError(e.message||w.failed)}}
  const selected=useMemo(()=>choices.find(item=>String(item.id)===String(targetId)),[choices,targetId]);
  const startEdit=row=>{setEditing(row);setKind(row.kind);setText(row.text||'');setFiles([]);setVisibility(row.visibility||'family');setSelectedMembershipIds(row.selected_membership_ids||[]);setCompose(true);window.scrollTo({top:0,behavior:'smooth'})};
+ const interactionLease=boardLease.current;
+ const updateInteraction=(id,interaction)=>{if(!interactionLease.active||interactionLease!==boardLease.current)return;if(interaction?.can_interact===false){setRows(current=>current.filter(row=>String(row.id)!==String(id)));load();return}setRows(current=>current.map(row=>String(row.id)===String(id)?{...row,interaction}:row))};
 
  return <section className="board-hub"><header className="page-head board-head"><button className="icon-btn" aria-label={w.back} onClick={onBack}><Icon name="back"/></button><div className="grow"><small>{w.eyebrow}</small><h1>{w.title}</h1><p>{w.hint}</p></div>{canPost&&!compose&&<button className="primary board-pin-button" onClick={()=>startCompose()}><Icon name="plus"/> {w.pin}</button>}</header>
  {error&&<div role="alert" className="card board-error">{error} {!compose&&<button onClick={()=>load()}>{w.retry}</button>}</div>}
  {compose&&<PinComposer w={w} en={en} kind={kind} setKind={value=>{setKind(value);setText('');setFiles([]);setTargetId('');setChoiceQuery('')}} text={text} setText={setText} files={files} addFiles={addFiles} setFiles={setFiles} choices={choices} choicesBusy={choicesBusy} targetId={targetId} setTargetId={setTargetId} choiceQuery={choiceQuery} setChoiceQuery={setChoiceQuery} selected={selected} editing={editing} busy={busy} onSubmit={submit} onClose={close} removePhoto={removePhoto} members={members} visibility={visibility} setVisibility={setVisibility} selectedMembershipIds={selectedMembershipIds} setSelectedMembershipIds={setSelectedMembershipIds}/>} 
  {!compose&&rows.length>0&&<div className="pinboard-guide"><Icon name="drag"/><span>{w.arrange}</span><small>{en?'Use the arrow controls on a card to change the shared order.':'Mit den Pfeilen an einer Karte änderst du die gemeinsame Reihenfolge.'}</small></div>}
- <div className="pinboard-grid" aria-live="polite">{rows.map((row,index)=><PinCard key={row.id} row={row} event={eventById.get(String(row.target_id))} index={index} total={rows.length} w={w} en={en} busy={busy} onMove={move} onRemove={remove} onEdit={()=>startEdit(row)}/>)}</div>
- {loading&&<p role="status" className="board-loading">{w.loading}</p>}{!loading&&!error&&!rows.length&&!compose&&<button className="card board-empty" onClick={()=>canPost&&startCompose()} disabled={!canPost}><span><Icon name="plus"/></span><strong>{w.empty}</strong>{canPost&&<small>{w.pin}</small>}</button>}{next&&<button className="secondary board-more" disabled={loading} onClick={()=>load(next,true)}>{w.more}</button>}</section>
+ <div className="pinboard-grid" aria-live="polite">{visibleRows.map((row,index)=><PinCard key={row.id} row={row} event={eventById.get(String(row.target_id))} index={index} total={visibleRows.length} w={w} en={en} busy={busy} onMove={move} onRemove={remove} onEdit={()=>startEdit(row)} onInteractionChange={interaction=>updateInteraction(row.id,interaction)}/>)}</div>
+ {loading&&<p role="status" className="board-loading">{w.loading}</p>}{!loading&&!error&&!visibleRows.length&&!compose&&<button className="card board-empty" onClick={()=>canPost&&startCompose()} disabled={!canPost}><span><Icon name="plus"/></span><strong>{w.empty}</strong>{canPost&&<small>{w.pin}</small>}</button>}{visibleNext&&<button className="secondary board-more" disabled={loading} onClick={()=>load(visibleNext,true)}>{w.more}</button>}</section>
 }
 
 function PinComposer({w,en,kind,setKind,text,setText,files,addFiles,setFiles,choices,choicesBusy,targetId,setTargetId,choiceQuery,setChoiceQuery,selected,editing,busy,onSubmit,onClose,removePhoto,members,visibility,setVisibility,selectedMembershipIds,setSelectedMembershipIds}){
@@ -106,11 +116,12 @@ function VisibilityControl({w,members,visibility,setVisibility,selectedMembershi
  return <fieldset><legend>{w.visibleFor}</legend><div className="pin-type-grid" role="group" aria-label={w.visibleFor}>{options.map(([value,label,icon])=><button type="button" key={value} className={visibility===value?'active':''} aria-pressed={visibility===value} onClick={()=>setVisibility(value)}><span><Icon name={icon}/></span>{label}</button>)}</div><small>{visibility==='private'?w.visibilityPrivate:visibility==='selected'?w.visibilitySelected:w.visibilityFamily}</small>{visibility==='selected'&&<div className="pin-event-options" role="group" aria-label={w.choosePeople}>{members.map(member=>{const id=String(member.id),active=selectedMembershipIds.includes(id),name=member.display_name||member.username;return <button type="button" key={id} className={active?'active':''} aria-pressed={active} onClick={()=>toggle(id)}><span className="pin-choice-icon"><Icon name="user"/></span><span className="grow"><strong>{name}</strong></span><span className="pin-choice-check"><Icon name={active?'check':'plus'}/></span></button>})}</div>}</fieldset>
 }
 
-function PinCard({row,event,index,total,w,en,busy,onMove,onRemove,onEdit}){
+function PinCard({row,event,index,total,w,en,busy,onMove,onRemove,onEdit,onInteractionChange}){
  const unavailable=row.target?.available===false;const target=row.target&&!unavailable?row.target:null;const title=unavailable?w.unavailable:(target?.title||row.text||pinTypeLabel(row.kind,!en,event));const eventMeta=row.kind==='event'?formatPinEventMeta(event,en?'en':'de'):'';const meta=eventMeta||target?.subtitle;const open=()=>{if(target?.url)location.assign(target.url)};const authorStyle={'--pin-author-hue':pinAuthorHue(row.author)};const scope=row.effective_scope==='none'?'none':(row.effective_scope||row.visibility);const visibilityText=scope==='none'?w.unavailable:scope==='private'?w.onlyMe:scope==='selected'?w.selectedPeople:w.wholeFamily;
  return <article id={`pin-${row.id}`} className={`pin-card pin-${row.kind} ${unavailable?'pin-unavailable':''}`}><div className="pin-card-top"><span className="pin-kind"><span className="pin-kind-icon"><Icon name={pinIconName(row.kind,event)}/></span>{pinTypeLabel(row.kind,!en,event)}</span><span className="pin-kind"><Icon name={scope==='private'||scope==='none'?'lock':scope==='selected'?'users':'home'}/>{visibilityText}</span><div className="pin-order" aria-label={w.arrange}>{row.can_reorder&&<><button className="icon-btn" disabled={busy||index===0} onClick={()=>onMove(row,-1)} aria-label={`${w.moveUp}: ${title}`}><span aria-hidden="true">↑</span></button><button className="icon-btn" disabled={busy||index===total-1} onClick={()=>onMove(row,1)} aria-label={`${w.moveDown}: ${title}`}><span aria-hidden="true">↓</span></button></>}</div></div>
  {row.images?.length>0&&<div className={`pin-photos pin-photos-${Math.min(row.images.length,4)}`}>{row.images.map((image,i)=><a key={image.id} href={image.url} target="_blank" rel="noreferrer" aria-label={`${w.photos} ${i+1}`}><img src={image.url} width={image.width} height={image.height} loading="lazy" alt=""/></a>)}</div>}
  {target?<button className="pin-target" onClick={open}><span className="pin-target-icon"><Icon name={pinIconName(row.kind,event)}/></span><span className="grow"><strong>{title}</strong>{meta&&<small>{row.kind==='event'&&eventMeta?eventMeta:formatTargetMeta(meta,en)}</small>}</span><Icon name="next"/></button>:<>{row.text&&<p className="pin-text">{row.text}</p>}{unavailable&&<div className="pin-target unavailable"><span className="pin-target-icon"><Icon name="lock"/></span><strong>{w.unavailable}</strong></div>}</>}
+ {row.can_interact&&<PinInteractionBar pin={row} onChange={onInteractionChange}/>} 
  <footer>{(row.author_name||row.created_at)&&<span className="pin-author-line">{row.author_name&&<span className="pin-author" style={authorStyle} title={`${w.pinnedBy} ${row.author_name}`}><span className="pin-author-avatar" aria-hidden="true">{pinAuthorInitial(row.author_name)}</span><span>{w.pinnedBy} <strong>{row.author_name}</strong></span></span>}{row.created_at&&<time dateTime={row.created_at}>{new Date(row.created_at).toLocaleDateString(en?'en-GB':'de-DE',{day:'2-digit',month:'short'})}</time>}</span>}<div>{target?.can_share_source&&target?.source_share_url&&<a className="secondary compact" href={target.source_share_url}><Icon name="members"/>{w.shareSource}</a>}{row.can_change_pin_visibility&&<button className="secondary compact" disabled={busy} onClick={onEdit}>{w.edit}</button>}{row.can_delete&&<button className="ghost-danger compact" disabled={busy} onClick={()=>onRemove(row)}>{w.remove}</button>}</div></footer></article>
 }
 
