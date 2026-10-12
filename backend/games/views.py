@@ -217,7 +217,6 @@ def _create_task_assignment(match, actor, opponent, assignment_data):
     task_id = _uuid(assignment_data.get("task"), "task_unavailable")
     task = (
         Task.objects.select_for_update()
-        .select_related("assignee")
         .filter(id=task_id, family=actor.family, completed_at__isnull=True)
         .first()
     )
