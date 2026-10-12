@@ -27,7 +27,7 @@ function replaceTimers(babyId,next){const all=readJson(TIMERS,{});all[String(bab
 function setTimer(babyId,kind,value){const next={...timersFor(babyId)};if(value)next[kind]=value;else delete next[kind];return replaceTimers(babyId,next)}
 function clock(value){if(!value)return'–';return new Date(value).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}
 
-export default function BabyCarePanel({baby,t}){
+export default function BabyCarePanel({baby,t,onRecorded}){
  const activeBabyId=useRef(String(baby.id));activeBabyId.current=String(baby.id);
  const [data,setData]=useState(null);const [pending,setPending]=useState(()=>pendingFor(baby.id));const [timers,setTimers]=useState(()=>timersFor(baby.id));const [busy,setBusy]=useState(false);const [feedSide,setFeedSide]=useState('unknown');const [bottle,setBottle]=useState('');const [pumpAmount,setPumpAmount]=useState('');const [temperature,setTemperature]=useState('');const [medication,setMedication]=useState({name:'',dose:'',unit:''});const [note,setNote]=useState('');
  const summary=data?.summary||{};
@@ -58,10 +58,10 @@ export default function BabyCarePanel({baby,t}){
 
  async function record(kind,value={},timing={}){
   const payload={kind,started_at:timing.started_at||isoNow(),ended_at:timing.ended_at||null,value,client_event_id:timing.client_event_id||uid()};
-  if(!navigator.onLine){const left=queueCare(baby.id,payload);if(activeBabyId.current===String(baby.id))setPending(left);toast(`${baby.display_name}: ${t('babyUi.offlineQueued')}`,{type:'info'});return null}
+  if(!navigator.onLine){const left=queueCare(baby.id,payload);if(activeBabyId.current===String(baby.id))setPending(left);onRecorded?.();toast(`${baby.display_name}: ${t('babyUi.offlineQueued')}`,{type:'info'});return null}
   setBusy(true);
-  try{const row=await api(`/baby/profiles/${baby.id}/care/`,{method:'POST',body:JSON.stringify(payload)});toast(`${baby.display_name}: ${t('babyUi.saved')}`,{type:'success'});await load({mark:false});return row}
-  catch(error){if(!navigator.onLine){const left=queueCare(baby.id,payload);if(activeBabyId.current===String(baby.id))setPending(left);toast(`${baby.display_name}: ${t('babyUi.offlineQueued')}`,{type:'info'});return null}toast(error.message||t('babyUi.error'),{type:'error'});throw error}
+  try{const row=await api(`/baby/profiles/${baby.id}/care/`,{method:'POST',body:JSON.stringify(payload)});onRecorded?.();toast(`${baby.display_name}: ${t('babyUi.saved')}`,{type:'success'});await load({mark:false});return row}
+  catch(error){if(!navigator.onLine){const left=queueCare(baby.id,payload);if(activeBabyId.current===String(baby.id))setPending(left);onRecorded?.();toast(`${baby.display_name}: ${t('babyUi.offlineQueued')}`,{type:'info'});return null}toast(error.message||t('babyUi.error'),{type:'error'});throw error}
   finally{setBusy(false)}
  }
 
@@ -73,6 +73,7 @@ export default function BabyCarePanel({baby,t}){
    setBusy(true);
    try{
     const row=await api(`/baby/profiles/${baby.id}/care/`,{method:'POST',body:JSON.stringify({kind,started_at:next.started_at,ended_at:null,value,client_event_id:next.client_event_id})});
+    onRecorded?.();
     commitTimer(baby.id,kind,{...next,server_id:row.id,version:row.version});
     await load({mark:false});
    }catch(error){toast(error.message||t('babyUi.error'),{type:'error'})}finally{setBusy(false)}
