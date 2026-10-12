@@ -2,32 +2,38 @@ import {useCallback,useEffect,useState} from 'react';
 import {api} from './api';
 import {fetchCalendarEvents} from './calendar-events-api';
 import {zonedDateKey} from './calendar-event-ui';
+import {clearProjection,watchProjection} from './todayProjectionLifecycle';
 
 const stores=new Map();
 const unwrap=value=>Array.isArray(value)?value:(value?.actions||value?.results||[]);
 
-function storeFor(familyId){
- const key=String(familyId||'');
+function storeFor(familyId,timeZone='UTC'){
+ const key=`${String(familyId||'')}|${timeZone}`;
  if(!stores.has(key))stores.set(key,{actions:[],events:[],loading:false,loaded:false,actionFailed:false,calendarFailed:false,day:'',generation:0,promise:null,listeners:new Set()});
  return stores.get(key);
 }
 function snapshot(store){return {actions:store.actions,events:store.events,loading:store.loading,loaded:store.loaded,actionFailed:store.actionFailed,calendarFailed:store.calendarFailed}}
 function emit(store){const value=snapshot(store);store.listeners.forEach(listener=>listener(value))}
 
-async function loadTodayCoreData(family,{force=false}={}){
+async function loadTodayCoreData(family,{force=false,coalesce=false}={}){
  const familyId=String(family?.id||'');
  if(!familyId)return {actions:[],events:[],loading:false,loaded:false,actionFailed:false,calendarFailed:false};
  const timeZone=family?.timezone||'UTC';
  const day=zonedDateKey(new Date(),timeZone);
- const store=storeFor(familyId);
+ const store=storeFor(familyId,timeZone);
+ if(store.loading&&store.promise&&store.day===day&&(!force||coalesce))return store.promise;
  if(!force&&store.day===day){
-  if(store.loading&&store.promise)return store.promise;
   if(store.loaded)return snapshot(store);
  }
+ if(store.day!==day)clearProjection(store,emit);
  const generation=store.generation+1;
- store.generation=generation;store.day=day;store.loading=true;store.actionFailed=false;store.calendarFailed=false;emit(store);
+ store.generation=generation;store.day=day;store.loading=true;emit(store);
  const actionRequest=api(`/actions/?family=${encodeURIComponent(familyId)}&scope=today`);
  const calendarRequest=fetchCalendarEvents({familyId,start:day,end:day});
+ // Preserve already-authorized same-day rows while revalidating, but never
+ // retain a failed source until the other request has also completed.
+ actionRequest.catch(()=>{if(store.generation===generation){store.actions=[];store.actionFailed=true;emit(store)}});
+ calendarRequest.catch(()=>{if(store.generation===generation){store.events=[];store.calendarFailed=true;emit(store)}});
  const promise=Promise.allSettled([actionRequest,calendarRequest]).then(([actionsResult,eventsResult])=>{
   if(store.generation!==generation)return snapshot(store);
   if(actionsResult.status==='fulfilled'){
@@ -51,15 +57,17 @@ async function loadTodayCoreData(family,{force=false}={}){
 export function useTodayCoreData(family){
  const familyId=String(family?.id||'');
  const timeZone=family?.timezone||'UTC';
- const [view,setView]=useState(()=>({familyId,state:snapshot(storeFor(familyId))}));
- const state=view.familyId===familyId?view.state:snapshot(storeFor(familyId));
+ const key=`${familyId}|${timeZone}`;
+ const [view,setView]=useState(()=>({key,state:snapshot(storeFor(familyId,timeZone))}));
+ const state=view.key===key?view.state:snapshot(storeFor(familyId,timeZone));
  useEffect(()=>{
-  const store=storeFor(familyId);
+  const store=storeFor(familyId,timeZone);
   let active=true;
-  const listener=value=>{if(active)setView({familyId,state:value})};
-  store.listeners.add(listener);setView({familyId,state:snapshot(store)});
+  const listener=value=>{if(active)setView({key,state:value})};
+  store.listeners.add(listener);setView({key,state:snapshot(store)});
   loadTodayCoreData(family);
-  return()=>{active=false;store.listeners.delete(listener)};
+  watchProjection(store,{load:options=>loadTodayCoreData(family,options),clear:()=>clearProjection(store,emit)});
+  return()=>{active=false;store.listeners.delete(listener);if(!store.listeners.size)store.stopWatching?.()};
  },[familyId,timeZone]);
  const refresh=useCallback(()=>loadTodayCoreData(family,{force:true}),[familyId,timeZone]);
  return {...state,refresh};
