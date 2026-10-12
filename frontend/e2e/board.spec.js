@@ -19,6 +19,10 @@ async function boot(page,language='de'){
  return {rows,state};
 }
 
+function photoPin(id='pin-photo'){
+ return {id,family:'family-1',text:'Ausflug',kind:'photo',target_id:null,target:null,visibility:'family',selected_membership_ids:[],effective_scope:'family',position:0,author:1,author_name:'Alex',created_at:new Date().toISOString(),can_edit:true,can_delete:true,can_reorder:true,can_change_pin_visibility:true,can_share_source:false,can_interact:true,images:[{id:'image-1',url:'/api/board-images/image-1/',width:1200,height:900},{id:'image-2',url:'/api/board-images/image-2/',width:900,height:1200}]};
+}
+
 test('pin note, edit, reload and remove it from the family pinboard',async({page})=>{
  await boot(page);
  await expect(page.getByRole('heading',{name:'Pinnwand',exact:true})).toBeVisible();
@@ -67,6 +71,24 @@ test('school holiday pins show the full period and author identity',async({page}
  const holiday={id:'holiday-1',family:'family-1',source:'school-source',type:'school.holiday',title:'Herbstferien',starts_at:'2026-10-12T00:00:00Z',ends_at:'2026-10-24T00:00:00Z',payload:{date_start:'2026-10-12',date_end_exclusive:'2026-10-24'}};
  state.events.push(holiday);rows.push({id:'pin-holiday',family:'family-1',text:'',kind:'event',target_id:'holiday-1',target:{id:'holiday-1',kind:'event',title:'Herbstferien',subtitle:holiday.starts_at,url:'/?page=calendar&event=holiday-1'},visibility:'family',selected_membership_ids:[],effective_scope:'family',position:0,author:2,author_name:'Sam',created_at:new Date().toISOString(),can_edit:false,can_delete:true,can_reorder:true,can_change_pin_visibility:false,can_share_source:false,can_interact:true,images:[]});
  await page.reload();const pin=page.locator('#pin-pin-holiday');await expect(pin).toContainText('Ferien');await expect(pin).toContainText('Herbstferien');await expect(pin).toContainText(/12.*23/);await expect(pin.locator('.pin-author')).toContainText('Sam');
+});
+
+test('pinboard photos stay inside the PWA and support keyboard gallery navigation',async({page})=>{
+ await page.setViewportSize({width:390,height:844});
+ const {rows}=await boot(page);rows.push(photoPin());await page.reload();
+ const first=page.locator('#pin-pin-photo .pin-photos a').first();const popups=[];page.on('popup',popup=>popups.push(popup));
+ await first.click();expect(popups).toHaveLength(0);
+ const dialog=page.getByRole('dialog',{name:'Fotoansicht'});await expect(dialog).toBeVisible();await expect(dialog.getByText('Foto 1 von 2',{exact:true})).toBeVisible();
+ await expect(dialog.getByRole('button',{name:'Fotoansicht schließen'})).toBeFocused();await expect(dialog.getByRole('button',{name:'Vorheriges Foto'})).toBeDisabled();
+ await page.keyboard.press('ArrowRight');await expect(dialog.getByText('Foto 2 von 2',{exact:true})).toBeVisible();await expect(dialog.getByRole('button',{name:'Nächstes Foto'})).toBeDisabled();
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBeTruthy();
+ await page.keyboard.press('Escape');await expect(dialog).toHaveCount(0);await expect(first).toBeFocused();
+});
+
+test('English photo viewer exposes localized accessible controls',async({page})=>{
+ const {rows}=await boot(page,'en');rows.push(photoPin('pin-photo-en'));await page.reload();
+ await page.locator('#pin-pin-photo-en .pin-photos a').first().click();
+ const dialog=page.getByRole('dialog',{name:'Photo viewer'});await expect(dialog).toBeVisible();await expect(dialog.getByRole('button',{name:'Close photo viewer'})).toBeVisible();await expect(dialog.getByRole('button',{name:'Next photo'})).toBeVisible();
 });
 
 test('English pinboard stays usable at 390px',async({page})=>{

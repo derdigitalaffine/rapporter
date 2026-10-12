@@ -8,6 +8,12 @@ Image uploads are decoded twice with Pillow (verification, then rendering), limi
 
 API: `/api/board/` supports paginated GET, POST multipart/JSON and author PATCH; DELETE also supports adult/owner moderation. `/api/board-images/{uuid}/` is a protected WebP GET and authorized DELETE. Families cannot be changed after publication. Images cannot be appended after publication; remove individual images through the media endpoint or delete/repost. No empty post is allowed after removing its final image.
 
+## In-App-Fotoansicht (#515)
+
+Pinnwand-Fotos bleiben beim normalen Klick/Tap innerhalb der FamilyOS-PWA. Ein gemeinsamer `ImageViewer` übernimmt die vorhandene autorisierte Bild-URL unverändert und zeigt Einzelbilder oder die komplette Karten-Galerie als modalen Vollbild-Viewer. Pfeiltasten sowie Vor-/Zurück-Controls navigieren, `Escape` schließt, der Fokus kehrt zum auslösenden Foto zurück, und der Hintergrund scrollt während der Ansicht nicht. Die Controls bleiben auf Touchgeräten mindestens 48 px groß; Dialog- und Navigationsnamen sind lokalisiert.
+
+Die ursprüngliche Bild-URL bleibt als progressive Browser-Fallback-Navigation im Markup erhalten. Der Viewer erzeugt weder öffentliche Media-URLs noch einen zweiten Download-/ACL-Pfad: jeder Bildabruf läuft weiterhin über den bestehenden geschützten `/api/board-images/{uuid}/`-Endpunkt. Weitere Bildflächen können das gemeinsame Viewer-Primitiv später explizit wiederverwenden, ohne die Pinnwand-Logik zu kopieren.
+
 ## Reference pins and adapters (#219)
 
 Reference pins store only an allow-listed `kind` plus the canonical object's UUID. The central `PinAdapter` registry re-authorizes every target on reads and creates, returns a deliberately small preview/deep link, and batch-resolves each adapter type in one query. A missing, deleted or no-longer-visible target is rendered as a neutral unavailable reference; the board never keeps a stale title snapshot as authority.
@@ -33,3 +39,17 @@ Die Karte zeigt die tatsächlich wirksame Sichtbarkeit. Wird ein Quellzugriff en
 ### Technischer Abnahmevertrag
 
 Die Seitenauflösung kombiniert vorhandene kanonische Adapter-Querysets für aktuelle Memberships in einer gebündelten Query pro Adaptertyp. Die exakte Schnittmenge und Vorschauen werden daraus berechnet; die Abfragezahl wächst nicht pro Pin. Direkte ACL-Prüfungen für Bilder, Reorder und einzelne Objekte bleiben serverseitig. Die neue Pin-Sichtbarkeit ist eine additive Migration; bestehende Pins behalten zunächst ihre Familien-Shell und bleiben durch Quellrechte begrenzt.
+
+## Legacy-Migration und stabile Pin-Identität (#222)
+
+Die universelle Pinnwand migriert das frühere Schwarze Brett **in place**. `0202_board` hat `BoardPost` und `BoardImage` bereits mit UUID-Primärschlüsseln angelegt; `0209_pinboard`, `0220_pinboard_adapter_keys` und die späteren Sichtbarkeitsmigrationen erweitern genau diese Zeilen additiv. Es gibt deshalb bewusst keine zweite Pin-Tabelle und kein Titel-/Text-Matching: **die frühere `BoardPost.id` ist dieselbe kanonische Pin-ID**. `BoardImage.post_id`, der private Storage-Key und Bildmetadaten bleiben beim Upgrade unverändert.
+
+Dieser Identitätsvertrag hält alte Deep Links stabil: `?page=board&post=<BoardPost-UUID>&family=<Family-UUID>` adressiert nach dem Upgrade denselben Pin. Die Detail-API autorisiert ihn weiterhin über die aktuelle Pin-/Source-ACL; eine bekannte UUID ist kein Zugriffsrecht. Referenz-Pins behalten während des Compatibility-Fensters zusätzlich den alten `kind` und `target_id`. Der Read-Pfad kann deshalb bei einem noch leeren `adapter_key` deterministisch auf den Legacy-Kind zurückfallen, während neue/aktualisierte Zeilen den kanonischen Adapter-Key tragen.
+
+### Retry, Diagnose und Rollback
+
+`python manage.py report_pinboard_migration` ist standardmäßig read-only und gibt ausschließlich Zähler aus. `--json` liefert dieselben Werte maschinenlesbar. Mit `--repair-adapter-keys` werden nur fehlende, aus dem vorhandenen Legacy-Kind eindeutig ableitbare Adapter-Keys in begrenzten Batches ergänzt; `--batch-size` begrenzt die Batchgröße. Die Updates sind konditional auf `adapter_key=''`, deshalb sind Abbruch, Wiederaufnahme und Wiederholung idempotent. `kind`, `target_id`, Pin-UUID, Text, Bilddaten und Sichtbarkeit werden dabei nicht verändert.
+
+Der Report nennt die Identitätsstrategie `boardpost_uuid_in_place`, Gesamt-/bereits kompatible Zeilen, in diesem Lauf reparierte Adapter-Keys, noch ausstehende Backfills, Adapter-/Identitätsfehler, verwaiste Bild-/Zielreferenzen und Sichtbarkeitsanomalien. Er protokolliert weder Pinnwandtext noch Zielnamen, Dateinamen oder private Storage-Keys. Die rohe Ziel-Existenzprüfung dient ausschließlich diesen Zählern; API-Reads und Interaktionen bleiben vollständig an die kanonischen `PinAdapter`-/Source-ACL-Prüfungen gebunden.
+
+Vor der späteren Contract-Phase bleiben die Legacy-Felder lesbar. Ein Regressionstest migriert echte historische `0202_board`-Zeilen bis zum aktuellen Pin-Schema und wieder zurück und beweist dabei die unveränderten BoardPost-/BoardImage-IDs, Texte, Bild-FKs und Storage-Keys. Dadurch kann #386 Interaktionszeilen anschließend dauerhaft an `BoardPost` referenzieren, ohne bei Retry, Upgrade oder Rollback auf eine neu erzeugte Pin-ID zu zeigen. Die Contract-/Cleanup-Phase darf diese Kompatibilität erst nach einem separaten, messbaren Cutover entfernen.
