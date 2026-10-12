@@ -138,6 +138,7 @@ def action_list(request):
     try:
         list_id = _uuid_param(request, "list")
         workflow_id = _uuid_param(request, "workflow")
+        task_id = _uuid_param(request, "task")
         rows = project_actions(
             user=request.user,
             family=family,
@@ -145,6 +146,7 @@ def action_list(request):
             kind=request.query_params.get("kind", "all"),
             list_id=list_id,
             workflow_id=workflow_id,
+            task_id=task_id,
         )
     except (ActionProjectionError, ValueError, DjangoValidationError) as exc:
         return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)

@@ -1,7 +1,7 @@
 import uuid
 
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import F, Q
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
@@ -52,7 +52,7 @@ def _membership(user, family_id):
     parsed = _uuid(family_id, "family_unavailable")
     member = (
         Membership.objects.select_related("family", "user")
-        .filter(user=user, family_id=parsed, family__status=Family.Status.ACTIVE)
+        .filter(user=user, user__is_active=True, family_id=parsed, family__status=Family.Status.ACTIVE)
         .first()
     )
     if not member:
@@ -63,7 +63,7 @@ def _membership(user, family_id):
 def _match_context(user, match_id):
     parsed = _uuid(match_id, "match_unavailable")
     match = (
-        GameMatch.objects.select_related("family", "challenger__user", "opponent__user", "winner__user", "current_turn__user")
+        _match_queryset(user)
         .filter(id=parsed, family__status=Family.Status.ACTIVE)
         .filter(Q(challenger__user=user) | Q(opponent__user=user))
         .first()
@@ -190,8 +190,11 @@ def _serialize(match, actor):
     return payload
 
 
-def _match_queryset():
-    return GameMatch.objects.select_related(
+def _match_queryset(user):
+    # A game reference never expands the canonical current Task visibility.
+    return GameMatch.objects.exclude(task_assignment__task__hidden_from_user=user).filter(
+        Q(task_assignment__isnull=True) | Q(task_assignment__task__family_id=F("family_id"))
+    ).select_related(
         "family",
         "challenger__user",
         "opponent__user",
@@ -203,7 +206,7 @@ def _match_queryset():
 
 
 def _fresh(match_id, actor):
-    return _serialize(_match_queryset().get(id=match_id), actor)
+    return _serialize(_match_queryset(actor.user).get(id=match_id), actor)
 
 
 def _create_task_assignment(match, actor, opponent, assignment_data):
@@ -238,7 +241,7 @@ def match_list(request):
         if request.method == "POST":
             actor = _membership(request.user, request.data.get("family"))
             opponent_id = _uuid(request.data.get("opponent"), "opponent_unavailable")
-            opponent = Membership.objects.select_related("user").filter(id=opponent_id, family=actor.family).first()
+            opponent = Membership.objects.select_related("user").filter(id=opponent_id, family=actor.family, user__is_active=True).first()
             if not opponent or opponent.id == actor.id:
                 raise GameApiError("opponent_unavailable", status.HTTP_404_NOT_FOUND)
             game_type = str(request.data.get("game_type") or "")
@@ -267,7 +270,7 @@ def match_list(request):
             return Response(_fresh(match.id, actor), status=status.HTTP_201_CREATED)
 
         actor = _membership(request.user, request.query_params.get("family"))
-        rows = _match_queryset().filter(family=actor.family).filter(Q(challenger=actor) | Q(opponent=actor))[:50]
+        rows = _match_queryset(request.user).filter(family=actor.family).filter(Q(challenger=actor) | Q(opponent=actor))[:50]
         return Response([_serialize(row, actor) for row in rows])
     except (GameApiError, GameError, GameMatch.DoesNotExist) as exc:
         return _error(exc)
@@ -354,7 +357,7 @@ def game_summary(request):
     try:
         actor = _membership(request.user, request.query_params.get("family"))
         rows = (
-            _match_queryset()
+            _match_queryset(request.user)
             .filter(family=actor.family)
             .filter(Q(challenger=actor) | Q(opponent=actor))
             .filter(status__in=[GameMatch.Status.PENDING, GameMatch.Status.ACTIVE, GameMatch.Status.FINISHED])[:8]

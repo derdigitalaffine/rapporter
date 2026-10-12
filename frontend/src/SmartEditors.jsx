@@ -1,43 +1,60 @@
-import {useEffect,useState} from 'react';
+import {useEffect,useRef,useState} from 'react';
+import {flushSync} from 'react-dom';
 import {useTranslation} from 'react-i18next';
-import {api} from './api';
+import {api,AUTH_CHANGED_EVENT} from './api';
+import {assignmentCopy,taskDuelAction,openTaskDuel} from './game-assignment-i18n';
+import {confirmAction} from './feedback';
 import {Icon} from './icons';
 import './workflow-i18n';
 import {useDirtyForm} from './dirty-state';
-import {ErrorSummary,FormActions,FormField,FormRow,FormShell,ProgressiveFieldGroup} from './form-primitives';
+import {ErrorSummary,FormActions,FormField,FormRow,FormShell,FormSection,ProgressiveFieldGroup} from './form-primitives';
 
 function localDateTime(value){if(!value)return'';const d=new Date(value);const pad=n=>String(n).padStart(2,'0');return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`}
 
 export function TaskEditor({task=null,family,lists=[],members=[],defaultListId='',onClose,onSaved,onDelete}){
- const {t}=useTranslation();const isNew=!task?.id;const initial=task||{};
+ const {t,i18n}=useTranslation();const words=assignmentCopy(i18n.language);const isNew=!task?.id;const initial=task||{};
  const initialValues={title:initial.title||'',notes:initial.notes||'',task_list:initial.task_list||defaultListId||lists[0]?.id||'',due_at:localDateTime(initial.due_at),priority:initial.priority||'normal',estimate_minutes:initial.estimate_minutes||'',assignee:initial.assignee||'',workflow_column:initial.workflow_column||'',tags:(initial.tags||[]).join(', ')};
  const [historyRows,setHistoryRows]=useState([]);const [historyError,setHistoryError]=useState('');
  const [v,setV]=useState(initialValues);const [busy,setBusy]=useState(false);const [error,setError]=useState('');const set=(k,x)=>setV(s=>({...s,[k]:x}));
- useDirtyForm(JSON.stringify(v)!==JSON.stringify(initialValues));
- async function save(e){e.preventDefault();setBusy(true);setError('');try{const payload={title:v.title.trim(),notes:v.notes,task_list:v.task_list||null,due_at:v.due_at?new Date(v.due_at).toISOString():null,priority:v.priority,estimate_minutes:v.estimate_minutes?Number(v.estimate_minutes):null,assignee:v.assignee||null,tags:v.tags.split(',').map(x=>x.trim()).filter(Boolean)};if(lists.find(x=>x.id===v.task_list)?.workflow_enabled&&v.workflow_column)payload.workflow_column=v.workflow_column;if(isNew)payload.family=family?.id;const saved=await api(isNew?'/tasks/':`/tasks/${task.id}/`,{method:isNew?'POST':'PATCH',body:JSON.stringify(payload)});await onSaved(saved)}catch(e){setError(e.message);setBusy(false)}}
+ const [prepare,setPrepare]=useState(false),[confirmedTask,setConfirmedTask]=useState(null),[duel,setDuel]=useState(null),[privacyBlocked,setPrivacyBlocked]=useState(false),[leaving,setLeaving]=useState(false);const operation=useRef(0),alive=useRef(true);const familyId=family?.id||task?.family;const dirty=!confirmedTask&&!leaving&&!privacyBlocked&&JSON.stringify(v)!==JSON.stringify(initialValues);
+ useDirtyForm(dirty);
+ useEffect(()=>{alive.current=true;const auth=e=>{if(e.detail?.authenticated===false){alive.current=false;operation.current+=1;setDuel(null);setPrivacyBlocked(true)}};window.addEventListener(AUTH_CHANGED_EVENT,auth);return()=>{alive.current=false;operation.current+=1;window.removeEventListener(AUTH_CHANGED_EVENT,auth)}},[familyId]);
+ useEffect(()=>{setDuel(null);if(isNew||!familyId)return;let current=true;api(`/actions/?family=${encodeURIComponent(familyId)}&scope=all&kind=tasks&task=${encodeURIComponent(task.id)}`).then(payload=>{if(current&&alive.current)setDuel(taskDuelAction(payload,task.id))}).catch(error=>{if(current&&[401,403,404].includes(error.status)){setPrivacyBlocked(true);setDuel(null)}});return()=>{current=false}},[familyId,task?.id]);
+ async function openExistingDuel(){if(!duel||busy||!alive.current)return;if(dirty&&!await confirmAction({title:words.discard,message:words.discardHint,confirmLabel:words.discard,cancelLabel:words.cancel}))return;if(alive.current){flushSync(()=>setLeaving(true));openTaskDuel(duel.href)}}
+ async function save(e){e.preventDefault();if(busy||!alive.current)return;const generation=++operation.current;setBusy(true);setError('');try{let saved=confirmedTask;if(!saved){const payload={title:v.title.trim(),notes:v.notes,task_list:v.task_list||null,due_at:v.due_at?new Date(v.due_at).toISOString():null,priority:v.priority,estimate_minutes:v.estimate_minutes?Number(v.estimate_minutes):null,assignee:v.assignee||null,tags:v.tags.split(',').map(x=>x.trim()).filter(Boolean)};if(lists.find(x=>x.id===v.task_list)?.workflow_enabled&&v.workflow_column)payload.workflow_column=v.workflow_column;if(isNew)payload.family=familyId;saved=await api(isNew?'/tasks/':`/tasks/${task.id}/`,{method:isNew?'POST':'PATCH',body:JSON.stringify(payload)});if(!alive.current||generation!==operation.current)return;setConfirmedTask(saved)}
+   if(prepare){const projection=await api(`/actions/?family=${encodeURIComponent(familyId)}&scope=all&kind=tasks&task=${encodeURIComponent(saved.id)}`);if(!alive.current||generation!==operation.current)return;const action=taskDuelAction(projection,saved.id);if(!action){setError(words.unavailable);setBusy(false);return}await onSaved(saved,{duelHref:action.href})}else await onSaved(saved);
+  }catch(error){if(alive.current&&generation===operation.current){if([401,403,404].includes(error.status)){setDuel(null);setPrivacyBlocked(true)}else setError(error.message);setBusy(false)}}}
+
  async function remove(){if(!onDelete)return;setBusy(true);try{await onDelete()}finally{setBusy(false)}}
+ if(privacyBlocked)return <div className="sheet-backdrop"><section className="quick-sheet" role="dialog" aria-modal="true" aria-label={words.context}><p role="alert">{words.unavailable}</p><button type="button" className="secondary" onClick={onClose}>{words.cancel}</button></section></div>;
  const errors=error?[{id:'task-title',label:t('title'),message:error}]:[];
  const ambiguousList=isNew&&lists.length>1&&!defaultListId;
  return <div className="sheet-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget&&!busy)onClose()}}><section className="quick-sheet" role="dialog" aria-modal="true" aria-labelledby="task-editor-title"><div className="sheet-handle"/><div className="sheet-head"><div><small>{t('taskTitle')}</small><h2 id="task-editor-title">{isNew?t('addTask'):task.title}</h2></div><button type="button" className="sheet-close" onClick={onClose} disabled={busy} aria-label={t('close')}><Icon name="close"/></button></div><FormShell className="quick-form" onSubmit={save}>
-  <ErrorSummary errors={errors}/>
+  <ErrorSummary title={words.errors} errors={errors}/>
+  <fieldset disabled={busy||Boolean(confirmedTask)} style={{display:'contents'}}>
   <FormField id="task-title" label={t('title')} required><input value={v.title} onChange={e=>set('title',e.target.value)} autoFocus/></FormField>
   <FormRow>
     <FormField id="task-due" label={t('due')}><input type="datetime-local" value={v.due_at} onChange={e=>set('due_at',e.target.value)}/></FormField>
     {ambiguousList&&<FormField id="task-list" label={t('taskList')}><select value={v.task_list} onChange={e=>{set('task_list',e.target.value);set('workflow_column','')}}><option value="">{t('all')}</option>{lists.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></FormField>}
   </FormRow>
+  <FormSection legend={words.context}>
+    <FormField id="task-assignee" label={t('assignee')}><select value={v.assignee} onChange={e=>set('assignee',e.target.value)}><option value="">{t('nobody')}</option>{members.map(m=><option key={m.user} value={m.user}>{m.display_name||m.username}</option>)}</select></FormField>
+  {isNew&&!confirmedTask&&<FormField id="task-duel-prepare" label={words.prepare} description={words.prepareHint}><input type="checkbox" checked={prepare} disabled={busy} onChange={e=>setPrepare(e.target.checked)}/></FormField>}
+  {!isNew&&duel&&<button type="button" className="secondary" disabled={busy} onClick={openExistingDuel}><Icon name="members"/>{words.duel}</button>}
+  </FormSection>
   <ProgressiveFieldGroup label={t('moreDetails')} defaultOpen={!isNew}>
     {!ambiguousList&&lists.length>0&&<FormField id="task-list-details" label={t('taskList')}><select value={v.task_list} onChange={e=>{set('task_list',e.target.value);set('workflow_column','')}}><option value="">{t('all')}</option>{lists.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></FormField>}
     <FormRow>
       <FormField id="task-priority" label={t('priority')}><select value={v.priority} onChange={e=>set('priority',e.target.value)}><option value="low">{t('low')}</option><option value="normal">{t('normal')}</option><option value="high">{t('high')}</option></select></FormField>
       <FormField id="task-duration" label={t('durationMinutes')}><input type="number" min="1" value={v.estimate_minutes} onChange={e=>set('estimate_minutes',e.target.value)}/></FormField>
     </FormRow>
-    <FormField id="task-assignee" label={t('assignee')}><select value={v.assignee} onChange={e=>set('assignee',e.target.value)}><option value="">{t('nobody')}</option>{members.map(m=><option key={m.user} value={m.user}>{m.display_name||m.username}</option>)}</select></FormField>
     {lists.find(x=>x.id===v.task_list)?.workflow_enabled&&<FormField id="task-workflow" label={t('workflowUi.status')}><select value={v.workflow_column} onChange={e=>set('workflow_column',e.target.value)}><option value="">—</option>{(lists.find(x=>x.id===v.task_list)?.workflow_columns||[]).filter(x=>!x.archived).map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></FormField>}
     <FormField id="task-tags" label={t('workflowUi.tag')}><input value={v.tags} onChange={e=>set('tags',e.target.value)}/></FormField>
     <FormField id="task-notes" label={t('notes')}><textarea rows="3" value={v.notes} onChange={e=>set('notes',e.target.value)}/></FormField>
   </ProgressiveFieldGroup>
   {!isNew&&lists.find(x=>x.id===v.task_list)?.workflow_enabled&&<details className="workflow-history" onToggle={async e=>{if(e.currentTarget.open)try{const rows=await api(`/tasks/${task.id}/status-history/`);setHistoryRows(rows.results||rows);setHistoryError('')}catch(err){setHistoryError(err.message)}}}><summary>{t('workflowUi.history')}</summary>{historyError&&<p role="alert">{historyError}</p>}{historyRows.map(row=><p key={row.id}>{row.changed_by}: {row.from||'—'} → {row.to||'—'} · {new Date(row.changed_at).toLocaleString()}</p>)}{!historyRows.length&&!historyError&&<p>{t('workflowUi.noHistory')}</p>}</details>}
-  <FormActions><button className="primary" disabled={busy||!v.title.trim()}><Icon name="check"/>{busy?t('saving'):t('save')}</button>{!isNew&&onDelete&&<button type="button" className="ghost-danger destructive-wide" onClick={remove} disabled={busy}><Icon name="delete"/> {t('deleteTask')}</button>}</FormActions>
+  </fieldset>
+  <FormActions><button type="submit" className="primary" disabled={busy||!v.title.trim()}><Icon name="check"/>{busy?t('saving'):confirmedTask?words.savedContinue:t('save')}</button><button type="button" className="secondary" disabled={busy} onClick={onClose}>{words.cancel}</button>{!isNew&&onDelete&&<button type="button" className="ghost-danger destructive-wide" onClick={remove} disabled={busy}><Icon name="delete"/> {t('deleteTask')}</button>}</FormActions>
  </FormShell></section></div>
 }
 

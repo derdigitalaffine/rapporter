@@ -1,5 +1,5 @@
 import BirthdayEditor from './BirthdayEditor';
-import {useState} from 'react';
+import {useRef,useState} from 'react';
 import {TaskEditor,ShoppingEditor} from './SmartEditors';
 import ListEditor from './ListEditor';
 import EventEditor from './EventEditor';
@@ -11,9 +11,11 @@ import CorrespondenceEditor from './CorrespondenceEditor';
 import WishlistEditor from './WishlistEditor';
 import {BabyCreateSheet,PetCreateSheet} from './ModuleCreateSheets';
 import {recordCreateUsage,createRankingScope} from './create-ranking-client';
+import {openTaskDuel} from './game-assignment-i18n';
 import {pageHref} from './navigation';
 
 export default function CreateFlowHost({userId,action,family,data,context={},onClose,onRefresh,onNavigate}){
+ const learnedTask=useRef(null);
  const [createdShoppingList,setCreatedShoppingList]=useState(null);
  if(!action||!family)return null;
  const taskLists=(data?.task_lists||[]).filter(list=>!list.archived);
@@ -26,7 +28,7 @@ export default function CreateFlowHost({userId,action,family,data,context={},onC
   const origin=typeof context.origin==='string'?context.origin:'';
   recordCreateUsage({scope:createRankingScope(family,userId),actionId:action,originPage:origin,contextBucket:origin}).catch(()=>{});
  }
- async function saved(){learnSuccessfulCreate();await onRefresh?.();onClose()}
+ async function saved(record,options={}){if(action!=='task'||learnedTask.current!==record?.id){learnSuccessfulCreate();if(action==='task')learnedTask.current=record?.id}if(options.duelHref){openTaskDuel(options.duelHref);return}await onRefresh?.();onClose()}
  async function savedWithoutClose(){learnSuccessfulCreate();await onRefresh?.()}
  function openModule(page){
   if(onNavigate){onNavigate(page);return}

@@ -1,4 +1,5 @@
 import {Icon} from './icons';
+import {assignmentCopy} from './game-assignment-i18n';
 import './todo-hub.css';
 import './todo-action-row.css';
 
@@ -31,7 +32,7 @@ function linkFor(item,action){
 function secondaryLabel(action,text){return action.id==='snooze'?text.snooze:action.id==='duel'?text.duel:action.id==='move'?text.move:action.id==='delete'?text.delete:text.edit}
 
 export default function TodoActionRow({item,language,busy=false,onPrimary,onSecondary}){
-  const text=textFor(language);const actionLabel=primaryLabel(item,text);const secondary=secondaryActions(item);const metadata=[];
+  const text={...textFor(language),duel:assignmentCopy(language).duel};const actionLabel=primaryLabel(item,text);const secondary=secondaryActions(item);const metadata=[];
   if(item.context?.list?.name)metadata.push(item.context.list.name);
   if(item.context?.workflow?.name)metadata.push(item.context.workflow.name);
   if(item.assignee?.username)metadata.push(item.assignee.username);

@@ -23,6 +23,7 @@ def _membership_profile(obj):
 
 class MembershipSerializer(serializers.ModelSerializer):
     username = serializers.CharField(source="user.username", read_only=True)
+    is_active = serializers.BooleanField(source="user.is_active", read_only=True)
     avatar = serializers.SerializerMethodField()
     avatar_url = serializers.SerializerMethodField()
     birth_month = serializers.SerializerMethodField()
@@ -58,7 +59,7 @@ class MembershipSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Membership
-        fields = ["id", "family", "user", "username", "role", "display_name", "avatar", "avatar_url", "birthday_visibility", "birth_month", "birth_day", "birth_year"]
+        fields = ["id", "family", "user", "username", "is_active", "role", "display_name", "avatar", "avatar_url", "birthday_visibility", "birth_month", "birth_day", "birth_year"]
         read_only_fields = ["family", "user", "avatar", "avatar_url", "birth_month", "birth_day", "birth_year"]
 
 

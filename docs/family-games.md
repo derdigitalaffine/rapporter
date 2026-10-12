@@ -154,3 +154,14 @@ Mutation start synchronously invalidates already-running reads, before React eff
 Family changes immediately exclude old data from rendering. Logout/authenticated-false events and unmount invalidate pending work; normal authenticated-true session refresh events preserve a valid draft. Canonical App logout/login/family remounts remain the identity boundary. Confirmed 401/403/404 removes match/summary/task/viewer projections and private challenge drafts; a fresh explicit retry only restores data returned by the existing authoritative APIs. No offline move queue or autonomous game/task mutation is added.
 
 Focused regression coverage includes slow/focus overlap, hidden-tab scheduling, GET-before-POST races, transient vs. denied projections, guarded Widget retry across families, auth invalidation, preserved draft/selection/fleet, saved hidden/default registry behavior, five Today locales and mobile/keyboard/zoom navigation. Task-context/deep-link/create integration is a separate bounded delivery under #524; its API/form policy is not mixed into this live-refresh hotfix.
+# Assignment from a task
+
+Open a task in Tasks, or use **Play for assignment** in its To-do action menu. The task editor shows the same action next to the current assignee when the server allows it. The setup opens with exactly that task; an unavailable, completed or protected task never falls back to another task. Existing assignments stay unchanged until both players consent and a valid result applies the selected rule.
+
+When creating a task through **Add → Task**, optionally select **Play for assignment after saving**. Save first creates the normal task, then opens the shared game setup. Choose an active opponent, game and assignment rule there and explicitly confirm the displayed task and current assignment. Saving alone never starts a game. If preparation fails after saving, **Task saved — continue** retries preparation with the saved task rather than creating another one. Normal Save and Cancel remain available.
+
+The shared setup groups opponent/game, task context and consent; additional RPS round settings are under **More game settings**. Cancel/Back returns to the task area for task links. Links contain opaque task/family identifiers, never task titles.
+
+Games rechecks current Task visibility on List, Detail and Today Summary. A revoked task reference is unavailable; a completed task cannot be newly consented or reassigned by an outcome. Inactive accounts are excluded from challenge selection and rejected server-side before any game, stake or challenge notification is written. Existing child/teen role rules are unchanged.
+
+No database migration is needed for this consumer integration. Rollback reverts the UI and additive active-user roster/query metadata; saved Tasks, Games and explicit Today layout preferences remain intact.

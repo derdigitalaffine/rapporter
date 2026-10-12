@@ -94,13 +94,14 @@ def _task_assignment(match):
 
 def _task_assignment_is_available(stake, match):
     task = stake.task
-    if task.family_id != match.family_id:
+    if task.family_id != match.family_id or task.completed_at:
         return False
     if task.hidden_from_user_id in {match.challenger.user_id, match.opponent.user_id}:
         return False
     return Membership.objects.filter(
         family_id=match.family_id,
         user_id__in=[match.challenger.user_id, match.opponent.user_id],
+        user__is_active=True,
     ).count() == 2
 
 
@@ -154,6 +155,8 @@ def accept_match(match_id, actor, *, task_assignment_confirmed=False):
             raise GameError("only_opponent_can_accept")
         if match.status != GameMatch.Status.PENDING:
             raise GameError("match_not_pending")
+        if not match.challenger.user.is_active or not match.opponent.user.is_active:
+            raise GameError("opponent_unavailable")
         stake = _task_assignment(match)
         if stake:
             if not task_assignment_confirmed:

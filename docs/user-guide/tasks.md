@@ -57,3 +57,8 @@ Mehr dazu: **[Routinen](routines.md)**.
 ## Tipp: Vorschläge nutzen
 
 FamilyOS merkt sich frühere Eingaben und kann passende Vorschläge machen. So musst du häufige Aufgaben nicht jedes Mal vollständig neu tippen.
+# Zuweisung ausspielen
+
+Im Aufgaben-Editor steht neben der Zuweisung **Zuweisung ausspielen**, wenn die Aufgabe dafür verfügbar ist. Im To-do-Bereich findest du denselben Einstieg unter den Schnellaktionen der Aufgabe. Du landest direkt bei dieser Aufgabe und wählst Gegner, Spiel und Einsatzregel. Eine vorhandene Zuweisung bleibt bis zum gültigen Ergebnis unverändert; beide Personen müssen ausdrücklich zustimmen.
+
+Beim Anlegen über **Hinzufügen → Aufgabe** kannst du **Zuweisung nach dem Speichern ausspielen** wählen. Zuerst wird die Aufgabe gespeichert, danach bereitest du das Duell vor. Einfaches Speichern startet kein Spiel. Schlägt die Vorbereitung nach dem Speichern fehl, setzt **Aufgabe gespeichert – weiter** mit derselben Aufgabe fort. Erledigte, nicht sichtbare oder fremde Aufgaben werden nicht durch eine andere Aufgabe ersetzt. Deaktivierte Konten können nicht herausgefordert werden.
