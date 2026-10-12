@@ -45,9 +45,15 @@ test('planning reorder is keyboard-operable, 44px touch-safe and reload-persiste
 
 test('planning pointer drag uses the handle and persists the same canonical order',async({page})=>{
   const {writes}=await bootOrder(page);
+  const orderList=page.locator('.shopping-order-list');
+  await orderList.evaluate(element=>element.scrollIntoView({block:'start'}));
   const source=page.getByRole('button',{name:'Milch verschieben'});const target=page.getByRole('button',{name:'Eier verschieben'});
+  await expect(source).toBeVisible();await expect(target).toBeVisible();
   const sourceBox=await source.boundingBox();const targetBox=await target.boundingBox();
   expect(sourceBox).not.toBeNull();expect(targetBox).not.toBeNull();
+  const viewport=page.viewportSize();
+  expect(sourceBox.y+sourceBox.height).toBeLessThanOrEqual(viewport.height);
+  expect(targetBox.y+targetBox.height).toBeLessThanOrEqual(viewport.height);
   await page.mouse.move(sourceBox.x+sourceBox.width/2,sourceBox.y+sourceBox.height/2);
   await page.mouse.down();
   await page.mouse.move(targetBox.x+targetBox.width/2,targetBox.y+targetBox.height/2,{steps:8});
