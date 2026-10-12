@@ -39,7 +39,7 @@ function Sheet({family,title,onClose,onEscape=onClose,children,busy=false}){
 function Loading({label}){return <div className="smart-empty" role="status"><Icon name="refresh"/><strong>{label}</strong></div>}
 function ErrorNotice({message}){return message?<div className="integration-notice" role="alert"><Icon name="warning"/><span>{message}</span></div>:null}
 
-export function BabyCreateSheet({family,onClose,onOpenPage}){
+export function BabyCreateSheet({family,onClose,onOpenPage,onSuccessfulCreate}){
   const {t}=useTranslation();
   const [moduleState,setModuleState]=useState(null);
   const [pregnancies,setPregnancies]=useState([]);
@@ -77,7 +77,7 @@ export function BabyCreateSheet({family,onClose,onOpenPage}){
           <button type="button" className="secondary" onClick={()=>onOpenPage('baby')}><Icon name="next"/><span><strong>{t('createUi.openBaby')}</strong><small>{t('createUi.openModuleHint')}</small></span></button>
         </div>
       </>}
-      {moduleState.enabled&&moduleState.authorized&&view==='care'&&selectedBaby&&<><button type="button" className="text-button module-create-back" onClick={()=>setView('root')}><Icon name="back"/>{t('createUi.back')}</button><BabyCarePanel baby={selectedBaby} t={t}/></>}
+      {moduleState.enabled&&moduleState.authorized&&view==='care'&&selectedBaby&&<><button type="button" className="text-button module-create-back" onClick={()=>setView('root')}><Icon name="back"/>{t('createUi.back')}</button><BabyCarePanel baby={selectedBaby} t={t} onRecorded={onSuccessfulCreate}/></>}
     </div>
   </Sheet>;
 }
@@ -88,7 +88,7 @@ function queuePetCare(familyId,petId,payload){
   rows.push({pet:petId,payload});localStorage.setItem(key,JSON.stringify(rows));
 }
 
-export function PetCreateSheet({family,onClose,onOpenPage}){
+export function PetCreateSheet({family,onClose,onOpenPage,onSuccessfulCreate}){
   const {t}=useTranslation();
   const [moduleState,setModuleState]=useState(null);
   const [pets,setPets]=useState([]);
@@ -111,10 +111,10 @@ export function PetCreateSheet({family,onClose,onOpenPage}){
   async function quick(kind){
     if(!selectedPet)return;
     const payload={kind,occurred_at:now(),value:{},client_event_id:uid()};
-    if(!navigator.onLine){queuePetCare(family.id,selectedPet.id,payload);toast(t('petUi.savedOffline'),{type:'info'});return}
+    if(!navigator.onLine){queuePetCare(family.id,selectedPet.id,payload);onSuccessfulCreate?.();toast(t('petUi.savedOffline'),{type:'info'});return}
     setBusy(true);setError('');
-    try{await api(`/pets/${selectedPet.id}/care/`,{method:'POST',body:JSON.stringify(payload)});toast(t('petUi.saved'),{type:'success'})}
-    catch(err){if(!navigator.onLine){queuePetCare(family.id,selectedPet.id,payload);toast(t('petUi.savedOffline'),{type:'info'})}else{setError(err.message||t('petUi.error'));toast(err.message||t('petUi.error'),{type:'error'})}}
+    try{await api(`/pets/${selectedPet.id}/care/`,{method:'POST',body:JSON.stringify(payload)});onSuccessfulCreate?.();toast(t('petUi.saved'),{type:'success'})}
+    catch(err){if(!navigator.onLine){queuePetCare(family.id,selectedPet.id,payload);onSuccessfulCreate?.();toast(t('petUi.savedOffline'),{type:'info'})}else{setError(err.message||t('petUi.error'));toast(err.message||t('petUi.error'),{type:'error'})}}
     finally{setBusy(false)}
   }
   if(!moduleState)return <Sheet family={family} title={t('createUi.pets')} onClose={onClose}><Loading label={t('petUi.loading')}/></Sheet>;
