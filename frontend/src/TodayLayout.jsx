@@ -117,13 +117,13 @@ export default function TodayLayout({family,header,onboarding,widgets}){
   try{
    const result=normalizeTodayLayout(await api(`/today-layout/?family=${family.id}`));
    if(!result)throw new Error('layout');
-   setSaved(result);setDraft(null);setError('');setConflict(false);setLoaded(true);
+   setSaved(result);setDraft(null);setError('');setConflict(false);setLoaded(family.id);
   }catch{setError(s.loadError);setLoaded(false)}finally{setBusy(false)}
  };
  useEffect(()=>{
   let current=true;clearLongPress();clearDrag();setLoaded(false);setDraft(null);setError('');setSaved(fresh());
   api(`/today-layout/?family=${family.id}`).then(result=>{
-   if(current){const normalized=normalizeTodayLayout(result);if(!normalized)throw new Error('layout');setSaved(normalized);setLoaded(true)}
+   if(current){const normalized=normalizeTodayLayout(result);if(!normalized)throw new Error('layout');setSaved(normalized);setLoaded(family.id)}
   }).catch(()=>{if(current)setError(s.loadError)});
   return()=>{current=false;clearLongPress()};
  },[family.id]);
@@ -217,7 +217,7 @@ export default function TodayLayout({family,header,onboarding,widgets}){
  };
  // Missing module/permission implementations stay in the saved layout but never
  // render a preview or a Library card. This keeps disabled/future widgets lossless.
- const active=(draft||saved.widgets).filter(widget=>widget.visible&&(builtin(widget.id)||availableWidgets[widget.id]));
+ const active=(draft||saved.widgets).filter(widget=>widget.visible&&(widget.id!=='games'||loaded===family.id)&&(builtin(widget.id)||availableWidgets[widget.id]));
  const content=widget=>widget.id==='situation'?<TodaySituation family={family} language={language} widgetSize={widget.size}/>:widget.id==='focus'?<TodayFocusWidget family={family} language={language}/>:widget.id==='timeline'?<TodayTimelineWidget family={family} language={language}/>:widget.id==='tomorrow'?<TodayTomorrowWidget family={family} language={language} widgetSize={widget.size}/>:widget.id==='family-load'?<TodayFamilyLoadWidget family={family} language={language} widgetSize={widget.size}/>:widget.id==='week'?<WeekCompassWidget family={family} language={language} settings={widget.settings||settingsFor('week')} compact={widget.size==='compact'}/>:widget.id==='pinboard'?<PinboardTodayWidget family={family} language={language} compact={widget.size==='compact'}/>:widget.id==='todo'?<TodayTodoWidget family={family} language={language} compact={widget.size==='compact'}/>:availableWidgets[widget.id];
  const render=widget=>{
   const value=content(widget);const editProps=longPressProps(widget);

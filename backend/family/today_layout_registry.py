@@ -57,9 +57,10 @@ TODAY_WIDGET_REGISTRY = (
     _entry('shopping', 9, category='household', default_size='compact', default_visible=False),
     _entry('waste', 10, category='household', sizes=TODAY_WIDGET_SIZES, default_size='medium', default_visible=False),
     _entry('inbox', 11, category='collaboration', sizes=TODAY_WIDGET_SIZES, default_size='medium', default_visible=False),
-    _entry('birthdays', 12, sizes=TODAY_WIDGET_SIZES, default_size='medium', default_visible=False),
-    _entry('notes', 13, sizes=TODAY_WIDGET_SIZES, default_size='medium', default_visible=False),
-    _entry('loyalty', 14, category='household', sizes=TODAY_WIDGET_SIZES, default_size='compact', default_visible=False),
+    _entry('games', 12, component='GamesTodayWidget', category='collaboration', sizes=TODAY_WIDGET_SIZES, default_size='medium', deep_link='/?page=games'),
+    _entry('birthdays', 13, sizes=TODAY_WIDGET_SIZES, default_size='medium', default_visible=False),
+    _entry('notes', 14, sizes=TODAY_WIDGET_SIZES, default_size='medium', default_visible=False),
+    _entry('loyalty', 15, category='household', sizes=TODAY_WIDGET_SIZES, default_size='compact', default_visible=False),
 )
 
 TODAY_WIDGETS_BY_ID = {entry['id']: entry for entry in TODAY_WIDGET_REGISTRY}
