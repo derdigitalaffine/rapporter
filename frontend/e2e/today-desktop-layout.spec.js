@@ -52,7 +52,8 @@ async function gridMetrics(page){
  });
 }
 
-test('Today uses semantic desktop spans and keeps DOM order across breakpoints',async({page})=>{
+test('Today uses semantic desktop spans and keeps DOM order across breakpoints',async({page},testInfo)=>{
+ test.skip(testInfo.project.name==='mobile-chromium','Desktop grid span contract is covered by desktop-chromium; mobile device emulation has its own responsive Today coverage.');
  await boot(page);
  const desktop=await gridMetrics(page);
  expect(desktop.columns).toBe(12);
