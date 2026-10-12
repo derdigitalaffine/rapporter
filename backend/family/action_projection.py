@@ -359,6 +359,7 @@ def project_actions(
     kind: str = "all",
     list_id=None,
     workflow_id=None,
+    task_id=None,
     now=None,
 ) -> list[dict]:
     """Project canonical tasks/routines into one deterministic, read-only feed."""
@@ -376,7 +377,7 @@ def project_actions(
 
     items: list[dict] = []
     include_tasks = kind != "routines"
-    include_routines = kind != "tasks" and scope != "mine" and not list_id and not workflow_id
+    include_routines = kind != "tasks" and scope != "mine" and not list_id and not workflow_id and not task_id
 
     if include_tasks:
         tasks = _task_queryset(
@@ -389,6 +390,8 @@ def project_actions(
             tomorrow_start=tomorrow_start,
             recent_start=recent_start,
         )
+        if task_id:
+            tasks = tasks.filter(id=task_id)
         items.extend(_task_item(task, user=user, family=family, now=now) for task in tasks)
 
     if include_routines:

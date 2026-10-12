@@ -1,6 +1,6 @@
 from collections import defaultdict
 from django.core.exceptions import ValidationError as DjangoValidationError
-from django.db.models import Q
+from django.db.models import Prefetch, Q
 from django.utils import timezone
 from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action, api_view, permission_classes
@@ -81,7 +81,9 @@ class FamilyViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = FamilySerializer
     permission_classes = [permissions.IsAuthenticated]
     def get_queryset(self):
-        return Family.objects.filter(memberships__user=self.request.user).distinct()
+        return Family.objects.filter(memberships__user=self.request.user).distinct().prefetch_related(
+            Prefetch("memberships", queryset=Membership.objects.select_related("user__familyos_profile"))
+        )
 
 
 class TaskListViewSet(FamilyScopedViewSet):

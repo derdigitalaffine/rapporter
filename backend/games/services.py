@@ -92,15 +92,16 @@ def _task_assignment(match):
     )
 
 
-def _task_assignment_is_available(stake, match):
-    task = stake.task
-    if task.family_id != match.family_id:
+def _task_assignment_is_available(stake, match, *, task=None):
+    task = task if task is not None else stake.task
+    if task.family_id != match.family_id or task.completed_at:
         return False
     if task.hidden_from_user_id in {match.challenger.user_id, match.opponent.user_id}:
         return False
     return Membership.objects.filter(
         family_id=match.family_id,
         user_id__in=[match.challenger.user_id, match.opponent.user_id],
+        user__is_active=True,
     ).count() == 2
 
 
@@ -123,13 +124,13 @@ def apply_task_assignment(match):
         stake.invalidation_reason = "draw"
         stake.save(update_fields=["invalidated_at", "invalidation_reason", "updated_at"])
         return stake
-    if not _task_assignment_is_available(stake, match):
+    task = Task.objects.select_for_update().get(id=stake.task_id)
+    if not _task_assignment_is_available(stake, match, task=task):
         stake.invalidated_at = now
         stake.invalidation_reason = "task_unavailable"
         stake.save(update_fields=["invalidated_at", "invalidation_reason", "updated_at"])
         return stake
 
-    task = Task.objects.select_for_update().get(id=stake.task_id)
     if task.assignee_id != stake.expected_assignee_id:
         stake.invalidated_at = now
         stake.invalidation_reason = "task_assignment_changed"
@@ -154,13 +155,15 @@ def accept_match(match_id, actor, *, task_assignment_confirmed=False):
             raise GameError("only_opponent_can_accept")
         if match.status != GameMatch.Status.PENDING:
             raise GameError("match_not_pending")
+        if not match.challenger.user.is_active or not match.opponent.user.is_active:
+            raise GameError("opponent_unavailable")
         stake = _task_assignment(match)
         if stake:
             if not task_assignment_confirmed:
                 raise GameError("task_assignment_consent_required")
-            if not _task_assignment_is_available(stake, match):
-                raise GameError("task_assignment_unavailable")
             task = Task.objects.select_for_update().get(id=stake.task_id)
+            if not _task_assignment_is_available(stake, match, task=task):
+                raise GameError("task_assignment_unavailable")
             if task.assignee_id != stake.expected_assignee_id:
                 raise GameError("task_assignment_changed")
             stake.opponent_confirmed_at = timezone.now()
