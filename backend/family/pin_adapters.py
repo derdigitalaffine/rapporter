@@ -1,5 +1,6 @@
 import uuid
 from collections import defaultdict
+from datetime import date
 
 from django.db.models import CharField, Q, Value
 from rest_framework.exceptions import ValidationError
@@ -194,12 +195,23 @@ class CalendarEventPinAdapter(PinAdapter):
         return FamilyEvent.objects.all()
 
     def preview(self, row):
+        payload = row.payload if isinstance(row.payload, dict) else {}
+        dates = {}
+        for key in ('date_start', 'date_end_exclusive'):
+            value = payload.get(key)
+            if isinstance(value, str):
+                try:
+                    dates[key] = date.fromisoformat(value).isoformat()
+                except ValueError:
+                    pass
         return {
             'id': str(row.id),
             'kind': 'event',
             'title': row.title,
             'subtitle': row.starts_at,
             'event_type': row.type,
+            'ends_at': row.ends_at,
+            **dates,
             'url': f'/?page=calendar&event={row.id}',
         }
 

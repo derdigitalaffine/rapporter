@@ -31,13 +31,13 @@ test('pet quick logs and walk timer stay attached to the selected pet',async({pa
  await expect(page.getByRole('heading',{name:'Haustiere'})).toBeVisible();
  await expect(page.getByRole('button',{name:'Luna'})).toHaveClass(/active/);
  await page.getByRole('button',{name:'Gefüttert'}).click();
- expect(operations.at(-1)).toMatchObject({method:'POST',path:'/pets/pet-1/care/'});expect(operations.at(-1).body.kind).toBe('feed');
- await page.getByRole('button',{name:'Gassi starten'}).click();expect(operations.at(-1).body.kind).toBe('walk');
+ await expect.poll(()=>operations.at(-1)?.body?.kind).toBe('feed');expect(operations.at(-1)).toMatchObject({method:'POST',path:'/pets/pet-1/care/'});expect(operations.at(-1).body.kind).toBe('feed');
+ await page.getByRole('button',{name:'Gassi starten'}).click();await expect.poll(()=>operations.at(-1)?.body?.kind).toBe('walk');
  await expect(page.getByRole('button',{name:'Gassi beenden'})).toBeVisible();
  await page.getByRole('button',{name:'Milo'}).click();await expect(page.getByRole('button',{name:'Gassi starten'})).toBeVisible();
- await page.getByRole('button',{name:'Wasser'}).click();expect(operations.at(-1)).toMatchObject({method:'POST',path:'/pets/pet-2/care/'});
+ await page.getByRole('button',{name:'Wasser'}).click();await expect.poll(()=>operations.at(-1)?.path).toBe('/pets/pet-2/care/');expect(operations.at(-1)).toMatchObject({method:'POST',path:'/pets/pet-2/care/'});
  await page.getByRole('button',{name:'Luna'}).click();await expect(page.getByRole('button',{name:'Gassi beenden'})).toBeVisible();
- await page.getByRole('button',{name:'Gassi beenden'}).click();expect(operations.at(-1)).toMatchObject({method:'PATCH',path:'/pets/care/log-2/'});expect(operations.at(-1).body.ended_at).toBeTruthy();
+ await page.getByRole('button',{name:'Gassi beenden'}).click();await expect.poll(()=>operations.at(-1)?.method).toBe('PATCH');expect(operations.at(-1)).toMatchObject({method:'PATCH',path:'/pets/care/log-2/'});expect(operations.at(-1).body.ended_at).toBeTruthy();
 });
 
 test('pet module can be opted into main navigation without replacing existing sections',async({page})=>{

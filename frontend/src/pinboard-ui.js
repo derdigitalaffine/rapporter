@@ -1,4 +1,5 @@
 import {isHolidayEvent} from './calendar-event-ui';
+import {appLocale} from './locale';
 import './pinboard-hotfix.css';
 
 export function pinAuthorHue(value){
@@ -45,7 +46,7 @@ function civilDate(value){
 function dateOnly(value,language){
  const date=value instanceof Date?value:new Date(value);
  if(!date||Number.isNaN(date.getTime()))return '';
- return new Intl.DateTimeFormat(language?.startsWith('en')?'en-GB':'de-DE',{timeZone:'UTC',day:'2-digit',month:'short',year:'numeric'}).format(date);
+ return new Intl.DateTimeFormat(appLocale(language),{timeZone:'UTC',day:'2-digit',month:'short',year:'numeric'}).format(date);
 }
 
 export function formatPinEventMeta(event,language='de'){
@@ -61,5 +62,5 @@ export function formatPinEventMeta(event,language='de'){
  if(!event.starts_at)return '';
  const start=new Date(event.starts_at);
  if(Number.isNaN(start.getTime()))return '';
- return start.toLocaleString(language?.startsWith('en')?'en-GB':'de-DE',{dateStyle:'short',timeStyle:'short'});
+ return start.toLocaleString(appLocale(language),{dateStyle:'short',timeStyle:'short'});
 }
