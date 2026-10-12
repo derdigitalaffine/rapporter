@@ -1,8 +1,9 @@
 import uuid
 
+from django.conf import settings
 from django.db import models
 
-from family.models import Family, Membership
+from family.models import Family, Membership, Task
 
 
 class TimestampedGameModel(models.Model):
@@ -72,6 +73,38 @@ class GameMatch(TimestampedGameModel):
 
     def opponent_for(self, membership):
         return self.opponent if membership.id == self.challenger_id else self.challenger
+
+
+class GameTaskAssignment(TimestampedGameModel):
+    class Rule(models.TextChoices):
+        WINNER = "winner", "Winner takes task"
+        LOSER = "loser", "Loser takes task"
+
+    match = models.OneToOneField(GameMatch, on_delete=models.CASCADE, related_name="task_assignment")
+    task = models.ForeignKey(Task, on_delete=models.CASCADE, related_name="game_assignments")
+    rule = models.CharField(max_length=16, choices=Rule.choices)
+    expected_assignee = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+    )
+    challenger_confirmed_at = models.DateTimeField()
+    opponent_confirmed_at = models.DateTimeField(null=True, blank=True)
+    applied_at = models.DateTimeField(null=True, blank=True)
+    applied_assignee = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+    )
+    invalidated_at = models.DateTimeField(null=True, blank=True)
+    invalidation_reason = models.CharField(max_length=64, blank=True)
+
+    class Meta:
+        indexes = [models.Index(fields=["task", "created_at"], name="games_task_stake_idx")]
 
 
 class RockPaperScissorsRound(TimestampedGameModel):

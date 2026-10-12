@@ -1,10 +1,13 @@
 import uuid
+from datetime import timedelta
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from rest_framework.test import APIClient
 
 from notifications.models import Notification
+from django.utils import timezone
 
 from .models import BoardPost, Family, Membership, Note, NoteShare
 
@@ -74,3 +77,39 @@ class PinInteractionNotificationTests(TestCase):
         self.assertNotIn("Sensitive pin caption", rendered)
         self.assertNotIn("Private source", rendered)
         self.assertNotIn("Very sensitive comment body", rendered)
+
+    def test_queued_activity_revalidates_source_acl_at_actual_delivery(self):
+        from .notification_digests import enqueue_notification, flush_notification_batches
+        from .models_features import NotificationBatch
+        comment = self._comment(self.owner, 'Queued private discussion')
+        enqueue_notification(self.member_membership, 'pin.comment', {'pin_id': self.pin.id, 'comment_id': comment.data['id']})
+        self.share.delete()
+        with patch('family.notification_digests.send_user_push') as send:
+            result = flush_notification_batches(now=timezone.now() + timedelta(minutes=2))
+        send.assert_not_called()
+        self.assertEqual(result, {'sent': 0, 'errors': 0})
+        self.assertFalse(NotificationBatch.objects.filter(membership=self.member_membership).exists())
+
+    def test_queued_mute_suppresses_activity_but_not_direct_mention(self):
+        from .notification_digests import enqueue_notification, flush_notification_batches
+        from .board_models import PinInteractionState
+        comment = self._comment(self.owner, 'Comment')
+        context = {'pin_id': self.pin.id, 'comment_id': comment.data['id']}
+        PinInteractionState.objects.create(pin=self.pin, membership=self.member_membership, muted=True)
+        enqueue_notification(self.member_membership, 'pin.comment', context)
+        with patch('family.notification_digests.send_user_push', return_value={'sent': 1, 'errors': 0}) as send:
+            flush_notification_batches(now=timezone.now() + timedelta(minutes=2))
+            send.assert_not_called()
+            enqueue_notification(self.member_membership, 'pin.mention', context)
+            flush_notification_batches(now=timezone.now() + timedelta(minutes=2))
+            send.assert_called_once()
+
+    def test_queue_keeps_distinct_pin_contexts_without_private_contents(self):
+        from .notification_digests import enqueue_notification
+        from .models_features import NotificationBatch
+        second = BoardPost.objects.create(family=self.family, author=self.owner, text='Other sensitive caption')
+        enqueue_notification(self.member_membership, 'pin.mention', {'pin_id': self.pin.id})
+        enqueue_notification(self.member_membership, 'pin.mention', {'pin_id': second.id})
+        batches = list(NotificationBatch.objects.filter(membership=self.member_membership))
+        self.assertEqual(len(batches), 2)
+        self.assertNotIn('sensitive', str([row.events for row in batches]).lower())

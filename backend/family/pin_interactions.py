@@ -1,4 +1,5 @@
 import uuid
+from collections.abc import Mapping
 from collections import defaultdict
 
 from django.db import transaction
@@ -6,14 +7,13 @@ from django.db.models import Count, Max
 from django.http import Http404
 from django.utils import timezone
 from rest_framework.decorators import action
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import ValidationError, Throttled
 from rest_framework.pagination import CursorPagination
 from rest_framework.response import Response
 
 from .board_models import BoardPost, PinComment, PinCommentMention, PinInteractionState, PinReaction
-from .domain_notifications import notify_domain_event
 from .models import Membership
-from .pin_visibility import can_interact_with_pin, visible_pin_memberships
+from .pin_visibility import can_interact_with_pin, visible_pin_memberships, resolve_pin_page_visibility, pin_scope_queryset
 
 
 REACTION_LABELS = dict(PinReaction.Key.choices)
@@ -24,8 +24,11 @@ def build_pin_interaction_summaries(pins, user, *, visible_pin_ids=None):
     """Build card summaries in bounded aggregate queries, never one query per Pin."""
     pins = list(pins)
     pin_ids = {pin.id for pin in pins}
-    if visible_pin_ids is not None:
-        pin_ids &= set(visible_pin_ids)
+    if visible_pin_ids is None:
+        scoped_ids = set(pin_scope_queryset(user, BoardPost.objects.filter(pk__in=pin_ids)).values_list('id', flat=True))
+        _, scopes = resolve_pin_page_visibility([pin for pin in pins if pin.id in scoped_ids], user)
+        visible_pin_ids = {pin_id for pin_id, scope in scopes.items() if scope != 'none'}
+    pin_ids &= set(visible_pin_ids)
     if not pin_ids:
         return {}
 
@@ -98,7 +101,7 @@ def build_pin_interaction_summaries(pins, user, *, visible_pin_ids=None):
 def interaction_summary_for_pin(pin, user):
     if not can_interact_with_pin(user, pin):
         return None
-    return build_pin_interaction_summaries([pin], user).get(pin.id)
+    return build_pin_interaction_summaries([pin], user, visible_pin_ids={pin.id}).get(pin.id)
 
 
 def _reaction_rows_for_comments(comments, membership):
@@ -174,9 +177,20 @@ class PinInteractionMixin:
     """DRF Board actions backed exclusively by the canonical pin visibility contract."""
 
     def _interaction_pin(self, pk):
+        try:
+            pk = uuid.UUID(str(pk))
+        except (ValueError, TypeError, AttributeError):
+            raise Http404
         pin = BoardPost.objects.select_related('family', 'author').filter(pk=pk).first()
         if not pin or not can_interact_with_pin(self.request.user, pin):
             raise Http404
+        if self.request.method in ('POST', 'PATCH', 'PUT', 'DELETE') and not isinstance(self.request.data, Mapping):
+            raise ValidationError({'detail': 'Ungültige Interaktionsdaten.'})
+        if self.request.method in ('POST', 'PATCH', 'PUT', 'DELETE') and self.action != 'seen':
+            from auth_abuse.service import enforce
+            decision = enforce('pin.interaction', request=self.request, user=self.request.user, family_id=pin.family_id)
+            if not decision.allowed:
+                raise Throttled(wait=decision.retry_after)
         return pin
 
     def _interaction_membership(self, pin):
@@ -190,15 +204,31 @@ class PinInteractionMixin:
         return membership
 
     def _interaction_comment(self, pin, comment_id):
-        comment = (
+        try:
+            comment_id = uuid.UUID(str(comment_id))
+        except (ValueError, TypeError, AttributeError):
+            raise Http404
+        queryset = (
             PinComment.objects.select_related('pin', 'family', 'author')
             .prefetch_related('mentions__membership__user')
             .filter(pk=comment_id, pin=pin, family=pin.family)
-            .first()
         )
+        if self.request.method in ('PATCH', 'DELETE', 'PUT'):
+            queryset = queryset.select_for_update(of=('self',))
+        comment = queryset.first()
         if not comment:
             raise Http404
         return comment
+
+    def _mark_seen(self, pin, membership, timestamp):
+        if timestamp is None:
+            return
+        with transaction.atomic():
+            Membership.objects.select_for_update().get(pk=membership.pk)
+            state, _ = PinInteractionState.objects.get_or_create(pin=pin, membership=membership)
+            if state.last_seen_comment_at is None or timestamp > state.last_seen_comment_at:
+                state.last_seen_comment_at = timestamp
+                state.save(update_fields=['last_seen_comment_at', 'updated_at'])
 
     def _validate_reaction_key(self, value):
         if value in (None, ''):
@@ -209,7 +239,9 @@ class PinInteractionMixin:
         return value
 
     def _validate_comment_body(self, value):
-        body = str(value or '').strip()
+        if not isinstance(value, str):
+            raise ValidationError({'body': 'Bitte einen Kommentartext eingeben.'})
+        body = value.strip()
         if not body:
             raise ValidationError({'body': 'Bitte einen Kommentar eingeben.'})
         if len(body) > 2000:
@@ -217,8 +249,13 @@ class PinInteractionMixin:
         return body
 
     def _validate_mentions(self, pin, values):
-        values = values or []
-        if not isinstance(values, list):
+        if values is None:
+            values = []
+        if not isinstance(values, list) or len(values) > 100:
+            raise ValidationError({'mention_membership_ids': 'Ungültige Erwähnungen.'})
+        try:
+            values = [uuid.UUID(str(value)) for value in values]
+        except (ValueError, TypeError, AttributeError):
             raise ValidationError({'mention_membership_ids': 'Ungültige Erwähnungen.'})
         requested = {str(value) for value in values}
         if not requested:
@@ -254,56 +291,6 @@ class PinInteractionMixin:
         except Exception:
             pass
 
-    def _notify_comment_created(self, pin, comment, mentions):
-        mentioned_user_ids = {row.user_id for row in mentions}
-        url = f'/?page=board&post={pin.id}&comment={comment.id}'
-        if mentions:
-            notify_domain_event(
-                pin.family,
-                'pin.mention',
-                actor=self.request.user,
-                context={'pin_id': pin.id, 'comment_id': comment.id},
-                target_users=[row.user_id for row in mentions],
-                url=url,
-            )
-
-        follower_user_ids = set(
-            PinComment.objects.filter(pin=pin, deleted_at__isnull=True)
-            .exclude(author_id__isnull=True)
-            .values_list('author_id', flat=True)
-        )
-        if pin.author_id:
-            follower_user_ids.add(pin.author_id)
-        follower_user_ids.discard(self.request.user.id)
-        follower_user_ids -= mentioned_user_ids
-        if not follower_user_ids:
-            return
-
-        recipients = list(
-            Membership.objects.filter(
-                family=pin.family,
-                user_id__in=follower_user_ids,
-                user__is_active=True,
-            ).select_related('user')
-        )
-        muted_ids = set(
-            PinInteractionState.objects.filter(
-                pin=pin,
-                membership__in=recipients,
-                muted=True,
-            ).values_list('membership_id', flat=True)
-        )
-        target_users = [row.user_id for row in recipients if row.id not in muted_ids]
-        if target_users:
-            notify_domain_event(
-                pin.family,
-                'pin.comment',
-                actor=self.request.user,
-                context={'pin_id': pin.id, 'comment_id': comment.id},
-                target_users=target_users,
-                url=url,
-            )
-
     def _comment_payload(self, comment, pin, membership):
         comment = (
             PinComment.objects.select_related('author')
@@ -325,13 +312,9 @@ class PinInteractionMixin:
             )
             paginator = PinCommentPagination()
             page = paginator.paginate_queryset(queryset, request, view=self)
-            latest = PinComment.objects.filter(pin=pin, deleted_at__isnull=True).aggregate(value=Max('created_at'))['value']
-            if latest:
-                PinInteractionState.objects.update_or_create(
-                    pin=pin,
-                    membership=membership,
-                    defaults={'last_seen_comment_at': latest},
-                )
+            # Only the delivered page was read. An arriving comment must stay unread.
+            latest = max((row.created_at for row in page if not row.deleted_at), default=None)
+            self._mark_seen(pin, membership, latest)
             return paginator.get_paginated_response(
                 serialize_comments(page, user=request.user, membership=membership, pin=pin)
             )
@@ -353,11 +336,7 @@ class PinInteractionMixin:
                 PinCommentMention.objects.bulk_create([
                     PinCommentMention(comment=comment, membership=row) for row in mentions
                 ])
-            PinInteractionState.objects.update_or_create(
-                pin=pin,
-                membership=membership,
-                defaults={'last_seen_comment_at': comment.created_at},
-            )
+            self._mark_seen(pin, membership, comment.created_at)
             if created:
                 transaction.on_commit(lambda: self._notify_comment_created(pin, comment, mentions))
         payload = self._comment_payload(comment, pin, membership)
@@ -369,6 +348,7 @@ class PinInteractionMixin:
         methods=['patch', 'delete'],
         url_path=r'comments/(?P<comment_id>[0-9a-fA-F-]+)',
     )
+    @transaction.atomic
     def comment_detail(self, request, pk=None, comment_id=None):
         pin = self._interaction_pin(pk)
         membership = self._interaction_membership(pin)
@@ -420,6 +400,8 @@ class PinInteractionMixin:
     def reaction(self, request, pk=None):
         pin = self._interaction_pin(pk)
         membership = self._interaction_membership(pin)
+        if 'key' not in request.data:
+            raise ValidationError({'key': 'Ein gewünschter Reaktionszustand ist erforderlich.'})
         key = self._validate_reaction_key(request.data.get('key'))
         changed = False
         with transaction.atomic():
@@ -454,12 +436,15 @@ class PinInteractionMixin:
         methods=['put'],
         url_path=r'comments/(?P<comment_id>[0-9a-fA-F-]+)/reaction',
     )
+    @transaction.atomic
     def comment_reaction(self, request, pk=None, comment_id=None):
         pin = self._interaction_pin(pk)
         membership = self._interaction_membership(pin)
         comment = self._interaction_comment(pin, comment_id)
         if comment.deleted_at:
             raise Http404
+        if 'key' not in request.data:
+            raise ValidationError({'key': 'Ein gewünschter Reaktionszustand ist erforderlich.'})
         key = self._validate_reaction_key(request.data.get('key'))
         changed = False
         with transaction.atomic():
@@ -507,11 +492,7 @@ class PinInteractionMixin:
         pin = self._interaction_pin(pk)
         membership = self._interaction_membership(pin)
         latest = PinComment.objects.filter(pin=pin, deleted_at__isnull=True).aggregate(value=Max('created_at'))['value']
-        PinInteractionState.objects.update_or_create(
-            pin=pin,
-            membership=membership,
-            defaults={'last_seen_comment_at': latest or timezone.now()},
-        )
+        self._mark_seen(pin, membership, latest)
         return Response(interaction_summary_for_pin(pin, request.user))
 
     @action(detail=True, methods=['post'], url_path='mute')

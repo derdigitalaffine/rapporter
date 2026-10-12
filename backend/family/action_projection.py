@@ -125,6 +125,8 @@ def _task_item(task: Task, *, user, family: Family, now):
     )
     edit = _action("task", "edit", "PATCH", f"/api/tasks/{task.id}/")
     actions = [toggle, edit]
+    if not task.completed_at:
+        actions.append(_action("task", "duel", "GET", _deep_link("games", task.family_id, task=task.id)))
     if task.workflow_column_id:
         actions.append(_action("task", "move", "POST", f"/api/tasks/{task.id}/move/"))
     actions.append(_action("task", "delete", "DELETE", f"/api/tasks/{task.id}/"))

@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from rest_framework.response import Response
+from rest_framework.exceptions import MethodNotAllowed
 
 from .board_models import PinComment, PinInteractionState
 from .board_views import BoardSerializer, BoardViewSet
@@ -44,6 +45,13 @@ class InteractiveBoardSerializer(BoardSerializer):
 
 class InteractiveBoardViewSet(PinInteractionMixin, BoardViewSet):
     serializer_class = InteractiveBoardSerializer
+    http_method_names = [*BoardViewSet.http_method_names, 'put']
+
+    def update(self, request, *args, **kwargs):
+        # PUT is a desired-state reaction operation, not a new Board replacement API.
+        if request.method == 'PUT':
+            raise MethodNotAllowed('PUT')
+        return super().update(request, *args, **kwargs)
 
     def list(self, request, *args, **kwargs):
         queryset = self.filter_queryset(self.get_queryset())

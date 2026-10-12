@@ -101,6 +101,10 @@ INVITE_PUBLIC_KEYS = (
 # Stable scope names are part of the API contract. Future auth work (#201/#202)
 # should reuse these entries instead of adding local throttles.
 POLICIES: dict[str, AbusePolicy] = {
+    "pin.interaction": AbusePolicy(
+        "pin.interaction", WindowPolicy(30, 60), WindowPolicy(300, 3600),
+        INVITE_KEYS, 15, 300, "pin.interaction"
+    ),
     "login.password": AbusePolicy(
         "login.password", WindowPolicy(5, 60), WindowPolicy(20, 3600), LOGIN_KEYS, 30, 900, "auth.login.password"
     ),
