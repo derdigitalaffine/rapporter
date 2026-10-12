@@ -1,4 +1,7 @@
-import {useEffect,useMemo,useRef,useState} from 'react';
+import {useEffect,useRef,useState} from 'react';
+import {useTranslation} from 'react-i18next';
+import './superadmin-cockpit-i18n';
+import {useAdminDirectory,DirectoryTools,OperationalDetail,supportedAdminPeriod} from './SuperAdminInsights';
 import {adminApi} from './superadmin-api';
 import {toast} from './feedback';
 import './superadmin-user-crud.css';
@@ -11,10 +14,14 @@ function pushRoute(search=''){
  window.history.pushState({},'',`${url.pathname}${url.search}`);
 }
 
-export default function SuperAdminUserCrud({user,onLogout}){
- const [users,setUsers]=useState([]);
- const [query,setQuery]=useState('');
- const [loading,setLoading]=useState(true);
+export default function SuperAdminUserCrud({user,onLogout,embedded=false,initialQuery=''}){
+ const {t}=useTranslation();
+ const Content=embedded?'div':'main';
+ const [query,setQuery]=useState(initialQuery),[status,setStatus]=useState(''),[sort,setSort]=useState('username'),[offset,setOffset]=useState(0),[refresh,setRefresh]=useState(0),[detail,setDetail]=useState(null);
+ const directory=useAdminDirectory({kind:'users',query,status,sort,offset,refresh});
+ const users=directory.rows,loading=directory.loading;
+ useEffect(()=>{setQuery(initialQuery);setOffset(0)},[initialQuery]);
+ useEffect(()=>setDetail(null),[query,status,sort,offset]);
  const [busy,setBusy]=useState('');
  const [editor,setEditor]=useState(null);
  const [deleteTarget,setDeleteTarget]=useState(null);
@@ -25,24 +32,7 @@ export default function SuperAdminUserCrud({user,onLogout}){
  const [reauthBusy,setReauthBusy]=useState(false);
  const pendingSensitive=useRef(null);
 
- async function load(){
-  setLoading(true);
-  try{
-   const value=await adminApi('/users/?limit=200&sort=username');
-   setUsers(value?.results||[]);
-  }catch(error){toast(error.message||'Nutzer konnten nicht geladen werden.',{type:'error'})}
-  finally{setLoading(false)}
- }
- useEffect(()=>{load()},[]);
-
- const filtered=useMemo(()=>{
-  const needle=query.trim().toLocaleLowerCase();
-  if(!needle)return users;
-  return users.filter(item=>[
-   item.username,item.display_name,item.email,item.first_name,item.last_name,String(item.id),
-  ].some(value=>String(value||'').toLocaleLowerCase().includes(needle)));
- },[users,query]);
-
+ async function load(){setRefresh(value=>value+1)}
  async function runSensitive(action){
   try{return await action()}
   catch(error){
@@ -137,19 +127,20 @@ export default function SuperAdminUserCrud({user,onLogout}){
   try{await runSensitive(action)}catch(error){toast(error.message||'Nutzer konnte nicht gelöscht werden.',{type:'error'})}
  }
 
- return <div className="user-crud-shell">
-  <header className="user-crud-top">
+ return <div className={embedded?"user-crud-shell admin-embedded":"user-crud-shell"}>
+  {!embedded&&<header className="user-crud-top">
    <button className="superadmin-brand" type="button" onClick={()=>pushRoute('')} aria-label="Zur Superadmin-Übersicht"><img src="/brand/icon.svg" alt=""/><div><strong>FamilyOS</strong><span>Superadmin · Nutzer</span></div></button>
    <div className="user-crud-top-actions"><button className="secondary compact" type="button" onClick={()=>pushRoute('?section=users&mode=recovery')}>Identity & Recovery</button><button className="secondary compact" type="button" onClick={onLogout}>Abmelden</button></div>
-  </header>
-  <main className="user-crud-main">
-   <section className="user-crud-heading"><div><small>Superadmin · vollständige Benutzerverwaltung</small><h1>Nutzer verwalten</h1><p>Kompakte Liste mit Create, Edit, De-/Reaktivierung und dauerhaftem Purge nutzereigener Daten.</p></div><button className="primary" type="button" onClick={openCreate}>Nutzer anlegen</button></section>
-   <div className="card user-crud-toolbar"><label>Nutzer suchen<input type="search" value={query} onChange={event=>setQuery(event.target.value)} placeholder="Name, E-Mail, Username oder ID"/></label><button className="secondary compact" type="button" onClick={load} disabled={loading}>{loading?'Lädt …':'Aktualisieren'}</button><span>{filtered.length} von {users.length}</span></div>
+  </header>}
+  <Content className="user-crud-main">
+   <section className="user-crud-heading"><div><small>Superadmin · vollständige Benutzerverwaltung</small><h1>{t("adminCockpit.manageUsers")}</h1><p>Kompakte Liste mit Create, Edit, De-/Reaktivierung und dauerhaftem Purge nutzereigener Daten.</p></div><button className="primary" type="button" onClick={openCreate}>Nutzer anlegen</button></section>
+   <a className="secondary admin-mode-link" href={`?section=users&mode=recovery&period=${supportedAdminPeriod()}`}>{t("adminCockpit.recovery")}</a><div className="card user-crud-toolbar"><label>{t("adminCockpit.search")}<input type="search" value={query} onChange={event=>{setQuery(event.target.value);setOffset(0)}} placeholder="Name, E-Mail, Username oder ID"/></label><button className="secondary compact" type="button" onClick={load} disabled={loading}>{loading?'Lädt …':'Aktualisieren'}</button></div>
 
+   <DirectoryTools kind="users" status={status} setStatus={setStatus} sort={sort} setSort={setSort} offset={offset} setOffset={setOffset} count={directory.count} shown={users.length}/>{directory.error&&<div role="alert"><p>{t("adminCockpit.unavailable")}</p><button className="secondary" type="button" onClick={load}>{t("adminCockpit.retry")}</button></div>}{detail&&<OperationalDetail kind="users" id={detail} onClose={()=>setDetail(null)}/>}
    {editor&&<section className="card user-crud-editor" aria-labelledby="user-editor-title"><div className="user-crud-editor-head"><div><small>{editor.mode==='create'?'Create':'Update'}</small><h2 id="user-editor-title">{editor.mode==='create'?'Nutzer anlegen':`@${editor.value.username} bearbeiten`}</h2></div><button className="secondary compact" type="button" onClick={()=>setEditor(null)} disabled={!!busy}>Schließen</button></div><form onSubmit={saveUser}><div className="user-crud-form-grid"><label>Benutzername<input value={editor.value.username} onChange={event=>setField('username',event.target.value)} required/></label><label>E-Mail<input type="email" value={editor.value.email} onChange={event=>setField('email',event.target.value)} placeholder="optional@example.com"/></label><label>Vorname<input value={editor.value.first_name} onChange={event=>setField('first_name',event.target.value)}/></label><label>Nachname<input value={editor.value.last_name} onChange={event=>setField('last_name',event.target.value)}/></label><label>Passwort<input type="password" value={editor.value.password} onChange={event=>setField('password',event.target.value)} required={editor.mode==='create'} autoComplete="new-password" placeholder={editor.mode==='create'?'Erforderlich':'Leer lassen = unverändert'}/></label><label className="user-crud-check"><input type="checkbox" checked={editor.value.is_active} onChange={event=>setField('is_active',event.target.checked)}/>Aktiv</label><label className="user-crud-check"><input type="checkbox" checked={editor.value.is_superuser} onChange={event=>setField('is_superuser',event.target.checked)}/>Superadmin</label></div><div className="user-crud-editor-actions"><button className="primary" disabled={!!busy}>{busy?'Speichert …':'Speichern'}</button><button className="secondary" type="button" onClick={()=>setEditor(null)} disabled={!!busy}>Abbrechen</button></div></form></section>}
 
-   <section className="card user-crud-table-wrap" aria-label="Nutzerliste"><div className="user-crud-table"><div className="user-crud-row user-crud-header"><span>Nutzer</span><span>E-Mail</span><span>Status</span><span>Rollen / Familien</span><span>Aktionen</span></div>{filtered.map(target=><div className="user-crud-row" key={target.id}><div><strong>{target.display_name||target.username}</strong><small>@{target.username} · ID {target.id}</small></div><div><span>{target.email||'—'}</span><small>{target.email_verified?'bestätigt':target.email?'unbestätigt':'keine Identity'}</small></div><div><span className={`tenant-status ${target.is_active?'active':'suspended'}`}>{target.is_active?'Aktiv':'Deaktiviert'}</span>{target.is_superuser&&<small>Superadmin</small>}</div><div><span>{target.is_superuser?'Superadmin':'Nutzer'}</span><small>{target.family_count||0} Familie(n)</small></div><div className="user-crud-actions"><button className="secondary compact" type="button" onClick={()=>openEdit(target)} disabled={!!busy}>Bearbeiten</button><button className="secondary compact" type="button" onClick={()=>toggleActive(target)} disabled={!!busy||target.id===user?.id}>{busy===`status:${target.id}`?'…':target.is_active?'Deaktivieren':'Aktivieren'}</button><button className="danger compact" type="button" onClick={()=>openDelete(target)} disabled={!!busy||target.id===user?.id}>Löschen</button></div></div>)}{!loading&&!filtered.length&&<div className="smart-empty"><strong>Keine Nutzer gefunden</strong><span>Suche anpassen oder einen neuen Nutzer anlegen.</span></div>}</div></section>
-  </main>
+   <section className="card user-crud-table-wrap" aria-label="Nutzerliste"><div className="user-crud-table"><div className="user-crud-row user-crud-header"><span>Nutzer</span><span>E-Mail</span><span>Status</span><span>Rollen / Familien</span><span>Aktionen</span></div>{users.map(target=><div className="user-crud-row" key={target.id}><div><strong>{target.display_name||target.username}</strong><small>@{target.username} · ID {target.id}</small></div><div><span>{target.email||'—'}</span><small>{target.email_verified?'bestätigt':target.email?'unbestätigt':'keine Identity'}</small></div><div><span className={`tenant-status ${target.is_active?'active':'suspended'}`}>{target.is_active?'Aktiv':'Deaktiviert'}</span>{target.is_superuser&&<small>Superadmin</small>}</div><div><span>{target.is_superuser?'Superadmin':'Nutzer'}</span><small>{target.family_count||0} Familie(n)</small></div><div className="user-crud-actions"><button className="ghost" type="button" onClick={()=>setDetail(target.id)}>{t("adminCockpit.details")}</button><button className="secondary compact" type="button" onClick={()=>openEdit(target)} disabled={!!busy}>Bearbeiten</button><button className="secondary compact" type="button" onClick={()=>toggleActive(target)} disabled={!!busy||target.id===user?.id}>{busy===`status:${target.id}`?'…':target.is_active?'Deaktivieren':'Aktivieren'}</button><button className="danger compact" type="button" onClick={()=>openDelete(target)} disabled={!!busy||target.id===user?.id}>Löschen</button></div></div>)}{!loading&&!users.length&&<div className="smart-empty"><strong>Keine Nutzer gefunden</strong><span>Suche anpassen oder einen neuen Nutzer anlegen.</span></div>}</div></section>
+  </Content>
 
   {deleteTarget&&<div className="user-crud-modal-backdrop" role="presentation"><section className="card user-crud-modal" role="dialog" aria-modal="true" aria-labelledby="purge-title"><small>Dauerhafter DB-Purge</small><h2 id="purge-title">@{deleteTarget.username} endgültig löschen?</h2><p>CASCADE-Daten dieses Nutzers werden aus der Datenbank entfernt. Geteilte Familien-/Tenant-Daten mit SET_NULL-Referenzen bleiben erhalten.</p><form onSubmit={purgeUser}><label className="user-crud-check danger-check"><input type="checkbox" checked={deleteChecked} onChange={event=>setDeleteChecked(event.target.checked)}/>Ich bestätige, dass diese Aktion nicht rückgängig gemacht werden kann.</label><label>Zur zweiten Bestätigung exakt <strong>{deleteTarget.username}</strong> eingeben<input value={deleteText} onChange={event=>setDeleteText(event.target.value)} autoComplete="off"/></label><div className="user-crud-editor-actions"><button className="danger" disabled={!deleteChecked||deleteText!==deleteTarget.username||!!busy}>{busy===`delete:${deleteTarget.id}`?'Wird gelöscht …':'Dauerhaft löschen'}</button><button className="secondary" type="button" onClick={closeDelete} disabled={!!busy}>Abbrechen</button></div></form></section></div>}
 

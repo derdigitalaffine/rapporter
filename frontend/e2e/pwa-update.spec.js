@@ -20,6 +20,7 @@ async function announceUpdate(page){
 test('PWA update waits while a task editor has unsaved input and activates only on request',async({page})=>{
   await boot(page,'/?page=todo');
   await page.locator('.global-create-fab').click();
+  await page.getByRole('dialog',{name:'Neu hinzufügen'}).getByRole('button',{name:/Aufgabe/}).first().click();
   const title=page.getByLabel('Titel');
   await expect(title).toBeFocused();
   await title.fill('Nicht verlieren');

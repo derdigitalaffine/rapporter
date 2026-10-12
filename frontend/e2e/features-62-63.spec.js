@@ -1,3 +1,4 @@
+import {openCreateAction} from './create-helpers';
 import {test,expect} from '@playwright/test';
 import {installApiMocks} from './mock-api.js';
 
@@ -56,7 +57,7 @@ test('manual loyalty card creation, sharing and offline revocation sync',async({
  await page.goto('/?page=more');await page.waitForLoadState('networkidle');
  await page.getByRole('button',{name:'Karten & Tickets',exact:true}).click();
  await expect(page.getByRole('heading',{name:'Karten & Tickets',exact:true})).toBeVisible();
- await page.getByRole('button',{name:'Karte / Ticket hinzufügen'}).click();
+ await openCreateAction(page,'Karte / Ticket');
  await page.getByLabel('Name').fill('PAYBACK');
  await page.getByLabel('Kunden-/Referenznummer').fill('47110815');
  await page.getByLabel('Barcode-/Passwert').fill('123456789012');

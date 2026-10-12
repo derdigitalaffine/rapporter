@@ -44,3 +44,13 @@ export async function adminApi(path,options={}){
   if(response.status===401){notifyExpired();throw apiError(response,null)}
   return parseResponse(response);
 }
+
+// Uses the same separate Admin session and refresh path as JSON reads.
+export async function adminDownload(path,filename){
+ let response=await request(path);
+ if(response.status===401&&await refreshAdmin())response=await request(path);
+ if(response.status===401){notifyExpired();throw apiError(response,null)}
+ if(!response.ok){let payload=null;try{payload=await response.json()}catch{}throw apiError(response,payload)}
+ const url=URL.createObjectURL(await response.blob());
+ try{const link=document.createElement('a');link.href=url;link.download=filename;document.body.append(link);link.click();link.remove()}finally{setTimeout(()=>URL.revokeObjectURL(url),0)}
+}
