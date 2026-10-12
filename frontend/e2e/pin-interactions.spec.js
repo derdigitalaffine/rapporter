@@ -19,7 +19,7 @@ async function boot(page,language='de'){
   }
   if(path==='/api/board/pin-interaction/mute/'&&method==='POST'){state.muted=Boolean(body.muted);return route.fulfill({json:summary(state)})}
   if(path.match(/^\/api\/board\/pin-interaction\/comments\/comment-\d+\/reaction\/$/)&&method==='PUT'){
-   const id=path.split('/')[6],row=state.comments.find(item=>item.id===id);row.reactions=body.key?[{key:body.key,count:1,mine:true}]:[];return route.fulfill({json:row})
+   const id=path.split('/')[5],row=state.comments.find(item=>item.id===id);row.reactions=body.key?[{key:body.key,count:1,mine:true}]:[];return route.fulfill({json:row})
   }
   return route.fulfill({status:404,json:{detail:'not found'}});
  });
@@ -39,6 +39,7 @@ test('pin reactions toggle with one tap and comment sheet is mobile/keyboard saf
  const dialog=page.getByRole('dialog',{name:'Pin-Kommentare'});await expect(dialog).toBeVisible();
  const input=dialog.locator('textarea').last();await expect(input).toBeFocused();await input.fill('Komme später.');await dialog.getByRole('button',{name:'Senden',exact:true}).click();
  await expect(dialog.getByText('Komme später.',{exact:true})).toBeVisible();
+ const comment=dialog.locator('.pin-comment').filter({hasText:'Komme später.'});await comment.getByRole('button',{name:'Reagieren',exact:true}).click();await comment.getByRole('button',{name:'Passt',exact:true}).click();await expect(comment.getByRole('button',{name:'Passt, 1'})).toHaveAttribute('aria-pressed','true');
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBeTruthy();
  await page.keyboard.press('Escape');await expect(dialog).toHaveCount(0);await expect(commentButton).toBeFocused();
  await expect(card.getByRole('button',{name:/Kommentieren, 1 Kommentare/})).toBeVisible();
