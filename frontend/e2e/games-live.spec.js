@@ -5,7 +5,7 @@ const match=(id='game-rps',game_type='rps')=>({id,family:'family-1',game_type,st
 const clone=value=>JSON.parse(JSON.stringify(value));
 async function boot(page,{home=false,language='de',hiddenGames=false,multipleFamilies=false}={}){
  const mock=await installApiMocks(page,{language});
- if(hiddenGames)mock.todayLayout={version:2,revision:17,widgets:[{id:'todo',visible:true,size:'compact',order:0},{id:'games',visible:false,size:'compact',order:1},{id:'focus',visible:false,size:'wide',order:2}]};
+ if(hiddenGames)mock.todayLayout={version:2,revision:17,widgets:[{id:'todo',visible:true,size:'compact'},{id:'games',visible:false,size:'compact'},{id:'focus',visible:false,size:'wide'}]};
  if(multipleFamilies)await page.route('**/api/families/',route=>route.fulfill({json:[mock.family,{...mock.family,id:'family-2',name:'Andere Familie',memberships:mock.memberships.map(row=>({...row,family:'family-2'}))}]}));
  const state={matches:[match(),match('game-fleet','battleship')],reads:0,active:0,maxActive:0,errors:0,gates:[],writes:[],layoutWrites:[],taskReads:0};
  await page.route('**/api/today-layout/**',route=>{if(route.request().method()==='PUT')state.layoutWrites.push(route.request().postDataJSON());return route.fulfill({json:mock.todayLayout})});
@@ -20,6 +20,7 @@ async function boot(page,{home=false,language='de',hiddenGames=false,multipleFam
   return route.fulfill({status:404,json:{detail:'not found'}});
  });
  await page.goto(home?'/?page=home':'/?page=games');
+ if(home)await expect(page.getByTestId('today-layout-edit')).toBeEnabled();
  if(home&&!hiddenGames){await expect(page.locator('[data-today-widget="games"]')).toBeVisible();await page.locator('[data-today-widget="games"]').scrollIntoViewIfNeeded();await expect(page.getByTestId('today-games')).toBeVisible()}
  if(!home)await expect(page.locator('.game-match')).toHaveCount(2);
  await expect.poll(()=>state.active).toBe(0);
