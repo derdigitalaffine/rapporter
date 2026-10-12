@@ -28,13 +28,13 @@ async function boot(page,language='de',{multipleFamilies=false}={}){
  return state;
 }
 
-test('pin reactions toggle with one tap and comment sheet is mobile/keyboard safe',async({page})=>{
+test('pin reactions use a compact summary and comment sheet is mobile/keyboard safe',async({page})=>{
  await page.setViewportSize({width:390,height:844});const state=await boot(page);
  const card=page.locator('#pin-pin-interaction');await expect(card).toBeVisible();
- const react=card.getByRole('button',{name:'Reagieren',exact:true});const reactBox=await react.boundingBox();expect(reactBox.height).toBeGreaterThanOrEqual(44);
+ const react=card.getByRole('button',{name:/Reaktion, 0.*Reagieren/});const reactBox=await react.boundingBox();expect(reactBox.height).toBeGreaterThanOrEqual(44);
  await react.click();await page.getByRole('button',{name:'Passt',exact:true}).click();
- const chip=card.getByRole('button',{name:'Passt, 1'});await expect(chip).toHaveAttribute('aria-pressed','true');expect(state.reaction).toBe('thumbs_up');
- await chip.click();await expect(chip).toHaveCount(0);expect(state.reaction).toBeNull();
+ const active=card.getByRole('button',{name:/Reaktion, 1.*Reagieren/});await expect(active).toBeVisible();expect(state.reaction).toBe('thumbs_up');
+ await active.click();await page.getByRole('button',{name:/Passt.*Reaktion entfernen/}).click();await expect(card.getByRole('button',{name:/Reaktion, 0.*Reagieren/})).toBeVisible();expect(state.reaction).toBeNull();
 
  const commentButton=card.getByRole('button',{name:/Kommentieren/});await commentButton.click();
  const dialog=page.getByRole('dialog',{name:'Pin-Kommentare'});await expect(dialog).toBeVisible();
@@ -55,7 +55,7 @@ test('mention picker sends only the selected membership id and thread can be mut
 });
 
 test('English interaction controls have localized accessible names',async({page})=>{
- await boot(page,'en');const card=page.locator('#pin-pin-interaction');await expect(card.getByRole('button',{name:'React',exact:true})).toBeVisible();await card.getByRole('button',{name:/Comment/}).click();const dialog=page.getByRole('dialog',{name:'Pin comments'});await expect(dialog).toBeVisible();await expect(dialog.getByRole('button',{name:'Close comments'})).toBeVisible();
+ await boot(page,'en');const card=page.locator('#pin-pin-interaction');await expect(card.getByRole('button',{name:/Reaction, 0.*React/})).toBeVisible();await card.getByRole('button',{name:/Comment/}).click();const dialog=page.getByRole('dialog',{name:'Pin comments'});await expect(dialog).toBeVisible();await expect(dialog.getByRole('button',{name:'Close comments'})).toBeVisible();
 });
 
 test('comments focus immediately during delayed reads and keep keyboard focus and body lock',async({page})=>{
@@ -92,12 +92,12 @@ test('read failures retry, while a denied older-page read removes known content 
 test('late mutation success cannot restore interaction metadata after auth invalidation',async({page})=>{
  await boot(page);let release;const pending=new Promise(resolve=>release=resolve);let requested=false;
  await page.route('**/api/board/pin-interaction/reaction/',async route=>{requested=true;await pending;return route.fulfill({json:{comment_count:9,can_interact:true,reactions:[{key:'thumbs_up',count:1,mine:true}]}})});
- const card=page.locator('#pin-pin-interaction');await card.getByRole('button',{name:'Reagieren',exact:true}).click();await page.getByRole('button',{name:'Passt',exact:true}).click();await expect.poll(()=>requested).toBe(true);
- await page.evaluate(()=>{localStorage.removeItem('famuhle-session');window.dispatchEvent(new CustomEvent('famuhle:auth-changed',{detail:{authenticated:false}}))});await expect(card).toHaveCount(0);release();await expect(page.getByRole('button',{name:'Passt, 1'})).toHaveCount(0);await expect(page.getByRole('button',{name:/Kommentieren, 9/})).toHaveCount(0);
+ const card=page.locator('#pin-pin-interaction');await card.getByRole('button',{name:/Reaktion, 0.*Reagieren/}).click();await page.getByRole('button',{name:'Passt',exact:true}).click();await expect.poll(()=>requested).toBe(true);
+ await page.evaluate(()=>{localStorage.removeItem('famuhle-session');window.dispatchEvent(new CustomEvent('famuhle:auth-changed',{detail:{authenticated:false}}))});await expect(card).toHaveCount(0);release();await expect(page.getByRole('button',{name:/Reaktion, 1.*Reagieren/})).toHaveCount(0);await expect(page.getByRole('button',{name:/Kommentieren, 9/})).toHaveCount(0);
 });
 
 for(const [language,react,dialogName,write] of [['fr','Réagir','Commentaires du pin','Écrire un commentaire'],['nl','Reageren','Pinopmerkingen','Schrijf een opmerking'],['th','แสดงความรู้สึก','ความคิดเห็นบนหมุด','เขียนความคิดเห็น']])test(`pin interaction copy supports ${language} without German fallback`,async({page})=>{
- await boot(page,language);const card=page.locator('#pin-pin-interaction');await expect(card.getByRole('button',{name:react,exact:true})).toBeVisible();await card.locator('.pin-comment-action').click();const dialog=page.getByRole('dialog',{name:dialogName});await expect(dialog).toBeVisible();await expect(dialog.getByRole('textbox',{name:write,exact:true})).toBeFocused();
+ await boot(page,language);const card=page.locator('#pin-pin-interaction');await expect(card.locator('.pin-reaction-cluster')).toHaveAccessibleName(new RegExp(react));await card.locator('.pin-comment-action').click();const dialog=page.getByRole('dialog',{name:dialogName});await expect(dialog).toBeVisible();await expect(dialog.getByRole('textbox',{name:write,exact:true})).toBeFocused();
 });
 
 test('older comment pages stay chronological and do not repeat overlapping comment ids',async({page})=>{
@@ -109,7 +109,7 @@ test('older comment pages stay chronological and do not repeat overlapping comme
 test('reaction picker sends one desired-state operation while pending',async({page})=>{
  await boot(page);let release;const pending=new Promise(resolve=>release=resolve),requests=[];
  await page.route('**/api/board/pin-interaction/reaction/',async route=>{requests.push(route.request().postDataJSON());await pending;return route.fulfill({json:{comment_count:0,can_interact:true,reactions:[{key:'thumbs_up',count:1,mine:true}]}})});
- const card=page.locator('#pin-pin-interaction');await card.getByRole('button',{name:'Reagieren',exact:true}).click();await page.getByRole('button',{name:'Passt',exact:true}).click();await expect(page.getByRole('button',{name:'Herz',exact:true})).toBeDisabled();expect(requests).toEqual([{key:'thumbs_up'}]);release();await expect(card.getByRole('button',{name:'Passt, 1'})).toHaveAttribute('aria-pressed','true');
+ const card=page.locator('#pin-pin-interaction');await card.getByRole('button',{name:/Reaktion, 0.*Reagieren/}).click();await page.getByRole('button',{name:'Passt',exact:true}).click();await expect(page.getByRole('button',{name:'Herz',exact:true})).toBeDisabled();expect(requests).toEqual([{key:'thumbs_up'}]);release();await expect(card.getByRole('button',{name:/Reaktion, 1.*Reagieren/})).toBeVisible();
 });
 
 test('a late initial history read does not erase the comment confirmed while it was pending',async({page})=>{
@@ -121,7 +121,7 @@ test('a late initial history read does not erase the comment confirmed while it 
 test('changing family unmounts the old thread and ignores its delayed mutation success',async({page})=>{
  await boot(page,'de',{multipleFamilies:true});let release;const pending=new Promise(resolve=>release=resolve);let requested=false;
  await page.route('**/api/board/pin-interaction/reaction/',async route=>{requested=true;await pending;return route.fulfill({json:{comment_count:9,can_interact:true,reactions:[{key:'thumbs_up',count:1,mine:true}]}})});
- const card=page.locator('#pin-pin-interaction');await card.getByRole('button',{name:'Reagieren',exact:true}).click();await page.getByRole('button',{name:'Passt',exact:true}).click();await expect.poll(()=>requested).toBe(true);await page.locator('.family-switcher select').selectOption('family-2');await expect(card).toHaveCount(0);release();await expect(page.locator('.family-switcher select')).toHaveValue('family-2');await page.locator('.bottom-nav button').filter({hasText:'Mehr'}).click();await page.getByRole('button',{name:'Pinnwand',exact:true}).click();await expect(page.getByRole('heading',{name:'Pinnwand',exact:true})).toBeVisible();await expect(card).toHaveCount(0);await expect(page.getByRole('button',{name:/Kommentieren, 9/})).toHaveCount(0);
+ const card=page.locator('#pin-pin-interaction');await card.getByRole('button',{name:/Reaktion, 0.*Reagieren/}).click();await page.getByRole('button',{name:'Passt',exact:true}).click();await expect.poll(()=>requested).toBe(true);await page.locator('.family-switcher select').selectOption('family-2');await expect(card).toHaveCount(0);release();await expect(page.locator('.family-switcher select')).toHaveValue('family-2');await page.locator('.bottom-nav button').filter({hasText:'Mehr'}).click();await page.getByRole('button',{name:'Pinnwand',exact:true}).click();await expect(page.getByRole('heading',{name:'Pinnwand',exact:true})).toBeVisible();await expect(card).toHaveCount(0);await expect(page.getByRole('button',{name:/Kommentieren, 9/})).toHaveCount(0);
 });
 
 test('comment moderation delegates to the visible shared confirmation and cancel keeps the thread',async({page})=>{

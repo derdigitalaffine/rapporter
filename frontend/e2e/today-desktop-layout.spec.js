@@ -2,7 +2,7 @@ import {test,expect} from '@playwright/test';
 import {installApiMocks} from './mock-api.js';
 
 const familyId='family-1';
-const legacyIds=['weather','priority','waste','next','tasks','shopping','routines','birthdays','notes'];
+const legacyIds=['weather','priority','waste','next','tasks','shopping','routines','birthdays','notes','pinboard'];
 
 function legacyLayout(){
  return {
@@ -11,7 +11,7 @@ function legacyLayout(){
   widgets:legacyIds.map(id=>({
    id,
    visible:true,
-   size:id==='weather'?'compact':id==='next'?'square':'full',
+   size:id==='weather'||id==='pinboard'?'compact':id==='next'?'square':'full',
   })),
  };
 }
@@ -42,15 +42,18 @@ async function gridMetrics(page){
   return {
    columns:getComputedStyle(grid).gridTemplateColumns.split(' ').filter(Boolean).length,
    flow:getComputedStyle(grid).gridAutoFlow,
-   wide:ratio('[data-widget-size="wide"]'),
-   compact:ratio('[data-widget-size="compact"]'),
-   medium:ratio('[data-widget-size="medium"]'),
-   order:[...grid.querySelectorAll('[data-today-widget]')].map(element=>element.dataset.todayWidget),
+   // Measure known direct Today wrappers rather than arbitrary nested density
+   // markers from self-managed/external widgets.
+   wide:ratio(':scope > [data-today-widget="focus"][data-widget-size="wide"]'),
+   compact:ratio(':scope > [data-today-widget="pinboard"][data-widget-size="compact"]'),
+   medium:ratio(':scope > [data-today-widget="week"][data-widget-size="medium"]'),
+   order:[...grid.querySelectorAll(':scope > [data-today-widget]')].map(element=>element.dataset.todayWidget),
   };
  });
 }
 
-test('Today uses semantic desktop spans and keeps DOM order across breakpoints',async({page})=>{
+test('Today uses semantic desktop spans and keeps DOM order across breakpoints',async({page},testInfo)=>{
+ test.skip(testInfo.project.name==='mobile-chromium','Desktop grid span contract is covered by desktop-chromium; mobile device emulation has its own responsive Today coverage.');
  await boot(page);
  const desktop=await gridMetrics(page);
  expect(desktop.columns).toBe(12);
@@ -94,7 +97,7 @@ test('reset defaults create the core-first hierarchy and Today actions use canon
  await expect(editor.getByRole('combobox',{name:'Tagesverlauf · Größe'})).toHaveValue('wide');
  await expect(editor.getByRole('combobox',{name:'Wochenkompass · Größe'})).toHaveValue('medium');
  await expect(editor.getByRole('combobox',{name:'To-dos · Größe'})).toHaveValue('compact');
- await expect(editor.getByRole('combobox',{name:'Pinnwand · Größe'})).toHaveValue('compact');
+ await expect(editor.getByRole('combobox',{name:'Pinnwand · Größe'})).toHaveValue('medium');
  await expect(editor.locator('[data-editor-widget-id="trip"]')).toHaveCount(0);
  await expect(editor.locator('[data-library-widget="trip"]')).toBeVisible();
  await expect(editor.locator('[data-library-widget="weather"]')).toBeVisible();

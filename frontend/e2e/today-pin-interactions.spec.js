@@ -2,25 +2,30 @@ import {test,expect} from '@playwright/test';
 import {installApiMocks} from './mock-api.js';
 
 async function boot(page,{language='de',compact=false,multipleFamilies=false,hidden=false,sourceUnavailable=false}={}){
- const mock=await installApiMocks(page,{language});mock.todayLayout={version:2,revision:8,widgets:[{id:'pinboard',visible:!hidden,size:compact?'compact':'wide'}]};
+ const mock=await installApiMocks(page,{language});mock.todayLayout={version:2,revision:8,widgets:[{id:'pinboard',visible:!hidden,size:compact?'compact':'medium'}]};
  if(multipleFamilies)await page.route('**/api/families/',route=>route.fulfill({json:[mock.family,{...mock.family,id:'family-2',name:'Andere Familie'}]}));
- const state={keys:{},seen:false,revoked:false,error:0,reads:0,requests:[],gates:[],comments:[{id:'comment-old',body:'Nur im geöffneten Thread',author_name:'Sam',created_at:new Date().toISOString(),mine:false,can_edit:false,can_delete:false,reactions:[]}]};
+ const state={keys:{},seen:false,revoked:false,denyNextReaction:false,error:0,reads:0,requests:[],gates:[],comments:[{id:'comment-old',body:'Nur im geöffneten Thread',author_name:'Sam',created_at:new Date().toISOString(),mine:false,can_edit:false,can_delete:false,reactions:[]}]};
  const summary=(id='pin-a')=>{const key=state.keys[id]||null;return {comment_count:id==='pin-a'?state.comments.length:1,has_unread_comments:id==='pin-a'?!state.seen:true,reactions:[{key:'thumbs_up',count:key==='thumbs_up'?3:2,mine:key==='thumbs_up'},...(key&&key!=='thumbs_up'?[{key,count:1,mine:true}]:[])],can_interact:true,muted:false}};
  const pins=()=>['pin-a','pin-b','pin-c','pin-d','pin-e'].filter(id=>!state.revoked||id!=='pin-a').map((id,index)=>({id,family:'family-1',text:`Punkt ${id}`,kind:'note',target:null,position:index,author:1,author_name:'Alex',images:[],can_interact:true,interaction:summary(id),...(sourceUnavailable&&id==='pin-a'?{kind:'document',text:'Private source title',target:{available:false,title:'Private source title'},images:[{url:'/private-image.png'}],can_interact:false,interaction:{comment_count:99,can_interact:false,reactions:[]}}:{})}));
  await page.route('**/api/board/**',async route=>{
   const req=route.request(),url=new URL(req.url()),path=url.pathname;let body;try{body=req.postDataJSON()}catch{}state.requests.push({path,method:req.method(),body});
   if(path==='/api/board/'&&req.method()==='GET'){state.reads+=1;const rows=url.searchParams.get('family')==='family-2'?[]:pins(),status=state.error,gate=state.gates.shift();if(gate)await gate;return status?route.fulfill({status,json:{detail:'unavailable'}}):route.fulfill({json:{results:rows,count:rows.length,next:null}})}
-  if(path.endsWith('/reaction/')&&req.method()==='PUT'){if(state.revoked)return route.fulfill({status:403,json:{detail:'unavailable'}});const id=path.split('/')[3];state.keys[id]=body.key;return route.fulfill({json:summary(id)})}
+  if(path.endsWith('/reaction/')&&req.method()==='PUT'){if(state.denyNextReaction){state.denyNextReaction=false;state.revoked=true;return route.fulfill({status:403,json:{detail:'unavailable'}})}const id=path.split('/')[3];state.keys[id]=body.key;return route.fulfill({json:summary(id)})}
   if(path.endsWith('/mention-targets/'))return route.fulfill({json:[]});
   if(path.endsWith('/comments/')&&req.method()==='GET'){state.seen=true;return route.fulfill({json:{results:[...state.comments].reverse(),next:null}})}
   if(path.endsWith('/comments/')&&req.method()==='POST'){const row={id:`comment-${state.comments.length}`,body:body.body,author_name:'Alex',created_at:new Date().toISOString(),mine:true,can_edit:true,can_delete:true,reactions:[]};state.comments.push(row);return route.fulfill({status:201,json:{...row,interaction:summary()}})}
   return route.fulfill({status:404,json:{detail:'not found'}});
  });
- await page.goto('/?page=home');const widget=page.getByTestId('today-pinboard');if(hidden)await expect(widget).toHaveCount(0);else{await expect(widget.locator('[data-today-pin]')).toHaveCount(compact?2:4);await widget.scrollIntoViewIfNeeded()}return {state,mock,widget};
+ await page.goto('/?page=home');const widget=page.getByTestId('today-pinboard');if(hidden)await expect(widget).toHaveCount(0);else{await expect(widget.locator('[data-today-pin]')).toHaveCount(compact?2:3);await widget.scrollIntoViewIfNeeded()}return {state,mock,widget};
 }
 
-test('Today reuses canonical summary and one/two-tap reactions without changing manual order',async({page})=>{
- const {state,widget}=await boot(page,{compact:true});const cards=widget.locator('[data-today-pin]');expect(await cards.evaluateAll(rows=>rows.map(row=>row.dataset.todayPin))).toEqual(['pin-a','pin-b']);await expect(widget).not.toContainText('Nur im geöffneten Thread');const first=cards.first(),chip=first.getByRole('button',{name:'Passt, 2',exact:true});await chip.click();await expect(first.getByRole('button',{name:'Passt, 3',exact:true})).toHaveAttribute('aria-pressed','true');await expect(cards.nth(1).getByRole('button',{name:'Passt, 2',exact:true})).toHaveAttribute('aria-pressed','false');await first.getByRole('button',{name:'Passt, 3',exact:true}).click();await expect(chip).toHaveAttribute('aria-pressed','false');await first.getByRole('button',{name:'Reagieren',exact:true}).click();await first.getByRole('button',{name:'Herz',exact:true}).click();await expect(first.getByRole('button',{name:'Herz, 1',exact:true})).toHaveAttribute('aria-pressed','true');expect(state.requests.filter(row=>row.method==='PUT').map(row=>row.body.key)).toEqual(['thumbs_up',null,'heart']);expect(await cards.evaluateAll(rows=>rows.map(row=>row.dataset.todayPin))).toEqual(['pin-a','pin-b']);expect(state.requests.filter(row=>row.method==='GET'&&row.path.endsWith('/comments/'))).toHaveLength(0);expect(await widget.locator('button button,button a').count()).toBe(0);
+test('Today reuses canonical summary in a compact reaction cluster without changing manual order',async({page})=>{
+ const {state,widget}=await boot(page,{compact:true});const cards=widget.locator('[data-today-pin]');expect(await cards.evaluateAll(rows=>rows.map(row=>row.dataset.todayPin))).toEqual(['pin-a','pin-b']);await expect(widget).not.toContainText('Nur im geöffneten Thread');const first=cards.first();
+ const cluster=first.getByRole('button',{name:/Reaktion, 2.*Reagieren/});await expect(cluster).toBeVisible();expect((await cluster.boundingBox()).height).toBeGreaterThanOrEqual(44);
+ await cluster.click();await first.getByRole('button',{name:'Passt',exact:true}).click();await expect(first.getByRole('button',{name:/Reaktion, 3.*Reagieren/})).toBeVisible();
+ await first.getByRole('button',{name:/Reaktion, 3.*Reagieren/}).click();await first.getByRole('button',{name:/Passt.*Reaktion entfernen/}).click();await expect(first.getByRole('button',{name:/Reaktion, 2.*Reagieren/})).toBeVisible();
+ await first.getByRole('button',{name:/Reaktion, 2.*Reagieren/}).click();await first.getByRole('button',{name:'Herz',exact:true}).click();await expect(first.getByRole('button',{name:/Reaktion, 3.*Reagieren/})).toBeVisible();await first.getByRole('button',{name:/Reaktion, 3.*Reagieren/}).click();await expect(first.getByRole('button',{name:/Herz.*Reaktion entfernen/})).toHaveAttribute('aria-pressed','true');
+ expect(state.requests.filter(row=>row.method==='PUT').map(row=>row.body.key)).toEqual(['thumbs_up',null,'heart']);expect(await cards.evaluateAll(rows=>rows.map(row=>row.dataset.todayPin))).toEqual(['pin-a','pin-b']);expect(state.requests.filter(row=>row.method==='GET'&&row.path.endsWith('/comments/'))).toHaveLength(0);expect(await widget.locator('button button,button a').count()).toBe(0);
 });
 
 test('one comment tap focuses the existing thread and commits its canonical count',async({page})=>{
@@ -28,7 +33,7 @@ test('one comment tap focuses the existing thread and commits its canonical coun
 });
 
 test('denied reaction removes private content immediately and reloads only the canonical projection',async({page})=>{
- const {state,widget}=await boot(page);state.revoked=true;await widget.locator('[data-today-pin="pin-a"]').getByRole('button',{name:'Passt, 2',exact:true}).click();await expect(widget.locator('[data-today-pin="pin-a"]')).toHaveCount(0);await expect(widget).not.toContainText('Punkt pin-a');await expect.poll(()=>state.reads).toBeGreaterThan(1);await expect(widget.locator('[data-today-pin="pin-b"]')).toBeVisible();
+ const {state,widget}=await boot(page);state.denyNextReaction=true;const first=widget.locator('[data-today-pin="pin-a"]');const cluster=first.getByRole('button',{name:/Reaktion, 2.*Reagieren/});await cluster.click();const option=first.getByRole('button',{name:'Passt',exact:true});await expect(option).toBeVisible();await option.click();await expect(widget.locator('[data-today-pin="pin-a"]')).toHaveCount(0);await expect(widget).not.toContainText('Punkt pin-a');await expect.poll(()=>state.reads).toBeGreaterThan(1);await expect(widget.locator('[data-today-pin="pin-b"]')).toBeVisible();
 });
 
 test('transient reload retains rows with retry, denied retry clears previews and counts',async({page})=>{
@@ -40,7 +45,7 @@ test('late previous-family read cannot restore pin preview or interaction state'
 });
 
 test('a delayed board read cannot restore an old summary after a confirmed reaction',async({page})=>{
- const {state,widget}=await boot(page,{compact:true});let release;state.gates.push(new Promise(resolve=>release=resolve));const baseline=state.reads;await page.evaluate(()=>window.dispatchEvent(new Event('focus')));await expect.poll(()=>state.reads).toBeGreaterThan(baseline);const first=widget.locator('[data-today-pin]').first();await first.getByRole('button',{name:'Passt, 2',exact:true}).click();await expect(first.getByRole('button',{name:'Passt, 3',exact:true})).toHaveAttribute('aria-pressed','true');release();await expect.poll(()=>state.reads).toBeGreaterThan(baseline+1);await expect(first.getByRole('button',{name:'Passt, 3',exact:true})).toHaveAttribute('aria-pressed','true');
+ const {state,widget}=await boot(page,{compact:true});let release;state.gates.push(new Promise(resolve=>release=resolve));const baseline=state.reads;await page.evaluate(()=>window.dispatchEvent(new Event('focus')));await expect.poll(()=>state.reads).toBeGreaterThan(baseline);const first=widget.locator('[data-today-pin]').first();await first.getByRole('button',{name:/Reaktion, 2.*Reagieren/}).click();await first.getByRole('button',{name:'Passt',exact:true}).click();await expect(first.getByRole('button',{name:/Reaktion, 3.*Reagieren/})).toBeVisible();release();await expect.poll(()=>state.reads).toBeGreaterThan(baseline+1);await expect(first.getByRole('button',{name:/Reaktion, 3.*Reagieren/})).toBeVisible();
 });
 
 test('logout invalidates a delayed board response and all private previews',async({page})=>{
@@ -55,8 +60,8 @@ test('saved hidden Pinboard never mounts its interaction consumer or changes pre
  const {state,mock,widget}=await boot(page,{hidden:true});await expect(page.getByTestId('today-layout-edit')).toBeEnabled();await page.evaluate(()=>window.dispatchEvent(new Event('focus')));await expect(widget).toHaveCount(0);expect(state.reads).toBe(0);expect(mock.todayLayout.revision).toBe(8);expect(mock.todayLayout.widgets[0].visible).toBe(false);await page.reload();await expect(page.getByTestId('today-layout-edit')).toBeEnabled();await expect(widget).toHaveCount(0);expect(state.reads).toBe(0);
 });
 
-test('visual · compact Today pin interactions',async({page})=>{
- const {widget}=await boot(page,{compact:true});await page.evaluate(()=>document.fonts.ready);await expect(widget).toHaveScreenshot('today-pin-interactions.png',{animations:'disabled',caret:'hide'});
+test('compact Today pinboard keeps two social rows within a dashboard card',async({page})=>{
+ const {widget}=await boot(page,{compact:true});const rows=widget.locator('.today-pin-card');await expect(rows).toHaveCount(2);const widgetBox=await widget.boundingBox();const rowBoxes=await rows.evaluateAll(nodes=>nodes.map(node=>{const box=node.getBoundingClientRect();return {height:box.height,width:box.width}}));expect(rowBoxes.every(box=>box.height<100)).toBe(true);expect(rowBoxes.every(box=>box.width<=widgetBox.width)).toBe(true);await expect(widget.locator('.pin-thread-sheet')).toHaveCount(0);
 });
 
 for(const [language,title,comment] of [['de','Pinnwand','Kommentieren'],['en','Pinboard','Comment'],['fr','Tableau familial','Commenter'],['nl','Prikbord','Opmerking'],['th','กระดานครอบครัว','แสดงความคิดเห็น']])test(`Today pin actions ${language} retain keyboard and responsive contracts`,async({page})=>{
