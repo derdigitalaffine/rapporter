@@ -8,14 +8,14 @@ import {pinComposerCopy} from './pin-composer-copy';
 import './pin-composer.css';
 
 const ADAPTERS={
- task:{kind:'task',icon:'tasks'},
- routine:{kind:'routine',icon:'history'},
- calendar_event:{kind:'event',icon:'calendar'},
- shopping_item:{kind:'shopping',icon:'shopping'},
- shopping_list:{kind:'shopping_list',icon:'shopping'},
- document:{kind:'document',icon:'lists'},
- note:{kind:'note_ref',icon:'lists'},
- trip:{kind:'trip',icon:'route'},
+ task:{kind:'task',icon:'tasks',labelKey:'task'},
+ routine:{kind:'routine',icon:'history',labelKey:'routine'},
+ calendar_event:{kind:'event',icon:'calendar',labelKey:'calendar_event'},
+ shopping_item:{kind:'shopping',icon:'shopping',labelKey:'shopping_item'},
+ shopping_list:{kind:'shopping_list',icon:'shopping',labelKey:'shopping_list'},
+ document:{kind:'document',icon:'lists',labelKey:'document'},
+ note:{kind:'note_ref',icon:'lists',labelKey:'note_ref'},
+ trip:{kind:'trip',icon:'route',labelKey:'trip'},
 };
 const GROUPS=[
  {key:'todos',adapters:['task','routine']},
@@ -25,7 +25,6 @@ const GROUPS=[
  {key:'more',adapters:['note','trip']},
 ];
 const KIND_TO_ADAPTER=Object.fromEntries(Object.entries(ADAPTERS).map(([key,value])=>[value.kind,key]));
-
 const itemLabel=item=>[item?.title,item?.subtitle].filter(Boolean).join(' · ');
 
 export default function PinComposer({
@@ -65,12 +64,12 @@ export default function PinComposer({
  const [page,setPage]=useState(1);
  const [pickerBusy,setPickerBusy]=useState(false);
  const [pickerError,setPickerError]=useState('');
+ const [retryNonce,setRetryNonce]=useState(0);
  const generation=useRef(0);
  const alive=useRef(true);
 
  const selected=useMemo(()=>items.find(item=>String(item.id)===String(targetId))||null,[items,targetId]);
  const isReference=editing?!['note','photo'].includes(editing.kind):mode==='existing';
- const nativeKind=mode==='photo'?'photo':'note';
  const contentValid=editing
   ?(!['note','photo'].includes(editing.kind)||Boolean(text.trim()||editing.images?.length))
   :mode==='photo'?files.length>0:mode==='note'?Boolean(text.trim()):Boolean(targetId);
@@ -80,7 +79,7 @@ export default function PinComposer({
  useEffect(()=>{
   generation.current+=1;
   setItems([]);setHasNext(false);setPage(1);setPickerError('');setQuery('');setTargetId('');
- },[familyId]);
+ },[familyId,setTargetId]);
  useEffect(()=>{
   const onAuth=event=>{
    if(event.detail?.authenticated===false){generation.current+=1;setItems([]);setHasNext(false);setPickerError('');setTargetId('')}
@@ -108,7 +107,7 @@ export default function PinComposer({
    finally{if(alive.current&&generation.current===request)setPickerBusy(false)}
   },query?180:0);
   return()=>clearTimeout(timer);
- },[activeAdapter,editing,familyId,mode,query,setAdapterKey,setKind,setTargetId,w.loadFailed]);
+ },[activeAdapter,editing,familyId,mode,query,retryNonce,setAdapterKey,setKind,setTargetId,w.loadFailed]);
 
  function chooseMode(next){
   generation.current+=1;setMode(next);setQuery('');setItems([]);setHasNext(false);setPage(1);setPickerError('');setTargetId('');setText('');setFiles([]);
@@ -140,10 +139,11 @@ export default function PinComposer({
   }catch(error){if(alive.current&&generation.current===request)setPickerError(error?.message||w.loadFailed)}
   finally{if(alive.current&&generation.current===request)setPickerBusy(false)}
  }
- function retryPicker(){setPickerError('');setQuery(value=>`${value}`);generation.current+=1;const current=activeAdapter;setActiveAdapter('');queueMicrotask(()=>setActiveAdapter(current))}
+ function retryPicker(){setPickerError('');setRetryNonce(value=>value+1)}
 
  const currentGroup=GROUPS.find(row=>row.key===group)||GROUPS[0];
- const editingTitle=editing?pinTypeLabel(editing.kind,!String(language).startsWith('en')):w.title;
+ const editAdapter=KIND_TO_ADAPTER[editing?.kind];
+ const editingTitle=editing?(editing.kind==='note'?w.note:editing.kind==='photo'?w.photo:(editAdapter?w[ADAPTERS[editAdapter].labelKey]:pinTypeLabel(editing.kind,!String(language).startsWith('en')))):w.title;
  return <FormShell className="card pin-composer pin-composer-v2" onSubmit={onSubmit}>
   <div className="pin-composer-head"><div><small>{editing?w.edit:w.pin}</small><h2>{editingTitle}</h2></div><button type="button" className="icon-btn" onClick={onClose} aria-label={w.cancel}><Icon name="close"/></button></div>
 
@@ -159,7 +159,7 @@ export default function PinComposer({
 
   {!editing&&mode==='existing'&&<div className="pin-existing-picker">
    <FieldGroup legend={w.groups}><div className="pin-source-groups" role="group" aria-label={w.groups}>{GROUPS.map(row=><button type="button" key={row.key} className={group===row.key?'active':''} aria-pressed={group===row.key} onClick={()=>chooseGroup(row.key)}>{w[row.key]}</button>)}</div></FieldGroup>
-   {currentGroup.adapters.length>1&&<div className="pin-source-types" role="group" aria-label={w[currentGroup.key]}>{currentGroup.adapters.map(key=><button type="button" key={key} className={activeAdapter===key?'active':''} aria-pressed={activeAdapter===key} onClick={()=>chooseAdapter(key)}><Icon name={ADAPTERS[key].icon}/><span>{w[ADAPTERS[key].kind]||w[key]}</span></button>)}</div>}
+   {currentGroup.adapters.length>1&&<div className="pin-source-types" role="group" aria-label={w[currentGroup.key]}>{currentGroup.adapters.map(key=><button type="button" key={key} className={activeAdapter===key?'active':''} aria-pressed={activeAdapter===key} onClick={()=>chooseAdapter(key)}><Icon name={ADAPTERS[key].icon}/><span>{w[ADAPTERS[key].labelKey]}</span></button>)}</div>}
    <EntityPicker id="pin-existing-search" label={w.choose} description={w.pickerHint} items={items} selectedIds={targetId?[targetId]:[]} onChange={changeSelection} getItemLabel={itemLabel} multiple={false} placeholder={w.search} emptyMessage={pickerBusy?w.loading:w.empty} query={query} onQueryChange={changeQuery} filterLocally={false} clearQueryOnChoose={false} selectionLabel={w.selected} removeLabel={w.remove} getRemoveLabel={item=>`${w.remove}: ${item.title||item.id}`} disabled={busy}/>
    {selected&&<div className="pin-choice-preview" aria-live="polite"><span><Icon name={ADAPTERS[activeAdapter]?.icon||pinIconName(kind)}/></span><div><small>{w.selected}</small><strong>{selected.title}</strong>{selected.subtitle&&<span>{String(selected.subtitle)}</span>}</div></div>}
    {pickerBusy&&items.length>0&&<p role="status" className="pin-choice-loading">{w.loading}</p>}
