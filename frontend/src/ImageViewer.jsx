@@ -37,7 +37,7 @@ export default function ImageViewer({images=[],activeIndex=0,onActiveIndexChange
   return()=>{
    document.removeEventListener('keydown',handleKeyDown);
    document.body.style.overflow=previousOverflow;
-   requestAnimationFrame(()=>returnFocus?.isConnected&&returnFocus.focus?.());
+   requestAnimationFrame(()=>{if(!dialogRef.current?.isConnected&&returnFocus?.isConnected)returnFocus.focus?.()});
   };
  },[]);
 
