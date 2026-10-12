@@ -9,7 +9,8 @@ async function boot(page,viewport={width:390,height:844}){
   await expect(page.getByRole('heading',{name:/Musterfamilie/})).toBeVisible();
 }
 
-const isContentMutation=request=>['POST','PATCH','DELETE'].includes(request.method())&&request.url().includes('/api/')&&!request.url().includes('/api/push/badge/');
+const metadataPaths=new Set(['/api/push/badge/','/api/analytics/product-event/']);
+const isContentMutation=request=>['POST','PATCH','DELETE'].includes(request.method())&&request.url().includes('/api/')&&!metadataPaths.has(new URL(request.url()).pathname);
 
 for(const viewport of [{width:390,height:844},{width:844,height:390}]){
   test(`Today To-do action opens task editor in one tap and saves without navigation at ${viewport.width}x${viewport.height}`,async({page})=>{
