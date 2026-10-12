@@ -34,7 +34,7 @@ export default function ShoppingPlanningList({items,onReorder,onToggle,onEdit,on
   function pointerDown(event,item){
     if(event.button!==undefined&&event.button!==0)return;
     event.currentTarget.setPointerCapture?.(event.pointerId);
-    dragRef.current={id:String(item.id),previous:[...ordered],last:String(item.id)};
+    dragRef.current={id:String(item.id),previous:[...ordered],current:[...ordered],last:String(item.id)};
   }
   function pointerMove(event){
     const drag=dragRef.current;if(!drag)return;
@@ -43,14 +43,14 @@ export default function ShoppingPlanningList({items,onReorder,onToggle,onEdit,on
     setOrdered(current=>{
       const from=current.findIndex(item=>String(item.id)===drag.id),to=current.findIndex(item=>String(item.id)===targetId);
       if(from<0||to<0)return current;
-      const next=[...current],moved=next.splice(from,1)[0];next.splice(to,0,moved);drag.last=targetId;return next;
+      const next=[...current],moved=next.splice(from,1)[0];next.splice(to,0,moved);drag.last=targetId;drag.current=next;return next;
     });
   }
   function pointerUp(){
     const drag=dragRef.current;if(!drag)return;dragRef.current=null;
-    const moved=ordered.find(item=>String(item.id)===drag.id);if(!moved)return;
-    const before=drag.previous.map(item=>String(item.id)).join('|'),after=ordered.map(item=>String(item.id)).join('|');
-    if(before!==after)void persist([...ordered],drag.previous,moved);
+    const next=drag.current||ordered;const moved=next.find(item=>String(item.id)===drag.id);if(!moved)return;
+    const before=drag.previous.map(item=>String(item.id)).join('|'),after=next.map(item=>String(item.id)).join('|');
+    if(before!==after)void persist(next,drag.previous,moved);
   }
 
   if(!loaded)return empty;
@@ -58,10 +58,10 @@ export default function ShoppingPlanningList({items,onReorder,onToggle,onEdit,on
   return <section className="shopping-order-list" aria-label={t('shoppingOrder.label')}>
     <span className="sr-only" aria-live="polite" aria-atomic="true">{announcement}</span>
     {ordered.map((item,index)=><article className={`smart-row shopping-row shopping-order-row ${item._offlinePending?'pending-sync':''}`} key={item.id} data-shopping-order-id={item.id}>
-      <button type="button" className="shopping-drag-handle" aria-label={t('shoppingOrder.drag',{name:item.name})} onPointerDown={event=>pointerDown(event,item)} onPointerMove={pointerMove} onPointerUp={pointerUp} onPointerCancel={()=>{dragRef.current=null;setOrdered(sourceOpen)}}><Icon name="menu"/></button>
+      <button type="button" className="shopping-drag-handle" aria-label={t('shoppingOrder.drag',{name:item.name})} onPointerDown={event=>pointerDown(event,item)} onPointerMove={pointerMove} onPointerUp={pointerUp} onPointerCancel={()=>{dragRef.current=null;setOrdered(sourceOpen)}}><Icon name="drag"/></button>
       <button className="smart-check" onClick={()=>onToggle(item)} aria-label={`${item.name} · ${t('complete')}`}><Icon name="check"/></button>
       <button className="smart-row-main row-main-button" onClick={()=>onEdit(item)}><div className="smart-title"><strong>{item.name}</strong>{item._offlinePending&&<span className="shopping-pending-badge"><Icon name="offline" size={12}/>{t('shoppingOffline.pending')}</span>}{item.favorite&&<span className="favorite-badge"><Icon name="favorite"/> {t('favorite')}</span>}</div><div className="smart-meta shopping-meta">{item.quantity&&<span className="shopping-quantity">{item.quantity}</span>}{item.category&&<span>{item.category}</span>}{item.aisle&&<span><Icon name="location"/>{item.aisle}</span>}{item.added_by_name&&<span><Icon name="user"/>{item.added_by_name}</span>}</div>{item.note&&<p>{item.note}</p>}</button>
-      <div className="shopping-order-actions"><button type="button" disabled={index===0} onClick={()=>move(item,-1)} aria-label={t('shoppingOrder.moveUp',{name:item.name})}><Icon name="up"/></button><button type="button" disabled={index===ordered.length-1} onClick={()=>move(item,1)} aria-label={t('shoppingOrder.moveDown',{name:item.name})}><Icon name="down"/></button></div>
+      <div className="shopping-order-actions"><button type="button" disabled={index===0} onClick={()=>move(item,-1)} aria-label={t('shoppingOrder.moveUp',{name:item.name})}>↑</button><button type="button" disabled={index===ordered.length-1} onClick={()=>move(item,1)} aria-label={t('shoppingOrder.moveDown',{name:item.name})}>↓</button></div>
       <button className={`row-action ${item.favorite?'favorite':''}`} onClick={()=>onFavorite(item)} title={t('favorite')} aria-label={t('markFavorite',{name:item.name})}><Icon name="favorite"/></button>
     </article>)}
   </section>;
