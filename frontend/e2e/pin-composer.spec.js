@@ -6,7 +6,7 @@ const TITLES={calendar_event:'Elternabend',task:'Wäsche',routine:'Müll rausste
 
 async function boot(page,{language='de',picker}={}){
  await installApiMocks(page,{language});
- const state={pickerRequests:[],posts:[]};
+ const state={pickerRequests:[],posts:[],rawPosts:[]};
  await page.route('**/api/board/**',async route=>{
   const request=route.request(),method=request.method(),url=new URL(request.url()),path=url.pathname;
   if(path==='/api/board/picker/'&&method==='GET'){
@@ -18,7 +18,7 @@ async function boot(page,{language='de',picker}={}){
   }
   if(path==='/api/board/'&&method==='GET')return route.fulfill({json:{count:0,next:null,results:[]}});
   if(path==='/api/board/'&&method==='POST'){
-   let body=null;try{body=request.postDataJSON()}catch{body=request.postData()||''}state.posts.push(body);
+   const raw=request.postData()||'';let body=null;try{body=request.postDataJSON()}catch{body=raw}state.posts.push(body);state.rawPosts.push(raw);
    return route.fulfill({status:201,json:{id:'pin-new',family:'family-1',kind:body?.kind||'photo',adapter_key:body?.adapter_key||'',target_id:body?.target_id||null,text:body?.text||'',target:null,visibility:'family',selected_membership_ids:[],effective_scope:'family',position:0,author:1,author_name:'Alex',created_at:new Date().toISOString(),can_edit:true,can_delete:true,can_reorder:true,can_change_pin_visibility:true,can_interact:true,images:[]}});
   }
   return route.fulfill({status:404,json:{detail:'not found'}});
@@ -75,7 +75,7 @@ test('late search responses and auth loss cannot restore stale private selection
 test('photo root keeps the existing secure upload flow at 390px',async({page})=>{
  await page.setViewportSize({width:390,height:844});const state=await boot(page);const form=page.locator('.pin-composer');await form.getByRole('button',{name:'Foto',exact:true}).click();
  await form.getByLabel('Fotos hinzufügen').setInputFiles({name:'familie.jpg',mimeType:'image/jpeg',buffer:Buffer.from('fake-jpeg')});await expect(form.getByText('familie.jpg',{exact:true})).toBeVisible();
- await form.getByRole('button',{name:'Anpinnen',exact:true}).click();expect(String(state.posts.at(-1))).toContain('familie.jpg');expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBeTruthy();
+ await form.getByRole('button',{name:'Anpinnen',exact:true}).click();expect(state.rawPosts.at(-1)).toContain('familie.jpg');expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBeTruthy();
 });
 
 for(const [language,label] of [['fr','Objet existant'],['nl','Bestaand item'],['th','รายการที่มีอยู่']]){
