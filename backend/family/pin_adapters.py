@@ -60,8 +60,12 @@ class PinAdapter:
             **{self.family_lookup: family_id},
         ).exists()
 
+    def pinnable_queryset(self, user, family_id):
+        """Canonical source admission for both creation and picker pagination."""
+        return self.queryset(user).filter(**{self.family_lookup: family_id})
+
     def can_pin(self, user, family_id, target_id):
-        return self.can_view(user, family_id, target_id)
+        return self.pinnable_queryset(user, family_id).filter(pk=target_id).exists()
 
     def lifecycle_state(self, target):
         return 'available' if target is not None else 'unavailable'
@@ -145,6 +149,9 @@ class ContextBackedPinAdapter(PinAdapter):
     def can_view(self, user, family_id, target_id):
         ref = ContextRef.parse(self.context_type, target_id)
         return self.context_adapter.visible_queryset(user, family_id).filter(pk=ref.id).exists()
+
+    def pinnable_queryset(self, user, family_id):
+        return self.context_adapter.visible_queryset(user, family_id)
 
     def target_family_id(self, target):
         return self.context_adapter.family_id(target)
@@ -241,8 +248,8 @@ class RoutinePinAdapter(PinAdapter):
         # render an explicit archived lifecycle instead of leaking a stale snapshot.
         return Routine.objects.all()
 
-    def can_pin(self, user, family_id, target_id):
-        return self.queryset(user).filter(id=target_id, family_id=family_id, active=True).exists()
+    def pinnable_queryset(self, user, family_id):
+        return super().pinnable_queryset(user, family_id).filter(active=True)
 
     def lifecycle_state(self, target):
         return 'available' if target.active else 'archived'
@@ -313,8 +320,8 @@ class ShoppingListPinAdapter(PinAdapter):
         # Archived lists remain resolvable for existing pins but cannot be newly pinned.
         return ShoppingList.objects.all()
 
-    def can_pin(self, user, family_id, target_id):
-        return self.queryset(user).filter(id=target_id, family_id=family_id, archived=False).exists()
+    def pinnable_queryset(self, user, family_id):
+        return super().pinnable_queryset(user, family_id).filter(archived=False)
 
     def lifecycle_state(self, target):
         return 'archived' if target.archived else 'available'
@@ -368,8 +375,8 @@ class DocumentPinAdapter(PinAdapter):
     def can_view(self, user, family_id, target_id):
         return self._visible(user, [family_id], include_archived=True).filter(pk=target_id).exists()
 
-    def can_pin(self, user, family_id, target_id):
-        return self._visible(user, [family_id]).filter(pk=target_id).exists()
+    def pinnable_queryset(self, user, family_id):
+        return self._visible(user, [family_id])
 
     def audience_queryset(self, posts, user):
         return self._visible(user, {post.family_id for post in posts}, include_archived=True).filter(

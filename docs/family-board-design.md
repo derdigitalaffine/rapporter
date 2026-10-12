@@ -53,3 +53,25 @@ Dieser Identitätsvertrag hält alte Deep Links stabil: `?page=board&post=<Board
 Der Report nennt die Identitätsstrategie `boardpost_uuid_in_place`, Gesamt-/bereits kompatible Zeilen, in diesem Lauf reparierte Adapter-Keys, noch ausstehende Backfills, Adapter-/Identitätsfehler, verwaiste Bild-/Zielreferenzen und Sichtbarkeitsanomalien. Er protokolliert weder Pinnwandtext noch Zielnamen, Dateinamen oder private Storage-Keys. Die rohe Ziel-Existenzprüfung dient ausschließlich diesen Zählern; API-Reads und Interaktionen bleiben vollständig an die kanonischen `PinAdapter`-/Source-ACL-Prüfungen gebunden.
 
 Vor der späteren Contract-Phase bleiben die Legacy-Felder lesbar. Ein Regressionstest migriert echte historische `0202_board`-Zeilen bis zum aktuellen Pin-Schema und wieder zurück und beweist dabei die unveränderten BoardPost-/BoardImage-IDs, Texte, Bild-FKs und Storage-Keys. Dadurch kann #386 Interaktionszeilen anschließend dauerhaft an `BoardPost` referenzieren, ohne bei Retry, Upgrade oder Rollback auf eine neu erzeugte Pin-ID zu zeigen. Die Contract-/Cleanup-Phase darf diese Kompatibilität erst nach einem separaten, messbaren Cutover entfernen.
+
+### Canonical source picker admission and limits
+
+`GET /api/board/picker/?family=<uuid>&adapter_key=<key>` uses each registered
+adapter's `pinnable_queryset(user, family_id)` for both picker selection and
+single-target `can_pin`. Source ACL stays in the existing source/Context/Document
+selectors. Routine activity and ShoppingList/Document archive rules apply before
+pagination; existing archived pins retain their previous readable lifecycle.
+
+The endpoint requires authentication and an active-family membership with a
+non-guest role, including for superadmins. Invalid family UUIDs and non-positive
+or malformed page parameters return 400; inaccessible families/guest roles return
+403. `page_size` defaults to 20 and clamps to 50. The zero-based offset is limited
+to 10,000; larger offsets return 400 and require narrowing `q`, rather than loading
+all earlier candidates. Ordering is `updated_at DESC, id DESC`; each request reads
+only its admitted page plus one `has_next` sentinel, and projects previews only
+for returned rows. As with ordinary offset pagination, source updates may move
+rows between requests; this is not a snapshot cursor. All eight source groups and
+legacy kind aliases remain available.
+
+No schema migration. Rollback can restore the endpoint/adapter implementation
+without changing sources, existing Pins, interactions, UUIDs or personal layouts.

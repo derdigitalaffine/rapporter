@@ -1,6 +1,9 @@
+from uuid import UUID
+
 from django.db.models import Q
-from rest_framework.decorators import api_view
+from rest_framework.decorators import api_view, permission_classes
 from rest_framework.exceptions import PermissionDenied, ValidationError
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from .models import Family, Membership
@@ -9,6 +12,7 @@ from .pin_adapters import get_pin_adapter, legacy_kind_for_adapter_key
 
 PAGE_SIZE = 20
 MAX_PAGE_SIZE = 50
+MAX_OFFSET = 10_000
 SEARCH_FIELDS = {
     'calendar_event': ('title',),
     'task': ('title',),
@@ -33,17 +37,6 @@ def _positive_int(value, *, default, maximum=None, field):
     return min(parsed, maximum) if maximum else parsed
 
 
-def _picker_queryset(adapter, user, family_id):
-    # Context- and Document-backed adapters deliberately require an explicit
-    # family scope. Reuse their canonical visibility authorities instead of
-    # reconstructing ACL rules in the picker.
-    if getattr(adapter, 'context_type', None):
-        return adapter.context_adapter.visible_queryset(user, family_id)
-    if hasattr(adapter, '_visible'):
-        return adapter._visible(user, [family_id])
-    return adapter.queryset(user).filter(**{adapter.family_lookup: family_id})
-
-
 def _search(queryset, adapter_key, query):
     query = (query or '').strip()
     if not query:
@@ -56,11 +49,16 @@ def _search(queryset, adapter_key, query):
 
 
 @api_view(['GET'])
+@permission_classes([IsAuthenticated])
 def pin_picker(request):
     family_id = request.query_params.get('family')
     requested_key = request.query_params.get('adapter_key') or request.query_params.get('kind')
     if not family_id:
         raise ValidationError({'family': 'Familie fehlt.'})
+    try:
+        family_id = UUID(family_id)
+    except (ValueError, TypeError, AttributeError):
+        raise ValidationError({'family': 'Ungültige Familien-ID.'})
     if not requested_key:
         raise ValidationError({'kind': 'Pin-Typ fehlt.'})
 
@@ -85,18 +83,17 @@ def pin_picker(request):
         maximum=MAX_PAGE_SIZE,
         field='page_size',
     )
-    queryset = _search(_picker_queryset(adapter, request.user, family_id), adapter.key, request.query_params.get('q'))
+    start = (page - 1) * page_size
+    if start > MAX_OFFSET:
+        raise ValidationError({'page': 'Auswahlgrenze erreicht. Bitte Suche eingrenzen.'})
+    queryset = _search(adapter.pinnable_queryset(request.user, family_id), adapter.key, request.query_params.get('q'))
     queryset = queryset.order_by('-updated_at', '-id')
 
-    # Fetch a bounded window and apply the adapter's canonical can_pin rule to
-    # each candidate. This keeps archived/inactive targets out without copying
-    # adapter-specific lifecycle policy into the endpoint.
-    wanted = page * page_size + 1
-    candidates = list(queryset[: max(wanted * 2, PAGE_SIZE + 1)])
-    pinnable = [row for row in candidates if adapter.can_pin(request.user, family_id, row.id)]
-    start = (page - 1) * page_size
-    selected = pinnable[start : start + page_size]
-    has_next = len(pinnable) > start + page_size
+    # Admission and lifecycle filtering happen before pagination in the same
+    # adapter selector used by can_pin. Only this page plus one sentinel is read.
+    candidates = list(queryset[start : start + page_size + 1])
+    selected = candidates[:page_size]
+    has_next = len(candidates) > page_size
 
     return Response({
         'kind': legacy_kind_for_adapter_key(adapter.key),
