@@ -118,7 +118,7 @@ Task stakes do not add a parallel notification pipeline. The existing challenge/
 
 ## Today widget
 
-The optional `games` widget is registered in `TodayWidgetRegistry` without changing the layout schema version. Existing saved layouts are expanded losslessly with the new widget hidden by default. Users can add it from the existing widget library.
+The optional `games` widget is registered in `TodayWidgetRegistry` without changing the layout schema version. Games is visible in a new default layout and is appended through the canonical registry normalization when it is absent from an older layout. An explicitly saved hidden `games` row and the relative order of saved rows remain authoritative. The backend and frontend registries use the same Games default; periodic live reads never rewrite layout preferences. Users can add it from the existing widget library.
 
 The widget has explicit loading, error/retry, actionable, and empty states. It links back to the Games hub and shows only the current user's participant-scoped summary.
 
@@ -128,7 +128,7 @@ The Games hub uses native form controls and buttons, explicit status/alert regio
 
 The task-stake flow uses native selects, text input and checkbox consent. The task title, deterministic rule and current assignment are visible before consent; the accept action for the opponent is explicitly labelled as accepting both task and duel.
 
-German and English UI copy is provided for the Games hub and Today widget.
+The existing Games hub retains its German/English game and stake forms. All new live refresh/error/retry copy and the Today Games projection support DE/EN/FR/NL/TH. The bounded live fix does not expand the task-stake flow or introduce another form system.
 
 ## Persistence, rollout, and rollback
 
@@ -142,3 +142,15 @@ Rollout order:
 4. the optional Today widget continues to use the same summary endpoint and receives the safe task-assignment projection additively.
 
 Rollback is safe at the application layer because the canonical task remains `family.Task`. Disable/remove task-stake creation in the Games UI/API first; existing stake rows can remain as historical coordination data. Removing the additive table should only happen in a later migration after confirming no rollback/audit data is required.
+
+## Bounded live refresh (#521)
+
+GamesHub and GamesTodayWidget share a Games-consumer lifecycle helper, without introducing a global polling/cache/queue authority. Initial Hub loading reads the canonical session, family Games list and Tasks list once. Steady Hub revalidation performs one Games-list read; the Today consumer performs one summary read. There is no per-match request fan-out.
+
+The next four-second refresh is scheduled after the preceding read settles. Timer, focus, visibility-return and manual retry coalesce into one in-flight read plus at most one requested catch-up. Hidden tabs stop scheduling and ignore focus events. Returning to the visible tab triggers immediate revalidation. Known authorized rows remain visible while the same context is pending, and ordinary network errors display a stale-state notice with retry.
+
+Mutation start synchronously invalidates already-running reads, before React effect cleanup. Every POST stage and every late success/failure/URL update checks the mounted family and operation generation. A task successfully created through the canonical Task API remains a normal task if subsequent challenge creation fails; the existing selected-task retry path remains intact. Challenge inputs are disabled while their POST is pending, so a late response cannot erase newly typed input. Silent reads preserve selected/collapsed matches, draft fields and the stable Battleship preview component.
+
+Family changes immediately exclude old data from rendering. Logout/authenticated-false events and unmount invalidate pending work; normal authenticated-true session refresh events preserve a valid draft. Canonical App logout/login/family remounts remain the identity boundary. Confirmed 401/403/404 removes match/summary/task/viewer projections and private challenge drafts; a fresh explicit retry only restores data returned by the existing authoritative APIs. No offline move queue or autonomous game/task mutation is added.
+
+Focused regression coverage includes slow/focus overlap, hidden-tab scheduling, GET-before-POST races, transient vs. denied projections, guarded Widget retry across families, auth invalidation, preserved draft/selection/fleet, saved hidden/default registry behavior, five Today locales and mobile/keyboard/zoom navigation. Task-context/deep-link/create integration is a separate bounded delivery under #524; its API/form policy is not mixed into this live-refresh hotfix.

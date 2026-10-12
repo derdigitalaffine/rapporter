@@ -156,7 +156,9 @@ def _expanded_widgets(widgets, *, legacy_defaults=True):
     for entry in TODAY_WIDGET_REGISTRY:
         key = entry['id']
         if key not in seen:
-            rows.append(default_widget(key, visible=False))
+            # Games is the explicit #521 registry introduction. Saved rows above,
+            # including an explicitly hidden Games widget, are never overwritten.
+            rows.append(default_widget(key, visible=TODAY_WIDGETS_BY_ID[key]['defaultVisible'] if key == 'games' else False))
             seen.add(key)
     return rows
 

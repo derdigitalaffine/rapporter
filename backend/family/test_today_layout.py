@@ -75,7 +75,7 @@ class TodayLayoutTests(TestCase):
         self.assertNotIn('next', DEFAULT_WIDGET_ORDER)
         self.assertEqual(
             [row['id'] for row in initial.data['widgets'] if row['visible']],
-            ['focus', 'timeline', 'week', 'todo', 'pinboard'],
+            ['focus', 'timeline', 'week', 'todo', 'pinboard', 'games'],
         )
         self.assertEqual(
             {row['id']: row['size'] for row in initial.data['widgets']},
@@ -253,6 +253,24 @@ class TodayLayoutTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data['revision'], 7)
         self.assertEqual(response.data['widgets'], custom)
+
+    def test_games_registry_introduction_preserves_explicit_hidden_choice(self):
+        custom = [row for row in deepcopy(DEFAULT_WIDGETS) if row['id'] != 'games']
+        custom.reverse()
+        layout = TodayLayout.objects.create(family=self.family, user=self.user, widgets=custom, revision=7)
+        introduced = self.client.get(self.url).data
+        game = next(row for row in introduced['widgets'] if row['id'] == 'games')
+        self.assertEqual(game, {'id': 'games', 'visible': True, 'size': 'medium'})
+        self.assertEqual([row for row in introduced['widgets'] if row['id'] != 'games'], custom)
+        self.assertEqual(introduced['revision'], 7)
+        layout.refresh_from_db()
+        self.assertEqual(layout.widgets, custom)
+        game['visible'] = False
+        game['size'] = 'compact'
+        saved = self.client.put(self.url, introduced, format='json')
+        self.assertEqual(saved.status_code, 200)
+        self.assertEqual(self.client.get(self.url).data, saved.data)
+        self.assertEqual(next(row for row in saved.data['widgets'] if row['id'] == 'games'), {'id': 'games', 'visible': False, 'size': 'compact'})
 
     def test_v2_medium_is_allowed_only_for_supported_widgets(self):
         valid = deepcopy(self.client.get(self.url).data)
