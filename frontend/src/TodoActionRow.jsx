@@ -18,20 +18,9 @@ function canRunPrimary(item){
   const id=item?.primary_action?.id;
   return (item.kind==='task'&&['complete','reopen'].includes(id))||(item.kind==='routine'&&['record_done','reactivate'].includes(id));
 }
-function duelAction(item){
-  const canEdit=(item?.allowed_actions||[]).some(action=>action?.id==='edit');
-  if(item?.kind!=='task'||item?.completed_at||!canEdit)return null;
-  const url=new URL(item.deep_link||fallbackHref(item),location.origin);
-  if(!url.searchParams.get('task'))return null;
-  url.searchParams.set('page','games');
-  return {id:'duel',method:'GET',href:`${url.pathname}${url.search}${url.hash}`};
-}
 function secondaryActions(item){
   const primaryId=item?.primary_action?.id;
-  const actions=(item?.allowed_actions||[]).filter(action=>action?.id!==primaryId&&['snooze','edit','move','delete'].includes(action?.id));
-  const duel=duelAction(item);const editIndex=actions.findIndex(action=>action?.id==='edit');
-  if(duel&&editIndex>=0)actions.splice(editIndex+1,0,duel);
-  return actions;
+  return (item?.allowed_actions||[]).filter(action=>action?.id!==primaryId&&['snooze','edit','duel','move','delete'].includes(action?.id));
 }
 function linkFor(item,action){
   if(action.id==='duel')return action.href;
