@@ -19,7 +19,7 @@ export const TodayWidgetRegistry=[
  entry('timeline',2,{component:'TodayTimelineWidget',category:'planning',supportedSizes:TODAY_WIDGET_SIZES,defaultSize:'wide'}),
  entry('week',3,{component:'WeekCompassWidget',category:'planning',supportedSizes:TODAY_WIDGET_SIZES,defaultSize:'medium',settingsSchema:weekSettings}),
  entry('todo',4,{component:'TodayTodoWidget',category:'planning',supportedSizes:TODAY_WIDGET_SIZES,defaultSize:'compact'}),
- entry('pinboard',5,{component:'PinboardTodayWidget',category:'collaboration',supportedSizes:['compact','medium'],defaultSize:'medium'}),
+ entry('pinboard',5,{component:'PinboardTodayWidget',category:'collaboration',supportedSizes:TODAY_WIDGET_SIZES,defaultSize:'medium'}),
  entry('tomorrow',6,{component:'TodayTomorrowWidget',category:'planning',supportedSizes:['compact','medium'],defaultSize:'compact',defaultVisible:false}),
  entry('family-load',7,{component:'TodayFamilyLoadWidget',category:'family',supportedSizes:['compact','medium'],defaultSize:'compact',defaultVisible:false}),
  entry('trip',8,{category:'planning',supportedSizes:TODAY_WIDGET_SIZES,defaultSize:'medium',defaultVisible:false,settingsSchema:tripSettings}),
