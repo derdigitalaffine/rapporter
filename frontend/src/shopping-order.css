@@ -1,0 +1,10 @@
+.shopping-order-list{display:flex;flex-direction:column}
+.shopping-order-row{min-height:52px;align-items:stretch}
+.shopping-drag-handle,.shopping-order-actions button{min-width:44px;min-height:44px;border:0;background:transparent;color:var(--color-muted);display:grid;place-items:center}
+.shopping-drag-handle{cursor:grab;touch-action:none}.shopping-drag-handle:active{cursor:grabbing}
+.shopping-order-actions{display:flex;align-items:stretch}
+.shopping-order-actions button{font-size:18px;font-weight:800}.shopping-order-actions button:disabled{opacity:.28}
+.shopping-order-row:has(.shopping-drag-handle:active){background:var(--color-bg)}
+.shopping-order-row button:focus-visible{outline:3px solid var(--color-brand);outline-offset:-3px}
+@media (max-width:390px){.shopping-order-actions button{min-width:44px;min-height:44px;font-size:16px}}
+@media (prefers-reduced-motion:reduce){.shopping-order-row{scroll-behavior:auto}}

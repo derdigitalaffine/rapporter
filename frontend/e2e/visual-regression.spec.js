@@ -48,6 +48,10 @@ async function snapshot(page,name){
   if(!desktop&&['shopping-planning','calendar'].includes(name))thresholds={maxDiffPixels:150};
   if(desktop&&['tasks','shopping-planning','integrations','automations'].includes(name))thresholds={maxDiffPixelRatio:.035};
   if(desktop&&['calendar','members','dialog-task-editor','dialog-event-editor'].includes(name))thresholds={maxDiffPixelRatio:.015};
+  // #536 intentionally inserts the compact Offen/Erledigt/Alle control above the
+  // checklist. Bound that measured one-row layout shift instead of disabling the
+  // visual regression or widening every Shopping screenshot.
+  if(name==='shopping-store')thresholds={maxDiffPixels:desktop?3400:3100};
   // The FamilyOS icon refresh intentionally changes only small glyph regions in
   // these mobile baselines. Keep fixed pixel budgets rather than widening the
   // whole screenshot with a percentage threshold.
@@ -57,7 +61,7 @@ async function snapshot(page,name){
   }
   // The Members surface is intentionally redesigned in #425. Keep the accepted
   // mobile delta tightly bounded to the measured layout change (3,751 pixels)
-  // instead of widening the screenshot with a percentage tolerance.
+  // instead of widening the screenshot with a percentage threshold.
   if(!desktop&&name==='members')thresholds={maxDiffPixels:4000};
   await expect(page).toHaveScreenshot(`${name}.png`,{animations:'disabled',caret:'hide',...thresholds});
 }

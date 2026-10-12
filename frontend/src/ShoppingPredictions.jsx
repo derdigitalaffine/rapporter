@@ -4,7 +4,7 @@ import './prediction-i18n';
 import {api} from './api';
 import {Icon} from './icons';
 import {toast} from './feedback';
-import {SmartShopping} from './SmartLists';
+import SmartShopping from './SmartShopping';
 import './shopping-predictions.css';
 
 function PredictionPanel({family,onAccepted}){
