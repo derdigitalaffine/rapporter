@@ -1,7 +1,11 @@
 from unittest.mock import MagicMock, patch
 from urllib.parse import parse_qs
 
-from django.test import SimpleTestCase, override_settings
+from django.contrib.auth import get_user_model
+from django.test import SimpleTestCase, TestCase, override_settings
+from rest_framework.test import APIClient
+
+from family.models import Family, Membership
 
 from .matomo_product import (
     ProductAnalyticsError,
@@ -106,3 +110,57 @@ class ProductAnalyticsContractTests(SimpleTestCase):
     def test_tracking_target_must_use_https(self):
         with self.assertRaises(ProductAnalyticsError):
             dispatch_product_event(PAGEVIEW)
+
+
+class ProductAnalyticsEndpointTests(TestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(username="product-member")
+        self.family = Family.objects.create(name="Product family", slug="product-family")
+        Membership.objects.create(user=self.user, family=self.family, role=Membership.Role.ADULT)
+        self.client = APIClient()
+        self.client.force_authenticate(self.user)
+
+    @patch("telemetry.product_analytics_views.dispatch_product_event")
+    def test_anonymous_requests_do_not_dispatch(self, dispatch):
+        self.client.force_authenticate(None)
+        response = self.client.post("/api/analytics/product-event/", PAGEVIEW, format="json")
+        self.assertIn(response.status_code, (401, 403))
+        dispatch.assert_not_called()
+
+    @patch("telemetry.product_analytics_views.dispatch_product_event")
+    def test_foreign_family_requests_do_not_dispatch(self, dispatch):
+        other = Family.objects.create(name="Other family", slug="other-product-family")
+        response = self.client.post(f"/api/analytics/product-event/?family={other.pk}", PAGEVIEW, format="json")
+        self.assertEqual(response.status_code, 403)
+        dispatch.assert_not_called()
+
+    @patch("telemetry.product_analytics_views.dispatch_product_event")
+    def test_suspended_membership_does_not_dispatch(self, dispatch):
+        self.family.status = Family.Status.SUSPENDED
+        self.family.save(update_fields=["status"])
+        response = self.client.post("/api/analytics/product-event/", PAGEVIEW, format="json")
+        self.assertEqual(response.status_code, 403)
+        dispatch.assert_not_called()
+
+    @override_settings(MATOMO_TRACKING_ENABLED=False)
+    @patch("telemetry.matomo_product.urlopen")
+    def test_disabled_endpoint_has_no_egress(self, urlopen):
+        response = self.client.post("/api/analytics/product-event/", PAGEVIEW, format="json")
+        self.assertEqual(response.status_code, 204)
+        urlopen.assert_not_called()
+
+    @patch("telemetry.matomo_product.urlopen")
+    def test_private_payload_is_rejected_before_egress(self, urlopen):
+        response = self.client.post("/api/analytics/product-event/", {**PAGEVIEW, "email": "private@example.test"}, format="json")
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.data, {"code": "unknown_field"})
+        urlopen.assert_not_called()
+
+    @patch("telemetry.product_analytics_views.dispatch_product_event", side_effect=ProductAnalyticsError("vendor private configuration"))
+    def test_outage_is_sanitized_and_does_not_fail_the_product(self, dispatch):
+        with self.assertLogs("telemetry", level="WARNING") as logs:
+            response = self.client.post("/api/analytics/product-event/", PAGEVIEW, format="json")
+        self.assertEqual(response.status_code, 202)
+        self.assertEqual(response.data, {"accepted": False})
+        self.assertNotIn("vendor private", str(response.data))
+        self.assertNotIn("vendor private", " ".join(logs.output))
