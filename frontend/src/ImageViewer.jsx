@@ -5,12 +5,12 @@ import './image-viewer.css';
 
 const focusableSelector='button:not([disabled]),a[href],input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
 
-export default function ImageViewer({images=[],activeIndex=0,onActiveIndexChange,onClose,labels={}}){
+export default function ImageViewer({images=[],activeIndex=0,returnFocus,onActiveIndexChange,onClose,labels={}}){
  const dialogRef=useRef(null),closeRef=useRef(null),indexRef=useRef(activeIndex),imagesRef=useRef(images),changeRef=useRef(onActiveIndexChange),closeHandlerRef=useRef(onClose);
  indexRef.current=activeIndex;imagesRef.current=images;changeRef.current=onActiveIndexChange;closeHandlerRef.current=onClose;
 
  useEffect(()=>{
-  const returnFocus=document.activeElement;
+  const focusTarget=returnFocus||document.activeElement;
   const previousOverflow=document.body.style.overflow;
   document.body.style.overflow='hidden';
   closeRef.current?.focus();
@@ -37,9 +37,9 @@ export default function ImageViewer({images=[],activeIndex=0,onActiveIndexChange
   return()=>{
    document.removeEventListener('keydown',handleKeyDown);
    document.body.style.overflow=previousOverflow;
-   requestAnimationFrame(()=>{if(!dialogRef.current?.isConnected&&returnFocus?.isConnected)returnFocus.focus?.()});
+   requestAnimationFrame(()=>{if(!dialogRef.current?.isConnected&&focusTarget?.isConnected)focusTarget.focus?.()});
   };
- },[]);
+ },[returnFocus]);
 
  if(!images.length)return null;
  const safeIndex=Math.min(Math.max(activeIndex,0),images.length-1),image=images[safeIndex];
