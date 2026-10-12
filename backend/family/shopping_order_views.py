@@ -1,4 +1,5 @@
 from django.db import transaction
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
@@ -32,9 +33,11 @@ def shopping_reorder(request, list_id):
     with transaction.atomic():
         ShoppingList.objects.select_for_update().get(pk=shopping_list.pk)
         rows = []
+        changed_at = timezone.now()
         for index, item_id in enumerate(normalized, start=1):
             item = visible_by_id[item_id]
             item.position = index * 1000
+            item.updated_at = changed_at
             rows.append(item)
         ShoppingItem.objects.bulk_update(rows, ["position", "updated_at"])
 
