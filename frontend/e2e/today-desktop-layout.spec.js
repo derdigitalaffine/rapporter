@@ -43,7 +43,9 @@ async function gridMetrics(page){
    columns:getComputedStyle(grid).gridTemplateColumns.split(' ').filter(Boolean).length,
    flow:getComputedStyle(grid).gridAutoFlow,
    wide:ratio('[data-widget-size="wide"]'),
-   compact:ratio('[data-widget-size="compact"]'),
+   // Situation is intentionally a full-width dashboard signal even though its
+   // information-density setting is compact. Measure a normal compact widget.
+   compact:ratio('[data-widget-size="compact"]:not([data-today-widget="situation"])'),
    medium:ratio('[data-widget-size="medium"]'),
    order:[...grid.querySelectorAll('[data-today-widget]')].map(element=>element.dataset.todayWidget),
   };
