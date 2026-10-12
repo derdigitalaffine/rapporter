@@ -374,9 +374,12 @@ def project_actions(
     if not Membership.objects.filter(user=user, family=family, family__status=Family.Status.ACTIVE).exists():
         raise ActionProjectionError("Familie ist für diesen Benutzer nicht verfügbar.")
 
-    items = []
-    if kind in {"all", "tasks"}:
-        for task in _task_queryset(
+    items: list[dict] = []
+    include_tasks = kind != "routines"
+    include_routines = kind != "tasks" and scope != "mine" and not list_id and not workflow_id
+
+    if include_tasks:
+        tasks = _task_queryset(
             family=family,
             user=user,
             scope=scope,
@@ -385,14 +388,17 @@ def project_actions(
             today_start=today_start,
             tomorrow_start=tomorrow_start,
             recent_start=recent_start,
-        ):
-            item = _task_item(task, user=user, family=family, now=now)
-            if _matches_scope(item, scope=scope, today=today, zone=zone, recent_start=recent_start):
-                items.append(item)
-    if kind in {"all", "routines"} and not list_id and not workflow_id and scope != "mine":
-        for routine in _routine_queryset(family=family, user=user, scope=scope, now=now, recent_start=recent_start):
-            item = _routine_item(routine, user=user, family=family, now=now)
-            if _matches_scope(item, scope=scope, today=today, zone=zone, recent_start=recent_start):
-                items.append(item)
+        )
+        items.extend(_task_item(task, user=user, family=family, now=now) for task in tasks)
+
+    if include_routines:
+        routines = _routine_queryset(family=family, user=user, scope=scope, now=now, recent_start=recent_start)
+        items.extend(_routine_item(routine, user=user, family=family, now=now) for routine in routines)
+
+    items = [
+        item
+        for item in items
+        if _matches_scope(item, scope=scope, today=today, zone=zone, recent_start=recent_start)
+    ]
     items.sort(key=_sort_key)
     return [_public_item(item) for item in items]
