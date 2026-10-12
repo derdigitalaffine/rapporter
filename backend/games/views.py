@@ -1,14 +1,16 @@
 import uuid
 
+from django.db import transaction
 from django.db.models import Q
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from family.models import Family, Membership
+from family.models import Family, Membership, Task
 
-from .models import BattleshipBoard, BattleshipShot, GameMatch
+from .models import BattleshipBoard, BattleshipShot, GameMatch, GameTaskAssignment
 from .services import (
     GameError,
     accept_match,
@@ -133,6 +135,33 @@ def _battleship_payload(match, actor):
     }
 
 
+def _task_assignment_payload(match):
+    stake = getattr(match, "task_assignment", None)
+    if not stake:
+        return None
+    if stake.applied_at:
+        outcome = "applied"
+    elif stake.invalidated_at:
+        outcome = "draw" if stake.invalidation_reason == "draw" else "invalidated"
+    elif stake.opponent_confirmed_at:
+        outcome = "ready"
+    else:
+        outcome = "pending_consent"
+    return {
+        "task": {
+            "id": str(stake.task_id),
+            "title": stake.task.title,
+            "assignee_user_id": stake.task.assignee_id,
+        },
+        "rule": stake.rule,
+        "challenger_confirmed": bool(stake.challenger_confirmed_at),
+        "opponent_confirmed": bool(stake.opponent_confirmed_at),
+        "outcome": outcome,
+        "applied_assignee_user_id": stake.applied_assignee_id,
+        "invalidation_reason": stake.invalidation_reason or None,
+    }
+
+
 def _serialize(match, actor):
     payload = {
         "id": str(match.id),
@@ -152,6 +181,7 @@ def _serialize(match, actor):
         "created_at": match.created_at,
         "updated_at": match.updated_at,
         "finished_at": match.finished_at,
+        "task_assignment": _task_assignment_payload(match),
     }
     if match.game_type == GameMatch.GameType.RPS:
         payload["rps"] = _rps_payload(match, actor)
@@ -160,13 +190,45 @@ def _serialize(match, actor):
     return payload
 
 
+def _match_queryset():
+    return GameMatch.objects.select_related(
+        "family",
+        "challenger__user",
+        "opponent__user",
+        "winner__user",
+        "current_turn__user",
+        "task_assignment__task__assignee",
+        "task_assignment__applied_assignee",
+    ).prefetch_related("rps_rounds__winner__user", "battleship_boards", "battleship_shots")
+
+
 def _fresh(match_id, actor):
-    match = (
-        GameMatch.objects.select_related("family", "challenger__user", "opponent__user", "winner__user", "current_turn__user")
-        .prefetch_related("rps_rounds__winner__user", "battleship_boards", "battleship_shots")
-        .get(id=match_id)
+    return _serialize(_match_queryset().get(id=match_id), actor)
+
+
+def _create_task_assignment(match, actor, opponent, assignment_data):
+    if not isinstance(assignment_data, dict):
+        raise GameApiError("invalid_task_assignment")
+    if assignment_data.get("confirmed") is not True:
+        raise GameApiError("task_assignment_consent_required", status.HTTP_409_CONFLICT)
+    rule = str(assignment_data.get("rule") or "")
+    if rule not in GameTaskAssignment.Rule.values:
+        raise GameApiError("invalid_task_assignment_rule")
+    task_id = _uuid(assignment_data.get("task"), "task_unavailable")
+    task = (
+        Task.objects.select_for_update()
+        .filter(id=task_id, family=actor.family, completed_at__isnull=True)
+        .first()
     )
-    return _serialize(match, actor)
+    if not task or task.hidden_from_user_id in {actor.user_id, opponent.user_id}:
+        raise GameApiError("task_unavailable", status.HTTP_404_NOT_FOUND)
+    return GameTaskAssignment.objects.create(
+        match=match,
+        task=task,
+        rule=rule,
+        expected_assignee_id=task.assignee_id,
+        challenger_confirmed_at=timezone.now(),
+    )
 
 
 @api_view(["GET", "POST"])
@@ -190,23 +252,22 @@ def match_list(request):
                 raise GameApiError("invalid_round_count")
             if game_type == GameMatch.GameType.BATTLESHIP:
                 round_count = 1
-            match = GameMatch.objects.create(
-                family=actor.family,
-                challenger=actor,
-                opponent=opponent,
-                game_type=game_type,
-                rps_round_count=round_count,
-            )
-            notify_challenge(match)
+            assignment_data = request.data.get("task_assignment")
+            with transaction.atomic():
+                match = GameMatch.objects.create(
+                    family=actor.family,
+                    challenger=actor,
+                    opponent=opponent,
+                    game_type=game_type,
+                    rps_round_count=round_count,
+                )
+                if assignment_data is not None:
+                    _create_task_assignment(match, actor, opponent, assignment_data)
+                notify_challenge(match)
             return Response(_fresh(match.id, actor), status=status.HTTP_201_CREATED)
 
         actor = _membership(request.user, request.query_params.get("family"))
-        rows = (
-            GameMatch.objects.select_related("family", "challenger__user", "opponent__user", "winner__user", "current_turn__user")
-            .prefetch_related("rps_rounds__winner__user", "battleship_boards", "battleship_shots")
-            .filter(family=actor.family)
-            .filter(Q(challenger=actor) | Q(opponent=actor))[:50]
-        )
+        rows = _match_queryset().filter(family=actor.family).filter(Q(challenger=actor) | Q(opponent=actor))[:50]
         return Response([_serialize(row, actor) for row in rows])
     except (GameApiError, GameError, GameMatch.DoesNotExist) as exc:
         return _error(exc)
@@ -234,7 +295,12 @@ def _action(request, match_id, service):
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def match_accept(request, match_id):
-    return _action(request, match_id, accept_match)
+    try:
+        match, actor = _match_context(request.user, match_id)
+        accept_match(match.id, actor, task_assignment_confirmed=request.data.get("task_assignment_confirmed") is True)
+        return Response(_fresh(match.id, actor))
+    except (GameApiError, GameError, GameMatch.DoesNotExist) as exc:
+        return _error(exc)
 
 
 @api_view(["POST"])
@@ -288,8 +354,7 @@ def game_summary(request):
     try:
         actor = _membership(request.user, request.query_params.get("family"))
         rows = (
-            GameMatch.objects.select_related("family", "challenger__user", "opponent__user", "winner__user", "current_turn__user")
-            .prefetch_related("rps_rounds__winner__user", "battleship_boards", "battleship_shots")
+            _match_queryset()
             .filter(family=actor.family)
             .filter(Q(challenger=actor) | Q(opponent=actor))
             .filter(status__in=[GameMatch.Status.PENDING, GameMatch.Status.ACTIVE, GameMatch.Status.FINISHED])[:8]

@@ -1,9 +1,10 @@
 from django.db import transaction
 from django.utils import timezone
 
+from family.models import Membership, Task
 from notifications.services import record_notification
 
-from .models import BattleshipBoard, BattleshipShot, GameMatch, RockPaperScissorsRound
+from .models import BattleshipBoard, BattleshipShot, GameMatch, GameTaskAssignment, RockPaperScissorsRound
 
 
 FLEET = [5, 4, 3, 3, 2]
@@ -82,13 +83,88 @@ def notify_finished(match):
         _notify(match, recipient, "games.finished", "Spiel beendet", "Game finished", de_body, en_body)
 
 
-def accept_match(match_id, actor):
+def _task_assignment(match):
+    return (
+        GameTaskAssignment.objects.select_for_update(of=("self",))
+        .select_related("task", "expected_assignee", "applied_assignee")
+        .filter(match=match)
+        .first()
+    )
+
+
+def _task_assignment_is_available(stake, match):
+    task = stake.task
+    if task.family_id != match.family_id:
+        return False
+    if task.hidden_from_user_id in {match.challenger.user_id, match.opponent.user_id}:
+        return False
+    return Membership.objects.filter(
+        family_id=match.family_id,
+        user_id__in=[match.challenger.user_id, match.opponent.user_id],
+    ).count() == 2
+
+
+def apply_task_assignment(match):
+    """Apply a previously consented task stake exactly once after a finished match."""
+    stake = _task_assignment(match)
+    if not stake or stake.applied_at or stake.invalidated_at:
+        return stake
+
+    now = timezone.now()
+    if match.status != GameMatch.Status.FINISHED:
+        return stake
+    if not stake.challenger_confirmed_at or not stake.opponent_confirmed_at:
+        stake.invalidated_at = now
+        stake.invalidation_reason = "missing_consent"
+        stake.save(update_fields=["invalidated_at", "invalidation_reason", "updated_at"])
+        return stake
+    if match.is_draw or not match.winner_id:
+        stake.invalidated_at = now
+        stake.invalidation_reason = "draw"
+        stake.save(update_fields=["invalidated_at", "invalidation_reason", "updated_at"])
+        return stake
+    if not _task_assignment_is_available(stake, match):
+        stake.invalidated_at = now
+        stake.invalidation_reason = "task_unavailable"
+        stake.save(update_fields=["invalidated_at", "invalidation_reason", "updated_at"])
+        return stake
+
+    task = Task.objects.select_for_update().get(id=stake.task_id)
+    if task.assignee_id != stake.expected_assignee_id:
+        stake.invalidated_at = now
+        stake.invalidation_reason = "task_assignment_changed"
+        stake.save(update_fields=["invalidated_at", "invalidation_reason", "updated_at"])
+        return stake
+
+    winner = match.winner
+    loser = match.opponent_for(winner)
+    selected = winner if stake.rule == GameTaskAssignment.Rule.WINNER else loser
+    task.assignee_id = selected.user_id
+    task.save(update_fields=["assignee", "updated_at"])
+    stake.applied_assignee_id = selected.user_id
+    stake.applied_at = now
+    stake.save(update_fields=["applied_assignee", "applied_at", "updated_at"])
+    return stake
+
+
+def accept_match(match_id, actor, *, task_assignment_confirmed=False):
     with transaction.atomic():
         match = GameMatch.objects.select_for_update().select_related("family", "challenger__user", "opponent__user").get(id=match_id)
         if match.opponent_id != actor.id:
             raise GameError("only_opponent_can_accept")
         if match.status != GameMatch.Status.PENDING:
             raise GameError("match_not_pending")
+        stake = _task_assignment(match)
+        if stake:
+            if not task_assignment_confirmed:
+                raise GameError("task_assignment_consent_required")
+            if not _task_assignment_is_available(stake, match):
+                raise GameError("task_assignment_unavailable")
+            task = Task.objects.select_for_update().get(id=stake.task_id)
+            if task.assignee_id != stake.expected_assignee_id:
+                raise GameError("task_assignment_changed")
+            stake.opponent_confirmed_at = timezone.now()
+            stake.save(update_fields=["opponent_confirmed_at", "updated_at"])
         match.status = GameMatch.Status.ACTIVE
         match.accepted_at = timezone.now()
         match.save()
@@ -166,6 +242,7 @@ def submit_rps_choice(match_id, actor, choice):
                 match.is_draw = False
                 match.winner = match.challenger if challenger_wins > opponent_wins else match.opponent
             match.save()
+            apply_task_assignment(match)
             notify_finished(match)
         else:
             match.current_round += 1
@@ -283,6 +360,7 @@ def fire_shot(match_id, actor, x, y):
             match.finished_at = timezone.now()
             match.current_turn = None
             match.save()
+            apply_task_assignment(match)
             notify_finished(match)
         else:
             match.current_turn = target
