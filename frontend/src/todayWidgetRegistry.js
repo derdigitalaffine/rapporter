@@ -27,7 +27,7 @@ export const TodayWidgetRegistry=[
  entry('shopping',10,{category:'household',defaultSize:'compact',defaultVisible:false}),
  entry('waste',11,{category:'household',supportedSizes:TODAY_WIDGET_SIZES,defaultSize:'medium',defaultVisible:false}),
  entry('inbox',12,{category:'collaboration',supportedSizes:TODAY_WIDGET_SIZES,defaultSize:'medium',defaultVisible:false}),
- entry('games',13,{category:'collaboration',supportedSizes:TODAY_WIDGET_SIZES,defaultSize:'medium',defaultVisible:false,deepLink:'/?page=games'}),
+ entry('games',13,{category:'collaboration',supportedSizes:TODAY_WIDGET_SIZES,defaultSize:'medium',defaultVisible:true,deepLink:'/?page=games'}),
  entry('birthdays',14,{supportedSizes:TODAY_WIDGET_SIZES,defaultSize:'medium',defaultVisible:false}),
  entry('notes',15,{supportedSizes:TODAY_WIDGET_SIZES,defaultSize:'medium',defaultVisible:false}),
  entry('loyalty',16,{category:'household',supportedSizes:TODAY_WIDGET_SIZES,defaultSize:'compact',defaultVisible:false}),
@@ -115,7 +115,7 @@ function expandKnownWidgets(rows,legacyDefaults){
  if(!seen.has('week')){const timelineIndex=widgets.findIndex(widget=>widget.id==='timeline');widgets.splice(timelineIndex>=0?timelineIndex+1:0,0,{...cleanTodayWidget({id:'week',visible:legacyDefaults,size:defaultSizeFor('week')}),settings:settingsFor('week')});seen.add('week')}
  if(!seen.has('trip')){const focusIndex=widgets.findIndex(widget=>widget.id==='focus');widgets.splice(focusIndex>=0?focusIndex+1:Math.min(1,widgets.length),0,{...cleanTodayWidget({id:'trip',visible:legacyDefaults,size:defaultSizeFor('trip')}),settings:settingsFor('trip')});seen.add('trip')}
  if(!seen.has('pinboard')){const timelineIndex=widgets.findIndex(widget=>widget.id==='timeline');widgets.splice(timelineIndex>=0?timelineIndex+1:Math.min(5,widgets.length),0,cleanTodayWidget({id:'pinboard',visible:legacyDefaults,size:defaultSizeFor('pinboard')}));seen.add('pinboard')}
- TodayWidgetRegistry.forEach(entry=>{if(!seen.has(entry.id)){widgets.push(cleanTodayWidget({id:entry.id,visible:false,size:entry.defaultSize}));seen.add(entry.id)}});
+ TodayWidgetRegistry.forEach(entry=>{if(!seen.has(entry.id)){widgets.push(cleanTodayWidget({id:entry.id,visible:entry.id==='games'?entry.defaultVisible:false,size:entry.defaultSize}));seen.add(entry.id)}});
  return widgets;
 }
 
