@@ -49,3 +49,9 @@ MATOMO_BASE_URL=os.getenv("MATOMO_BASE_URL","").strip().rstrip("/")
 MATOMO_SITE_ID=os.getenv("MATOMO_SITE_ID","").strip()
 MATOMO_AUTH_TOKEN=os.getenv("MATOMO_AUTH_TOKEN","").strip()
 MATOMO_API_TIMEOUT=float(os.getenv("MATOMO_API_TIMEOUT","8") or "8")
+
+# Optional privacy-bounded Matomo product tracking. Disabled by default. Tracking
+# is server-to-server; the browser never receives Matomo credentials or origins.
+MATOMO_TRACKING_ENABLED=env_bool("MATOMO_TRACKING_ENABLED",False)
+MATOMO_TRACKING_APP_ORIGIN=(os.getenv("MATOMO_TRACKING_APP_ORIGIN","").strip().rstrip("/") or APP_URL)
+MATOMO_TRACKING_TIMEOUT=float(os.getenv("MATOMO_TRACKING_TIMEOUT","4") or "4")
