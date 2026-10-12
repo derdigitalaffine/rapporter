@@ -1,14 +1,30 @@
 /*
  * Today layout v2 persists semantic sizes. The legacy v1 selectors remain in
  * today-layout.css so old payloads still render correctly while they migrate.
- * These rules give the v2 names the same responsive desktop interpretation.
+ * Semantic size controls information density and responsive dashboard span;
+ * user order remains untouched.
  */
+.app-widget-grid.today-widget-grid{row-gap:clamp(10px,1.6vw,18px)}
+.app-widget-grid.today-widget-grid>.today-widget{align-self:start;min-width:0}
+.app-widget-grid.today-widget-grid>.today-widget[data-today-widget="situation"]{grid-column:1/-1}
+.app-widget-grid.today-widget-grid>.today-widget[data-widget-size="compact"]>.today-section,
+.app-widget-grid.today-widget-grid>.today-widget[data-widget-size="medium"]>.today-section{height:auto;min-height:0}
+
+/* Quiet context cards are intentionally less dominant than focus/timeline. */
+.app-widget-grid.today-widget-grid>.today-widget[data-widget-size="compact"]{--today-dashboard-density:.88}
+.app-widget-grid.today-widget-grid>.today-widget[data-widget-size="medium"]{--today-dashboard-density:.95}
+.app-widget-grid.today-widget-grid>.today-widget[data-widget-size="wide"]{--today-dashboard-density:1}
+
 @media(min-width:768px){
  .app-widget-grid.today-widget-grid>.today-widget[data-widget-size="wide"]{grid-column:span 6}
  .app-widget-grid.today-widget-grid>.today-widget[data-widget-size="medium"]{grid-column:span 3}
+ .app-widget-grid.today-widget-grid>.today-widget[data-widget-size="compact"]{grid-column:span 3}
+ .app-widget-grid.today-widget-grid>.today-widget[data-today-widget="situation"]{grid-column:span 6}
 }
 
 @media(min-width:1180px){
  .app-widget-grid.today-widget-grid>.today-widget[data-widget-size="wide"]{grid-column:span 12}
  .app-widget-grid.today-widget-grid>.today-widget[data-widget-size="medium"]{grid-column:span 6}
+ .app-widget-grid.today-widget-grid>.today-widget[data-widget-size="compact"]{grid-column:span 4}
+ .app-widget-grid.today-widget-grid>.today-widget[data-today-widget="situation"]{grid-column:span 12}
 }
