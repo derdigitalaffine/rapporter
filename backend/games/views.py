@@ -16,9 +16,11 @@ from .services import (
     accept_match,
     cancel_match,
     decline_match,
+    drop_connect_four,
     fire_shot,
     notify_challenge,
     submit_fleet,
+    submit_quiz_answer,
     submit_rps_choice,
 )
 
@@ -104,6 +106,50 @@ def _rps_payload(match, actor):
     return {"round_count": match.rps_round_count, "current_round": match.current_round, "rounds": rounds}
 
 
+def _quiz_payload(match, actor):
+    english = str(match.family.locale or "").lower().startswith("en")
+    rounds = []
+    my_score = 0
+    opponent_score = 0
+    for row in match.quiz_rounds.select_related("question").all():
+        mine = row.challenger_answer if actor.id == match.challenger_id else row.opponent_answer
+        theirs = row.opponent_answer if actor.id == match.challenger_id else row.challenger_answer
+        my_correct = row.challenger_correct if actor.id == match.challenger_id else row.opponent_correct
+        opponent_correct = row.opponent_correct if actor.id == match.challenger_id else row.challenger_correct
+        resolved = bool(row.resolved_at)
+        if my_correct is True:
+            my_score += 1
+        if opponent_correct is True:
+            opponent_score += 1
+        question = row.question
+        payload = {
+            "number": row.number,
+            "resolved": resolved,
+            "submitted_by_me": mine is not None,
+            "opponent_submitted": theirs is not None,
+            "prompt": question.prompt_en if english else question.prompt_de,
+            "options": question.options_en if english else question.options_de,
+            "my_answer": mine if resolved else None,
+            "opponent_answer": theirs if resolved else None,
+            "my_correct": my_correct if resolved else None,
+            "opponent_correct": opponent_correct if resolved else None,
+        }
+        if resolved:
+            payload["correct_answer"] = question.correct_index
+            payload["explanation"] = question.explanation_en if english else question.explanation_de
+        rounds.append(payload)
+    current = next((row for row in rounds if row["number"] == match.current_round), None)
+    return {
+        "mode": match.quiz_mode,
+        "round_count": match.quiz_round_count,
+        "current_round": match.current_round,
+        "my_score": my_score,
+        "opponent_score": opponent_score,
+        "needs_answer": match.status == GameMatch.Status.ACTIVE and bool(current) and not current["submitted_by_me"],
+        "rounds": rounds,
+    }
+
+
 def _battleship_payload(match, actor):
     boards = {row.player_id: row for row in match.battleship_boards.all()}
     mine = boards.get(actor.id)
@@ -133,6 +179,19 @@ def _battleship_payload(match, actor):
         "my_ships": mine.ships if mine and mine.confirmed else [],
         "shots": shots,
     }
+
+
+def _connect_four_payload(match, actor):
+    moves = [
+        {
+            "column": move.column,
+            "row": move.row,
+            "sequence": move.sequence,
+            "mine": move.player_id == actor.id,
+        }
+        for move in match.connect_four_moves.all()
+    ]
+    return {"columns": 7, "rows": 6, "moves": moves}
 
 
 def _task_assignment_payload(match):
@@ -185,8 +244,16 @@ def _serialize(match, actor):
     }
     if match.game_type == GameMatch.GameType.RPS:
         payload["rps"] = _rps_payload(match, actor)
-    else:
+        if match.status == GameMatch.Status.ACTIVE:
+            current = next((row for row in payload["rps"]["rounds"] if row["number"] == match.current_round), None)
+            payload["is_my_turn"] = not current or not current["submitted_by_me"]
+    elif match.game_type == GameMatch.GameType.BATTLESHIP:
         payload["battleship"] = _battleship_payload(match, actor)
+    elif match.game_type == GameMatch.GameType.QUIZ:
+        payload["quiz"] = _quiz_payload(match, actor)
+        payload["is_my_turn"] = payload["quiz"]["needs_answer"]
+    elif match.game_type == GameMatch.GameType.CONNECT_FOUR:
+        payload["connect_four"] = _connect_four_payload(match, actor)
     return payload
 
 
@@ -202,7 +269,13 @@ def _match_queryset(user):
         "current_turn__user",
         "task_assignment__task__assignee",
         "task_assignment__applied_assignee",
-    ).prefetch_related("rps_rounds__winner__user", "battleship_boards", "battleship_shots")
+    ).prefetch_related(
+        "rps_rounds__winner__user",
+        "battleship_boards",
+        "battleship_shots",
+        "quiz_rounds__question",
+        "connect_four_moves",
+    )
 
 
 def _fresh(match_id, actor):
@@ -248,12 +321,17 @@ def match_list(request):
             if game_type not in GameMatch.GameType.values:
                 raise GameApiError("invalid_game_type")
             try:
-                round_count = int(request.data.get("round_count", 3))
+                round_count = int(request.data.get("round_count", 5 if game_type == GameMatch.GameType.QUIZ else 3))
             except (TypeError, ValueError):
                 raise GameApiError("invalid_round_count") from None
             if game_type == GameMatch.GameType.RPS and not 1 <= round_count <= 5:
                 raise GameApiError("invalid_round_count")
-            if game_type == GameMatch.GameType.BATTLESHIP:
+            if game_type == GameMatch.GameType.QUIZ and not 3 <= round_count <= 7:
+                raise GameApiError("invalid_round_count")
+            quiz_mode = str(request.data.get("quiz_mode") or GameMatch.QuizMode.MIXED)
+            if game_type == GameMatch.GameType.QUIZ and quiz_mode not in GameMatch.QuizMode.values:
+                raise GameApiError("invalid_quiz_mode")
+            if game_type in {GameMatch.GameType.BATTLESHIP, GameMatch.GameType.CONNECT_FOUR}:
                 round_count = 1
             assignment_data = request.data.get("task_assignment")
             with transaction.atomic():
@@ -262,7 +340,9 @@ def match_list(request):
                     challenger=actor,
                     opponent=opponent,
                     game_type=game_type,
-                    rps_round_count=round_count,
+                    rps_round_count=round_count if game_type == GameMatch.GameType.RPS else 3,
+                    quiz_round_count=round_count if game_type == GameMatch.GameType.QUIZ else 5,
+                    quiz_mode=quiz_mode if game_type == GameMatch.GameType.QUIZ else GameMatch.QuizMode.MIXED,
                 )
                 if assignment_data is not None:
                     _create_task_assignment(match, actor, opponent, assignment_data)
@@ -324,6 +404,28 @@ def rps_choice(request, match_id):
     try:
         match, actor = _match_context(request.user, match_id)
         submit_rps_choice(match.id, actor, str(request.data.get("choice") or ""))
+        return Response(_fresh(match.id, actor))
+    except (GameApiError, GameError, GameMatch.DoesNotExist) as exc:
+        return _error(exc)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def quiz_answer(request, match_id):
+    try:
+        match, actor = _match_context(request.user, match_id)
+        submit_quiz_answer(match.id, actor, request.data.get("answer"))
+        return Response(_fresh(match.id, actor))
+    except (GameApiError, GameError, GameMatch.DoesNotExist) as exc:
+        return _error(exc)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def connect_four_drop(request, match_id):
+    try:
+        match, actor = _match_context(request.user, match_id)
+        drop_connect_four(match.id, actor, request.data.get("column"))
         return Response(_fresh(match.id, actor))
     except (GameApiError, GameError, GameMatch.DoesNotExist) as exc:
         return _error(exc)
