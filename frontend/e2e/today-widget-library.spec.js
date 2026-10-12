@@ -44,7 +44,7 @@ test('library separates placed widgets from registry-backed additions and preser
  await expect(pinboardRow).toBeVisible();
  await expect(pinboardCard).toHaveCount(0);
  const size=pinboardRow.getByRole('combobox',{name:'Pinnwand · Größe'});
- await expect(size.locator('option')).toHaveText(['Kompakt','Breit']);
+ await expect(size.locator('option')).toHaveText(['Kompakt','Mittel']);
  await pinboardRow.getByRole('button',{name:'Ausblenden'}).click();
  const returnedCard=editor.locator('[data-library-widget="pinboard"]');
  await expect(returnedCard).toBeVisible();
