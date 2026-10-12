@@ -62,6 +62,31 @@ class ShoppingOrderApiTests(TestCase):
         )
         self.assertEqual(duplicate.status_code, 400)
 
+    def test_reorder_preserves_hidden_item_slot_without_exposing_its_id(self):
+        for index, item in enumerate(self.items, start=1):
+            item.position = (index * 1000) + (1000 if index > 1 else 0)
+            item.save(update_fields=["position", "updated_at"])
+        hidden = ShoppingItem.objects.create(
+            shopping_list=self.shopping,
+            name="Geheimes Geschenk",
+            added_by=self.user,
+            hidden_from_user=self.user,
+            position=2000,
+        )
+        wanted = [self.items[2], self.items[0], self.items[1]]
+        response = self.client.post(
+            f"/api/smart/shopping-lists/{self.shopping.id}/reorder/",
+            {"item_ids": [str(item.id) for item in wanted]},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual([row["name"] for row in response.data], [item.name for item in wanted])
+        self.assertNotIn(str(hidden.id), [str(row["id"]) for row in response.data])
+
+        persisted = list(ShoppingItem.objects.filter(shopping_list=self.shopping))
+        self.assertEqual([item.name for item in persisted], ["Äpfel", "Geheimes Geschenk", "Milch", "Brot"])
+        self.assertEqual([item.position for item in persisted], [1000, 2000, 3000, 4000])
+
     def test_reorder_is_family_scoped(self):
         foreign_list = ShoppingList.objects.create(family=self.other_family, name="Foreign")
         foreign_item = ShoppingItem.objects.create(shopping_list=foreign_list, name="Secret", added_by=self.other)
