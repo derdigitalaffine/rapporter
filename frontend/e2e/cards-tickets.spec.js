@@ -1,3 +1,4 @@
+import {openCreateAction} from './create-helpers';
 import {test,expect} from '@playwright/test';
 import {installApiMocks} from './mock-api.js';
 
@@ -28,7 +29,7 @@ test('voucher shows generic type branding and redeem can be undone',async({page}
  await installApiMocks(page,{language:'de'});await installPassApi(page);
  await page.goto('/?page=more');await page.waitForLoadState('networkidle');
  await page.getByRole('button',{name:'Karten & Tickets',exact:true}).click();
- await page.getByRole('button',{name:'Karte / Ticket hinzufügen'}).click();
+ await openCreateAction(page,'Karte / Ticket');
  const editor=page.getByRole('dialog');
  await editor.getByLabel('Name').fill('10 € Gutschein');
  await editor.locator('select').first().selectOption('voucher');
@@ -56,7 +57,7 @@ test('cards and tickets layout keeps type affordances inside mobile viewport',as
  await installApiMocks(page,{language:'de'});await installPassApi(page);
  await page.setViewportSize({width:390,height:844});
  await page.goto('/?page=more');await page.getByRole('button',{name:'Karten & Tickets',exact:true}).click();
- await page.getByRole('button',{name:'Karte / Ticket hinzufügen'}).click();
+ await openCreateAction(page,'Karte / Ticket');
  const editor=page.getByRole('dialog');await editor.getByLabel('Name').fill('Konzertticket');await editor.locator('select').first().selectOption('ticket');await editor.locator('select').nth(1).selectOption('ticket');await editor.getByLabel('Barcode-/Passwert').fill('TICKET-42');await editor.getByRole('button',{name:'Pass speichern'}).click();
  const card=page.locator('.wallet-card').filter({hasText:'Konzertticket'});await expect(card).toBeVisible();await expect(card.getByText('Ticket',{exact:true})).toBeVisible();
  const overflow=await page.evaluate(()=>document.documentElement.scrollWidth-document.documentElement.clientWidth);expect(overflow).toBeLessThanOrEqual(1);
