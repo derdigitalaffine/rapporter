@@ -116,34 +116,46 @@ export function EntityPicker({
   emptyMessage='Keine Treffer',
   className='',
   id:providedId,
+  query:controlledQuery,
+  onQueryChange,
+  filterLocally=true,
+  clearQueryOnChoose=true,
+  selectionLabel,
+  removeLabel='Entfernen',
+  getRemoveLabel,
+  disabled=false,
 }){
   const generatedId=useId();
   const id=providedId||generatedId;
   const resultsId=`${id}-results`;
   const descriptionId=description?`${id}-description`:undefined;
-  const [query,setQuery]=useState('');
+  const [internalQuery,setInternalQuery]=useState('');
+  const controlled=controlledQuery!==undefined;
+  const query=controlled?controlledQuery:internalQuery;
+  const setQuery=value=>{if(!controlled)setInternalQuery(value);onQueryChange?.(value)};
   const selectedSet=useMemo(()=>new Set(selectedIds.map(String)),[selectedIds]);
   const selected=items.filter(item=>selectedSet.has(String(getItemId(item))));
-  const normalized=query.trim().toLocaleLowerCase();
-  const available=items.filter(item=>!selectedSet.has(String(getItemId(item)))&&(!normalized||String(getItemLabel(item)).toLocaleLowerCase().includes(normalized)));
+  const normalized=String(query||'').trim().toLocaleLowerCase();
+  const available=items.filter(item=>!selectedSet.has(String(getItemId(item)))&&(!filterLocally||!normalized||String(getItemLabel(item)).toLocaleLowerCase().includes(normalized)));
   function choose(item){
     const value=getItemId(item);
     onChange?.(multiple?[...selectedIds,value]:[value]);
-    setQuery('');
+    if(clearQueryOnChoose)setQuery('');
   }
   function remove(item){
     const value=String(getItemId(item));
     onChange?.(selectedIds.filter(itemId=>String(itemId)!==value));
   }
+  const selectedAria=selectionLabel||`${label}: Auswahl`;
   return <div className={cx('entity-picker',className)}>
     <label htmlFor={id}>{label}</label>
     {description&&<p id={descriptionId} className="entity-picker__description">{description}</p>}
-    {selected.length>0&&<ul className="entity-picker__selected" aria-label={`${label}: Auswahl`}>
-      {selected.map(item=><li key={String(getItemId(item))}><span>{getItemLabel(item)}</span><button type="button" className="secondary" aria-label={`${getItemLabel(item)} entfernen`} onClick={()=>remove(item)}>Entfernen</button></li>)}
+    {selected.length>0&&<ul className="entity-picker__selected" aria-label={selectedAria}>
+      {selected.map(item=>{const itemLabel=getItemLabel(item);const aria=getRemoveLabel?.(item)??`${itemLabel} ${removeLabel}`;return <li key={String(getItemId(item))}><span>{itemLabel}</span><button type="button" className="secondary" aria-label={aria} disabled={disabled} onClick={()=>remove(item)}>{removeLabel}</button></li>})}
     </ul>}
-    <input id={id} type="search" value={query} placeholder={placeholder} aria-describedby={descriptionId} aria-controls={resultsId} onChange={event=>setQuery(event.target.value)}/>
+    <input id={id} type="search" value={query||''} placeholder={placeholder} aria-describedby={descriptionId} aria-controls={resultsId} disabled={disabled} onChange={event=>setQuery(event.target.value)}/>
     <div id={resultsId} className="entity-picker__results" aria-live="polite">
-      {available.length?<ul>{available.map(item=><li key={String(getItemId(item))}><button type="button" className="entity-picker__option" onClick={()=>choose(item)}>{getItemLabel(item)}</button></li>)}</ul>:<p className="entity-picker__empty">{emptyMessage}</p>}
+      {available.length?<ul>{available.map(item=><li key={String(getItemId(item))}><button type="button" className="entity-picker__option" disabled={disabled} onClick={()=>choose(item)}>{getItemLabel(item)}</button></li>)}</ul>:<p className="entity-picker__empty">{emptyMessage}</p>}
     </div>
   </div>;
 }

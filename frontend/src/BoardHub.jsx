@@ -1,17 +1,16 @@
-import {useEffect,useMemo,useRef,useState} from 'react';
+import {useEffect,useRef,useState} from 'react';
 import {useTranslation} from 'react-i18next';
 import {api,AUTH_CHANGED_EVENT} from './api';
 import {Icon} from './icons';
 import {useFamilyPermissions} from './family-permissions';
 import {confirmAction} from './feedback';
-import FileDropZone from './FileDropZone';
+import PinComposer from './PinComposer';
 import PinInteractionBar from './PinInteractions';
 import {formatPinEventMeta,pinAuthorHue,pinAuthorInitial,pinIconName,pinTypeLabel} from './pinboard-ui';
 import './board.css';
 
 const unwrap=value=>value?.results||value||[];
 const SHARING_COPY={"fr": {"shared": "Le contenu lié conserve les autorisations de sa source. Épingler ne partage jamais la source automatiquement.", "inheritVisibility": "Cette épingle reprend la visibilité actuelle de sa source. Vous pouvez ensuite la restreindre sans modifier les droits de la source.", "shareSource": "Partager aussi la source", "visibleFor": "Visible par", "onlyMe": "Moi uniquement", "selectedPeople": "Personnes choisies", "wholeFamily": "Toute la famille", "choosePeople": "Choisir des personnes", "visibilityPrivate": "Vous seul pouvez voir cette épingle.", "visibilitySelected": "Seules les personnes choisies peuvent voir cette épingle.", "visibilityFamily": "Les membres actuels de la famille peuvent voir cette épingle dans les limites des droits de la source."}, "nl": {"shared": "Gekoppelde inhoud behoudt de rechten van de bron. Vastpinnen deelt de bron nooit automatisch.", "inheritVisibility": "Deze pin neemt de huidige zichtbaarheid van de bron over. Je kunt de pin daarna beperken zonder de bronrechten te wijzigen.", "shareSource": "Bron ook delen", "visibleFor": "Zichtbaar voor", "onlyMe": "Alleen ik", "selectedPeople": "Gekozen personen", "wholeFamily": "Hele familie", "choosePeople": "Personen kiezen", "visibilityPrivate": "Alleen jij kunt deze pin zien.", "visibilitySelected": "Alleen de gekozen personen kunnen deze pin zien.", "visibilityFamily": "Huidige familieleden kunnen deze pin zien binnen de rechten van de bron."}, "th": {"shared": "เนื้อหาที่เชื่อมโยงยังใช้สิทธิ์ของต้นฉบับ การปักหมุดไม่แชร์ต้นฉบับโดยอัตโนมัติ", "inheritVisibility": "หมุดนี้ใช้การมองเห็นปัจจุบันของต้นฉบับ คุณจำกัดการมองเห็นหมุดได้โดยไม่เปลี่ยนสิทธิ์ของต้นฉบับ", "shareSource": "แชร์ต้นฉบับด้วย", "visibleFor": "ผู้ที่มองเห็นได้", "onlyMe": "ฉันเท่านั้น", "selectedPeople": "บุคคลที่เลือก", "wholeFamily": "ทั้งครอบครัว", "choosePeople": "เลือกบุคคล", "visibilityPrivate": "มีเพียงคุณที่มองเห็นหมุดนี้ได้", "visibilitySelected": "มีเพียงบุคคลที่เลือกที่มองเห็นหมุดนี้ได้", "visibilityFamily": "สมาชิกปัจจุบันของครอบครัวมองเห็นหมุดนี้ได้ตามสิทธิ์ของต้นฉบับ"}};
-const PIN_TYPES=['note','photo','event','task','note_ref','shopping_list'];
 
 export default function BoardHub({family,onBack}){
  const {i18n}=useTranslation();const en=i18n.language.startsWith('en');const familyId=family?.id;
@@ -21,14 +20,13 @@ export default function BoardHub({family,onBack}){
   title:'Pinnwand',eyebrow:'Gemeinsam im Blick',hint:'Haltet fest, was eure Familie gerade braucht – Notizen, Fotos, Termine, Aufgaben und Einkauf.',pin:'Anpinnen',type:'Was möchtest du anpinnen?',note:'Notizzettel',photo:'Foto',event:'Termin',task:'Aufgabe',note_ref:'Notiz',shopping:'Einkaufsartikel',shopping_list:'Einkaufsliste',message:'Notizzettel',photos:'Fotos hinzufügen',publish:'Anpinnen',cancel:'Abbrechen',edit:'Bearbeiten',remove:'Entfernen',save:'Speichern',more:'Weitere laden',empty:'Eure Pinnwand wartet auf den ersten wichtigen Punkt.',loading:'Wird geladen …',confirm:'Diesen Pin entfernen?',limit:'Bis zu vier Bilder als JPEG, PNG oder WebP, je 10 MB. Fotos werden auf dem Server verkleinert und Metadaten entfernt.',back:'Zurück',failed:'Pinnwand konnte nicht geladen werden.',retry:'Erneut versuchen',removePhoto:'Foto entfernen',shared:'Verknüpfte Inhalte bleiben durch ihre ursprünglichen Rechte geschützt. Anpinnen teilt die Quelle niemals automatisch.',inheritVisibility:'Dieser Pin übernimmt beim Anpinnen die aktuelle Sichtbarkeit der Quelle. Danach kannst du den Pin enger stellen, ohne die Quellrechte zu ändern.',shareSource:'Quelle zusätzlich freigeben',choose:'Vorhandenen Inhalt auswählen',noChoices:'Noch kein passender Inhalt vorhanden.',unavailable:'Nicht mehr verfügbar',open:'Öffnen',moveUp:'Weiter nach vorne',moveDown:'Weiter nach hinten',arrange:'Pinnwand anordnen',caption:'Optionale Beschriftung',pinnedBy:'Angepinnt von',searchEvent:'Termine durchsuchen',eventHint:'Nach Titel oder Datum suchen und den gewünschten Termin antippen.',openItems:'offen',visibleFor:'Sichtbar für',onlyMe:'Nur mich',selectedPeople:'Ausgewählte Personen',wholeFamily:'Ganze Familie',choosePeople:'Personen auswählen',visibilityPrivate:'Nur du kannst diesen Pin sehen.',visibilitySelected:'Nur die ausgewählten Personen können diesen Pin sehen.',visibilityFamily:'Alle aktuellen Familienmitglieder können diesen Pin sehen – soweit die Quelle es erlaubt.'
  };
  Object.assign(w,SHARING_COPY[i18n.language.split('-')[0]]||{});
- const [rows,setRows]=useState([]),[next,setNext]=useState(null),[loading,setLoading]=useState(true),[error,setError]=useState(''),[compose,setCompose]=useState(false),[editing,setEditing]=useState(null),[kind,setKind]=useState('note'),[text,setText]=useState(''),[files,setFiles]=useState([]),[targetId,setTargetId]=useState(''),[choices,setChoices]=useState([]),[choiceQuery,setChoiceQuery]=useState(''),[choicesBusy,setChoicesBusy]=useState(false),[busy,setBusy]=useState(false),[eventRows,setEventRows]=useState([]),[visibility,setVisibility]=useState('family'),[selectedMembershipIds,setSelectedMembershipIds]=useState([]);
+ const [rows,setRows]=useState([]),[next,setNext]=useState(null),[loading,setLoading]=useState(true),[error,setError]=useState(''),[compose,setCompose]=useState(false),[editing,setEditing]=useState(null),[kind,setKind]=useState('note'),[adapterKey,setAdapterKey]=useState(''),[text,setText]=useState(''),[files,setFiles]=useState([]),[targetId,setTargetId]=useState(''),[busy,setBusy]=useState(false),[visibility,setVisibility]=useState('family'),[selectedMembershipIds,setSelectedMembershipIds]=useState([]);
  const {role}=useFamilyPermissions(family);const canPost=!!role&&role!=='guest';const members=family?.memberships||[];
  const [rowScope,setRowScope]=useState(null);
  const visibleRows=rowScope===familyId?rows:[],visibleNext=rowScope===familyId?next:null;
  const boardLease=useRef({familyId,active:true,request:0});
  if(boardLease.current.familyId!==familyId){boardLease.current.active=false;boardLease.current={familyId,active:true,request:0}}
  useEffect(()=>{const lease=boardLease.current;lease.active=true;const auth=event=>{if(event.detail?.authenticated===false){lease.active=false;setRows([]);setNext(null)}};window.addEventListener(AUTH_CHANGED_EVENT,auth);return()=>{lease.active=false;window.removeEventListener(AUTH_CHANGED_EVENT,auth)}},[familyId]);
- const eventById=useMemo(()=>new Map(eventRows.map(row=>[String(row.id),row])),[eventRows]);
 
  async function load(path=`/board/?family=${encodeURIComponent(familyId)}`,append=false){
   const lease=boardLease.current,request=++lease.request;if(!lease.active)return;const current=()=>lease.active&&lease===boardLease.current&&lease.request===request;
@@ -43,77 +41,33 @@ export default function BoardHub({family,onBack}){
   }catch(e){if(current()){setRows([]);setNext(null);setError(e.message||w.failed)}}finally{if(current())setLoading(false)}
  }
  useEffect(()=>{setRows([]);setNext(null);if(!familyId)return;load();if(new URLSearchParams(location.search).get('compose')==='1'&&canPost)setCompose(true)},[familyId,canPost]);
- useEffect(()=>{let current=true;if(!familyId)return()=>{};api('/events/').then(result=>{if(current)setEventRows(unwrap(result).filter(row=>String(row.family)===String(familyId)))}).catch(()=>{if(current)setEventRows([])});return()=>{current=false}},[familyId]);
- useEffect(()=>{if(compose&&!editing&&!['note','photo'].includes(kind))loadChoices(kind)},[compose,kind,editing,familyId]);
 
- function close(){setCompose(false);setEditing(null);setKind('note');setText('');setFiles([]);setTargetId('');setChoices([]);setChoiceQuery('');setVisibility('family');setSelectedMembershipIds([]);setError('')}
+ function close(){setCompose(false);setEditing(null);setKind('note');setAdapterKey('');setText('');setFiles([]);setTargetId('');setVisibility('family');setSelectedMembershipIds([]);setError('')}
  function startCompose(nextKind='note'){close();setKind(nextKind);setCompose(true)}
  function addFiles(picked){if(picked.length+files.length>4||picked.some(file=>file.size>10*1024*1024)){setError(w.limit);return}setError('');setFiles(old=>[...old,...picked])}
- async function loadChoices(nextKind){
-  setChoicesBusy(true);setChoices([]);setTargetId('');setChoiceQuery('');
-  try{
-   if(nextKind==='event'){
-    const result=unwrap(await api('/events/')).filter(row=>String(row.family)===String(familyId));
-    setEventRows(result);
-    const now=Date.now();
-    result.sort((a,b)=>{const av=new Date(a.starts_at||0).getTime(),bv=new Date(b.starts_at||0).getTime();const ap=av>=now,bp=bv>=now;return ap!==bp?(ap?-1:1):(ap?av-bv:bv-av)});
-    setChoices(result.map(row=>({id:row.id,title:row.title,meta:formatPinEventMeta(row,en?'en':'de'),event:row,search:`${row.title||''} ${formatPinEventMeta(row,en?'en':'de')}`.toLocaleLowerCase()})));
-   }else if(nextKind==='task'){
-    const result=unwrap(await api('/tasks/')).filter(row=>String(row.family)===String(familyId)&&!row.completed_at);
-    setChoices(result.map(row=>({id:row.id,title:row.title,meta:row.due_at?formatDate(row.due_at,en):''})));
-   }else if(nextKind==='note_ref'){
-    const result=unwrap(await api(`/notes/?family=${encodeURIComponent(familyId)}`));
-    setChoices(result.map(row=>({id:row.id,title:row.title||w.note_ref,meta:(row.body||'').replace(/\s+/g,' ').slice(0,90)})));
-   }else if(nextKind==='shopping_list'){
-    const lists=unwrap(await api('/shopping-lists/')).filter(row=>String(row.family)===String(familyId)&&!row.archived);
-    setChoices(lists.map(list=>{const open=(list.items||[]).filter(item=>!item.checked).length;return {id:list.id,title:list.name,meta:[list.store,`${open} ${w.openItems}`].filter(Boolean).join(' · ')}}));
-   }
-  }catch(e){setError(e.message||w.failed)}finally{setChoicesBusy(false)}
- }
  async function submit(e){
   e.preventDefault();setBusy(true);setError('');
   try{
    const sharing={visibility};if(visibility==='selected')sharing.selected_membership_ids=selectedMembershipIds;
    if(editing){const body={...sharing};if(['note','photo'].includes(editing.kind))body.text=text;await api(`/board/${editing.id}/`,{method:'PATCH',body:JSON.stringify(body)})}
    else if(['note','photo'].includes(kind)){const body=new FormData();body.append('family',familyId);body.append('kind',kind);body.append('text',text);body.append('visibility',visibility);if(visibility==='selected')selectedMembershipIds.forEach((id,index)=>body.append(`selected_membership_ids[${index}]`,id));files.forEach(file=>body.append('images',file));await api('/board/',{method:'POST',body})}
-   else await api('/board/',{method:'POST',body:JSON.stringify({family:familyId,kind,target_id:targetId,text:text.trim()})});
+   else {const body={family:familyId,kind,target_id:targetId,text:text.trim()};if(adapterKey)body.adapter_key=adapterKey;await api('/board/',{method:'POST',body:JSON.stringify(body)})}
    close();await load();
   }catch(e){setError(e.message||w.failed)}finally{setBusy(false)}
  }
  async function removePhoto(image){setBusy(true);try{await api(`/board-images/${image.id}/`,{method:'DELETE'});setEditing(old=>({...old,images:old.images.filter(row=>row.id!==image.id)}));await load()}catch(e){setError(e.message)}finally{setBusy(false)}}
  async function remove(row){if(!await confirmAction({title:w.confirm,confirmLabel:w.remove,cancelLabel:w.cancel,danger:true}))return;setBusy(true);try{await api(`/board/${row.id}/`,{method:'DELETE'});setRows(old=>old.filter(pin=>pin.id!==row.id))}catch(e){setError(e.message)}finally{setBusy(false)}}
  async function move(row,delta){const index=rows.findIndex(item=>item.id===row.id),other=index+delta;if(index<0||other<0||other>=rows.length)return;const before=rows;const reordered=[...rows];[reordered[index],reordered[other]]=[reordered[other],reordered[index]];setRows(reordered);try{await api('/board/reorder/',{method:'POST',body:JSON.stringify({family:familyId,ids:reordered.map(item=>item.id)})})}catch(e){setRows(before);setError(e.message||w.failed)}}
- const selected=useMemo(()=>choices.find(item=>String(item.id)===String(targetId)),[choices,targetId]);
- const startEdit=row=>{setEditing(row);setKind(row.kind);setText(row.text||'');setFiles([]);setVisibility(row.visibility||'family');setSelectedMembershipIds(row.selected_membership_ids||[]);setCompose(true);window.scrollTo({top:0,behavior:'smooth'})};
+ const startEdit=row=>{setEditing(row);setKind(row.kind);setAdapterKey(row.adapter_key||'');setText(row.text||'');setFiles([]);setVisibility(row.visibility||'family');setSelectedMembershipIds(row.selected_membership_ids||[]);setCompose(true);window.scrollTo({top:0,behavior:'smooth'})};
  const interactionLease=boardLease.current;
  const updateInteraction=(id,interaction)=>{if(!interactionLease.active||interactionLease!==boardLease.current)return;if(interaction?.can_interact===false){setRows(current=>current.filter(row=>String(row.id)!==String(id)));load();return}setRows(current=>current.map(row=>String(row.id)===String(id)?{...row,interaction}:row))};
 
  return <section className="board-hub"><header className="page-head board-head"><button className="icon-btn" aria-label={w.back} onClick={onBack}><Icon name="back"/></button><div className="grow"><small>{w.eyebrow}</small><h1>{w.title}</h1><p>{w.hint}</p></div>{canPost&&!compose&&<button className="primary board-pin-button" onClick={()=>startCompose()}><Icon name="plus"/> {w.pin}</button>}</header>
  {error&&<div role="alert" className="card board-error">{error} {!compose&&<button onClick={()=>load()}>{w.retry}</button>}</div>}
- {compose&&<PinComposer w={w} en={en} kind={kind} setKind={value=>{setKind(value);setText('');setFiles([]);setTargetId('');setChoiceQuery('')}} text={text} setText={setText} files={files} addFiles={addFiles} setFiles={setFiles} choices={choices} choicesBusy={choicesBusy} targetId={targetId} setTargetId={setTargetId} choiceQuery={choiceQuery} setChoiceQuery={setChoiceQuery} selected={selected} editing={editing} busy={busy} onSubmit={submit} onClose={close} removePhoto={removePhoto} members={members} visibility={visibility} setVisibility={setVisibility} selectedMembershipIds={selectedMembershipIds} setSelectedMembershipIds={setSelectedMembershipIds}/>} 
+ {compose&&<PinComposer key={`${familyId}-${editing?.id||'new'}`} familyId={familyId} language={i18n.language} kind={kind} setKind={setKind} adapterKey={adapterKey} setAdapterKey={setAdapterKey} text={text} setText={setText} files={files} addFiles={addFiles} setFiles={setFiles} targetId={targetId} setTargetId={setTargetId} editing={editing} busy={busy} onSubmit={submit} onClose={close} removePhoto={removePhoto} members={members} visibility={visibility} setVisibility={setVisibility} selectedMembershipIds={selectedMembershipIds} setSelectedMembershipIds={setSelectedMembershipIds}/>} 
  {!compose&&rows.length>0&&<div className="pinboard-guide"><Icon name="drag"/><span>{w.arrange}</span><small>{en?'Use the arrow controls on a card to change the shared order.':'Mit den Pfeilen an einer Karte änderst du die gemeinsame Reihenfolge.'}</small></div>}
- <div className="pinboard-grid" aria-live="polite">{visibleRows.map((row,index)=><PinCard key={row.id} row={row} event={eventById.get(String(row.target_id))} index={index} total={visibleRows.length} w={w} en={en} busy={busy} onMove={move} onRemove={remove} onEdit={()=>startEdit(row)} onInteractionChange={interaction=>updateInteraction(row.id,interaction)}/>)}</div>
+ <div className="pinboard-grid" aria-live="polite">{visibleRows.map((row,index)=><PinCard key={row.id} row={row} event={eventFromTarget(row.target)} index={index} total={visibleRows.length} w={w} en={en} busy={busy} onMove={move} onRemove={remove} onEdit={()=>startEdit(row)} onInteractionChange={interaction=>updateInteraction(row.id,interaction)}/>)}</div>
  {loading&&<p role="status" className="board-loading">{w.loading}</p>}{!loading&&!error&&!visibleRows.length&&!compose&&<button className="card board-empty" onClick={()=>canPost&&startCompose()} disabled={!canPost}><span><Icon name="plus"/></span><strong>{w.empty}</strong>{canPost&&<small>{w.pin}</small>}</button>}{visibleNext&&<button className="secondary board-more" disabled={loading} onClick={()=>load(visibleNext,true)}>{w.more}</button>}</section>
-}
-
-function PinComposer({w,en,kind,setKind,text,setText,files,addFiles,setFiles,choices,choicesBusy,targetId,setTargetId,choiceQuery,setChoiceQuery,selected,editing,busy,onSubmit,onClose,removePhoto,members,visibility,setVisibility,selectedMembershipIds,setSelectedMembershipIds}){
- const ref=!['note','photo'].includes(kind);const contentValid=editing?(!['note','photo'].includes(kind)||Boolean(text.trim()||editing.images?.length)):kind==='photo'?files.length>0:kind==='note'?Boolean(text.trim()):Boolean(targetId);const valid=contentValid&&((ref&&!editing)||visibility!=='selected'||selectedMembershipIds.length>0);
- const eventChoices=kind==='event'?choices.filter(item=>!choiceQuery.trim()||item.search?.includes(choiceQuery.trim().toLocaleLowerCase())).slice(0,16):[];
- return <form className="card pin-composer" onSubmit={onSubmit}><div className="pin-composer-head"><div><small>{editing?w.edit:w.pin}</small><h2>{editing?pinTypeLabel(kind,!en):w.type}</h2></div><button type="button" className="icon-btn" onClick={onClose} aria-label={w.cancel}><Icon name="close"/></button></div>
- {!editing&&<div className="pin-type-grid" role="group" aria-label={w.type}>{PIN_TYPES.map(type=><button type="button" key={type} className={kind===type?'active':''} onClick={()=>setKind(type)}><span><Icon name={pinIconName(type)}/></span>{w[type]}</button>)}</div>}
- {kind==='note'&&<label>{w.message}<textarea autoFocus rows={5} maxLength={10000} value={text} onChange={e=>setText(e.target.value)}/></label>}
- {kind==='photo'&&!editing&&<><label>{w.caption}<textarea rows={3} maxLength={10000} value={text} onChange={e=>setText(e.target.value)}/></label><FileDropZone multiple accept="image/jpeg,image/png,image/webp" disabled={busy||files.length>=4} icon="upload" title={w.photos} hint={w.limit} onFiles={addFiles}/><ul className="board-files">{files.map((file,index)=><li key={`${file.name}-${index}`}><FilePreview file={file}/><span>{file.name}</span><button type="button" aria-label={`${w.removePhoto}: ${file.name}`} onClick={()=>setFiles(old=>old.filter((_,i)=>i!==index))}>×</button></li>)}</ul></>}
- {editing?.images?.length>0&&<div className="board-edit-photos">{editing.images.map(image=><div key={image.id}><img src={image.url} alt=""/><button type="button" className="secondary compact" disabled={busy} onClick={()=>removePhoto(image)}>{w.removePhoto}</button></div>)}</div>}
- {ref&&!editing&&kind==='event'&&<div className="pin-event-picker"><label>{w.searchEvent}<input type="search" value={choiceQuery} onChange={e=>setChoiceQuery(e.target.value)} placeholder={w.searchEvent} disabled={choicesBusy}/><small>{w.eventHint}</small></label>{choicesBusy?<p className="pin-choice-loading">{w.loading}</p>:eventChoices.length?<div className="pin-event-options" role="listbox" aria-label={w.choose}>{eventChoices.map(item=><button type="button" role="option" aria-selected={String(item.id)===String(targetId)} className={String(item.id)===String(targetId)?'active':''} key={item.id} onClick={()=>setTargetId(String(item.id))}><span className="pin-choice-icon"><Icon name={pinIconName('event',item.event)}/></span><span className="grow"><strong>{item.title}</strong><small>{pinTypeLabel('event',!en,item.event)}{item.meta?` · ${item.meta}`:''}</small></span><span className="pin-choice-check"><Icon name={String(item.id)===String(targetId)?'check':'next'}/></span></button>)}</div>:<div className="pin-choice-empty"><Icon name="calendar"/><span>{w.noChoices}</span></div>}</div>}
- {ref&&!editing&&kind!=='event'&&<><label>{w.choose}<select value={targetId} onChange={e=>setTargetId(e.target.value)} disabled={choicesBusy}><option value="">{choicesBusy?w.loading:w.choose}</option>{choices.map(item=><option key={item.id} value={item.id}>{item.title}{item.meta?` · ${item.meta}`:''}</option>)}</select></label>{!choicesBusy&&!choices.length&&<div className="pin-choice-empty"><Icon name={pinIconName(kind)}/><span>{w.noChoices}</span></div>}{selected&&<div className="pin-choice-preview"><span><Icon name={pinIconName(kind)}/></span><div><strong>{selected.title}</strong>{selected.meta&&<small>{selected.meta}</small>}</div></div>}</>}
- {(!ref||editing)&&<VisibilityControl w={w} members={members} visibility={visibility} setVisibility={setVisibility} selectedMembershipIds={selectedMembershipIds} setSelectedMembershipIds={setSelectedMembershipIds}/>} 
- {ref&&!editing&&<p className="pin-privacy"><Icon name="lock"/>{w.inheritVisibility}</p>}{ref&&<p className="pin-privacy"><Icon name="lock"/>{w.shared}</p>}<div className="board-actions"><button type="button" className="secondary" onClick={onClose} disabled={busy}>{w.cancel}</button><button className="primary" disabled={busy||!valid}>{busy?w.loading:editing?w.save:w.publish}</button></div></form>
-}
-
-function VisibilityControl({w,members,visibility,setVisibility,selectedMembershipIds,setSelectedMembershipIds}){
- const options=[['private',w.onlyMe,'lock'],['selected',w.selectedPeople,'users'],['family',w.wholeFamily,'home']];
- const toggle=id=>setSelectedMembershipIds(current=>current.includes(String(id))?current.filter(value=>value!==String(id)):[...current,String(id)]);
- return <fieldset><legend>{w.visibleFor}</legend><div className="pin-type-grid" role="group" aria-label={w.visibleFor}>{options.map(([value,label,icon])=><button type="button" key={value} className={visibility===value?'active':''} aria-pressed={visibility===value} onClick={()=>setVisibility(value)}><span><Icon name={icon}/></span>{label}</button>)}</div><small>{visibility==='private'?w.visibilityPrivate:visibility==='selected'?w.visibilitySelected:w.visibilityFamily}</small>{visibility==='selected'&&<div className="pin-event-options" role="group" aria-label={w.choosePeople}>{members.map(member=>{const id=String(member.id),active=selectedMembershipIds.includes(id),name=member.display_name||member.username;return <button type="button" key={id} className={active?'active':''} aria-pressed={active} onClick={()=>toggle(id)}><span className="pin-choice-icon"><Icon name="user"/></span><span className="grow"><strong>{name}</strong></span><span className="pin-choice-check"><Icon name={active?'check':'plus'}/></span></button>})}</div>}</fieldset>
 }
 
 function PinCard({row,event,index,total,w,en,busy,onMove,onRemove,onEdit,onInteractionChange}){
@@ -125,6 +79,9 @@ function PinCard({row,event,index,total,w,en,busy,onMove,onRemove,onEdit,onInter
  <footer>{(row.author_name||row.created_at)&&<span className="pin-author-line">{row.author_name&&<span className="pin-author" style={authorStyle} title={`${w.pinnedBy} ${row.author_name}`}><span className="pin-author-avatar" aria-hidden="true">{pinAuthorInitial(row.author_name)}</span><span>{w.pinnedBy} <strong>{row.author_name}</strong></span></span>}{row.created_at&&<time dateTime={row.created_at}>{new Date(row.created_at).toLocaleDateString(en?'en-GB':'de-DE',{day:'2-digit',month:'short'})}</time>}</span>}<div>{target?.can_share_source&&target?.source_share_url&&<a className="secondary compact" href={target.source_share_url}><Icon name="members"/>{w.shareSource}</a>}{row.can_change_pin_visibility&&<button className="secondary compact" disabled={busy} onClick={onEdit}>{w.edit}</button>}{row.can_delete&&<button className="ghost-danger compact" disabled={busy} onClick={()=>onRemove(row)}>{w.remove}</button>}</div></footer></article>
 }
 
+function eventFromTarget(target){
+ if(!target||target.available===false||target.kind!=='event')return null;
+ return {type:target.event_type,starts_at:target.subtitle,ends_at:target.ends_at,payload:{date_start:target.date_start,date_end_exclusive:target.date_end_exclusive}};
+}
 function formatDate(value,en){if(!value)return'';const date=new Date(value);return Number.isNaN(date.getTime())?'':date.toLocaleString(en?'en-GB':'de-DE',{dateStyle:'short',timeStyle:'short'})}
 function formatTargetMeta(value,en){if(typeof value==='string'&&/^\d{4}-\d{2}-\d{2}T/.test(value))return formatDate(value,en);return String(value||'').slice(0,140)}
-function FilePreview({file}){const [url,setUrl]=useState('');useEffect(()=>{const value=URL.createObjectURL(file);setUrl(value);return()=>URL.revokeObjectURL(value)},[file]);return url?<img className="board-file-preview" src={url} alt=""/>:null}
