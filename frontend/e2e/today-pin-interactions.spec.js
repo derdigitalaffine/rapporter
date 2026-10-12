@@ -4,13 +4,13 @@ import {installApiMocks} from './mock-api.js';
 async function boot(page,{language='de',compact=false,multipleFamilies=false,hidden=false,sourceUnavailable=false}={}){
  const mock=await installApiMocks(page,{language});mock.todayLayout={version:2,revision:8,widgets:[{id:'pinboard',visible:!hidden,size:compact?'compact':'medium'}]};
  if(multipleFamilies)await page.route('**/api/families/',route=>route.fulfill({json:[mock.family,{...mock.family,id:'family-2',name:'Andere Familie'}]}));
- const state={keys:{},seen:false,revoked:false,error:0,reads:0,requests:[],gates:[],comments:[{id:'comment-old',body:'Nur im geöffneten Thread',author_name:'Sam',created_at:new Date().toISOString(),mine:false,can_edit:false,can_delete:false,reactions:[]}]};
+ const state={keys:{},seen:false,revoked:false,denyNextReaction:false,error:0,reads:0,requests:[],gates:[],comments:[{id:'comment-old',body:'Nur im geöffneten Thread',author_name:'Sam',created_at:new Date().toISOString(),mine:false,can_edit:false,can_delete:false,reactions:[]}]};
  const summary=(id='pin-a')=>{const key=state.keys[id]||null;return {comment_count:id==='pin-a'?state.comments.length:1,has_unread_comments:id==='pin-a'?!state.seen:true,reactions:[{key:'thumbs_up',count:key==='thumbs_up'?3:2,mine:key==='thumbs_up'},...(key&&key!=='thumbs_up'?[{key,count:1,mine:true}]:[])],can_interact:true,muted:false}};
  const pins=()=>['pin-a','pin-b','pin-c','pin-d','pin-e'].filter(id=>!state.revoked||id!=='pin-a').map((id,index)=>({id,family:'family-1',text:`Punkt ${id}`,kind:'note',target:null,position:index,author:1,author_name:'Alex',images:[],can_interact:true,interaction:summary(id),...(sourceUnavailable&&id==='pin-a'?{kind:'document',text:'Private source title',target:{available:false,title:'Private source title'},images:[{url:'/private-image.png'}],can_interact:false,interaction:{comment_count:99,can_interact:false,reactions:[]}}:{})}));
  await page.route('**/api/board/**',async route=>{
   const req=route.request(),url=new URL(req.url()),path=url.pathname;let body;try{body=req.postDataJSON()}catch{}state.requests.push({path,method:req.method(),body});
   if(path==='/api/board/'&&req.method()==='GET'){state.reads+=1;const rows=url.searchParams.get('family')==='family-2'?[]:pins(),status=state.error,gate=state.gates.shift();if(gate)await gate;return status?route.fulfill({status,json:{detail:'unavailable'}}):route.fulfill({json:{results:rows,count:rows.length,next:null}})}
-  if(path.endsWith('/reaction/')&&req.method()==='PUT'){if(state.revoked)return route.fulfill({status:403,json:{detail:'unavailable'}});const id=path.split('/')[3];state.keys[id]=body.key;return route.fulfill({json:summary(id)})}
+  if(path.endsWith('/reaction/')&&req.method()==='PUT'){if(state.denyNextReaction){state.denyNextReaction=false;state.revoked=true;return route.fulfill({status:403,json:{detail:'unavailable'}})}const id=path.split('/')[3];state.keys[id]=body.key;return route.fulfill({json:summary(id)})}
   if(path.endsWith('/mention-targets/'))return route.fulfill({json:[]});
   if(path.endsWith('/comments/')&&req.method()==='GET'){state.seen=true;return route.fulfill({json:{results:[...state.comments].reverse(),next:null}})}
   if(path.endsWith('/comments/')&&req.method()==='POST'){const row={id:`comment-${state.comments.length}`,body:body.body,author_name:'Alex',created_at:new Date().toISOString(),mine:true,can_edit:true,can_delete:true,reactions:[]};state.comments.push(row);return route.fulfill({status:201,json:{...row,interaction:summary()}})}
@@ -33,7 +33,7 @@ test('one comment tap focuses the existing thread and commits its canonical coun
 });
 
 test('denied reaction removes private content immediately and reloads only the canonical projection',async({page})=>{
- const {state,widget}=await boot(page);state.revoked=true;const first=widget.locator('[data-today-pin="pin-a"]');await first.getByRole('button',{name:/Reaktion, 2.*Reagieren/}).click();await first.getByRole('button',{name:'Passt',exact:true}).click();await expect(widget.locator('[data-today-pin="pin-a"]')).toHaveCount(0);await expect(widget).not.toContainText('Punkt pin-a');await expect.poll(()=>state.reads).toBeGreaterThan(1);await expect(widget.locator('[data-today-pin="pin-b"]')).toBeVisible();
+ const {state,widget}=await boot(page);state.denyNextReaction=true;const first=widget.locator('[data-today-pin="pin-a"]');const cluster=first.getByRole('button',{name:/Reaktion, 2.*Reagieren/});await cluster.click();const option=first.getByRole('button',{name:'Passt',exact:true});await expect(option).toBeVisible();await option.click();await expect(widget.locator('[data-today-pin="pin-a"]')).toHaveCount(0);await expect(widget).not.toContainText('Punkt pin-a');await expect.poll(()=>state.reads).toBeGreaterThan(1);await expect(widget.locator('[data-today-pin="pin-b"]')).toBeVisible();
 });
 
 test('transient reload retains rows with retry, denied retry clears previews and counts',async({page})=>{
