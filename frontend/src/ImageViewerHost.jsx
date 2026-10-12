@@ -31,7 +31,7 @@ export default function ImageViewerHost(){
    const {images,index}=collectGallery(trigger);
    if(!images.length)return;
    event.preventDefault();
-   setViewer({images,index});
+   setViewer({images,index,trigger});
   };
   const close=()=>setViewer(null);
   document.addEventListener('click',handleClick);
@@ -39,5 +39,5 @@ export default function ImageViewerHost(){
   return()=>{document.removeEventListener('click',handleClick);window.removeEventListener('popstate',close)};
  },[]);
  if(!viewer)return null;
- return <ImageViewer images={viewer.images} activeIndex={viewer.index} onActiveIndexChange={index=>setViewer(current=>current?{...current,index}:current)} onClose={()=>setViewer(null)} labels={labels}/>;
+ return <ImageViewer images={viewer.images} activeIndex={viewer.index} returnFocus={viewer.trigger} onActiveIndexChange={index=>setViewer(current=>current?{...current,index}:current)} onClose={()=>setViewer(null)} labels={labels}/>;
 }
