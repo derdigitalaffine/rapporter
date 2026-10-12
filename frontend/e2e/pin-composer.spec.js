@@ -69,7 +69,7 @@ test('late search responses and auth loss cannot restore stale private selection
  const form=page.locator('.pin-composer');await chooseExisting(form);const search=form.getByRole('searchbox',{name:'Vorhandenen Inhalt auswählen'});
  await search.fill('alt');await page.waitForTimeout(220);await search.fill('neu');await expect(form.getByRole('button',{name:'Neuer Treffer',exact:true})).toBeVisible();releaseOld();await page.waitForTimeout(250);await expect(form.getByText('Alter privater Treffer',{exact:true})).toHaveCount(0);
  await form.getByRole('button',{name:'Neuer Treffer',exact:true}).click();await expect(form.getByRole('button',{name:'Anpinnen',exact:true})).toBeEnabled();
- await page.evaluate(()=>window.dispatchEvent(new CustomEvent('famuhle:auth-changed',{detail:{authenticated:false}})));await expect(form.getByRole('button',{name:'Anpinnen',exact:true})).toBeDisabled();await expect(form.getByText('Neuer Treffer',{exact:true})).toHaveCount(0);
+ await page.evaluate(()=>window.dispatchEvent(new CustomEvent('famuhle:auth-changed',{detail:{authenticated:false}})));await expect(form).toHaveCount(0);await expect(page.getByText('Neuer Treffer',{exact:true})).toHaveCount(0);
 });
 
 test('photo root keeps the existing secure upload flow at 390px',async({page})=>{
