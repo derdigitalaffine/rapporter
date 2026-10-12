@@ -9,7 +9,14 @@ class FamilyConfig(AppConfig):
         # Feature models live in separate modules to keep the core model file merge-friendly.
         from . import models as core_models
         from .birthday_context_models import BirthdayOccasion
-        from .board_models import BoardImage, BoardPost
+        from .board_models import (
+            BoardImage,
+            BoardPost,
+            PinComment,
+            PinCommentMention,
+            PinInteractionState,
+            PinReaction,
+        )
         from .caldav_models import CalDavConnection
         from .context_models import ContextLink
         from .create_action_models import CreateActionPreference, CreateActionStat, CreateActionUsageReceipt
@@ -22,6 +29,10 @@ class FamilyConfig(AppConfig):
         core_models.BirthdayOccasion = BirthdayOccasion
         core_models.BoardPost = BoardPost
         core_models.BoardImage = BoardImage
+        core_models.PinComment = PinComment
+        core_models.PinCommentMention = PinCommentMention
+        core_models.PinInteractionState = PinInteractionState
+        core_models.PinReaction = PinReaction
         core_models.CalDavConnection = CalDavConnection
         core_models.ContextLink = ContextLink
         core_models.CreateActionPreference = CreateActionPreference
