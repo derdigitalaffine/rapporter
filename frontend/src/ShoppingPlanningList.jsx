@@ -7,7 +7,7 @@ import './shopping-order.css';
 
 const byPosition=(a,b)=>(Number(a.position??2147483647)-Number(b.position??2147483647))||String(a.id).localeCompare(String(b.id),undefined,{numeric:true});
 
-export default function ShoppingPlanningList({items,onReorder,onToggle,onEdit,onFavorite,loaded,empty}){
+export default function ShoppingPlanningList({items,onReorder,onToggle,onEdit,loaded,empty}){
   const {t}=useTranslation();
   const source=useMemo(()=>[...(items||[])].sort(byPosition),[items]);
   const sourceOpen=useMemo(()=>source.filter(item=>!item.checked),[source]);
@@ -72,9 +72,8 @@ export default function ShoppingPlanningList({items,onReorder,onToggle,onEdit,on
     {ordered.map((item,index)=><article className={`smart-row shopping-row shopping-order-row ${item._offlinePending?'pending-sync':''}`} key={item.id} data-shopping-order-id={item.id}>
       <button type="button" className="shopping-drag-handle" aria-label={t('shoppingOrder.drag',{name:item.name})} onPointerDown={event=>pointerDown(event,item)}><Icon name="drag"/></button>
       <button className="smart-check" onClick={()=>onToggle(item)} aria-label={`${item.name} · ${t('complete')}`}><Icon name="check"/></button>
-      <button className="smart-row-main row-main-button" onClick={()=>onEdit(item)}><div className="smart-title"><strong>{item.name}</strong>{item._offlinePending&&<span className="shopping-pending-badge"><Icon name="offline" size={12}/>{t('shoppingOffline.pending')}</span>}{item.favorite&&<span className="favorite-badge"><Icon name="favorite"/> {t('favorite')}</span>}</div><div className="smart-meta shopping-meta">{item.quantity&&<span className="shopping-quantity">{item.quantity}</span>}{item.category&&<span>{item.category}</span>}{item.aisle&&<span><Icon name="location"/>{item.aisle}</span>}{item.added_by_name&&<span><Icon name="user"/>{item.added_by_name}</span>}</div>{item.note&&<p>{item.note}</p>}</button>
+      <button className="smart-row-main row-main-button" onClick={()=>onEdit(item)}><div className="smart-title"><strong>{item.name}</strong>{item._offlinePending&&<span className="shopping-pending-badge"><Icon name="offline" size={12}/>{t('shoppingOffline.pending')}</span>}</div><div className="smart-meta shopping-meta">{item.quantity&&<span className="shopping-quantity">{item.quantity}</span>}{item.category&&<span>{item.category}</span>}{item.aisle&&<span><Icon name="location"/>{item.aisle}</span>}{item.added_by_name&&<span><Icon name="user"/>{item.added_by_name}</span>}</div>{item.note&&<p>{item.note}</p>}</button>
       <div className="shopping-order-actions"><button type="button" disabled={index===0} onClick={()=>move(item,-1)} aria-label={t('shoppingOrder.moveUp',{name:item.name})}>↑</button><button type="button" disabled={index===ordered.length-1} onClick={()=>move(item,1)} aria-label={t('shoppingOrder.moveDown',{name:item.name})}>↓</button></div>
-      <button className={`row-action ${item.favorite?'favorite':''}`} onClick={()=>onFavorite(item)} title={t('favorite')} aria-label={t('markFavorite',{name:item.name})}><Icon name="favorite"/></button>
     </article>)}
   </section>;
 }
