@@ -8,6 +8,12 @@ Image uploads are decoded twice with Pillow (verification, then rendering), limi
 
 API: `/api/board/` supports paginated GET, POST multipart/JSON and author PATCH; DELETE also supports adult/owner moderation. `/api/board-images/{uuid}/` is a protected WebP GET and authorized DELETE. Families cannot be changed after publication. Images cannot be appended after publication; remove individual images through the media endpoint or delete/repost. No empty post is allowed after removing its final image.
 
+## In-App-Fotoansicht (#515)
+
+Pinnwand-Fotos bleiben beim normalen Klick/Tap innerhalb der FamilyOS-PWA. Ein gemeinsamer `ImageViewer` übernimmt die vorhandene autorisierte Bild-URL unverändert und zeigt Einzelbilder oder die komplette Karten-Galerie als modalen Vollbild-Viewer. Pfeiltasten sowie Vor-/Zurück-Controls navigieren, `Escape` schließt, der Fokus kehrt zum auslösenden Foto zurück, und der Hintergrund scrollt während der Ansicht nicht. Die Controls bleiben auf Touchgeräten mindestens 48 px groß; Dialog- und Navigationsnamen sind lokalisiert.
+
+Die ursprüngliche Bild-URL bleibt als progressive Browser-Fallback-Navigation im Markup erhalten. Der Viewer erzeugt weder öffentliche Media-URLs noch einen zweiten Download-/ACL-Pfad: jeder Bildabruf läuft weiterhin über den bestehenden geschützten `/api/board-images/{uuid}/`-Endpunkt. Weitere Bildflächen können das gemeinsame Viewer-Primitiv später explizit wiederverwenden, ohne die Pinnwand-Logik zu kopieren.
+
 ## Reference pins and adapters (#219)
 
 Reference pins store only an allow-listed `kind` plus the canonical object's UUID. The central `PinAdapter` registry re-authorizes every target on reads and creates, returns a deliberately small preview/deep link, and batch-resolves each adapter type in one query. A missing, deleted or no-longer-visible target is rendered as a neutral unavailable reference; the board never keeps a stale title snapshot as authority.
