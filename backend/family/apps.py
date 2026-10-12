@@ -12,6 +12,7 @@ class FamilyConfig(AppConfig):
         from .board_models import BoardImage, BoardPost
         from .caldav_models import CalDavConnection
         from .context_models import ContextLink
+        from .create_action_models import CreateActionPreference, CreateActionStat, CreateActionUsageReceipt
         from .family_master_models import FamilyMasterData
         from .notes_models import Note, NoteRevision, NoteShare
         from .shopping_models import ShoppingListStoreProfile, ShoppingStore, ShoppingTemplate, ShoppingTemplateItem
@@ -23,6 +24,9 @@ class FamilyConfig(AppConfig):
         core_models.BoardImage = BoardImage
         core_models.CalDavConnection = CalDavConnection
         core_models.ContextLink = ContextLink
+        core_models.CreateActionPreference = CreateActionPreference
+        core_models.CreateActionStat = CreateActionStat
+        core_models.CreateActionUsageReceipt = CreateActionUsageReceipt
         core_models.FamilyMasterData = FamilyMasterData
         core_models.Note = Note
         core_models.NoteShare = NoteShare

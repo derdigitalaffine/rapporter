@@ -57,15 +57,26 @@ test('profile shows verified email identity status',async({page})=>{
  await expect(card).toContainText('E-Mail bestätigt');
 });
 
-test('email identity actions keep explicit variants and touch targets',async({page})=>{
+test('email identity actions keep explicit variants, payloads and touch targets',async({page})=>{
  await page.setViewportSize({width:390,height:844});
  await installApiMocks(page);
- await page.route('**/api/auth/email/identity/',route=>fulfillJson(route,{
-  email:'alex@example.test',email_verified:false,email_verified_at:null,email_action_required:false,pending_email:'new@example.test',pending_verification_sent_at:'2026-10-11T12:00:00Z',
- }));
+ const resends=[],changes=[];
+ const identity={email:'alex@example.test',email_verified:false,email_verified_at:null,email_action_required:false,pending_email:'new@example.test',pending_verification_sent_at:'2026-10-11T12:00:00Z'};
+ await page.route('**/api/auth/email/identity/',route=>fulfillJson(route,identity));
+ await page.route('**/api/auth/email/verification/resend/',route=>{
+  expect(route.request().method()).toBe('POST');
+  resends.push(route.request().postDataJSON());
+  return fulfillJson(route,{queued:true},202);
+ });
+ await page.route('**/api/auth/email/change/',route=>{
+  expect(route.request().method()).toBe('POST');
+  changes.push(route.request().postDataJSON());
+  identity.pending_email=changes.at(-1).email;
+  return fulfillJson(route,{queued:true},202);
+ });
  await page.goto('/?page=profile');
- await page.waitForLoadState('networkidle');
  const card=page.getByTestId('email-identity-card');
+ const noOverflow=async()=>expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
  const directSecondary=card.locator(':scope > button.secondary.compact');
  await expect(directSecondary).toHaveCount(2);
  const primaryResend=directSecondary.filter({hasText:'Bestätigung erneut senden'});
@@ -75,22 +86,55 @@ test('email identity actions keep explicit variants and touch targets',async({pa
  await expect(primaryResend).toHaveAttribute('type','button');
  await expectClasses(primaryResend,'secondary','compact');
  await expectMinTarget(primaryResend);
+ await noOverflow();
+ await primaryResend.click();
+ await expect.poll(()=>resends).toEqual([{target:'primary'}]);
+ await expect(card).toContainText('new@example.test');
+ await expect(pendingResend).toBeEnabled();
  await expect(pendingResend).toHaveAttribute('type','button');
  await expectClasses(pendingResend,'text-button');
  await expectMinTarget(pendingResend);
+ await noOverflow();
+ await pendingResend.click();
+ await expect.poll(()=>resends).toEqual([{target:'primary'},{target:'pending'}]);
+ await expect(edit).toBeVisible();
  await expect(edit).toHaveAttribute('type','button');
  await expectClasses(edit,'secondary','compact');
  await expectMinTarget(edit);
 
  await edit.click();
  const form=card.locator('form.profile-form');
+ const email=form.locator('input[type=email]'),password=form.locator('input[type=password]');
  const cancel=form.locator('.dialog-actions .secondary');
  const submit=form.locator('.dialog-actions .primary');
  await expect(cancel).toHaveAttribute('type','button');
+ await expectClasses(cancel,'secondary');
  await expectMinTarget(cancel);
  await expect(submit).toHaveAttribute('type','submit');
+ await expectClasses(submit,'primary');
  await expectMinTarget(submit);
- expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
+ await noOverflow();
+ expect(changes).toEqual([]);
+ await email.fill('canceled@example.test');
+ await password.fill('current-password');
+ await cancel.click();
+ await expect(form).toHaveCount(0);
+ expect(changes).toEqual([]);
+ expect(resends).toEqual([{target:'primary'},{target:'pending'}]);
+ await noOverflow();
+
+ await edit.click();
+ await expect(email).toHaveValue('');
+ await expect(password).toHaveValue('');
+ await email.fill('confirmed@example.test');
+ await password.fill('current-password');
+ await submit.focus();
+ await page.keyboard.press('Enter');
+ await expect.poll(()=>changes).toEqual([{email:'confirmed@example.test',password:'current-password'}]);
+ await expect(form).toHaveCount(0);
+ await expect(card).toContainText('confirmed@example.test');
+ expect(resends).toEqual([{target:'primary'},{target:'pending'}]);
+ await noOverflow();
 });
 
 test('legacy account path remains explicit for migration accounts',async({page})=>{

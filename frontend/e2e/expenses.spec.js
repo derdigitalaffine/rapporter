@@ -1,3 +1,4 @@
+import {openCreateAction} from './create-helpers';
 import {test,expect} from '@playwright/test';
 import {installApiMocks} from './mock-api.js';
 
@@ -218,7 +219,7 @@ test('expenses · quick add undo deletes exactly the created expense',async({pag
 
 test('expenses · receipt upload remains available from quick add and becomes OCR review',async({page})=>{
   await boot(page,'/?page=expenses');
-  await page.locator('.global-create-fab').click();
+  await openCreateAction(page,'Ausgabe');
   const dialog=page.getByRole('dialog');
   await dialog.getByRole('button',{name:'Beleg scannen'}).click();
   await dialog.locator('input[capture="environment"]').setInputFiles({name:'receipt.png',mimeType:'image/png',buffer:Buffer.from('mock-receipt')});

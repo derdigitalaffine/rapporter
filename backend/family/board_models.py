@@ -16,12 +16,19 @@ class BoardPost(TimestampedModel):
         TRIP = 'trip', 'Trip'
         DOCUMENT = 'document', 'Document'
 
+    class Visibility(models.TextChoices):
+        PRIVATE = 'private', 'Private'
+        SELECTED = 'selected', 'Selected members'
+        FAMILY = 'family', 'Whole family'
+
     family = models.ForeignKey(Family, on_delete=models.CASCADE, related_name='board_posts')
     author = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, related_name='board_posts')
     text = models.TextField(blank=True, max_length=10000)
     kind = models.CharField(max_length=16, choices=Kind.choices, default=Kind.NOTE)
     target_id = models.UUIDField(null=True, blank=True)
     adapter_key = models.CharField(max_length=32, blank=True, db_index=True)
+    visibility = models.CharField(max_length=16, choices=Visibility.choices, default=Visibility.FAMILY, db_index=True)
+    visible_to_memberships = models.ManyToManyField('Membership', blank=True, related_name='visible_board_posts')
     position = models.IntegerField(default=0)
 
     class Meta:

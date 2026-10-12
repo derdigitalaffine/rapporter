@@ -64,6 +64,7 @@ urlpatterns = [
     path("api/superadmin/mail-journal/", superadmin_mail_journal, name="superadmin_mail_journal"),
     path("api/superadmin/smtp/", superadmin_smtp_config, name="superadmin_smtp_config"),
     path("api/superadmin/smtp/test/", superadmin_smtp_test, name="superadmin_smtp_test"),
+    path("api/", include("telemetry.urls")),
     path("api/", include("entitlements.urls")),
     path("api/", include("family.urls")),
     path("api/", include("expenses.urls")),

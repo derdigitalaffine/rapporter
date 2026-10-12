@@ -1,3 +1,6 @@
+/* The separate Admin entry must reflow below 320 CSS px at page zoom. */
+body.superadmin-app{min-width:0}
+
 *{box-sizing:border-box}
 
 .admin-login-shell{

@@ -1,7 +1,7 @@
 import uuid
 from collections import defaultdict
 
-from django.db.models import Q
+from django.db.models import CharField, Q, Value
 from rest_framework.exceptions import ValidationError
 
 from .context_links import ContextRef, default_context_registry
@@ -65,6 +65,49 @@ class PinAdapter:
     def lifecycle_state(self, target):
         return 'available' if target is not None else 'unavailable'
 
+    def decorate_preview(self, preview, target, user):
+        """Attach non-ACL-widening source capabilities to an authorized preview."""
+        return preview
+
+    def audience_queryset(self, posts, user):
+        return self.queryset(user).filter(
+            id__in={post.target_id for post in posts},
+            **{f'{self.family_lookup}__in': {post.family_id for post in posts}},
+        )
+
+    def resolve_many_with_audiences(self, posts, user, memberships):
+        """Resolve previews and effective audiences in one canonical target query.
+
+        Each UNION branch uses the adapter's existing authorization queryset.
+        No source ACL is copied into Pinboard, and query count stays independent
+        of the number of pins on the page.
+        """
+        posts = list(posts)
+        by_key = defaultdict(list)
+        for post in posts:
+            by_key[(post.family_id, post.target_id)].append(post)
+        members = {str(member.pk): member for member in memberships}
+        branches = []
+        for member in memberships:
+            scoped_posts = [post for post in posts if post.family_id == member.family_id]
+            if scoped_posts:
+                branches.append(self.audience_queryset(scoped_posts, member.user).order_by().annotate(
+                    _pin_member_id=Value(str(member.pk), output_field=CharField()),
+                ))
+        previews, audiences = {}, defaultdict(set)
+        if not branches:
+            return previews, audiences
+        rows = branches[0].union(*branches[1:], all=True) if len(branches) > 1 else branches[0]
+        for target in rows:
+            member = members[target._pin_member_id]
+            for post in by_key.get((self.target_family_id(target), target.pk), []):
+                from .pin_visibility import pin_scope_for_membership
+                if pin_scope_for_membership(post, member):
+                    audiences[post.pk].add(member.pk)
+                    if member.user_id == user.pk:
+                        previews[post.pk] = self.decorate_preview(self.preview(target), target, user)
+        return previews, audiences
+
     def resolve_many(self, posts, user):
         posts = [post for post in posts if post.target_id]
         if not posts:
@@ -77,11 +120,13 @@ class PinAdapter:
             **{f'{self.family_lookup}__in': family_ids},
         )
         by_key = {(self.target_family_id(row), row.id): row for row in rows}
-        return {
-            post.id: self.preview(by_key[(post.family_id, post.target_id)])
-            for post in posts
-            if (post.family_id, post.target_id) in by_key
-        }
+        result = {}
+        for post in posts:
+            target = by_key.get((post.family_id, post.target_id))
+            if target is None:
+                continue
+            result[post.id] = self.decorate_preview(self.preview(target), target, user)
+        return result
 
 
 class ContextBackedPinAdapter(PinAdapter):
@@ -109,6 +154,14 @@ class ContextBackedPinAdapter(PinAdapter):
     def deep_link(self, target):
         return self.context_adapter.deep_link(target)
 
+    def audience_queryset(self, posts, user):
+        rows = None
+        for family_id in {post.family_id for post in posts}:
+            target_ids = {post.target_id for post in posts if post.family_id == family_id}
+            scoped = self.context_adapter.visible_queryset(user, family_id).filter(pk__in=target_ids)
+            rows = scoped if rows is None else rows | scoped
+        return rows.distinct()
+
     def resolve_many(self, posts, user):
         posts = [post for post in posts if post.target_id]
         if not posts:
@@ -125,11 +178,13 @@ class ContextBackedPinAdapter(PinAdapter):
             rows = scoped if rows is None else rows | scoped
         rows = rows.distinct()
         by_key = {(self.target_family_id(row), row.id): row for row in rows}
-        return {
-            post.id: self.preview(by_key[(post.family_id, post.target_id)])
-            for post in posts
-            if (post.family_id, post.target_id) in by_key
-        }
+        result = {}
+        for post in posts:
+            target = by_key.get((post.family_id, post.target_id))
+            if target is None:
+                continue
+            result[post.id] = self.decorate_preview(self.preview(target), target, user)
+        return result
 
 
 class CalendarEventPinAdapter(PinAdapter):
@@ -206,6 +261,15 @@ class NotePinAdapter(PinAdapter):
             'subtitle': preview,
             'url': f'/?page=notes&note={row.id}',
         }
+
+    def decorate_preview(self, preview, row, user):
+        if row.author_id == user.id:
+            return {
+                **preview,
+                'can_share_source': True,
+                'source_share_url': f'/?page=notes&note={row.id}&share=1',
+            }
+        return preview
 
 
 class ShoppingItemPinAdapter(PinAdapter):
@@ -295,6 +359,11 @@ class DocumentPinAdapter(PinAdapter):
     def can_pin(self, user, family_id, target_id):
         return self._visible(user, [family_id]).filter(pk=target_id).exists()
 
+    def audience_queryset(self, posts, user):
+        return self._visible(user, {post.family_id for post in posts}, include_archived=True).filter(
+            pk__in={post.target_id for post in posts},
+        )
+
     def lifecycle_state(self, target):
         return 'archived' if target.archived_at else 'available'
 
@@ -318,11 +387,13 @@ class DocumentPinAdapter(PinAdapter):
         family_ids = {post.family_id for post in posts}
         rows = self._visible(user, family_ids, include_archived=True).filter(pk__in=target_ids)
         by_key = {(row.family_id, row.id): row for row in rows}
-        return {
-            post.id: self.preview(by_key[(post.family_id, post.target_id)])
-            for post in posts
-            if (post.family_id, post.target_id) in by_key
-        }
+        result = {}
+        for post in posts:
+            target = by_key.get((post.family_id, post.target_id))
+            if target is None:
+                continue
+            result[post.id] = self.decorate_preview(self.preview(target), target, user)
+        return result
 
 
 PIN_ADAPTERS = {}

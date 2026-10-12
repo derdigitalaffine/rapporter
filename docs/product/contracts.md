@@ -12,6 +12,14 @@ Ein Vertrag kann vollständig ohne Datei angelegt und verwaltet werden. Der glob
 
 Bei einem Dokument verarbeitet der lokale Document-Core die Datei. `ExtractedField`-Werte dienen nur als Vorschläge im Editor. Der Nutzer prüft und speichert die Daten selbst. Für jeden unterstützten Vorschlag zeigt die UI Confidence, Seite, Belegtext und `source_type` an. Die vom Document-Core bereits gelieferten Vertrags-Keys (`contract.number`, `contract.start_date`, `contract.end_date`) werden direkt gemappt; weitere eng beschriftete Vertragsfelder werden lokal aus dem bereits extrahierten Seitentext vorgeschlagen, ohne eine zweite OCR- oder Cloud-Pipeline.
 
+## Vertrag eingeben und bearbeiten
+
+Der Editor führt durch die Abschnitte **Vertrag**, **Laufzeit**, **Kosten** und **Freigabe**. Auf dem Telefon stehen die Felder untereinander; auf größeren Bildschirmen stehen zusammengehörige Angaben wie Anbieter/Kategorie oder Betrag/Zahlungsintervall nebeneinander. Berechnete Fristen erscheinen direkt bei der Laufzeit und bleiben als Berechnung gekennzeichnet.
+
+**Weitere Details** öffnet Vertrags- und Kundennummer, Verlängerungsregel, Status, Notizen und verknüpfte Dokumente. Diese Angaben bleiben beim Speichern erhalten, auch wenn der Bereich geschlossen ist. Erkannte Dokumentwerte bleiben überprüfbare Vorschläge; Hinweise zu seltenen Angaben öffnen die Details automatisch.
+
+Eine fehlende Bezeichnung wird am Feld und in der Fehlerübersicht angezeigt. Über den Link in der Übersicht gelangst du zurück zum Feld. Schlägt das Speichern wegen eines Server- oder Netzwerkfehlers fehl, bleiben deine Eingaben im Editor erhalten und du kannst erneut speichern. Die Freigabe erklärt vor dem Speichern, wer den Vertrag sehen darf.
+
 ## Explizite und abgeleitete Termine
 
 `end_date` ist nur dann eine explizite Dokumentangabe, wenn es als solche gespeichert wurde. Die Kündigungsfrist wird als menschenlesbare Vertragsangabe erhalten, zum Beispiel `30 Tage`, `6 Wochen` oder `3 Monate`; Monatsfristen werden nicht pauschal in 30-Tage-Blöcke umgedeutet.

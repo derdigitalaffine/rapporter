@@ -5,27 +5,30 @@ export const LEGACY_SIZE_MAP={compact:'compact',square:'medium',full:'wide'};
 const weekSettings={events:true,waste:true,holidays:true,special:true};
 const tripSettings={show_wishes:false};
 const deprecatedTodoIds=new Set(['tasks','routines']);
+const legacyCoreAliases={priority:'focus',next:'timeline'};
 
-const entry=(id,defaultOrder,{component='external',category='family',supportedSizes=['compact','wide'],defaultSize='wide',settingsSchema=null,deepLink=null}={})=>{
+const entry=(id,defaultOrder,{component='external',category='family',supportedSizes=['compact','wide'],defaultSize='wide',defaultVisible=true,settingsSchema=null,deepLink=null}={})=>{
  if(!supportedSizes.includes(defaultSize))throw new Error(`Unsupported default size ${defaultSize} for ${id}`);
- return {id,titleKey:id,category,component,defaultVisible:true,defaultOrder,defaultSize,supportedSizes,moduleGate:null,permissionGate:null,
+ return {id,titleKey:id,category,component,defaultVisible,defaultOrder,defaultSize,supportedSizes,moduleGate:null,permissionGate:null,
  sensitivity:'family',refreshPolicy:'on-focus',emptyStatePolicy:'render',deepLink,settingsSchema};
 };
 
 export const TodayWidgetRegistry=[
- entry('week',0,{component:'WeekCompassWidget',category:'planning',settingsSchema:weekSettings}),
- entry('priority',1,{category:'planning'}),
- entry('trip',2,{category:'planning',supportedSizes:TODAY_WIDGET_SIZES,defaultSize:'medium',settingsSchema:tripSettings}),
- entry('next',3,{category:'planning',supportedSizes:TODAY_WIDGET_SIZES,defaultSize:'medium'}),
+ entry('focus',0,{component:'TodayFocusWidget',category:'planning',defaultSize:'wide'}),
+ entry('timeline',1,{component:'TodayTimelineWidget',category:'planning',supportedSizes:TODAY_WIDGET_SIZES,defaultSize:'wide'}),
+ entry('week',2,{component:'WeekCompassWidget',category:'planning',supportedSizes:TODAY_WIDGET_SIZES,defaultSize:'medium',settingsSchema:weekSettings}),
+ entry('todo',3,{component:'TodayTodoWidget',category:'planning',supportedSizes:TODAY_WIDGET_SIZES,defaultSize:'compact'}),
  entry('pinboard',4,{component:'PinboardTodayWidget',category:'collaboration',defaultSize:'compact'}),
- entry('weather',5,{category:'context',supportedSizes:TODAY_WIDGET_SIZES,defaultSize:'medium'}),
- entry('todo',6,{component:'TodayTodoWidget',category:'planning'}),
- entry('shopping',7,{category:'household',defaultSize:'compact'}),
- entry('waste',8,{category:'household',supportedSizes:TODAY_WIDGET_SIZES,defaultSize:'medium'}),
- entry('inbox',9,{category:'collaboration',supportedSizes:TODAY_WIDGET_SIZES,defaultSize:'medium'}),
- entry('birthdays',10,{supportedSizes:TODAY_WIDGET_SIZES,defaultSize:'medium'}),
- entry('notes',11,{supportedSizes:TODAY_WIDGET_SIZES,defaultSize:'medium'}),
- entry('loyalty',12,{category:'household',supportedSizes:TODAY_WIDGET_SIZES,defaultSize:'compact'}),
+ entry('tomorrow',5,{component:'TodayTomorrowWidget',category:'planning',supportedSizes:['compact','medium'],defaultSize:'compact',defaultVisible:false}),
+ entry('family-load',6,{component:'TodayFamilyLoadWidget',category:'family',supportedSizes:['compact','medium'],defaultSize:'compact',defaultVisible:false}),
+ entry('trip',7,{category:'planning',supportedSizes:TODAY_WIDGET_SIZES,defaultSize:'medium',defaultVisible:false,settingsSchema:tripSettings}),
+ entry('weather',8,{category:'context',supportedSizes:TODAY_WIDGET_SIZES,defaultSize:'medium',defaultVisible:false}),
+ entry('shopping',9,{category:'household',defaultSize:'compact',defaultVisible:false}),
+ entry('waste',10,{category:'household',supportedSizes:TODAY_WIDGET_SIZES,defaultSize:'medium',defaultVisible:false}),
+ entry('inbox',11,{category:'collaboration',supportedSizes:TODAY_WIDGET_SIZES,defaultSize:'medium',defaultVisible:false}),
+ entry('birthdays',12,{supportedSizes:TODAY_WIDGET_SIZES,defaultSize:'medium',defaultVisible:false}),
+ entry('notes',13,{supportedSizes:TODAY_WIDGET_SIZES,defaultSize:'medium',defaultVisible:false}),
+ entry('loyalty',14,{category:'household',supportedSizes:TODAY_WIDGET_SIZES,defaultSize:'compact',defaultVisible:false}),
 ];
 
 export const TodayWidgetsById=Object.fromEntries(TodayWidgetRegistry.map(widget=>[widget.id,widget]));
@@ -50,6 +53,20 @@ export const cleanTodayWidget=widget=>{
  return row;
 };
 
+function migrateCoreWidgets(rows){
+ const canonical=new Set(rows.filter(row=>!legacyCoreAliases[row.id]).map(row=>row.id));
+ const migrated=[];
+ rows.forEach(row=>{
+  const target=legacyCoreAliases[row.id];
+  if(!target){migrated.push(row);return}
+  if(canonical.has(target))return;
+  const definition=TodayWidgetsById[target];
+  migrated.push({...row,id:target,size:definition.supportedSizes.includes(row.size)?row.size:definition.defaultSize});
+  canonical.add(target);
+ });
+ return migrated;
+}
+
 function migrateTodoWidgets(rows){
  const todo=rows.find(row=>row.id==='todo');
  if(todo)return rows.filter(row=>!deprecatedTodoIds.has(row.id));
@@ -57,11 +74,11 @@ function migrateTodoWidgets(rows){
  if(!legacy.length)return rows;
  const visible=legacy.some(({row})=>row.visible===true);
  const tasks=legacy.find(({row})=>row.id==='tasks')?.row;
- const preferred=tasks&&['compact','wide'].includes(tasks.size)?tasks.size:(legacy.map(({row})=>row.size).find(size=>['compact','wide'].includes(size))||'wide');
+ const preferred=tasks&&TODAY_WIDGET_SIZES.includes(tasks.size)?tasks.size:(legacy.map(({row})=>row.size).find(size=>TODAY_WIDGET_SIZES.includes(size))||defaultSizeFor('todo'));
  const first=Math.min(...legacy.map(({index})=>index));
  const cleaned=rows.filter(row=>!deprecatedTodoIds.has(row.id));
  const insertAt=rows.slice(0,first).filter(row=>!deprecatedTodoIds.has(row.id)).length;
- cleaned.splice(insertAt,0,{id:'todo',visible,size:preferred});
+ cleaned.splice(insertAt,0,{id:'todo',visible,size:TodayWidgetsById.todo.supportedSizes.includes(preferred)?preferred:defaultSizeFor('todo')});
  return cleaned;
 }
 
@@ -87,11 +104,11 @@ function normalizeRow(raw,version){
 }
 
 function expandKnownWidgets(rows,legacyDefaults){
- const widgets=migrateTodoWidgets(rows);
+ const widgets=migrateTodoWidgets(migrateCoreWidgets(rows));
  const seen=new Set(widgets.map(widget=>widget.id));
- if(!seen.has('week')){widgets.unshift({...cleanTodayWidget({id:'week',visible:legacyDefaults,size:defaultSizeFor('week')}),settings:settingsFor('week')});seen.add('week')}
- if(!seen.has('trip')){const index=widgets.findIndex(widget=>widget.id==='priority');widgets.splice(index>=0?index+1:Math.min(1,widgets.length),0,{...cleanTodayWidget({id:'trip',visible:legacyDefaults,size:defaultSizeFor('trip')}),settings:settingsFor('trip')});seen.add('trip')}
- if(!seen.has('pinboard')){const index=widgets.findIndex(widget=>widget.id==='next');widgets.splice(index>=0?index+1:Math.min(5,widgets.length),0,cleanTodayWidget({id:'pinboard',visible:legacyDefaults,size:defaultSizeFor('pinboard')}));seen.add('pinboard')}
+ if(!seen.has('week')){const timelineIndex=widgets.findIndex(widget=>widget.id==='timeline');widgets.splice(timelineIndex>=0?timelineIndex+1:0,0,{...cleanTodayWidget({id:'week',visible:legacyDefaults,size:defaultSizeFor('week')}),settings:settingsFor('week')});seen.add('week')}
+ if(!seen.has('trip')){const focusIndex=widgets.findIndex(widget=>widget.id==='focus');widgets.splice(focusIndex>=0?focusIndex+1:Math.min(1,widgets.length),0,{...cleanTodayWidget({id:'trip',visible:legacyDefaults,size:defaultSizeFor('trip')}),settings:settingsFor('trip')});seen.add('trip')}
+ if(!seen.has('pinboard')){const timelineIndex=widgets.findIndex(widget=>widget.id==='timeline');widgets.splice(timelineIndex>=0?timelineIndex+1:Math.min(5,widgets.length),0,cleanTodayWidget({id:'pinboard',visible:legacyDefaults,size:defaultSizeFor('pinboard')}));seen.add('pinboard')}
  TodayWidgetRegistry.forEach(entry=>{if(!seen.has(entry.id)){widgets.push(cleanTodayWidget({id:entry.id,visible:false,size:entry.defaultSize}));seen.add(entry.id)}});
  return widgets;
 }
