@@ -14,22 +14,23 @@ const entry=(id,defaultOrder,{component='external',category='family',supportedSi
 };
 
 export const TodayWidgetRegistry=[
- entry('focus',0,{component:'TodayFocusWidget',category:'planning',defaultSize:'wide'}),
- entry('timeline',1,{component:'TodayTimelineWidget',category:'planning',supportedSizes:TODAY_WIDGET_SIZES,defaultSize:'wide'}),
- entry('week',2,{component:'WeekCompassWidget',category:'planning',supportedSizes:TODAY_WIDGET_SIZES,defaultSize:'medium',settingsSchema:weekSettings}),
- entry('todo',3,{component:'TodayTodoWidget',category:'planning',supportedSizes:TODAY_WIDGET_SIZES,defaultSize:'compact'}),
- entry('pinboard',4,{component:'PinboardTodayWidget',category:'collaboration',defaultSize:'compact'}),
- entry('tomorrow',5,{component:'TodayTomorrowWidget',category:'planning',supportedSizes:['compact','medium'],defaultSize:'compact',defaultVisible:false}),
- entry('family-load',6,{component:'TodayFamilyLoadWidget',category:'family',supportedSizes:['compact','medium'],defaultSize:'compact',defaultVisible:false}),
- entry('trip',7,{category:'planning',supportedSizes:TODAY_WIDGET_SIZES,defaultSize:'medium',defaultVisible:false,settingsSchema:tripSettings}),
- entry('weather',8,{category:'context',supportedSizes:TODAY_WIDGET_SIZES,defaultSize:'medium',defaultVisible:false}),
- entry('shopping',9,{category:'household',defaultSize:'compact',defaultVisible:false}),
- entry('waste',10,{category:'household',supportedSizes:TODAY_WIDGET_SIZES,defaultSize:'medium',defaultVisible:false}),
- entry('inbox',11,{category:'collaboration',supportedSizes:TODAY_WIDGET_SIZES,defaultSize:'medium',defaultVisible:false}),
- entry('games',12,{category:'collaboration',supportedSizes:TODAY_WIDGET_SIZES,defaultSize:'medium',defaultVisible:false,deepLink:'/?page=games'}),
- entry('birthdays',13,{supportedSizes:TODAY_WIDGET_SIZES,defaultSize:'medium',defaultVisible:false}),
- entry('notes',14,{supportedSizes:TODAY_WIDGET_SIZES,defaultSize:'medium',defaultVisible:false}),
- entry('loyalty',15,{category:'household',supportedSizes:TODAY_WIDGET_SIZES,defaultSize:'compact',defaultVisible:false}),
+ entry('situation',0,{component:'TodaySituation',category:'planning',supportedSizes:['compact','medium'],defaultSize:'compact'}),
+ entry('focus',1,{component:'TodayFocusWidget',category:'planning',defaultSize:'wide'}),
+ entry('timeline',2,{component:'TodayTimelineWidget',category:'planning',supportedSizes:TODAY_WIDGET_SIZES,defaultSize:'wide'}),
+ entry('week',3,{component:'WeekCompassWidget',category:'planning',supportedSizes:TODAY_WIDGET_SIZES,defaultSize:'medium',settingsSchema:weekSettings}),
+ entry('todo',4,{component:'TodayTodoWidget',category:'planning',supportedSizes:TODAY_WIDGET_SIZES,defaultSize:'compact'}),
+ entry('pinboard',5,{component:'PinboardTodayWidget',category:'collaboration',defaultSize:'compact'}),
+ entry('tomorrow',6,{component:'TodayTomorrowWidget',category:'planning',supportedSizes:['compact','medium'],defaultSize:'compact',defaultVisible:false}),
+ entry('family-load',7,{component:'TodayFamilyLoadWidget',category:'family',supportedSizes:['compact','medium'],defaultSize:'compact',defaultVisible:false}),
+ entry('trip',8,{category:'planning',supportedSizes:TODAY_WIDGET_SIZES,defaultSize:'medium',defaultVisible:false,settingsSchema:tripSettings}),
+ entry('weather',9,{category:'context',supportedSizes:TODAY_WIDGET_SIZES,defaultSize:'medium',defaultVisible:false}),
+ entry('shopping',10,{category:'household',defaultSize:'compact',defaultVisible:false}),
+ entry('waste',11,{category:'household',supportedSizes:TODAY_WIDGET_SIZES,defaultSize:'medium',defaultVisible:false}),
+ entry('inbox',12,{category:'collaboration',supportedSizes:TODAY_WIDGET_SIZES,defaultSize:'medium',defaultVisible:false}),
+ entry('games',13,{category:'collaboration',supportedSizes:TODAY_WIDGET_SIZES,defaultSize:'medium',defaultVisible:false,deepLink:'/?page=games'}),
+ entry('birthdays',14,{supportedSizes:TODAY_WIDGET_SIZES,defaultSize:'medium',defaultVisible:false}),
+ entry('notes',15,{supportedSizes:TODAY_WIDGET_SIZES,defaultSize:'medium',defaultVisible:false}),
+ entry('loyalty',16,{category:'household',supportedSizes:TODAY_WIDGET_SIZES,defaultSize:'compact',defaultVisible:false}),
 ];
 
 export const TodayWidgetsById=Object.fromEntries(TodayWidgetRegistry.map(widget=>[widget.id,widget]));
@@ -107,6 +108,10 @@ function normalizeRow(raw,version){
 function expandKnownWidgets(rows,legacyDefaults){
  const widgets=migrateTodoWidgets(migrateCoreWidgets(rows));
  const seen=new Set(widgets.map(widget=>widget.id));
+ // Lage heute used to sit outside the editable grid and was therefore always visible.
+ // Migrate it into the registry as visible so existing families keep the same signal,
+ // while gaining the ability to move, resize or hide it from now on.
+ if(!seen.has('situation')){widgets.unshift(cleanTodayWidget({id:'situation',visible:true,size:defaultSizeFor('situation')}));seen.add('situation')}
  if(!seen.has('week')){const timelineIndex=widgets.findIndex(widget=>widget.id==='timeline');widgets.splice(timelineIndex>=0?timelineIndex+1:0,0,{...cleanTodayWidget({id:'week',visible:legacyDefaults,size:defaultSizeFor('week')}),settings:settingsFor('week')});seen.add('week')}
  if(!seen.has('trip')){const focusIndex=widgets.findIndex(widget=>widget.id==='focus');widgets.splice(focusIndex>=0?focusIndex+1:Math.min(1,widgets.length),0,{...cleanTodayWidget({id:'trip',visible:legacyDefaults,size:defaultSizeFor('trip')}),settings:settingsFor('trip')});seen.add('trip')}
  if(!seen.has('pinboard')){const timelineIndex=widgets.findIndex(widget=>widget.id==='timeline');widgets.splice(timelineIndex>=0?timelineIndex+1:Math.min(5,widgets.length),0,cleanTodayWidget({id:'pinboard',visible:legacyDefaults,size:defaultSizeFor('pinboard')}));seen.add('pinboard')}
