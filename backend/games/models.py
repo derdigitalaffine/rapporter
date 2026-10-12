@@ -19,6 +19,8 @@ class GameMatch(TimestampedGameModel):
     class GameType(models.TextChoices):
         RPS = "rps", "Rock paper scissors"
         BATTLESHIP = "battleship", "Battleship"
+        QUIZ = "quiz", "Quiz duel"
+        CONNECT_FOUR = "connect_four", "Connect Four"
 
     class Status(models.TextChoices):
         PENDING = "pending", "Pending"
@@ -27,12 +29,19 @@ class GameMatch(TimestampedGameModel):
         DECLINED = "declined", "Declined"
         CANCELLED = "cancelled", "Cancelled"
 
+    class QuizMode(models.TextChoices):
+        MIXED = "mixed", "Mixed knowledge"
+        PHYSICS_EXPERT = "physics_expert", "Physics expert"
+        CHEMISTRY_EXPERT = "chemistry_expert", "Chemistry expert"
+
     family = models.ForeignKey(Family, on_delete=models.CASCADE, related_name="game_matches")
     challenger = models.ForeignKey(Membership, on_delete=models.CASCADE, related_name="games_challenged")
     opponent = models.ForeignKey(Membership, on_delete=models.CASCADE, related_name="games_received")
-    game_type = models.CharField(max_length=16, choices=GameType.choices)
+    game_type = models.CharField(max_length=24, choices=GameType.choices)
     status = models.CharField(max_length=16, choices=Status.choices, default=Status.PENDING, db_index=True)
     rps_round_count = models.PositiveSmallIntegerField(default=3)
+    quiz_round_count = models.PositiveSmallIntegerField(default=5)
+    quiz_mode = models.CharField(max_length=24, choices=QuizMode.choices, default=QuizMode.MIXED)
     current_round = models.PositiveSmallIntegerField(default=1)
     current_turn = models.ForeignKey(
         Membership,
@@ -62,6 +71,10 @@ class GameMatch(TimestampedGameModel):
             models.CheckConstraint(
                 condition=models.Q(rps_round_count__gte=1, rps_round_count__lte=5),
                 name="games_rps_round_count_1_5",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(quiz_round_count__gte=3, quiz_round_count__lte=7),
+                name="games_quiz_round_count_3_7",
             ),
         ]
         indexes = [
@@ -162,4 +175,53 @@ class BattleshipShot(TimestampedGameModel):
             models.UniqueConstraint(fields=["match", "target", "x", "y"], name="games_shot_coordinate_unique"),
             models.UniqueConstraint(fields=["match", "sequence"], name="games_shot_sequence_unique"),
             models.CheckConstraint(condition=models.Q(x__lte=9, y__lte=9), name="games_shot_inside_board"),
+        ]
+
+
+class QuizQuestion(TimestampedGameModel):
+    mode = models.CharField(max_length=24, choices=GameMatch.QuizMode.choices, db_index=True)
+    prompt_de = models.TextField()
+    prompt_en = models.TextField()
+    options_de = models.JSONField(default=list)
+    options_en = models.JSONField(default=list)
+    correct_index = models.PositiveSmallIntegerField()
+    explanation_de = models.TextField(blank=True)
+    explanation_en = models.TextField(blank=True)
+    active = models.BooleanField(default=True, db_index=True)
+
+    class Meta:
+        ordering = ["mode", "created_at", "id"]
+        constraints = [
+            models.CheckConstraint(condition=models.Q(correct_index__lte=5), name="games_quiz_correct_index_lte_5"),
+        ]
+
+
+class QuizRound(TimestampedGameModel):
+    match = models.ForeignKey(GameMatch, on_delete=models.CASCADE, related_name="quiz_rounds")
+    number = models.PositiveSmallIntegerField()
+    question = models.ForeignKey(QuizQuestion, on_delete=models.PROTECT, related_name="rounds")
+    challenger_answer = models.PositiveSmallIntegerField(null=True, blank=True)
+    opponent_answer = models.PositiveSmallIntegerField(null=True, blank=True)
+    challenger_correct = models.BooleanField(null=True, blank=True)
+    opponent_correct = models.BooleanField(null=True, blank=True)
+    resolved_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["number"]
+        constraints = [models.UniqueConstraint(fields=["match", "number"], name="games_quiz_round_unique")]
+
+
+class ConnectFourMove(TimestampedGameModel):
+    match = models.ForeignKey(GameMatch, on_delete=models.CASCADE, related_name="connect_four_moves")
+    player = models.ForeignKey(Membership, on_delete=models.CASCADE, related_name="connect_four_moves")
+    column = models.PositiveSmallIntegerField()
+    row = models.PositiveSmallIntegerField()
+    sequence = models.PositiveSmallIntegerField()
+
+    class Meta:
+        ordering = ["sequence"]
+        constraints = [
+            models.UniqueConstraint(fields=["match", "sequence"], name="games_connect4_sequence_unique"),
+            models.UniqueConstraint(fields=["match", "column", "row"], name="games_connect4_cell_unique"),
+            models.CheckConstraint(condition=models.Q(column__lte=6, row__lte=5), name="games_connect4_inside_board"),
         ]
