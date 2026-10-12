@@ -5,9 +5,7 @@ import {api} from './api';
 import {confirmAction} from './feedback';
 import './pin-interactions.css';
 
-const REACTIONS=[
- ['thumbs_up','👍'],['heart','❤️'],['joy','😄'],['celebrate','🎉'],['seen','👀'],
-];
+const REACTIONS=[['thumbs_up','👍'],['heart','❤️'],['joy','😄'],['celebrate','🎉'],['seen','👀']];
 const EMPTY={comment_count:0,has_unread_comments:false,reactions:[],can_interact:false,muted:false};
 const focusableSelector='button:not([disabled]),a[href],input:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
 const unwrap=value=>value?.results||value||[];
@@ -18,7 +16,6 @@ function copy(en){return en?{
 }:{
  react:'Reagieren',comment:'Kommentieren',comments:'Kommentare',close:'Kommentare schließen',dialog:'Pin-Kommentare',write:'Kommentar schreiben',send:'Senden',sending:'Wird gesendet …',loading:'Wird geladen …',failed:'Kommentare konnten nicht geladen werden.',retry:'Erneut versuchen',older:'Ältere Kommentare laden',deleted:'Kommentar entfernt',edited:'bearbeitet',edit:'Bearbeiten',save:'Speichern',cancel:'Abbrechen',remove:'Entfernen',removeConfirm:'Diesen Kommentar entfernen?',reply:'Antworten',mention:'Erwähnen',mute:'Thread stummschalten',unmute:'Stummschaltung aufheben',noComments:'Noch keine Kommentare.',reaction:'Reaktion',removeReaction:'Reaktion entfernen',chars:'Zeichen übrig',picker:'Reaktion auswählen'
 }}
-
 function reactionLabel(key,en){const labels=en?{thumbs_up:'Works for me',heart:'Heart',joy:'Joy',celebrate:'Celebrate',seen:'Seen'}:{thumbs_up:'Passt',heart:'Herz',joy:'Freude',celebrate:'Feiern',seen:'Gesehen'};return labels[key]||key}
 function reactionEmoji(key){return REACTIONS.find(row=>row[0]===key)?.[1]||'•'}
 
@@ -30,11 +27,7 @@ export default function PinInteractionBar({pin,onChange,compact=false}){
  useEffect(()=>{if(!picker)return;const key=event=>{if(event.key==='Escape'){event.preventDefault();setPicker(false)}};document.addEventListener('keydown',key);return()=>document.removeEventListener('keydown',key)},[picker]);
  if(!pin?.can_interact||summary?.can_interact===false)return null;
  const commit=next=>{setSummary(next||EMPTY);onChange?.(next||EMPTY)};
- async function react(key){
-  if(busy)return;setBusy(true);setError('');
-  const mine=summary.reactions?.find(row=>row.mine);const desired=mine?.key===key?null:key;
-  try{commit(await api(`/board/${pin.id}/reaction/`,{method:'PUT',body:JSON.stringify({key:desired})}));setPicker(false)}catch(e){setError(e.message)}finally{setBusy(false)}
- }
+ async function react(key){if(busy)return;setBusy(true);setError('');const mine=summary.reactions?.find(row=>row.mine),desired=mine?.key===key?null:key;try{commit(await api(`/board/${pin.id}/reaction/`,{method:'PUT',body:JSON.stringify({key:desired})}));setPicker(false)}catch(e){setError(e.message)}finally{setBusy(false)}}
  function openThread(event){triggerRef.current=event.currentTarget;setThread(true);setPicker(false)}
  return <>
   <div className={`pin-interaction-bar ${compact?'compact':''}`}>
@@ -51,8 +44,9 @@ export default function PinInteractionBar({pin,onChange,compact=false}){
 
 function PinThreadSheet({pin,initialSummary,returnFocus,onSummary,onClose}){
  const {i18n}=useTranslation(),en=i18n.language.startsWith('en'),w=copy(en);
- const dialogRef=useRef(null),closeRef=useRef(null),inputRef=useRef(null);
+ const dialogRef=useRef(null),closeRef=useRef(null),inputRef=useRef(null),reactionForRef=useRef(null),closeHandlerRef=useRef(onClose);
  const [comments,setComments]=useState([]),[mentions,setMentions]=useState([]),[next,setNext]=useState(null),[body,setBody]=useState(''),[mentionIds,setMentionIds]=useState([]),[loading,setLoading]=useState(true),[busy,setBusy]=useState(false),[error,setError]=useState(''),[editing,setEditing]=useState(null),[editBody,setEditBody]=useState(''),[reactionFor,setReactionFor]=useState(null),[summary,setSummary]=useState(initialSummary||EMPTY);
+ reactionForRef.current=reactionFor;closeHandlerRef.current=onClose;
  const mentionQuery=useMemo(()=>{const match=body.match(/(?:^|\s)@([^\s@]*)$/);return match?match[1].toLocaleLowerCase():null},[body]);
  const mentionOptions=useMemo(()=>mentionQuery===null?[]:mentions.filter(row=>!mentionQuery||row.name.toLocaleLowerCase().includes(mentionQuery)).slice(0,6),[mentionQuery,mentions]);
  const updateSummary=nextSummary=>{if(!nextSummary)return;setSummary(nextSummary);onSummary?.(nextSummary)};
@@ -60,13 +54,13 @@ function PinThreadSheet({pin,initialSummary,returnFocus,onSummary,onClose}){
  useEffect(()=>{
   const previousOverflow=document.body.style.overflow;document.body.style.overflow='hidden';closeRef.current?.focus();
   const key=event=>{
-   if(event.key==='Escape'){event.preventDefault();if(reactionFor){setReactionFor(null);return}onClose?.();return}
+   if(event.key==='Escape'){event.preventDefault();if(reactionForRef.current){setReactionFor(null);return}closeHandlerRef.current?.();return}
    if(event.key!=='Tab')return;const focusable=[...(dialogRef.current?.querySelectorAll(focusableSelector)||[])];if(!focusable.length){event.preventDefault();dialogRef.current?.focus();return}const first=focusable[0],last=focusable[focusable.length-1],active=document.activeElement;if(event.shiftKey&&(active===first||!dialogRef.current?.contains(active))){event.preventDefault();last.focus()}else if(!event.shiftKey&&(active===last||!dialogRef.current?.contains(active))){event.preventDefault();first.focus()}
   };
   document.addEventListener('keydown',key);return()=>{document.removeEventListener('keydown',key);document.body.style.overflow=previousOverflow;requestAnimationFrame(()=>returnFocus?.isConnected&&returnFocus.focus?.())}
- },[onClose,reactionFor,returnFocus]);
+ },[returnFocus]);
 
- useEffect(()=>{let current=true;(async()=>{setLoading(true);setError('');try{const [thread,targets]=await Promise.all([api(`/board/${pin.id}/comments/`),api(`/board/${pin.id}/mention-targets/`)]);if(!current)return;setComments(unwrap(thread).slice().reverse());setNext(apiPath(thread?.next));setMentions(targets||[]);setTimeout(()=>inputRef.current?.focus(),0)}catch(e){if(current)setError(e.message||w.failed)}finally{if(current)setLoading(false)}})();return()=>{current=false}},[pin.id]);
+ useEffect(()=>{let current=true;(async()=>{setLoading(true);setError('');try{const [thread,targets]=await Promise.all([api(`/board/${pin.id}/comments/`),api(`/board/${pin.id}/mention-targets/`)]);if(!current)return;setComments(unwrap(thread).slice().reverse());setNext(apiPath(thread?.next));setMentions(targets||[]);setSummary(value=>{const seen={...value,has_unread_comments:false};onSummary?.(seen);return seen});setTimeout(()=>inputRef.current?.focus(),0)}catch(e){if(current)setError(e.message||w.failed)}finally{if(current)setLoading(false)}})();return()=>{current=false}},[pin.id]);
 
  async function loadOlder(){if(!next||busy)return;setBusy(true);try{const data=await api(next);setComments(current=>[...unwrap(data).slice().reverse(),...current]);setNext(apiPath(data?.next))}catch(e){setError(e.message)}finally{setBusy(false)}}
  function chooseMention(row){const replaced=body.replace(/(?:^|\s)@[^\s@]*$/,match=>`${match.startsWith(' ')?' ':''}@${row.name} `);setBody(replaced||`@${row.name} `);setMentionIds(current=>current.includes(row.id)?current:[...current,row.id]);setTimeout(()=>inputRef.current?.focus(),0)}
