@@ -184,6 +184,10 @@ class ShoppingItem(TimestampedModel):
     added_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL)
     birthday_context = models.UUIDField(null=True, blank=True, editable=False)
     hidden_from_user = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="hidden_gift_items", editable=False)
+    position = models.PositiveIntegerField(default=2147483647, db_index=True)
+
+    class Meta:
+        ordering = ["position", "created_at", "id"]
 
 
 class BirthdayPerson(TimestampedModel):
