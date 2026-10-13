@@ -9,6 +9,7 @@ import MessengerThread,{Avatar} from './MessengerThread';
 import './messenger-i18n';
 import './messenger.css';
 import './messenger-nav-hotfix.css';
+import './messenger-polish.css';
 
 export default function Messenger({family,userId,onBack,onChanged,onLogout,onUnreadChange}){
  const {t,i18n}=useTranslation();const w=key=>t(`messengerUi.${key}`);const initialChat=new URLSearchParams(location.search).get('chat');const [tab,setTab]=useState(new URLSearchParams(location.search).has('message')?'family':'chats'),[selected,setSelected]=useState(initialChat),[chats,setChats]=useState([]),[contacts,setContacts]=useState({friends:[],family:[],incoming:[],outgoing:[],blocked:[]}),[account,setAccount]=useState(null),[loading,setLoading]=useState(true),[error,setError]=useState(false),[busy,setBusy]=useState(false),[email,setEmail]=useState(''),[success,setSuccess]=useState(false),[settings,setSettings]=useState(false),[group,setGroup]=useState(false),[groupTitle,setGroupTitle]=useState(''),[groupFriends,setGroupFriends]=useState([]);const editingSettings=useRef(false);editingSettings.current=settings;const alive=useRef(false),inviteKey=useRef(crypto.randomUUID()),polling=useRef(false);
