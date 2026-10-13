@@ -27,7 +27,9 @@ def requested_family(request):
 
 
 class BirthdayPersonSerializer(serializers.ModelSerializer):
-    show_birthday_age = serializers.BooleanField(required=False, default=True)
+    # Stored outside BirthdayPerson so this write-only input never asks DRF to
+    # read a non-model attribute. to_representation adds the effective value.
+    show_birthday_age = serializers.BooleanField(required=False, default=True, write_only=True)
 
     class Meta:
         model = BirthdayPerson
