@@ -38,7 +38,7 @@ Fresh layouts lead with the dependency-safe core: Focus, Timeline, Week Compass,
 
 This slice does **not** close #412.
 
-- Final Today Quick Actions remain blocked on the Smart Quickstart contract in #195 / PR #451. Today will consume that contract instead of creating a parallel ranking or create registry.
+- The initial delivery deferred Quick Actions until #195 / PR #451; the dedicated widget is now a consumer of that delivered contract (see below).
 - Final compact Pinboard projection remains blocked on the remaining Pinboard sharing/UX/migration work (#220, #221, #222). The existing Pinboard widget is left intact here.
 - No new mutation endpoint or micro-endpoint was added for Today.
 
@@ -56,4 +56,13 @@ The current product decisions in #510/#539/#541 make Day Status (`situation`) co
 
 This aligns fresh server defaults and size validation with the existing UI. Saved personal layouts keep their existing order, visibility, supported size and revision; registry metadata does not overwrite them. For old layouts without a stored Day Status row, the read normalizer introduces the previously permanent signal once at the top, visible and compact, matching the existing #510 frontend rule. Once a user saves a hidden/moved/resized Day Status, that choice wins. Other missing widgets remain additive under the existing compatibility policy. No schema/data migration or domain/permission change is needed. Rollback restores the previous registry metadata; stored choices remain unchanged.
 
-The dedicated `quick-actions` registry widget remains a separate #412 delivery. The existing domain Add buttons already delegate to canonical Create flows, but they do not satisfy that remaining widget acceptance criterion. The initial-delivery boundaries above are historical; current Pinboard interactions use the canonical #386 consumer.
+The initial-delivery boundaries above are historical; current Pinboard interactions use the canonical #386 consumer.
+
+
+## Quick Actions (#570 / #412)
+
+New layouts show the compact `quick-actions` widget between To-dos and Pinboard. Existing personal layouts receive a hidden additive row: their order, visibility, sizes and revision are preserved. Enable it through Today → Customize → Add widgets; compact/wide, hide and reorder use the normal layout controls.
+
+The widget and global Add palette share one `useCreateActions` availability/ranking snapshot from the existing #191/#195 registry and preferences. The widget introduces no ranking endpoint, module reads, permission rules or forms. It respects the user's pinned/hidden/manual order and configured quick-action count. It shows the same explanation for each action. Buttons dispatch the existing create request; GlobalCreate rechecks current availability and opens the canonical CreateFlowHost editor. Opening an editor does not create content. Profile/family/membership changes use the existing scoped cache and discard pending reads; unavailable modules/actions never become visible from a stored preference. Offline or failed ranking reads use the existing cached/cold-start behavior, and server authorization remains final.
+
+The widget is presentation-only; no schema or layout-version migration. Rollback removes the consumer/registry metadata while retaining the saved row through the existing unknown-widget compatibility contract.
