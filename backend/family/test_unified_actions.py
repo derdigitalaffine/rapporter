@@ -170,12 +170,12 @@ class ContextAndEventActionTests(UnifiedCompletionTests):
         note = Note.objects.create(family=self.family, author=self.other, title='Private')
         path = f'/api/actions/from-context/?family={self.family.id}'
         before = Task.objects.count()
-        denied = self.client.post(path, {'title': 'Explicit task', 'context': {'type': 'note', 'id': str(note.id)}}, format='json')
+        denied = self.client.post(path, {'request_id':str(uuid4()), 'title': 'Explicit task', 'context': {'type': 'note', 'id': str(note.id)}}, format='json')
         self.assertEqual(denied.status_code, 404, denied.data)
         self.assertEqual(Task.objects.count(), before)
         note.author = self.user
         note.save()
-        created = self.client.post(path, {'title': 'Explicit task', 'recurring': True, 'context': {'type': 'note', 'id': str(note.id)}}, format='json')
+        created = self.client.post(path, {'request_id':str(uuid4()), 'title': 'Explicit task', 'recurring': True, 'context': {'type': 'note', 'id': str(note.id)}}, format='json')
         self.assertEqual(created.status_code, 201, created.data)
         self.assertTrue(created.data['action_id'].startswith('routine:'))
 
@@ -221,3 +221,33 @@ class DecisionAndPolicyTests(UnifiedCompletionTests):
         self.assertEqual(self.client.patch(path, {'duration_minutes':30}, format='json').status_code, 200)
         self.client.force_authenticate(self.other)
         self.assertEqual(self.client.patch(path, {'duration_minutes':15}, format='json').status_code, 403)
+
+class RuntimeAdapterTests(UnifiedCompletionTests):
+    def test_context_create_retry_has_one_receipt_and_one_action(self):
+        from .models import ShoppingList
+        shopping = ShoppingList.objects.create(family=self.family, name='Weekly shopping')
+        path = f'/api/actions/from-context/?family={self.family.id}'
+        data = {'title':'Weekly shop', 'recurring':True, 'context':{'type':'shopping_list','id':str(shopping.id)}, 'request_id':str(uuid4())}
+        first = self.client.post(path,data,format='json')
+        self.assertEqual(first.status_code,201,first.data)
+        self.assertEqual(self.client.post(path,data,format='json').data['action_id'],first.data['action_id'])
+        self.assertEqual(Routine.objects.filter(name='Weekly shop').count(),1)
+    def test_once_schedule_dual_writes_task_due_at(self):
+        path=f'/api/actions/task/{self.task.id}/'
+        result=self.client.patch(path,{'schedule':{'mode':'static','recurrence':{'frequency':'once','date':'2026-10-20'},'segments':[{'preferred_time':'18:00'}]}},format='json')
+        self.assertEqual(result.status_code,200,result.data)
+        self.task.refresh_from_db()
+        self.assertEqual(self.task.due_at.astimezone(__import__('zoneinfo').ZoneInfo('Europe/Berlin')).hour,18)
+        self.assertEqual(self.task.unified_action.due_at,self.task.due_at)
+    def test_schedule_domain_events_and_due_events_are_retry_safe(self):
+        from .unified_action_service import emit_due_events
+        from .unified_action_models import ActionDomainEvent
+        now=datetime(2026,10,13,18,tzinfo=UTC)
+        row=self.routine.unified_action
+        row.schedule=normalize_schedule({'mode':'static','anchor_date':'2026-10-13','recurrence':{'frequency':'daily'},'segments':[{'preferred_time':'18:00'}]},self.family.timezone)
+        row.save()
+        emit_due_events(now)
+        emit_due_events(now)
+        self.assertEqual(ActionDomainEvent.objects.filter(action=row,event_type='action.occurrence_due').count(),1)
+        self.execute(self.routine)
+        self.assertEqual(ActionDomainEvent.objects.filter(action=row,event_type='action.completed').count(),1)

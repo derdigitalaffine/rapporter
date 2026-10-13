@@ -11,7 +11,7 @@ from .action_projection import project_actions
 from .action_schedule import normalize_schedule, parse_schedule, predict
 from .models import Routine, Task, Membership
 from .unified_action_models import Action, ActionCompletion, ActionCapture
-from .unified_action_service import execute, mirror, resolve, payload, validate_command
+from .unified_action_service import execute, mirror, resolve, payload, validate_command, domain_event
 
 ICON_CHOICES = ['tasks', 'waste', 'bed', 'dog', 'bowl-food', 'shopping', 'calendar', 'home', 'pet', 'school', 'heart', 'clock', 'water', 'broom', 'utensils', 'car', 'recycle', 'history', 'check']
 ACCENT_CHOICES = ['', 'blue', 'green', 'amber', 'rose', 'violet']
@@ -53,6 +53,16 @@ def action_detail(request, kind, object_id):
                     raise ValidationError({'schedule': str(exc)})
             if 'schedule' in data or 'schedule_text' in data:
                 row.learning_cutoff_at = None if row.schedule.get('continue_learning', True) else (row.learning_cutoff_at or timezone.now())
+                if isinstance(obj, Task) and row.schedule.get('recurrence', {}).get('frequency') == 'once':
+                    from datetime import date, time
+                    from zoneinfo import ZoneInfo
+                    from .action_schedule import local_datetime, WEEKDAYS
+                    day = date.fromisoformat(row.schedule['recurrence']['date'])
+                    segment = next((s for s in row.schedule.get('segments', []) if WEEKDAYS[day.weekday()] in s.get('weekdays', WEEKDAYS)), {})
+                    clock = time.fromisoformat(segment.get('preferred_time') or segment.get('window', {}).get('end') or '23:59')
+                    obj.due_at = local_datetime(day, clock, ZoneInfo(row.schedule['timezone']))
+                    obj.save(update_fields=['due_at','updated_at'])
+                    row.due_at = obj.due_at
             if 'icon' in data:
                 if data['icon'] not in ICON_CHOICES:
                     raise ValidationError({'icon': 'Choose an approved icon.'})
@@ -86,6 +96,8 @@ def action_detail(request, kind, object_id):
                 else:
                     raise ValidationError({'feedback': 'Choose accept or reject.'})
             row.save()
+            if 'schedule' in data or 'schedule_text' in data or data.get('feedback') == 'accept':
+                domain_event(row, 'action.schedule_changed', f'schedule:{row.updated_at.isoformat()}', actor=request.user)
         from .context_models import ContextLink
         from decisions.access import visible_decisions_queryset
         ids = ContextLink.objects.filter(family=obj.family, source_type=kind, source_id=obj.id, context_type='decision', relation_key='action.context').values_list('context_id', flat=True)
@@ -201,6 +213,18 @@ def context_action(request):
         return error
     if not isinstance(request.data, dict):
         raise ValidationError('Expected an object.')
+    from .unified_action_models import ActionContextReceipt
+    request_id, _, _ = validate_command(request.data)
+    Membership.objects.select_for_update().get(pk=membership.pk)
+    receipt = ActionContextReceipt.objects.filter(family=family,request_id=request_id).first()
+    if receipt:
+        if receipt.actor_id != request.user.id:
+            raise PermissionDenied()
+        row = receipt.action
+        kind = 'task' if row.legacy_task_id else 'routine'
+        legacy_id = row.legacy_task_id or row.legacy_routine_id
+        resolve(request.user, f'{kind}:{legacy_id}')
+        return Response({'action_id':f'{kind}:{legacy_id}','link_id':str(receipt.link_id),'created':False})
     context = request.data.get('context')
     if not isinstance(context, dict):
         raise ValidationError({'context': 'Choose a canonical context object.'})
@@ -233,6 +257,7 @@ def context_action(request):
         except (ValueError, TypeError) as exc:
             raise ValidationError({'schedule': str(exc)})
         row.save(update_fields=['schedule', 'updated_at'])
+    ActionContextReceipt.objects.create(family=family, action=row, link=link, request_id=request_id, actor=request.user)
     return Response({'action_id': f'{kind}:{obj.id}', 'link_id': str(link.id), 'created': created}, status=201 if created else 200)
 
 

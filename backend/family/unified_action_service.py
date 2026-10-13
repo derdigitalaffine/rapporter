@@ -4,12 +4,15 @@ from django.db import transaction
 from django.utils import timezone
 from rest_framework.exceptions import PermissionDenied, ValidationError, NotFound
 from .models import Task, TaskList, Routine, RoutineLog, Membership, Family, FamilyEvent
-from .unified_action_models import Action, ActionCompletion, ActionCommand
+from .unified_action_models import Action, ActionCompletion, ActionCommand, ActionDomainEvent
 
 
 def mirror(obj):
     if isinstance(obj, FamilyEvent):
-        return Action.objects.update_or_create(legacy_event=obj, defaults={'family_id':obj.family_id, 'title':obj.title, 'kind_hint':'event', 'due_at':obj.starts_at, 'icon':'waste', 'source':'external_event'})[0]
+        row, created = Action.objects.update_or_create(legacy_event=obj, defaults={'family_id':obj.family_id, 'title':obj.title, 'kind_hint':'event', 'due_at':obj.starts_at, 'icon':'waste', 'source':'external_event'})
+        if created:
+            domain_event(row, 'action.created', 'created')
+        return row
     task = isinstance(obj, Task)
     defaults = {'family_id': obj.family_id, 'title': obj.title if task else obj.name,
                 'kind_hint': 'task' if task else 'routine',
@@ -19,7 +22,13 @@ def mirror(obj):
                         due_at=obj.due_at, priority=obj.priority, estimate_minutes=obj.estimate_minutes, source=obj.source)
     else:
         defaults['icon'] = obj.icon
-    row, _ = Action.objects.update_or_create(**{'legacy_task' if task else 'legacy_routine': obj}, defaults=defaults)
+    reference = {'legacy_task' if task else 'legacy_routine': obj}
+    previous = Action.objects.filter(**reference).values('assignee_id').first()
+    row, created = Action.objects.update_or_create(**reference, defaults=defaults)
+    if created:
+        domain_event(row, 'action.created', 'created')
+    elif task and previous['assignee_id'] != obj.assignee_id:
+        domain_event(row, 'action.assigned', f'assigned:{row.updated_at.isoformat()}')
     return row
 
 
@@ -31,7 +40,11 @@ def observe_task(obj, previous=None):
         ActionCompletion.objects.get_or_create(action=row, occurred_at=obj.completed_at, legacy_log=None,
             defaults={'actor': current_actor(), 'source': 'automation' if obj.source.startswith('rule:') else 'ui'})
     elif old and not obj.completed_at:
-        row.completions.filter(undone_at__isnull=True).update(undone_at=timezone.now())
+        row.completions.filter(undone_at__isnull=True, occurred_at=old).update(undone_at=timezone.now())
+    if obj.completed_at and old != obj.completed_at:
+        domain_event(row, 'action.completed', f'completed:{obj.completed_at.isoformat()}', completion=row.completions.filter(occurred_at=obj.completed_at).first())
+    elif old and not obj.completed_at:
+        domain_event(row, 'action.reopened', f'reopened:{old.isoformat()}')
     return row
 
 
@@ -39,7 +52,13 @@ def observe_log(log):
     row = mirror(log.routine)
     completion, _ = ActionCompletion.objects.get_or_create(legacy_log=log,
         defaults={'action': row, 'actor': log.done_by, 'occurred_at': log.done_at, 'request_id': log.request_id})
+    domain_event(row, 'action.completed', f'log:{log.id}', actor=log.done_by, completion=completion)
     return completion
+
+
+def domain_event(row, event_type, key, actor=None, completion=None):
+    from .request_context import current_actor
+    return ActionDomainEvent.objects.get_or_create(action=row, dedupe_key=key, defaults={'event_type':event_type,'actor':actor or current_actor(),'completion':completion})[0]
 
 
 def resolve(user, typed_id):
@@ -157,5 +176,23 @@ def execute(user, typed_id, data):
         if completion and not completion.undone_at:
             completion.undone_at = timezone.now()
             completion.save(update_fields=['undone_at', 'updated_at'])
+    if isinstance(obj, FamilyEvent) or (operation == 'undo' and isinstance(obj, Routine)):
+        domain_event(row, 'action.completed' if operation == 'complete' else 'action.reopened', f'command:{request_id}', actor=user, completion=completion)
     ActionCommand.objects.create(action=row, request_id=request_id, actor=user, operation=operation, completion=completion)
     return payload(completion) if completion else {'undone': True}
+
+
+def emit_due_events(now=None):
+    """Uses the existing integration scheduler; no new worker or private content."""
+    from .action_prediction import prediction_for
+    from .unified_action_models import ActionPolicy
+    now = now or timezone.now()
+    count = 0
+    for row in Action.objects.filter(family__status='active', state='open').exclude(schedule={}).iterator(chunk_size=250):
+        observations = row.completions.filter(undone_at__isnull=True).order_by('-occurred_at').values_list('occurred_at',flat=True)[:64]
+        result = prediction_for(row, observations, now, ActionPolicy.objects.filter(family_id=row.family_id).first())
+        if result['status'] not in {'due','overdue'} or not result['expected_at']:
+            continue
+        _, created = ActionDomainEvent.objects.get_or_create(action=row, dedupe_key=f'due:{result["expected_at"].isoformat()}', defaults={'event_type':'action.occurrence_due'})
+        count += int(created)
+    return count

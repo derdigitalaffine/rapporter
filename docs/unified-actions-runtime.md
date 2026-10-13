@@ -80,3 +80,13 @@ private-note denial without orphans, schedule modes, weekday windows/exclusions,
 long monthly nth-weekday recurrence, DST gap/fold, sparse confidence, robust outliers,
 proposal suppression, canonical vote-free rounds and manager/personal settings.
 PostgreSQL migration and full application/browser compatibility are CI gates.
+
+## Domain-event adapters
+
+`ActionDomainEvent` is an additive, deduplicated adapter stream of
+`action.created`, `action.completed`, `action.reopened`, `action.assigned`,
+`action.schedule_changed` and `action.occurrence_due`. It carries references and
+actor only; completion facts remain in ActionCompletion. The existing integration
+scheduler emits due events; it does not introduce a second worker. Task-completed
+legacy automation stays authoritative during the mirror phase. Configured routine
+reminders consume the same prediction contract as Today.

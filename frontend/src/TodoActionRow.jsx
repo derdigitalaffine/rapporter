@@ -51,6 +51,7 @@ export default function TodoActionRow({item,language,busy=false,onPrimary,onSeco
       <strong className="todo-row-icon"><Icon name={item.icon||'tasks'} size={16}/>{item.title}{item.assignee&&<MemberAvatar person={item.assignee} size={22}/>}</strong>
       {metadata.length>0&&<span>{metadata.slice(0,2).join(' · ')}</span>}
     </a>
+    {item.contexts?.length>0&&<div className="action-context-chips">{item.contexts.map(context=><a key={`${context.type}:${context.id}`} href={context.deep_link}><Icon name="link" size={12}/>{context.type}</a>)}</div>}
     {secondary.length?<details className="todo-actions-menu">
       <summary aria-label={`${text.actions}: ${item.title}`} title={text.actions}><Icon name="more" size={18}/></summary>
       <div className="todo-actions-popover" role="group" aria-label={`${text.actionOptions} ${item.title}`}>

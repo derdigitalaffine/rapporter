@@ -15,10 +15,15 @@ def run_routine_reminders(now=None):
     now = now or timezone.now()
     count = 0
     routines = Routine.objects.filter(active=True, reminder_enabled=True, family__status=Family.Status.ACTIVE).select_related("family").prefetch_related("logs")
+    from .unified_action_models import Action, ActionPolicy
+    from .action_prediction import prediction_for
+    action_rows = {r.legacy_routine_id:r for r in Action.objects.filter(legacy_routine__in=routines).exclude(schedule={})}
+    policies = {p.family_id:p for p in ActionPolicy.objects.filter(family_id__in=[r.family_id for r in action_rows.values()])}
     for routine in routines:
         if not 9<=now.astimezone(_zone(routine.family)).hour<20:
             continue
-        prediction = routine_prediction(routine,now)
+        row = action_rows.get(routine.id)
+        prediction = prediction_for(row, [log.done_at for log in routine.logs.all()], now, policies.get(routine.family_id)) if row else routine_prediction(routine,now)
         if prediction["status"] not in {"due","overdue"}:
             continue
         for member in routine.family.memberships.select_related("user").filter(user__is_active=True):

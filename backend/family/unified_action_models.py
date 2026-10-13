@@ -88,3 +88,23 @@ class ActionPersonalSetting(TimestampedModel):
     membership = models.OneToOneField('Membership', on_delete=models.CASCADE)
     capture_suggestions = models.BooleanField(default=True)
     calendar_aware = models.BooleanField(default=False)
+
+
+class ActionDomainEvent(TimestampedModel):
+    action = models.ForeignKey(Action, on_delete=models.CASCADE, related_name='domain_events')
+    event_type = models.CharField(max_length=48)
+    dedupe_key = models.CharField(max_length=120)
+    actor = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL)
+    completion = models.ForeignKey(ActionCompletion, null=True, blank=True, on_delete=models.SET_NULL)
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['action','dedupe_key'], name='action_domain_event_dedupe')]
+
+
+class ActionContextReceipt(TimestampedModel):
+    family = models.ForeignKey('Family', on_delete=models.CASCADE)
+    action = models.ForeignKey(Action, on_delete=models.CASCADE)
+    link = models.ForeignKey('ContextLink', on_delete=models.CASCADE)
+    request_id = models.UUIDField()
+    actor = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL)
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['family','request_id'], name='action_context_receipt_unique')]

@@ -418,7 +418,10 @@ def _decorate_unified(items, *, user, family, now):
     from .action_prediction import prediction_for
     from .unified_action_models import ActionPolicy, ActionPersonalSetting
     from collections import defaultdict
-    rows = list(Action.objects.filter(family=family).exclude(state='archived'))
+    from .context_models import ContextLink
+    from django.db.models import Exists, OuterRef
+    edges = ContextLink.objects.filter(family=family, relation_key='action.context').filter(Q(source_type='task',source_id=OuterRef('legacy_task_id')) | Q(source_type='routine',source_id=OuterRef('legacy_routine_id')))
+    rows = list(Action.objects.filter(family=family).exclude(state='archived').annotate(_has_context=Exists(edges)))
     by_id = {}
     for row in rows:
         if row.legacy_task_id:
@@ -440,7 +443,17 @@ def _decorate_unified(items, *, user, family, now):
             .filter(_rank__lte=64).values_list('action_id', 'occurred_at'))
         for action_id, occurred_at in events:
             history[action_id].append(occurred_at)
+    from .context_models import ContextLink
+    from .context_links import default_context_registry, ContextRef
+    context_links = list(ContextLink.objects.filter(family=family, relation_key='action.context', source_id__in=[i['id'].split(':',1)[1] for i in items], source_type__in=['task','routine'])) if items and any(r._has_context for r in rows) else []
+    resolved = default_context_registry().resolve_many(user, family, [ContextRef(link.context_type, link.context_id) for link in context_links], strict=False) if context_links else {}
+    context_by_id = defaultdict(list)
+    for link in context_links:
+        endpoint = resolved.get(ContextRef(link.context_type, link.context_id))
+        if endpoint is not None:
+            context_by_id[f'{link.source_type}:{link.source_id}'].append({'type':link.context_type,'id':str(link.context_id),'deep_link':endpoint.deep_link})
     for item in items:
+        item['contexts'] = context_by_id[item['id']][:5]
         item['completion_command'] = {'href': '/api/actions/execute/', 'version': 'action-completion-v1'}
         row = by_id.get(item['id'])
         if row is None:
