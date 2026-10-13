@@ -28,7 +28,7 @@ export default function VehicleMap({familyId,points=[]}){
    api(`/vehicles/map-config/?family=${encodeURIComponent(familyId)}`),
   ]).then(([module,,worker,config])=>{
    if(!live)return;
-   const MapLibre=module.default;
+   const MapLibre=module;
    // Bundle the module worker as a first-party asset: production CSP stays worker-src self.
    MapLibre.setWorkerUrl(worker.default);
    const sources={},layers=[{id:'background',type:'background',paint:{'background-color':'#eef2ef'}}];
