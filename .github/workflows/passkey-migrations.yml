@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   migration-drift:
-    runs-on: [self-hosted, linux]
+    runs-on: self-hosted
     services:
       postgres:
         image: public.ecr.aws/docker/library/postgres:17-alpine
