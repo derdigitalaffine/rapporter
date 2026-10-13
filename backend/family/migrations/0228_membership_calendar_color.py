@@ -1,13 +1,12 @@
-from django.db import migrations, models
+from django.db import migrations
 
 
 class Migration(migrations.Migration):
     dependencies = [("family", "0227_birthday_age_preferences")]
 
     operations = [
-        migrations.AddField(
-            model_name="membership",
-            name="calendar_color",
-            field=models.CharField(blank=True, default="", max_length=7),
+        migrations.RunSQL(
+            sql="ALTER TABLE family_membership ADD COLUMN calendar_color varchar(7) NOT NULL DEFAULT '';",
+            reverse_sql="ALTER TABLE family_membership DROP COLUMN calendar_color;",
         ),
     ]
