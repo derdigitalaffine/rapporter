@@ -27,6 +27,7 @@ async function boot(page,{language='de',viewport}={}){
 
 test('library separates placed widgets from registry-backed additions and preserves unavailable rows',async({page})=>{
  const {getLayout}=await boot(page);
+ await expect(page.locator('[data-today-widget="games"]')).toHaveCount(0);
  await page.getByRole('button',{name:'Anpassen'}).click();
  const editor=page.getByRole('region',{name:'Anpassen'});
  await expect(editor.getByRole('heading',{name:'Dein Heute'})).toBeVisible();
@@ -36,6 +37,7 @@ test('library separates placed widgets from registry-backed additions and preser
  await expect(editor.locator('[data-editor-widget-id="priority"]')).toHaveCount(0);
  await expect(editor.locator('[data-editor-widget-id="future-private"]')).toHaveCount(0);
  await expect(editor.locator('[data-library-widget="future-private"]')).toHaveCount(0);
+ await expect(editor.locator('[data-library-widget="games"]')).toBeVisible();
  const pinboardCard=editor.locator('[data-library-widget="pinboard"]');
  await expect(pinboardCard).toBeVisible();
  await expect(pinboardCard.getByRole('img',{name:'Illustrative Vorschau ohne Live-Daten'})).toBeVisible();
@@ -57,6 +59,7 @@ test('library separates placed widgets from registry-backed additions and preser
  expect(saved.widgets.find(row=>row.id==='focus')?.visible).toBe(true);
  expect(saved.widgets.some(row=>row.id==='priority')).toBe(false);
  expect(saved.widgets.find(row=>row.id==='pinboard')?.visible).toBe(true);
+ expect(saved.widgets.find(row=>row.id==='games')?.visible).toBe(false);
  expect(saved.widgets.find(row=>row.id==='future-private')).toEqual({id:'future-private',visible:true,size:'medium'});
 });
 

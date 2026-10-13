@@ -10,6 +10,14 @@
 .app-widget-grid.today-widget-grid>.today-widget[data-widget-size="compact"]>.today-section,
 .app-widget-grid.today-widget-grid>.today-widget[data-widget-size="medium"]>.today-section{height:auto;min-height:0}
 
+/* TodaySituation is the permanent orientation anchor from the Today contract.
+ * Keep it visible in the editor, but do not offer controls that the persisted
+ * layout contract deliberately ignores for locked widgets. */
+.today-layout-editor [data-editor-widget-id="situation"] .today-layout-drag-handle,
+.today-layout-editor [data-editor-widget-id="situation"] .today-layout-controls{display:none}
+.today-layout-editor [data-editor-widget-id="situation"] .today-layout-widget-identity:after{content:"Fest";margin-left:auto;padding:4px 8px;border-radius:999px;background:var(--soft);color:var(--muted);font-size:.75rem;font-weight:800}
+html[lang^="en"] .today-layout-editor [data-editor-widget-id="situation"] .today-layout-widget-identity:after{content:"Fixed"}
+
 /* Quiet context cards are intentionally less dominant than focus/timeline. */
 .app-widget-grid.today-widget-grid>.today-widget[data-widget-size="compact"]{--today-dashboard-density:.88}
 .app-widget-grid.today-widget-grid>.today-widget[data-widget-size="medium"]{--today-dashboard-density:.95}

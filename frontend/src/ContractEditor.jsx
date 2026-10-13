@@ -5,6 +5,7 @@ import {Icon} from './icons';
 import FileDropZone from './FileDropZone';
 import {toast} from './feedback';
 import {
+  ChoiceField,
   ErrorSummary,
   FormActions,
   FormField,
@@ -295,18 +296,16 @@ export default function ContractEditor({family,contract=null,onClose,onSaved}){
         </ProgressiveFieldGroup>
 
         <FormSection legend={t('contractUi.releaseSection')}>
-          <SelectField
-            label={t('contractUi.visibility')}
-            name="visibility"
-            form={form}
-            setForm={setForm}
-            evidence={evidence}
-            t={t}
-            description={form.visibility==='private'?t('contractUi.visibilityPrivateHint'):t('contractUi.visibilityFamilyHint')}
-          >
-            <option value="private">{t('contractUi.private')}</option>
-            <option value="family">{t('contractUi.family')}</option>
-          </SelectField>
+          <ChoiceField
+            legend={t('contractUi.visibility')}
+            name={fieldId('visibility')}
+            value={form.visibility}
+            onChange={visibility=>setForm(value=>({...value,visibility}))}
+            options={[
+              {value:'private',label:t('contractUi.private'),description:t('contractUi.visibilityPrivateHint')},
+              {value:'family',label:t('contractUi.family'),description:t('contractUi.visibilityFamilyHint')},
+            ]}
+          />
         </FormSection>
 
         {error&&<p className="error" role="alert">{error}</p>}

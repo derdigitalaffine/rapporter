@@ -5,6 +5,7 @@ const match=(id='game-rps',game_type='rps')=>({id,family:'family-1',game_type,st
 const clone=value=>JSON.parse(JSON.stringify(value));
 async function boot(page,{home=false,language='de',hiddenGames=false,multipleFamilies=false}={}){
  const mock=await installApiMocks(page,{language});
+ if(home&&!hiddenGames)mock.todayLayout={version:2,revision:17,widgets:[{id:'todo',visible:true,size:'compact'},{id:'games',visible:true,size:'compact'},{id:'focus',visible:false,size:'wide'}]};
  if(hiddenGames)mock.todayLayout={version:2,revision:17,widgets:[{id:'todo',visible:true,size:'compact'},{id:'games',visible:false,size:'compact'},{id:'focus',visible:false,size:'wide'}]};
  if(multipleFamilies)await page.route('**/api/families/',route=>route.fulfill({json:[mock.family,{...mock.family,id:'family-2',name:'Andere Familie',memberships:mock.memberships.map(row=>({...row,family:'family-2'}))}]}));
  const state={matches:[match(),match('game-fleet','battleship')],reads:0,active:0,maxActive:0,errors:0,gates:[],writes:[],layoutWrites:[],taskReads:0};
