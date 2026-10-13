@@ -1,3 +1,4 @@
+from django.db.models import Q
 from django.http import Http404
 from rest_framework import serializers
 from rest_framework.decorators import api_view, permission_classes
@@ -7,6 +8,7 @@ from rest_framework.response import Response
 from family.models import Membership
 from . import services
 from .access import WRITER_ROLES, blocked_ids, eligible, preferences, require_writer
+from .models import Friendship
 from .serializers import conversation_payload
 
 
@@ -24,6 +26,12 @@ def _validated(data, **fields):
 def family_contacts(request):
     require_writer(request.user)
     blocked = blocked_ids(request.user)
+    derived_friendship_ids = [
+        str(value)
+        for value in Friendship.objects.filter(family_derived=True)
+        .filter(Q(low_user=request.user) | Q(high_user=request.user))
+        .values_list("pk", flat=True)[:100]
+    ]
     family_ids = Membership.objects.filter(
         user=request.user,
         role__in=WRITER_ROLES,
@@ -50,7 +58,7 @@ def family_contacts(request):
         })
         if len(result) >= 100:
             break
-    return Response({"results": result})
+    return Response({"results": result, "derived_friendship_ids": derived_friendship_ids})
 
 
 @api_view(["POST"])
