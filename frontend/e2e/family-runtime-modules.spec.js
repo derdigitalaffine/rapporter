@@ -18,34 +18,49 @@ test('app shell runtime feeds Today and global create without duplicate bootstra
  expect(counts).toEqual({baby:1,pets:1,session:1,inbox:1});
 });
 
-test('latest family load wins when an older family response finishes late',async({page})=>{
+test('latest family load wins when an older dashboard response finishes late',async({page})=>{
  await installApiMocks(page,{dismissOnboarding:true});
  await page.addInitScript(()=>localStorage.setItem('famuhle-active-family','family-1'));
- const task=(id,title)=>({id,family:'family-1',task_list:'tasks-family-1',title,notes:'',priority:'normal',estimate_minutes:10,assignee:1,assignee_name:'Alex',list_name:'Alltag',due_at:null,completed_at:null});
- const dashboard=tasks=>({tasks,task_lists:[{id:'tasks-family-1',family:'family-1',name:'Alltag',icon:'list-check',archived:false,sort_order:0,open_count:tasks.length,done_count:0}],events:[],routines:[],shopping_lists:[],inbox_count:0,automation_count:0});
- const initial=dashboard([task('task-a','Aufgabe A'),task('task-b','Aufgabe B')]);
- const stale=dashboard([task('task-stale','Veraltete Antwort')]);
- const latest=dashboard([task('task-latest','Neueste Antwort')]);
+ const tasks=[
+  {id:'task-a',family:'family-1',task_list:'tasks-family-1',title:'Aufgabe A',notes:'',priority:'normal',estimate_minutes:10,assignee:1,assignee_name:'Alex',list_name:'Alltag',due_at:null,completed_at:null},
+  {id:'task-b',family:'family-1',task_list:'tasks-family-1',title:'Aufgabe B',notes:'',priority:'normal',estimate_minutes:10,assignee:1,assignee_name:'Alex',list_name:'Alltag',due_at:null,completed_at:null},
+ ];
+ const smartList={id:'tasks-family-1',family:'family-1',name:'Alltag',icon:'list-check',archived:false,sort_order:0,open_count:2,done_count:0};
+ const dashboard=list=>({tasks:[],task_lists:[list],events:[],routines:[],shopping_lists:[],inbox_count:0,automation_count:0});
+ const initialList={...smartList,id:'initial-list',name:'Ausgangsliste'};
+ const staleList={...smartList,id:'stale-list',name:'Veraltete Liste'};
+ const latestList={...smartList,id:'latest-list',name:'Neueste Liste'};
  let dashboardCalls=0;
+ let staleDelivered=false;
  let releaseStale;
  const stalePending=new Promise(resolve=>{releaseStale=resolve});
+ await page.route('**/api/task-lists/',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify([smartList])}));
+ await page.route('**/api/tasks/',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(tasks)}));
+ await page.route('**/api/tasks/*/toggle/',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({ok:true})}));
  await page.route('**/api/dashboard/?family=family-1',async route=>{
   dashboardCalls+=1;
-  if(dashboardCalls===1)return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(initial)});
-  if(dashboardCalls===2){await stalePending;return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(stale)})}
-  return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(latest)});
+  if(dashboardCalls===1)return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(dashboard(initialList))});
+  if(dashboardCalls===2){
+   await stalePending;
+   staleDelivered=true;
+   return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(dashboard(staleList))});
+  }
+  return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(dashboard(latestList))});
  });
- await page.route('**/api/tasks/*/toggle/',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({ok:true})}));
- await page.goto('/');
- const row=title=>page.locator('.today-task-row').filter({hasText:title});
+ await page.goto('/?page=tasks');
+ const row=title=>page.locator('.smart-row').filter({hasText:title});
  await expect(row('Aufgabe A')).toBeVisible();
  await expect(row('Aufgabe B')).toBeVisible();
- await row('Aufgabe A').locator('.today-check').click();
+ await row('Aufgabe A').locator('.smart-check').click();
  await expect.poll(()=>dashboardCalls).toBe(2);
- await row('Aufgabe B').locator('.today-check').click();
+ await row('Aufgabe B').locator('.smart-check').click();
  await expect.poll(()=>dashboardCalls).toBeGreaterThanOrEqual(3);
- await expect(page.getByText('Neueste Antwort',{exact:true})).toBeVisible();
+ await expect(page.locator('main .loading')).toHaveCount(0);
+ await page.locator('.bottom-nav').getByRole('button',{name:'To-dos',exact:true}).click();
+ await page.locator('.todo-tabs').getByRole('button',{name:'Listen',exact:true}).click();
+ await expect(page.getByRole('link',{name:/Neueste Liste/})).toBeVisible();
  releaseStale();
- await expect(page.getByText('Neueste Antwort',{exact:true})).toBeVisible();
- await expect(page.getByText('Veraltete Antwort',{exact:true})).toHaveCount(0);
+ await expect.poll(()=>staleDelivered).toBe(true);
+ await expect(page.getByRole('link',{name:/Neueste Liste/})).toBeVisible();
+ await expect(page.getByRole('link',{name:/Veraltete Liste/})).toHaveCount(0);
 });
