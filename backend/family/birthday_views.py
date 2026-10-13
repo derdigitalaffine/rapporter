@@ -8,6 +8,7 @@ from rest_framework.decorators import api_view
 from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
 from rest_framework.response import Response
 
+from .birthday_age import age_is_enabled, set_age_enabled
 from .birthday_context import sync_birthday_gift_plan_context
 from .birthdays import can_plan, local_now, next_occurrence, plan_query, project, targets
 from .models import BirthdayGiftPlan, BirthdayPerson, Family, Membership, ShoppingItem, ShoppingList, Task, TaskList
@@ -26,9 +27,11 @@ def requested_family(request):
 
 
 class BirthdayPersonSerializer(serializers.ModelSerializer):
+    show_birthday_age = serializers.BooleanField(required=False, default=True)
+
     class Meta:
         model = BirthdayPerson
-        fields = ["id","family","name","birth_month","birth_day","birth_year","relation","notes","active","created_at"]
+        fields = ["id","family","name","birth_month","birth_day","birth_year","show_birthday_age","relation","notes","active","created_at"]
         read_only_fields = ["created_at"]
 
     def validate(self,attrs):
@@ -50,8 +53,22 @@ class BirthdayPersonSerializer(serializers.ModelSerializer):
             raise ValidationError({"birth_day":"Invalid birthday date."})
         return attrs
 
+    def create(self,validated_data):
+        show_age = validated_data.pop("show_birthday_age", True)
+        instance = super().create(validated_data)
+        set_age_enabled(instance.family, f"person:{instance.id}", show_age)
+        return instance
+
+    def update(self,instance,validated_data):
+        show_age = validated_data.pop("show_birthday_age", None)
+        instance = super().update(instance,validated_data)
+        if show_age is not None:
+            set_age_enabled(instance.family, f"person:{instance.id}", show_age)
+        return instance
+
     def to_representation(self,instance):
         data = super().to_representation(instance)
+        data["show_birthday_age"] = age_is_enabled(instance.family, f"person:{instance.id}")
         if not Membership.objects.filter(family=instance.family,user=self.context['request'].user,role__in=["owner","adult"]).exists():
             data.pop("notes",None)
         return data
