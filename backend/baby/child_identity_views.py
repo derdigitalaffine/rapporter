@@ -5,6 +5,7 @@ from rest_framework.response import Response
 
 from auth_abuse.service import enforce
 from auth_sessions.service import require_fresh_session
+from family.models import Family
 
 from .child_identity_service import (
     begin_child_login_activation,
@@ -14,6 +15,20 @@ from .child_identity_service import (
     serialize_child_identity,
 )
 from .models import BabyProfile
+from .pregnancy_service import create_managed_child
+
+
+class ManagedChildInput(serializers.Serializer):
+    family = serializers.UUIDField()
+    display_name = serializers.CharField(max_length=80, trim_whitespace=True)
+    birth_date = serializers.DateField()
+    client_identity_key = serializers.UUIDField()
+
+    def validate_display_name(self, value):
+        value = value.strip()
+        if not value:
+            raise serializers.ValidationError("Name must not be empty.")
+        return value
 
 
 class GuardianInput(serializers.Serializer):
@@ -43,6 +58,27 @@ def _child_for_visible_membership(user, membership_id):
     if not baby:
         raise NotFound("Child identity not found.")
     return baby
+
+
+@api_view(["POST"])
+def managed_children(request):
+    serializer = ManagedChildInput(data=request.data)
+    serializer.is_valid(raise_exception=True)
+    family = Family.objects.filter(
+        pk=serializer.validated_data["family"],
+        status=Family.Status.ACTIVE,
+        memberships__user=request.user,
+    ).first()
+    if not family:
+        raise NotFound("Family not found.")
+    baby = create_managed_child(
+        request.user,
+        family,
+        display_name=serializer.validated_data["display_name"],
+        birth_date=serializer.validated_data["birth_date"],
+        client_identity_key=serializer.validated_data["client_identity_key"],
+    )
+    return Response(serialize_child_identity(baby), status=status.HTTP_201_CREATED)
 
 
 @api_view(["GET"])
