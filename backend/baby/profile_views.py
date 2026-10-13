@@ -96,10 +96,28 @@ def child_family_profile(request, baby_id):
         return Response(_family_profile(_update_family_profile(baby, serializer.validated_data)))
 
 
-@api_view(["PATCH", "DELETE"])
+@api_view(["GET", "PATCH", "DELETE"])
 def baby_profile_detail(request, baby_id):
     with transaction.atomic():
-        baby = child_profile(baby_id, for_update=True)
+        baby = child_profile(baby_id, for_update=request.method != "GET")
+
+        # FamilyMembers historically resolves the canonical child at this URL.
+        # Keep a narrow compatibility read here while the dedicated
+        # /family-profile/ endpoint is the explicit contract for family master data.
+        if request.method == "GET":
+            require_child_guardian(request.user, baby)
+            return Response(_family_profile(baby))
+
+        # FamilyMembers sends birth_date when editing master data. Treat that
+        # payload as the same narrow family-profile contract, independent of the
+        # optional Baby module. No care/health fields are accepted or returned.
+        if request.method == "PATCH" and "birth_date" in request.data:
+            require_child_guardian(request.user, baby, manage=True)
+            serializer = ChildFamilyProfileInput(data=request.data)
+            serializer.is_valid(raise_exception=True)
+            return Response(_family_profile(_update_family_profile(baby, serializer.validated_data)))
+
+        # Existing Baby-module rename/delete behavior remains module-gated.
         require_module(baby.family)
         require_child_guardian(request.user, baby, manage=True)
 
