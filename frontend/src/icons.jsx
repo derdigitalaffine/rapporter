@@ -7,7 +7,7 @@ import {
   faArrowTrendUp, faFire, faGrip, faCopy, faShareNodes, faLink, faGear, faCirclePlus, faCheckDouble, faBarsProgress,
   faLocationDot, faTags, faGaugeHigh, faRobot, faEnvelope, faArrowDownShortWide, faBus, faGraduationCap, faLightbulb,
   faDownload, faPlay, faHeart, faBoxArchive, faSliders, faRoute, faReceipt, faCamera, faUpload, faEuroSign, faLock,
-  faMoneyBillTransfer, faBaby, faPaw
+  faMoneyBillTransfer, faBaby, faPaw, faMicrophone, faStop, faPaperPlane
 } from '@fortawesome/free-solid-svg-icons';
 
 // Utility and low-frequency symbols stay on Font Awesome for compatibility. The
@@ -24,6 +24,7 @@ export const icons = {
   progress:faBarsProgress, location:faLocationDot, tags:faTags, priority:faGaugeHigh, robot:faRobot, email:faEnvelope,
   sort:faArrowDownShortWide, transit:faBus, school:faGraduationCap, light:faLightbulb, install:faDownload, play:faPlay,
   heart:faHeart, archive:faBoxArchive, sliders:faSliders, route:faRoute, receipt:faReceipt, camera:faCamera, upload:faUpload,
+  microphone:faMicrophone, stop:faStop, send:faPaperPlane,
   euro:faEuroSign, lock:faLock, key:faLock, settle:faMoneyBillTransfer, baby:faBaby, pet:faPaw,
 };
 

@@ -2,6 +2,7 @@ import re
 from urllib.parse import urlsplit, urlunsplit
 
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 
 from family.models_features import NotificationBadgeState
@@ -25,7 +26,7 @@ def normalize_resource_url(value):
 
 
 def unread_count(user, *, family=None):
-    queryset = Notification.objects.filter(recipient__user=user, read_at__isnull=True)
+    queryset = Notification.objects.filter(Q(recipient__user=user) | Q(recipient_user=user), read_at__isnull=True)
     if family is not None:
         queryset = queryset.filter(family=family)
     return queryset.count()
@@ -67,7 +68,7 @@ def set_read(notification, *, read=True):
         return notification
     notification.read_at = target
     notification.save(update_fields=["read_at"])
-    sync_launcher_badge(notification.recipient.user)
+    sync_launcher_badge(notification.recipient_user or notification.recipient.user)
     return notification
 
 
@@ -76,3 +77,14 @@ def mark_all_read(*, membership):
         updated = Notification.objects.filter(recipient=membership, read_at__isnull=True).update(read_at=timezone.now())
         count = sync_launcher_badge(membership.user)
     return updated, count
+
+
+def record_personal_notification(*, user, event_type, title, body="", resource_url=""):
+    """A user recipient in the same canonical store, with no family grant."""
+    event_type = str(event_type or "").strip().lower()
+    if not _EVENT_TYPE_RE.fullmatch(event_type) or not str(title or "").strip():
+        raise ValueError("invalid_notification")
+    with transaction.atomic():
+        row = Notification.objects.create(recipient_user=user, event_type=event_type, title=str(title).strip()[:180], body=str(body or "")[:1000], resource_url=normalize_resource_url(resource_url))
+        count = sync_launcher_badge(user)
+    return row, count

@@ -23,6 +23,10 @@ BLOCKED_CONTEXT_PARTS = (
 )
 
 TEMPLATE_SPECS = {
+    "chat.invitation": {
+        "de": ("FamilyOS Chat-Einladung", "Eine persönliche Chat-Einladung", "Jemand möchte mit dir in FamilyOS chatten. Nimm die Einladung nur an, wenn du den Kontakt kennst. Sie gibt keinen Zugriff auf Familieninhalte."),
+        "en": ("FamilyOS chat invitation", "A personal chat invitation", "Someone wants to chat with you in FamilyOS. Accept only if you know the contact. This does not grant access to family content."),
+    },
     "email.verify": {
         "de": ("E-Mail-Adresse bestätigen", "E-Mail-Adresse bestätigen", "Bestätige deine E-Mail-Adresse für FamilyOS."),
         "en": ("Verify your email address", "Verify your email address", "Confirm your email address for FamilyOS."),
@@ -322,6 +326,9 @@ def process_one_transactional_email():
     if not row:
         return False
     try:
+        if row.reference_type == "chat.invitation" and not _resolve_action(row):
+            _finalize_failure(row, smtplib.SMTPRecipientsRefused({}))
+            return True
         subject, text, html = render_transactional_email(row)
         message = EmailMultiAlternatives(
             subject=subject,
