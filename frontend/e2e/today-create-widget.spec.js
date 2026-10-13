@@ -37,13 +37,15 @@ test('fresh widget shares exact quickstart order and one ranking read with the p
 });
 
 test('one tap opens the canonical task editor and records only a successful save',async({page})=>{
- const state=await setup(page);await open(page);
+ const state=await setup(page);let created=null;
+ await page.route('**/api/tasks/',route=>{if(route.request().method()!=='POST')return route.fallback();created=route.request().postDataJSON();return route.fulfill({status:201,json:{id:'today-task',...created,completed_at:null}})});
+ await open(page);
  await widget(page).locator('[data-create-action="task"]').click();const dialog=page.getByRole('dialog');
  await expect(dialog.getByRole('heading',{name:'Aufgabe hinzufügen'})).toBeVisible();
  await expect(dialog.getByLabel('Titel')).toBeFocused();expect(state.usages).toEqual([]);
  await dialog.getByLabel('Titel').fill('Schnell von Heute');await dialog.getByRole('button',{name:'Speichern',exact:true}).click();
  await expect(dialog).toHaveCount(0);await expect.poll(()=>state.usages.length).toBe(1);
- expect(state.state.tasks.some(row=>row.title==='Schnell von Heute')).toBe(true);
+ expect(created).toMatchObject({title:'Schnell von Heute',family:'family-1'});
  expect(state.usages[0].action_id).toBe('task');await expect(page).toHaveURL(/4173\/$/);
 });
 
