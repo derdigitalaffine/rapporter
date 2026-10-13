@@ -136,6 +136,13 @@ def _expanded_widgets(widgets, *, legacy_defaults=True):
     rows = _migrate_todo_widgets(_migrate_core_widgets(rows))
     seen = {row['id'] for row in rows}
 
+    # #510 moved the previously permanent Day Status into the editable grid.
+    # Match the existing frontend compatibility rule: introduce it once at the
+    # top, but preserve any saved (including explicitly hidden) status row.
+    if 'situation' not in seen:
+        rows.insert(0, default_widget('situation', visible=True))
+        seen.add('situation')
+
     # These surfaces were introduced after the original v1 layout. Existing v1
     # users historically received them visible at deterministic insertion points.
     if 'week' not in seen:

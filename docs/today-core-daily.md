@@ -49,3 +49,11 @@ This slice does **not** close #412.
 - Timeline keeps DOM order equal to chronological visual order.
 - Core surfaces collapse to one column on phones and avoid horizontal scrolling at 320/390px.
 - Existing Edit Mode keyboard, pointer, touch, live-region, and 44px controls remain the single layout-editing path.
+
+## Registry parity after the approved status/Pinboard updates (#557)
+
+The current product decisions in #510/#539/#541 make Day Status (`situation`) configurable and show about three compact posts in a medium Pinboard widget. Both frontend and backend registries now describe Day Status as compact/medium (compact by default) and Pinboard as compact/medium/wide (medium by default). New layouts start with Day Status, Focus, Timeline, Week, To-do and Pinboard.
+
+This aligns fresh server defaults and size validation with the existing UI. Saved personal layouts keep their existing order, visibility, supported size and revision; registry metadata does not overwrite them. For old layouts without a stored Day Status row, the read normalizer introduces the previously permanent signal once at the top, visible and compact, matching the existing #510 frontend rule. Once a user saves a hidden/moved/resized Day Status, that choice wins. Other missing widgets remain additive under the existing compatibility policy. No schema/data migration or domain/permission change is needed. Rollback restores the previous registry metadata; stored choices remain unchanged.
+
+The dedicated `quick-actions` registry widget remains a separate #412 delivery. The existing domain Add buttons already delegate to canonical Create flows, but they do not satisfy that remaining widget acceptance criterion. The initial-delivery boundaries above are historical; current Pinboard interactions use the canonical #386 consumer.
