@@ -7,7 +7,7 @@ from rest_framework.response import Response
 
 from family.models import Membership
 from . import services
-from .access import WRITER_ROLES, blocked_ids, eligible, preferences, require_writer
+from .access import WRITER_ROLES, blocked_ids, family_writer, preferences, require_writer
 from .models import Friendship
 from .serializers import conversation_payload
 
@@ -45,14 +45,14 @@ def family_contacts(request):
     result = []
     seen = set()
     for row in rows:
-        if row.user_id in seen or not eligible(row.user):
+        if row.user_id in seen or not family_writer(row.user):
             continue
         seen.add(row.user_id)
         result.append({
             "user": {
                 "id": row.user_id,
                 "display_name": row.display_name or preferences(row.user).display_name,
-                "avatar_url": None,
+                "avatar_url": f"/api/chat/avatars/{row.user_id}/",
             },
             "source": "family",
         })
