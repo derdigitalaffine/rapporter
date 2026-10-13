@@ -1,4 +1,4 @@
-import {useRef} from 'react';
+import {useLayoutEffect,useRef} from 'react';
 import {Icon} from './icons';
 import PinInteractionBar from './PinInteractions';
 import {formatPinEventMeta,pinAuthorHue,pinAuthorInitial,pinIconName} from './pinboard-ui';
@@ -16,7 +16,8 @@ const COPY={
 const KINDS=['note','photo','event','task','routine','note_ref','shopping','shopping_list','trip','document'];
 
 export default function PinBoardCard({row,index,total,language='de',busy,onMove,onRemove,onEdit,onInteractionChange}){
- const text=COPY[language.split('-')[0]]||COPY.de,summary=useRef(null);
+ const text=COPY[language.split('-')[0]]||COPY.de,summary=useRef(null),focusAfterMove=useRef(false);
+ useLayoutEffect(()=>{if(focusAfterMove.current){summary.current?.focus();if(!busy)focusAfterMove.current=false}},[index,busy]);
  const unavailable=row.target?.available===false||row.effective_scope==='none';
  const target=unavailable?null:row.target;
  const event=target?.kind==='event'?{type:target.event_type,starts_at:target.subtitle,ends_at:target.ends_at,payload:{date_start:target.date_start,date_end_exclusive:target.date_end_exclusive}}:null;
@@ -29,7 +30,8 @@ export default function PinBoardCard({row,index,total,language='de',busy,onMove,
  const hasActions=row.can_reorder||row.can_change_pin_visibility||row.can_delete||target?.can_share_source&&target?.source_share_url;
  function close(){summary.current?.closest('details')?.removeAttribute('open');summary.current?.focus()}
  function action(run){close();run()}
- return <article id={`pin-${row.id}`} aria-label={`${type}: ${title}; ${visibility}`} className={`pin-card pin-${row.kind} pin-board-card ${unavailable?'pin-unavailable':''}`} onKeyDown={event=>{if(event.key==='Escape'&&summary.current?.closest('details')?.open){event.preventDefault();event.stopPropagation();close()}}}>
+ function move(delta){focusAfterMove.current=true;action(()=>onMove(row,delta))}
+ return <article id={`pin-${row.id}`} aria-label={unavailable?text.unavailable:`${type}: ${title}; ${visibility}`} className={`pin-card pin-${row.kind} pin-board-card ${unavailable?'pin-unavailable':''}`} onKeyDown={event=>{if(event.key==='Escape'&&summary.current?.closest('details')?.open){event.preventDefault();event.stopPropagation();close()}}}>
   <div className="pin-card-top"><span className="pin-kind"><span className="pin-kind-icon"><Icon name={unavailable?'lock':icon}/></span>{unavailable?text.unavailable:type}</span><span className="pin-visibility"><Icon name={unavailable||scope==='private'?'lock':scope==='selected'?'users':'home'}/>{visibility}</span></div>
   {!unavailable&&row.images?.length>0&&<div className={`pin-photos pin-photos-${Math.min(row.images.length,4)}`}>{row.images.map((image,i)=><a key={image.id} href={image.url} target="_blank" rel="noreferrer" aria-label={`${text.photos} ${i+1}`}><img src={image.url} width={image.width} height={image.height} loading="lazy" alt=""/></a>)}</div>}
   {target?.url?<a className="pin-target" href={target.url}><span className="pin-target-icon"><Icon name={icon}/></span><span className="grow"><strong>{title}</strong>{meta&&<small>{String(meta).slice(0,140)}</small>}</span><Icon name="next"/></a>:unavailable?<div className="pin-target unavailable"><Icon name="lock"/><strong>{text.unavailable}</strong></div>:<>{target&&<strong>{title}</strong>}{row.text&&<p className="pin-text">{row.text}</p>}</>}
@@ -37,7 +39,7 @@ export default function PinBoardCard({row,index,total,language='de',busy,onMove,
   {!unavailable&&row.can_interact&&<PinInteractionBar pin={row} onChange={onInteractionChange}/>}
   <footer>{!unavailable&&(row.author_name||row.created_at)&&<span className="pin-author-line">{row.author_name&&<span className="pin-author" style={{'--pin-author-hue':pinAuthorHue(row.author)}} title={`${text.author} ${row.author_name}`}><span className="pin-author-avatar" aria-hidden="true">{pinAuthorInitial(row.author_name)}</span><span>{text.author} <strong>{row.author_name}</strong></span></span>}{row.created_at&&<time dateTime={row.created_at}>{new Date(row.created_at).toLocaleDateString(appLocale(language),{day:'2-digit',month:'short'})}</time>}</span>}
    {hasActions&&<details className="todo-actions-menu pin-card-actions"><summary ref={summary} aria-label={`${text.more}: ${title}`}><Icon name="more"/><span>{text.more}</span></summary><div className="todo-actions-popover" role="group" aria-label={`${text.options} ${title}`}>
-    {row.can_reorder&&<><button type="button" disabled={busy||index===0} onClick={()=>action(()=>onMove(row,-1))} aria-label={`${text.up}: ${title}`}><span aria-hidden="true">↑</span>{text.up}</button><button type="button" disabled={busy||index===total-1} onClick={()=>action(()=>onMove(row,1))} aria-label={`${text.down}: ${title}`}><span aria-hidden="true">↓</span>{text.down}</button></>}
+    {row.can_reorder&&<><button type="button" disabled={busy||index===0} onClick={()=>move(-1)} aria-label={`${text.up}: ${title}`}><span aria-hidden="true">↑</span>{text.up}</button><button type="button" disabled={busy||index===total-1} onClick={()=>move(1)} aria-label={`${text.down}: ${title}`}><span aria-hidden="true">↓</span>{text.down}</button></>}
     {row.can_change_pin_visibility&&<button type="button" disabled={busy} onClick={()=>action(onEdit)}><Icon name="edit"/>{text.edit}</button>}
     {target?.can_share_source&&target?.source_share_url&&<a href={target.source_share_url}><Icon name="members"/>{text.share}</a>}
     {row.can_delete&&<button className="todo-action-danger" type="button" disabled={busy} onClick={()=>action(()=>onRemove(row))}><Icon name="delete"/>{text.remove}</button>}

@@ -29,7 +29,7 @@ export default function BoardHub({family,onBack}){
  useEffect(()=>{const lease=boardLease.current;lease.active=true;const auth=event=>{if(event.detail?.authenticated===false){lease.active=false;setRows([]);setNext(null)}};window.addEventListener(AUTH_CHANGED_EVENT,auth);return()=>{lease.active=false;window.removeEventListener(AUTH_CHANGED_EVENT,auth)}},[familyId]);
 
  async function load(path=`/board/?family=${encodeURIComponent(familyId)}`,append=false){
-  const lease=boardLease.current,request=++lease.request;if(!lease.active||lease.pending)return;const current=()=>lease.active&&lease===boardLease.current&&lease.request===request;
+  const lease=renderLease;if(!lease.active||lease.pending||lease!==boardLease.current)return;const request=++lease.request;const current=()=>lease.active&&lease===boardLease.current&&lease.request===request;
   setLoading(true);setError('');
   try{
    const data=await api(path);let incoming=unwrap(data);const target=new URLSearchParams(location.search).get('post');
@@ -64,7 +64,7 @@ export default function BoardHub({family,onBack}){
    if(!await confirmAction({title:w.confirm,confirmLabel:w.remove,cancelLabel:w.cancel,danger:true})||!mutationCurrent(lease))return;
    ++lease.request;await api(`/board/${row.id}/`,{method:'DELETE'});
    if(mutationCurrent(lease))setRows(old=>old.filter(pin=>pin.id!==row.id));
-  }catch(e){if(mutationCurrent(lease))setError(e.message||w.failed)}finally{lease.pending=false;if(mutationCurrent(lease))setBusy(false)}
+  }catch(e){if(mutationCurrent(lease))setError(e.message||w.failed)}finally{lease.pending=false;if(mutationCurrent(lease)){setBusy(false);setLoading(false);if(lease.refresh){lease.refresh=false;load()}}}
  }
  async function move(row,delta){
   const lease=renderLease;if(!mutationCurrent(lease)||lease.pending||!row.can_reorder)return;
@@ -72,12 +72,12 @@ export default function BoardHub({family,onBack}){
   const before=rows,reordered=[...rows];[reordered[index],reordered[other]]=[reordered[other],reordered[index]];
   lease.pending=true;++lease.request;setLoading(false);setBusy(true);setRows(reordered);setError('');
   try{await api('/board/reorder/',{method:'POST',body:JSON.stringify({family:familyId,ids:reordered.map(item=>item.id)})})}
-  catch(e){if(mutationCurrent(lease)){setRows(before);setError(e.message||w.failed)}}
-  finally{lease.pending=false;if(mutationCurrent(lease))setBusy(false)}
+  catch(e){if(mutationCurrent(lease)){setRows(current=>before.filter(row=>current.some(item=>item.id===row.id)).map(row=>({...row,interaction:current.find(item=>item.id===row.id)?.interaction})));setError(e.message||w.failed)}}
+  finally{lease.pending=false;if(mutationCurrent(lease)){setBusy(false);setLoading(false);if(lease.refresh){lease.refresh=false;load()}}}
  }
  const startEdit=row=>{setEditing(row);setKind(row.kind);setAdapterKey(row.adapter_key||'');setText(row.text||'');setFiles([]);setVisibility(row.visibility||'family');setSelectedMembershipIds(row.selected_membership_ids||[]);setCompose(true);window.scrollTo({top:0,behavior:'smooth'})};
  const interactionLease=boardLease.current;
- const updateInteraction=(id,interaction)=>{if(!interactionLease.active||interactionLease!==boardLease.current)return;if(interaction?.can_interact===false){setRows(current=>current.filter(row=>String(row.id)!==String(id)));load();return}setRows(current=>current.map(row=>String(row.id)===String(id)?{...row,interaction}:row))};
+ const updateInteraction=(id,interaction)=>{if(!interactionLease.active||interactionLease!==boardLease.current)return;if(interaction?.can_interact===false){setRows(current=>current.filter(row=>String(row.id)!==String(id)));if(interactionLease.pending)interactionLease.refresh=true;else load();return}setRows(current=>current.map(row=>String(row.id)===String(id)?{...row,interaction}:row))};
 
  return <section className="board-hub"><header className="page-head board-head"><button className="icon-btn" aria-label={w.back} onClick={onBack}><Icon name="back"/></button><div className="grow"><small>{w.eyebrow}</small><h1>{w.title}</h1><p>{w.hint}</p></div>{canPost&&!compose&&<button className="primary board-pin-button" onClick={()=>startCompose()}><Icon name="plus"/> {w.pin}</button>}</header>
  {error&&<div role="alert" className="card board-error">{error} {!compose&&<button onClick={()=>load()}>{w.retry}</button>}</div>}

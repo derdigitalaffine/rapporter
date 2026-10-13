@@ -79,3 +79,12 @@ test('late reorder rollback cannot restore pins after auth loss',async({page})=>
  await page.route('**/api/board/reorder/',async route=>{requested=true;await gate;return route.fulfill({status:503,json:{detail:'OLD AUTH ERROR'}})});await move(page);await expect.poll(()=>requested).toBe(true);
  await page.evaluate(()=>{localStorage.removeItem('famuhle-session');window.dispatchEvent(new CustomEvent('famuhle:auth-changed',{detail:{authenticated:false}}))});await expect(page.locator('.pin-card')).toHaveCount(0);release();await expect(page.getByText('OLD AUTH ERROR')).toHaveCount(0);
 });
+
+test('reorder rollback cannot restore a source revoked during an interaction',async({page})=>{
+ const state=await boot(page,{rows:[pin('first','Erste Karte',{can_interact:true,interaction:{can_interact:true,comment_count:0,reactions:[]}}),pin('second','Zweite Karte')]});
+ let release,requested=false;const gate=new Promise(resolve=>release=resolve);
+ await page.route('**/api/board/reorder/',async route=>{requested=true;await gate;return route.fulfill({status:503,json:{detail:'Reorder failed'}})});
+ await page.route('**/api/board/first/reaction/',route=>{state.rows=state.rows.filter(row=>row.id!=='first');return route.fulfill({status:403,json:{detail:'revoked'}})});
+ await move(page);await expect.poll(()=>requested).toBe(true);await page.locator('#pin-first').getByRole('button',{name:/Reaktion, 0.*Reagieren/}).click();await page.getByRole('button',{name:'Passt',exact:true}).click();
+ await expect(page.locator('#pin-first')).toHaveCount(0);const reload=page.waitForResponse(response=>new URL(response.url()).pathname==='/api/board/'&&response.request().method()==='GET');release();await reload;await expect(page.locator('.pin-card')).toHaveCount(1);await expect(page.locator('#pin-second')).toBeVisible();await expect(page.locator('#pin-first')).toHaveCount(0);
+});
