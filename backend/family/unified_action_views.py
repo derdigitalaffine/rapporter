@@ -116,7 +116,7 @@ def quick_capture(request):
             return Response({'suggestions': [], 'suggestions_enabled': False, 'icon_suggestions': [], 'auto_merge': False})
         query = str(request.query_params.get('q', '')).strip()[:160]
         rows = project_actions(user=request.user, family=family, scope='all')
-        rows = [r for r in rows if r['state'] not in {'paused', 'done', 'done_today'}]
+        rows = [r for r in rows if r['state'] != 'paused' and (r['kind'] == 'routine' or r['state'] not in {'done', 'done_today'} or query)]
         for row in rows:
             similarity = SequenceMatcher(None, query.casefold(), row['title'].casefold()).ratio() if query else 0
             row['capture_match'] = round(similarity, 3)
