@@ -17,7 +17,7 @@ from auth_identity.models import EmailIdentity
 from auth_identity.service import EmailConflictError
 from family.auth_views import set_user_cookies
 from . import services
-from .access import blocked_ids, eligible, friendship_access, friendship_for, membership, preferences, profile_payload, require_writer, visible_messages
+from .access import blocked_ids, eligible, friendship_access, friendship_for, membership, preferences, profile_payload, require_writer, shared_chat_family, visible_messages
 from .invitations import accept_invitation, create_invitation, register_from_invitation, resolve_invitation
 from .models import ChatAttachment, ChatBlock, ContactInvitation, ConversationMember, Friendship
 from .serializers import conversation_payload, message_payload
@@ -74,7 +74,6 @@ def invitations(request):
     data = validated(request.data, email=serializers.EmailField(max_length=254), request_id=serializers.UUIDField())
     rate(request, "chat.invite")
     invite = create_invitation(request.user, **data)
-    # Account existence / blocking is deliberately absent from the response.
     return Response(invite_payload(invite), status=202)
 
 
@@ -155,7 +154,6 @@ def unblock(request, user_id):
     require_writer(request.user)
     rate(request, "chat.write")
     ChatBlock.objects.filter(blocker=request.user, blocked_id=user_id).delete()
-    # Removing a block never restores friendship automatically.
     return Response({"ok": True})
 
 
@@ -173,7 +171,8 @@ def conversations(request):
         else:
             member = services.create_group(request.user, data.get("title"), data.get("friends"))
         return Response(conversation_payload(member), status=201)
-    rows = ConversationMember.objects.filter(user=request.user).select_related("conversation").order_by("-conversation__updated_at")[:100]
+    services.sync_family_groups(request.user)
+    rows = ConversationMember.objects.filter(user=request.user, state__in=["active", "invited"]).select_related("conversation", "conversation__family").order_by("-conversation__updated_at")[:100]
     return Response({"results": [conversation_payload(m) for m in rows]})
 
 
@@ -274,8 +273,9 @@ def avatar(request, user_id):
     from family.profile_views import _avatar_path
     if user_id != request.user.pk:
         friend = Friendship.objects.filter(active=True).filter(Q(low_user=request.user, high_user_id=user_id) | Q(high_user=request.user, low_user_id=user_id)).exists()
+        family = shared_chat_family(request.user.pk, user_id)
         group = ConversationMember.objects.filter(user=request.user, state="active", conversation__kind="group", conversation__participants__user_id=user_id, conversation__participants__state="active").exists()
-        if user_id in blocked_ids(request.user) or not (friend or group):
+        if user_id in blocked_ids(request.user) or not (friend or family or group):
             raise Http404
     profile = UserProfile.objects.filter(user_id=user_id, user__is_active=True).first()
     if not profile or not profile.avatar_key:
