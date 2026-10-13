@@ -1,116 +1,241 @@
 {
   "schema_version": 1,
-  "version": "0.2.0",
-  "released_at": "2026-10-11",
+  "version": "0.8.0",
+  "released_at": "2026-10-13",
   "features": {
     "de": [
       {
-        "id": "family-access-tiers",
-        "title": "Familienzugang auf einen Blick",
-        "description": "Im Bereich Mehr ist jetzt sichtbar, welchen FamilyOS-Zugang eure Familie nutzt und welche Premium-Bereiche verfügbar sind."
+        "id": "today-workspace",
+        "title": "Heute nach eurem Alltag",
+        "description": "Die Heute-Ansicht bietet mehr konfigurierbare und kontextbezogene Widgets und nutzt den verfügbaren Platz auf Mobilgeräten und Desktop besser aus."
       },
       {
-        "id": "more-languages",
-        "title": "Mehr Sprachen",
-        "description": "FamilyOS unterstützt zusätzlich Französisch, Niederländisch und Thai mit einer durchgängigen Sprachwahl."
+        "id": "global-create",
+        "title": "Überall schnell hinzufügen",
+        "description": "Über den zentralen Erstellen-Flow lassen sich wichtige Inhalte schneller anlegen; häufig genutzte Aktionen werden passend zur Nutzung priorisiert."
       },
       {
-        "id": "todo-quick-actions",
-        "title": "Schnellere To-dos",
-        "description": "Aufgaben und Routinen teilen sich jetzt einheitliche Schnellaktionen, inklusive direktem Rückgängig und einem gemeinsamen Heute-Widget."
+        "id": "family-board",
+        "title": "Pinnwand als gemeinsamer Familienraum",
+        "description": "Die Pinnwand unterstützt gemeinsame Karten mit Sichtbarkeit, Interaktionen, zusätzlichen Aktionen und sicherer Sortierung."
       },
       {
-        "id": "trip-expenses",
-        "title": "Reisekosten direkt bei der Reise",
-        "description": "Reisen können jetzt einen eigenen Ausgabenbereich öffnen, ohne einen zweiten Kosten-Datenbestand anzulegen."
+        "id": "documents-search",
+        "title": "Dokumente schneller finden",
+        "description": "Der Dokumentbereich wurde erweitert und kann Familienunterlagen jetzt gezielt durchsuchen."
+      },
+      {
+        "id": "family-games",
+        "title": "Spiele für die Familie",
+        "description": "Ein eigener Spielebereich bringt gemeinsame Spiele wie Quiz und Vier gewinnt in FamilyOS und kann Aufgaben spielerisch einbinden."
+      },
+      {
+        "id": "shopping-store-mode",
+        "title": "Einkaufen in der richtigen Reihenfolge",
+        "description": "Einkaufslisten lassen sich besser ordnen und im Laden übersichtlicher verwenden; die mobile Bedienung wurde weiter verbessert."
+      },
+      {
+        "id": "calendar-caldav",
+        "title": "Mehr Kalender anschließen",
+        "description": "FamilyOS erweitert die Kalenderanbindung um CalDAV-Grundfunktionen und verbessert die Verwaltung bestehender Kalenderdaten."
+      },
+      {
+        "id": "cards-tickets",
+        "title": "Karten und Tickets an einem Ort",
+        "description": "Digitale Karten, Pässe und Tickets können zentral in FamilyOS verwaltet und im Alltag schnell geöffnet werden."
+      },
+      {
+        "id": "notifications-security",
+        "title": "Mitteilungen und Anmeldung verbessert",
+        "description": "Ein neuer Mitteilungsbereich und Verbesserungen bei Passkeys, Konto- und Sicherheitsabläufen machen FamilyOS zuverlässiger im Alltag."
       }
     ],
     "en": [
       {
-        "id": "family-access-tiers",
-        "title": "Family access at a glance",
-        "description": "The More area now shows which FamilyOS access tier your family uses and which premium areas are available."
+        "id": "today-workspace",
+        "title": "Today shaped around your day",
+        "description": "The Today view now offers more configurable, contextual widgets and makes better use of space on mobile and desktop."
       },
       {
-        "id": "more-languages",
-        "title": "More languages",
-        "description": "FamilyOS now also supports French, Dutch and Thai with a consistent language selection flow."
+        "id": "global-create",
+        "title": "Create quickly from anywhere",
+        "description": "The central create flow makes common items faster to add and prioritizes frequently used actions based on usage."
       },
       {
-        "id": "todo-quick-actions",
-        "title": "Faster to-dos",
-        "description": "Tasks and routines now share consistent quick actions, including immediate undo and one combined Today widget."
+        "id": "family-board",
+        "title": "A shared family pinboard",
+        "description": "The pinboard now supports shared cards with visibility controls, interactions, more actions and safe reordering."
       },
       {
-        "id": "trip-expenses",
-        "title": "Trip expenses in context",
-        "description": "Trips can now open their own expense ledger without creating a second travel-specific expense data model."
+        "id": "documents-search",
+        "title": "Find documents faster",
+        "description": "The documents area has been expanded and can now search family documents directly."
+      },
+      {
+        "id": "family-games",
+        "title": "Games for the family",
+        "description": "A dedicated games area brings shared games such as quizzes and Connect Four into FamilyOS and can tie play into tasks."
+      },
+      {
+        "id": "shopping-store-mode",
+        "title": "Shop in the right order",
+        "description": "Shopping lists are easier to order and use in-store, with further improvements to the mobile experience."
+      },
+      {
+        "id": "calendar-caldav",
+        "title": "Connect more calendars",
+        "description": "FamilyOS adds core CalDAV support and improves the management of existing calendar data."
+      },
+      {
+        "id": "cards-tickets",
+        "title": "Cards and tickets in one place",
+        "description": "Digital cards, passes and tickets can be managed centrally in FamilyOS and opened quickly when needed."
+      },
+      {
+        "id": "notifications-security",
+        "title": "Better notifications and sign-in",
+        "description": "A new notification area plus passkey, account and security improvements make everyday use more reliable."
       }
     ],
     "fr": [
       {
-        "id": "family-access-tiers",
-        "title": "L’accès familial en un coup d’œil",
-        "description": "La section Plus affiche désormais le niveau d’accès FamilyOS de votre famille et les espaces premium disponibles."
+        "id": "today-workspace",
+        "title": "Aujourd’hui adapté à votre quotidien",
+        "description": "La vue Aujourd’hui propose davantage de widgets configurables et contextuels et utilise mieux l’espace sur mobile comme sur ordinateur."
       },
       {
-        "id": "more-languages",
-        "title": "Plus de langues",
-        "description": "FamilyOS prend désormais aussi en charge le français, le néerlandais et le thaï avec une sélection de langue cohérente."
+        "id": "global-create",
+        "title": "Créer rapidement depuis partout",
+        "description": "Le flux de création central permet d’ajouter plus vite les éléments courants et met en avant les actions les plus utilisées."
       },
       {
-        "id": "todo-quick-actions",
-        "title": "Des tâches plus rapides",
-        "description": "Les tâches et routines partagent maintenant les mêmes actions rapides, avec annulation immédiate et un widget Aujourd’hui commun."
+        "id": "family-board",
+        "title": "Un tableau partagé pour la famille",
+        "description": "Le tableau prend en charge des cartes partagées avec visibilité, interactions, actions supplémentaires et réorganisation sécurisée."
       },
       {
-        "id": "trip-expenses",
-        "title": "Dépenses liées aux voyages",
-        "description": "Un voyage peut maintenant ouvrir son propre registre de dépenses sans créer un second modèle de données spécifique au voyage."
+        "id": "documents-search",
+        "title": "Retrouver les documents plus vite",
+        "description": "L’espace Documents a été enrichi et permet désormais de rechercher directement les documents de la famille."
+      },
+      {
+        "id": "family-games",
+        "title": "Des jeux pour la famille",
+        "description": "Un espace Jeux dédié ajoute notamment des quiz et Puissance 4 et peut relier le jeu aux tâches familiales."
+      },
+      {
+        "id": "shopping-store-mode",
+        "title": "Faire les courses dans le bon ordre",
+        "description": "Les listes de courses sont plus faciles à organiser et à utiliser en magasin, avec une meilleure expérience mobile."
+      },
+      {
+        "id": "calendar-caldav",
+        "title": "Connecter davantage de calendriers",
+        "description": "FamilyOS ajoute les fonctions CalDAV essentielles et améliore la gestion des données de calendrier existantes."
+      },
+      {
+        "id": "cards-tickets",
+        "title": "Cartes et billets au même endroit",
+        "description": "Les cartes, passes et billets numériques peuvent être gérés de manière centralisée et ouverts rapidement."
+      },
+      {
+        "id": "notifications-security",
+        "title": "Notifications et connexion améliorées",
+        "description": "Un nouvel espace de notifications et des améliorations des passkeys, du compte et de la sécurité renforcent la fiabilité au quotidien."
       }
     ],
     "nl": [
       {
-        "id": "family-access-tiers",
-        "title": "Gezinstoegang in één oogopslag",
-        "description": "In Meer zie je nu welk FamilyOS-toegangsniveau je gezin gebruikt en welke premiumonderdelen beschikbaar zijn."
+        "id": "today-workspace",
+        "title": "Vandaag afgestemd op jullie dag",
+        "description": "De Vandaag-weergave biedt meer instelbare en contextuele widgets en benut de ruimte op mobiel en desktop beter."
       },
       {
-        "id": "more-languages",
-        "title": "Meer talen",
-        "description": "FamilyOS ondersteunt nu ook Frans, Nederlands en Thai met een consistente taalkeuze."
+        "id": "global-create",
+        "title": "Overal snel iets toevoegen",
+        "description": "Met de centrale aanmaakflow voeg je veelgebruikte onderdelen sneller toe en worden vaak gebruikte acties hoger geplaatst."
       },
       {
-        "id": "todo-quick-actions",
-        "title": "Snellere to-do’s",
-        "description": "Taken en routines delen nu dezelfde snelle acties, inclusief direct ongedaan maken en één gezamenlijke Vandaag-widget."
+        "id": "family-board",
+        "title": "Een gedeeld prikbord voor het gezin",
+        "description": "Het prikbord ondersteunt gedeelde kaarten met zichtbaarheid, interacties, extra acties en veilig herschikken."
       },
       {
-        "id": "trip-expenses",
-        "title": "Reiskosten bij de reis",
-        "description": "Reizen kunnen nu hun eigen uitgavenboek openen zonder een tweede reisspecifiek uitgavenmodel te maken."
+        "id": "documents-search",
+        "title": "Documenten sneller vinden",
+        "description": "Het documentgedeelte is uitgebreid en kan gezinsdocumenten nu direct doorzoeken."
+      },
+      {
+        "id": "family-games",
+        "title": "Spellen voor het gezin",
+        "description": "Een eigen spelgedeelte brengt onder meer quizzen en Vier op een rij naar FamilyOS en kan spel aan taken koppelen."
+      },
+      {
+        "id": "shopping-store-mode",
+        "title": "Winkelen in de juiste volgorde",
+        "description": "Boodschappenlijsten zijn makkelijker te ordenen en in de winkel te gebruiken, met verdere verbeteringen voor mobiel."
+      },
+      {
+        "id": "calendar-caldav",
+        "title": "Meer agenda’s koppelen",
+        "description": "FamilyOS voegt basisfuncties voor CalDAV toe en verbetert het beheer van bestaande agendagegevens."
+      },
+      {
+        "id": "cards-tickets",
+        "title": "Kaarten en tickets op één plek",
+        "description": "Digitale kaarten, passen en tickets kunnen centraal in FamilyOS worden beheerd en snel worden geopend."
+      },
+      {
+        "id": "notifications-security",
+        "title": "Betere meldingen en aanmelding",
+        "description": "Een nieuw meldingengedeelte en verbeteringen aan passkeys, account en beveiliging maken dagelijks gebruik betrouwbaarder."
       }
     ],
     "th": [
       {
-        "id": "family-access-tiers",
-        "title": "ดูสิทธิ์ของครอบครัวได้ในทันที",
-        "description": "ในส่วนเพิ่มเติม ตอนนี้คุณเห็นระดับการเข้าถึง FamilyOS ของครอบครัวและพื้นที่พรีเมียมที่ใช้งานได้แล้ว"
+        "id": "today-workspace",
+        "title": "หน้าวันนี้ที่เข้ากับชีวิตประจำวันมากขึ้น",
+        "description": "หน้าวันนี้มีวิดเจ็ตที่ปรับแต่งและแสดงตามบริบทได้มากขึ้น พร้อมใช้พื้นที่บนมือถือและเดสก์ท็อปได้ดีขึ้น"
       },
       {
-        "id": "more-languages",
-        "title": "รองรับภาษาเพิ่มขึ้น",
-        "description": "FamilyOS รองรับภาษาฝรั่งเศส ดัตช์ และไทยแล้ว พร้อมการเลือกภาษาที่สอดคล้องกันทั่วทั้งแอป"
+        "id": "global-create",
+        "title": "เพิ่มข้อมูลได้รวดเร็วจากทุกที่",
+        "description": "ขั้นตอนสร้างแบบรวมช่วยเพิ่มรายการที่ใช้บ่อยได้เร็วขึ้น และจัดลำดับการทำงานที่ใช้บ่อยให้เหมาะกับการใช้งาน"
       },
       {
-        "id": "todo-quick-actions",
-        "title": "จัดการสิ่งที่ต้องทำได้เร็วขึ้น",
-        "description": "งานและกิจวัตรใช้การทำงานด่วนแบบเดียวกันแล้ว พร้อมเลิกทำได้ทันทีและวิดเจ็ตวันนี้แบบรวม"
+        "id": "family-board",
+        "title": "กระดานร่วมกันของครอบครัว",
+        "description": "กระดานรองรับการ์ดที่ใช้ร่วมกัน การกำหนดการมองเห็น การโต้ตอบ การทำงานเพิ่มเติม และการจัดลำดับอย่างปลอดภัย"
       },
       {
-        "id": "trip-expenses",
-        "title": "ค่าใช้จ่ายของทริปอยู่ในบริบทเดียวกัน",
-        "description": "ทริปสามารถเปิดบัญชีค่าใช้จ่ายของตนเองได้ โดยไม่ต้องสร้างโมเดลข้อมูลค่าใช้จ่ายสำหรับการเดินทางแยกอีกชุด"
+        "id": "documents-search",
+        "title": "ค้นหาเอกสารได้เร็วขึ้น",
+        "description": "พื้นที่เอกสารได้รับการขยายและสามารถค้นหาเอกสารของครอบครัวได้โดยตรง"
+      },
+      {
+        "id": "family-games",
+        "title": "เกมสำหรับครอบครัว",
+        "description": "พื้นที่เกมใหม่เพิ่มเกมร่วมกัน เช่น ควิซและเกมเรียงสี่ และสามารถเชื่อมการเล่นเข้ากับงานของครอบครัวได้"
+      },
+      {
+        "id": "shopping-store-mode",
+        "title": "ซื้อของตามลำดับที่เหมาะสม",
+        "description": "รายการซื้อของจัดลำดับและใช้งานในร้านได้ง่ายขึ้น พร้อมการปรับปรุงประสบการณ์บนมือถือ"
+      },
+      {
+        "id": "calendar-caldav",
+        "title": "เชื่อมต่อปฏิทินได้มากขึ้น",
+        "description": "FamilyOS เพิ่มความสามารถหลักของ CalDAV และปรับปรุงการจัดการข้อมูลปฏิทินที่มีอยู่"
+      },
+      {
+        "id": "cards-tickets",
+        "title": "การ์ดและตั๋วในที่เดียว",
+        "description": "การ์ด พาส และตั๋วดิจิทัลสามารถจัดการรวมใน FamilyOS และเปิดใช้ได้อย่างรวดเร็วเมื่อจำเป็น"
+      },
+      {
+        "id": "notifications-security",
+        "title": "การแจ้งเตือนและการลงชื่อเข้าใช้ที่ดีขึ้น",
+        "description": "พื้นที่การแจ้งเตือนใหม่ พร้อมการปรับปรุง passkey บัญชี และความปลอดภัย ทำให้การใช้งานประจำวันเชื่อถือได้มากขึ้น"
       }
     ]
   }
