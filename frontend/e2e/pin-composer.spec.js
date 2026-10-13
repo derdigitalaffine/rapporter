@@ -75,7 +75,7 @@ test('late search responses and auth loss cannot restore stale private selection
 test('photo root keeps the existing secure upload flow at 390px',async({page})=>{
  await page.setViewportSize({width:390,height:844});const state=await boot(page);const form=page.locator('.pin-composer');await form.getByRole('button',{name:'Foto',exact:true}).click();
  await form.getByLabel('Fotos hinzufügen').setInputFiles({name:'familie.jpg',mimeType:'image/jpeg',buffer:Buffer.from('fake-jpeg')});await expect(form.getByText('familie.jpg',{exact:true})).toBeVisible();
- await form.getByRole('button',{name:'Anpinnen',exact:true}).click();expect(state.rawPosts.at(-1)).toContain('familie.jpg');expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBeTruthy();
+ await form.getByRole('button',{name:'Anpinnen',exact:true}).click();await expect.poll(()=>state.rawPosts.at(-1)||'').toContain('familie.jpg');await expect(form).toHaveCount(0);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBeTruthy();
 });
 
 for(const [language,label] of [['fr','Objet existant'],['nl','Bestaand item'],['th','รายการที่มีอยู่']]){
