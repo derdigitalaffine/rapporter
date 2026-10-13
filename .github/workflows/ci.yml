@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   frontend:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -28,7 +28,7 @@ jobs:
         run: npm run build
 
   backend:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux]
     services:
       postgres:
         image: public.ecr.aws/docker/library/postgres:17-alpine
@@ -59,7 +59,7 @@ jobs:
           cache-dependency-path: backend/requirements.txt
       - run: pip install -r backend/requirements.txt
       - working-directory: backend
-        run: python manage.py makemigrations auth_abuse auth_identity auth_sessions entitlements telemetry family expenses baby pets documents contracts correspondence decisions wishlists games mailing vehicles --check --dry-run
+        run: python manage.py makemigrations --check --dry-run
       - working-directory: backend
         run: python manage.py migrate && python manage.py check
       - working-directory: backend
@@ -67,7 +67,7 @@ jobs:
 
   e2e_shard:
     name: e2e / ${{ matrix.project }} / ${{ matrix.shard }}
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux]
     strategy:
       fail-fast: false
       matrix:
@@ -110,7 +110,7 @@ jobs:
   # Keep the historical "e2e" check name stable for branch protection while
   # running all browser shards in parallel above.
   e2e:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux]
     if: always()
     needs: [e2e_shard]
     env:
@@ -120,9 +120,13 @@ jobs:
         run: test "$E2E_SHARD_RESULT" = "success"
 
   containers:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux]
     steps:
       - uses: actions/checkout@v4
+      - name: Verify self-hosted container toolchain
+        run: |
+          docker version
+          docker compose version
       - name: Seed official images from public mirrors
         run: |
           pull_official() {
