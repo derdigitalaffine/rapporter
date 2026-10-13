@@ -9,17 +9,19 @@
 .aggregate-account-chip:has(input:focus-visible){outline:3px solid color-mix(in srgb,var(--color-focus) 42%,transparent);outline-offset:2px}
 .aggregate-balance-hint{margin:0;color:var(--muted);font-size:.88rem;line-height:1.45}
 
-.ledger-settings-edit{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding-inline:14px}
 .ledger-settings-account-select{display:grid;gap:6px;font-size:.78rem;font-weight:800}
 .ledger-settings-account-select select{min-height:44px;border:1px solid var(--line);border-radius:var(--radius-md);background:var(--surface);color:var(--ink);padding:0 12px}
 .ledger-settings-summary{display:grid;border:1px solid var(--line);border-radius:var(--radius-lg);overflow:hidden;background:var(--surface)}
-.ledger-setting-summary-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:13px 14px;border-top:1px solid var(--line)}
-.ledger-setting-summary-row:first-child{border-top:0}
+button.ledger-setting-summary-row{width:100%;min-height:58px;border:0;border-top:1px solid var(--line);border-radius:0;background:var(--surface);color:var(--ink);display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px;text-align:left}
+button.ledger-setting-summary-row:first-child{border-top:0}
+button.ledger-setting-summary-row:not(:disabled):hover{background:var(--soft)}
+button.ledger-setting-summary-row>svg,.ledger-setting-summary-action>svg{flex:0 0 auto;color:var(--muted)}
 .ledger-setting-summary-label{display:flex;align-items:center;gap:11px;min-width:0}
 .ledger-setting-summary-label>svg{flex:0 0 auto;color:var(--green)}
 .ledger-setting-summary-label>span{display:grid;gap:2px;min-width:0}
 .ledger-setting-summary-label strong{font-size:.9rem}
 .ledger-setting-summary-label small{color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ledger-setting-summary-action{display:flex;align-items:center;gap:8px;min-width:max-content}
 .ledger-settings-avatars{display:flex;align-items:center;justify-content:flex-end;min-width:max-content;padding-left:8px}
 .ledger-settings-avatars .member-avatar-ui{margin-left:-7px;border:2px solid var(--surface)}
 .ledger-settings-avatars .member-avatar-ui:first-child{margin-left:0}
@@ -69,7 +71,7 @@
 .aggregate-transfer-party{display:flex;align-items:center;gap:10px;min-width:0}
 .aggregate-transfer-party>span{min-width:0}
 .aggregate-transfer-avatars{display:flex;align-items:center;min-width:48px}
-.aggregate-transfer-avatars .member-avatar-ui+ .member-avatar-ui{margin-left:-10px;border:2px solid var(--surface)}
+.aggregate-transfer-avatars .member-avatar-ui+.member-avatar-ui{margin-left:-10px;border:2px solid var(--surface)}
 .aggregate-transfer-section>small{color:var(--muted);line-height:1.4}
 .aggregate-ledger-plan{display:grid;gap:3px;padding:10px 12px;border:1px solid var(--line);border-radius:var(--radius-md);background:var(--surface)}
 
@@ -84,7 +86,6 @@
  .ledger-settings-sheet{border-radius:var(--radius-xl)}
 }
 @media(max-width:359px){
- .ledger-setting-summary-row{align-items:flex-start}
  .ledger-settings-avatars{display:none}
  .ledger-split-value-row{grid-template-columns:auto minmax(0,1fr)!important}
  .ledger-split-input{grid-column:2}
