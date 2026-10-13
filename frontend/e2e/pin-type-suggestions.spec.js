@@ -6,6 +6,7 @@ import {pinComposerCopy} from '../src/pin-composer-copy.js';
 const LEGACY={task:'task',routine:'routine',calendar_event:'event',shopping_item:'shopping',shopping_list:'shopping_list',document:'document',note:'note_ref',trip:'trip'};
 const storageKey=(user='1',member='member-1',family='family-1')=>'familyos-pin-types:v1:'+JSON.stringify([user,member,family]);
 const form=page=>page.locator('.pin-composer');
+const sourceButton=(page,key)=>form(page).getByRole('button',{name:'Private '+key+' source · Never store this preview',exact:true});
 async function boot(page,{seed,language='de',user=1,delaySave}={}){
  const fixture=await installApiMocks(page,{language});
  const state={posts:[],reads:[],fail:false,fixture};
@@ -36,8 +37,8 @@ async function openExisting(page,language='de'){
  await expect(form(page).locator('.pin-type-preference')).toBeVisible();
 }
 async function pin(page,group,key){
- await form(page).getByRole('button',{name:group,exact:true}).click();
- await form(page).getByRole('button',{name:'Private '+key+' source',exact:true}).click();
+ await form(page).locator('.pin-source-groups').getByRole('button',{name:group,exact:true}).click();
+ await sourceButton(page,key).click();
  await form(page).getByRole('button',{name:'Anpinnen',exact:true}).click();
  await expect(form(page)).toHaveCount(0);
 }
@@ -50,7 +51,7 @@ test('recent types are explicit picker shortcuts without preselection or mutatio
  await expect(form(page).getByRole('button',{name:'Anpinnen',exact:true})).toBeDisabled();
  expect(state.posts).toEqual([]);
  await recent.getByRole('button',{name:'Dokumente',exact:true}).click();
- await expect(form(page).getByRole('button',{name:'Private document source',exact:true})).toBeVisible();
+ await expect(sourceButton(page,'document')).toBeVisible();
  await expect(form(page).getByRole('button',{name:'Anpinnen',exact:true})).toBeDisabled();
  expect(state.reads).toContain('document');expect(state.posts).toEqual([]);
 });
@@ -82,7 +83,7 @@ test('opt-out clears remembered types, survives reload and stops later learning'
 
 test('failed saves retain selection and learn nothing until successful retry',async({page})=>{
  const state=await boot(page);state.fail=true;
- await form(page).getByRole('button',{name:'Private task source',exact:true}).click();
+ await sourceButton(page,'task').click();
  await form(page).getByRole('button',{name:'Anpinnen',exact:true}).click();
  await expect(page.getByRole('alert')).toContainText('Save failed');expect(await prefs(page)).toBeNull();
  await expect(form(page).getByRole('button',{name:'Anpinnen',exact:true})).toBeEnabled();
@@ -112,7 +113,7 @@ test('opt-out remains effective in this session when browser storage writes fail
 test('auth loss invalidates suggestions and a late save cannot learn old types',async({page})=>{
  let release;const delaySave=new Promise(resolve=>{release=resolve});
  const state=await boot(page,{delaySave});
- await form(page).getByRole('button',{name:'Private task source',exact:true}).click();
+ await sourceButton(page,'task').click();
  await form(page).getByRole('button',{name:'Anpinnen',exact:true}).click();await expect.poll(()=>state.posts.length).toBe(1);
  await page.evaluate(()=>{localStorage.removeItem('famuhle-session');window.dispatchEvent(new CustomEvent('famuhle:auth-changed',{detail:{authenticated:false}}))});
  await expect(form(page).locator('.pin-type-preference')).toHaveCount(0);
@@ -126,7 +127,7 @@ test('family switch fences a late create result and does not learn in either fam
  const other={...state.fixture.family,id:'family-2',name:'Andere Familie',memberships:[{id:'member-other',user:1,role:'owner'}]};
  await page.route('**/api/families/',route=>route.fulfill({json:[state.fixture.family,other]}));
  await page.reload();await openExisting(page);
- await form(page).getByRole('button',{name:'Private task source',exact:true}).click();await form(page).getByRole('button',{name:'Anpinnen',exact:true}).click();await expect.poll(()=>state.posts.length).toBe(1);
+ await sourceButton(page,'task').click();await form(page).getByRole('button',{name:'Anpinnen',exact:true}).click();await expect.poll(()=>state.posts.length).toBe(1);
  await page.locator('.family-switcher select').selectOption('family-2');
  const settled=page.waitForResponse(response=>response.url().endsWith('/api/board/')&&response.request().method()==='POST');release();await settled;await page.waitForLoadState('networkidle');
  expect(await prefs(page)).toBeNull();expect(await prefs(page,storageKey('1','member-other','family-2'))).toBeNull();
@@ -138,7 +139,7 @@ test('English keyboard suggestions keep 44px targets, 320px/200% and accessibili
  const recent=form(page).getByRole('group',{name:'Recently used types'});
  for(const button of await recent.locator('button').all())expect((await button.boundingBox()).height).toBeGreaterThanOrEqual(44);
  await recent.getByRole('button',{name:'Documents',exact:true}).focus();await page.keyboard.press('Enter');
- await expect(form(page).getByRole('button',{name:'Private document source',exact:true})).toBeVisible();
+ await expect(sourceButton(page,'document')).toBeVisible();
  await form(page).locator('.pin-type-preference summary').focus();await page.keyboard.press('Enter');
  await expect(form(page).getByRole('checkbox',{name:'Show recently used types'})).toBeVisible();
  await page.evaluate(()=>document.documentElement.style.fontSize='200%');
