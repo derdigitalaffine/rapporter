@@ -31,7 +31,6 @@ test('latest family load wins when an older dashboard response finishes late',as
  const staleList={...smartList,id:'stale-list',name:'Veraltete Liste'};
  const latestList={...smartList,id:'latest-list',name:'Neueste Liste'};
  let dashboardCalls=0;
- let staleDelivered=false;
  let releaseStale;
  const stalePending=new Promise(resolve=>{releaseStale=resolve});
  await page.route('**/api/task-lists/',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify([smartList])}));
@@ -42,7 +41,6 @@ test('latest family load wins when an older dashboard response finishes late',as
   if(dashboardCalls===1)return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(dashboard(initialList))});
   if(dashboardCalls===2){
    await stalePending;
-   staleDelivered=true;
    return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(dashboard(staleList))});
   }
   return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(dashboard(latestList))});
@@ -59,8 +57,13 @@ test('latest family load wins when an older dashboard response finishes late',as
  await page.locator('.bottom-nav').getByRole('button',{name:'To-dos',exact:true}).click();
  await page.locator('.todo-tabs').getByRole('button',{name:'Listen',exact:true}).click();
  await expect(page.getByRole('link',{name:/Neueste Liste/})).toBeVisible();
+ const staleResponse=page.waitForResponse(response=>{
+  const url=new URL(response.url());
+  return url.pathname==='/api/dashboard/'&&url.searchParams.get('family')==='family-1';
+ });
  releaseStale();
- await expect.poll(()=>staleDelivered).toBe(true);
+ await staleResponse;
+ await page.waitForLoadState('networkidle');
  await expect(page.getByRole('link',{name:/Neueste Liste/})).toBeVisible();
  await expect(page.getByRole('link',{name:/Veraltete Liste/})).toHaveCount(0);
 });
