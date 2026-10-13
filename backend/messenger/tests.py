@@ -5,8 +5,9 @@ from datetime import timedelta
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
+from django.core import signals
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.db import IntegrityError, transaction
+from django.db import IntegrityError, close_old_connections, transaction
 from django.test import TestCase, override_settings
 from django.utils import timezone
 from PIL import Image
@@ -185,7 +186,11 @@ class MessengerTests(TestCase):
             downloaded = self.client.get(attachment["url"])
             self.assertEqual(downloaded.status_code, 200)
             self.assertEqual(downloaded["Cache-Control"], "private, no-store")
-            downloaded.close()
+            signals.request_finished.disconnect(close_old_connections)
+            try:
+                downloaded.close()
+            finally:
+                signals.request_finished.connect(close_old_connections)
             self.client.force_authenticate(self.one)
             self.client.delete(f'/api/chat/conversations/{self.conv}/messages/{response.data["id"]}/')
             self.assertEqual(self.client.get(attachment["url"]).status_code, 404)
