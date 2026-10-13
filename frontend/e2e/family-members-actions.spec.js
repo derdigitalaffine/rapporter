@@ -16,7 +16,7 @@ async function expectClasses(locator,...classes){
   expect(classList).toEqual(expect.arrayContaining(classes));
 }
 
-test('family members supports managed children and preserves invite actions on mobile',async({page})=>{
+test('family members supports managed children, patchwork relationships and invite actions on mobile',async({page})=>{
   await page.setViewportSize({width:390,height:844});
   await installApiMocks(page);
 
@@ -24,6 +24,7 @@ test('family members supports managed children and preserves invite actions on m
     {id:'member-1',family:'family-1',user:1,username:'alex',role:'owner',display_name:'Alex',avatar:''},
     {id:'member-2',family:'family-1',user:2,username:'sam',role:'adult',display_name:'Sam',avatar:''},
   ];
+  const relationships=[];
   const invitations=[{
     id:'invite-contract-1',family:'family-1',role:'adult',email:'invite@example.test',display_name:'Einladung Test',
     expires_at:'2099-01-01T12:00:00.000Z',accepted_at:null,revoked_at:null,active:true,
@@ -33,6 +34,26 @@ test('family members supports managed children and preserves invite actions on m
   const childProfile={id:'baby-1',membership:'member-child-1',display_name:'Mia',birth_date:'2021-05-06'};
 
   await page.route('**/api/memberships/',route=>json(route,memberships));
+  await page.route('**/api/family-relationships/**',route=>{
+    const url=new URL(route.request().url());
+    const method=route.request().method();
+    const detail=url.pathname.match(/family-relationships\/([^/]+)\/$/);
+    if(method==='PATCH'&&detail){
+      const row=relationships.find(item=>item.id===detail[1]);
+      Object.assign(row,route.request().postDataJSON());
+      row.label=row.custom_label||(row.kind==='parent'?'Elternteil':row.kind);
+      return json(route,row);
+    }
+    if(method==='POST'){
+      const body=route.request().postDataJSON();
+      const related=memberships.find(member=>member.id===body.related_membership);
+      const row={id:`relationship-${relationships.length+1}`,child_display_name:'Mia',related_display_name:related?.display_name||'',related_role:related?.role||'adult',label:body.custom_label||body.kind,...body,can_edit:true,permission_suggestions:{account_management:true,care_circle:Boolean(body.is_legal_parent||body.has_custody),automatic:false}};
+      relationships.push(row);
+      return json(route,row,201);
+    }
+    const childId=url.searchParams.get('child_membership');
+    return json(route,childId?relationships.filter(row=>row.child_membership===childId):relationships);
+  });
   await page.route('**/api/invitations/',route=>{
     if(route.request().method()==='POST'){
       const body=route.request().postDataJSON();
@@ -51,6 +72,7 @@ test('family members supports managed children and preserves invite actions on m
     expect(body.email).toBeUndefined();
     expect(body.password).toBeUndefined();
     if(!memberships.some(member=>member.id==='member-child-1'))memberships.push({id:'member-child-1',family:'family-1',user:3,username:'child-managed',role:'child',display_name:'Mia',avatar:''});
+    if(!relationships.length)relationships.push({id:'relationship-1',family:'family-1',child_membership:'member-child-1',child_display_name:'Mia',related_membership:'member-1',related_display_name:'Alex',related_role:'owner',kind:'parent',label:'Elternteil',custom_label:'',is_biological_parent:true,is_legal_parent:true,has_custody:null,status:'active',child_visibility:'relationship_only',can_edit:true,permission_suggestions:{account_management:true,care_circle:true,automatic:false}});
     return json(route,childIdentity,201);
   });
   await page.route('**/api/baby/memberships/member-child-1/identity/',route=>json(route,childIdentity));
@@ -116,15 +138,24 @@ test('family members supports managed children and preserves invite actions on m
   await childChoice.click();
   await page.getByLabel('Name',{exact:true}).fill('Mia');
   await page.getByLabel('Geburtsdatum').fill('2021-05-06');
+  await page.getByText('Familienbeziehung – erweitert').click();
+  await expect(page.getByLabel('Leiblicher Elternteil')).toBeChecked();
+  await expect(page.getByLabel('Rechtlicher Elternteil')).toBeChecked();
+  await expect(page.getByLabel('Sorgeberechtigung')).toHaveValue('unknown');
   await page.getByRole('button',{name:'Kinderprofil anlegen'}).click();
-  await expect(page.getByRole('button',{name:/Mia.*Kind/})).toBeVisible();
+  await expect(page.getByRole('button',{name:/Mia.*Alex.*Elternteil/})).toBeVisible();
+  expect(relationships[0].is_biological_parent).toBe(true);
+  expect(relationships[0].is_legal_parent).toBe(true);
+  expect(relationships[0].has_custody).toBe(null);
 
-  await page.getByRole('button',{name:/Mia.*Kind/}).click();
+  await page.getByRole('button',{name:/Mia.*Alex.*Elternteil/}).click();
   await expect(page.getByLabel('Geburtsdatum')).toHaveValue('2021-05-06');
+  await expect(page.getByText('Beziehungen zu diesem Kind')).toBeVisible();
+  await expect(page.getByText(/Alex · Elternteil/)).toBeVisible();
   await page.getByLabel('Anzeigename').fill('Mia Marie');
   await page.getByLabel('Geburtsdatum').fill('2021-05-07');
   await page.locator('.member-sheet form > .primary').click();
-  await expect(page.getByRole('button',{name:/Mia Marie.*Kind/})).toBeVisible();
+  await expect(page.getByRole('button',{name:/Mia Marie.*Alex.*Elternteil/})).toBeVisible();
   expect(childProfile.birth_date).toBe('2021-05-07');
 
   await addButton.click();
