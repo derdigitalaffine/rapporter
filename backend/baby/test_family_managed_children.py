@@ -96,6 +96,34 @@ class FamilyManagedChildTests(TestCase):
         self.assertEqual(membership.display_name, "Mia Marie")
         self.assertEqual((profile.birth_year, profile.birth_month, profile.birth_day), (2021, 5, 7))
 
+    def test_family_members_compat_profile_path_works_without_baby_module(self):
+        created = self.create_child()
+        baby = BabyProfile.objects.get(pk=created.data["baby"])
+        client = self.client_for(self.owner)
+
+        read = client.get(f"/api/baby/profiles/{baby.id}/")
+        self.assertEqual(read.status_code, 200)
+        self.assertEqual(set(read.data), {"id", "membership", "display_name", "birth_date"})
+
+        patched = client.patch(
+            f"/api/baby/profiles/{baby.id}/",
+            {"display_name": "Mia Family", "birth_date": "2021-05-08"},
+            format="json",
+        )
+        self.assertEqual(patched.status_code, 200)
+        baby.refresh_from_db()
+        profile = UserProfile.objects.get(user=baby.membership.user)
+        self.assertEqual(baby.display_name, "Mia Family")
+        self.assertEqual(baby.birth_date, date(2021, 5, 8))
+        self.assertEqual((profile.birth_year, profile.birth_month, profile.birth_day), (2021, 5, 8))
+
+        baby_rename = client.patch(
+            f"/api/baby/profiles/{baby.id}/",
+            {"display_name": "Baby module rename"},
+            format="json",
+        )
+        self.assertEqual(baby_rename.status_code, 404)
+
     def test_non_guardian_cannot_read_or_patch_family_child_profile(self):
         created = self.create_child()
         baby_id = created.data["baby"]
