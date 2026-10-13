@@ -91,7 +91,7 @@ def accept_invitation(invite, user):
     # Keep FK key-share locks compatible with chat/game inserts while serializing consent.
     users = {row.pk: row for row in get_user_model().objects.select_for_update(no_key=True).filter(pk__in=(user.pk, invite.sender_id)).order_by("pk")}
     user, sender = users.get(user.pk), users.get(invite.sender_id)
-    if not user or not sender or not user.is_active or (getattr(user, "is_superadmin", False) or user.is_superuser) or not eligible(sender) or user.pk == sender.pk or is_blocked(user.pk, sender.pk):
+    if not user or not sender or not user.is_active or (getattr(user, "is_superadmin", False) or user.is_superuser) or not external_chat_eligible(sender) or user.pk == sender.pk or is_blocked(user.pk, sender.pk):
         raise Http404
     identity = EmailIdentity.objects.filter(user=user, kind="primary", verified_at__isnull=False, email_normalized=invite.email).first()
     if not identity:

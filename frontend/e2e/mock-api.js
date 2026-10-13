@@ -51,7 +51,7 @@ export async function installApiMocks(page,{authenticated=true,language='de',dis
     if(path==='/auth/logout/'&&method==='POST')return json(route,{authenticated:false});
     if(path==='/auth/session/'&&method==='GET')return json(route,{authenticated:true,user:{id:1,username:'alex',email:'alex@example.test'}});
     if(path==='/dashboard/'&&method==='GET')return json(route,dashboard());
-    if(path==='/entitlements/'&&method==='GET')return json(route,{tier:'vip',display_name:'VIP',capabilities:['family_management','calendar','todo','shopping','pinboard','notes','expenses']});
+    if(path==='/entitlements/'&&method==='GET')return json(route,{tier:'vip',display_name:'VIP',capabilities:['family_management','calendar','todo','shopping','pinboard','notes','expenses','vehicles','travel','documents','school','children','pregnancy_baby','pets','advanced_integrations','advanced_tasks']});
     if(path==='/families/'&&method==='GET')return json(route,[state.family]);
 
     if(path==='/task-lists/'&&method==='GET')return json(route,taskLists());
