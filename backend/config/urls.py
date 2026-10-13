@@ -78,4 +78,5 @@ urlpatterns = [
     path("api/", include("wishlists.urls")),
     path("api/", include("notifications.urls")),
     path("api/", include("games.urls")),
+    path("api/chat/", include("messenger.urls")),
 ]

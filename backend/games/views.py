@@ -3,6 +3,9 @@ import uuid
 from django.db import transaction
 from django.db.models import F, Q
 from django.utils import timezone
+from .participants import PersonalActor, player, player_id, authorize_personal
+from messenger.access import friendship_access, preferences, require_writer
+from messenger.views import rate
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
@@ -64,15 +67,16 @@ def _membership(user, family_id):
 
 def _match_context(user, match_id):
     parsed = _uuid(match_id, "match_unavailable")
-    match = (
-        _match_queryset(user)
-        .filter(id=parsed, family__status=Family.Status.ACTIVE)
-        .filter(Q(challenger__user=user) | Q(opponent__user=user))
-        .first()
-    )
+    match = _match_queryset(user).filter(id=parsed).first()
     if not match:
         raise GameApiError("match_unavailable", status.HTTP_404_NOT_FOUND)
-    actor = match.challenger if match.challenger.user_id == user.id else match.opponent
+    if match.friendship_id:
+        actor = PersonalActor(user)
+        authorize_personal(match, actor)
+    else:
+        if match.family.status != Family.Status.ACTIVE or user.pk not in {match.challenger.user_id, match.opponent.user_id}:
+            raise GameApiError("match_unavailable", status.HTTP_404_NOT_FOUND)
+        actor = match.challenger if match.challenger.user_id == user.pk else match.opponent
     return match, actor
 
 
@@ -90,8 +94,8 @@ def _rps_payload(match, actor):
     rounds = []
     for row in match.rps_rounds.select_related("winner__user").all():
         resolved = bool(row.resolved_at and row.challenger_choice and row.opponent_choice)
-        mine = row.challenger_choice if actor.id == match.challenger_id else row.opponent_choice
-        theirs = row.opponent_choice if actor.id == match.challenger_id else row.challenger_choice
+        mine = row.challenger_choice if actor.id == player_id(match, "challenger") else row.opponent_choice
+        theirs = row.opponent_choice if actor.id == player_id(match, "challenger") else row.challenger_choice
         rounds.append(
             {
                 "number": row.number,
@@ -100,22 +104,22 @@ def _rps_payload(match, actor):
                 "opponent_submitted": bool(theirs),
                 "my_choice": mine if resolved else None,
                 "opponent_choice": theirs if resolved else None,
-                "winner": _member(row.winner) if resolved else None,
+                "winner": _member(PersonalActor(row.winner_user) if row.winner_user_id else row.winner) if resolved else None,
             }
         )
     return {"round_count": match.rps_round_count, "current_round": match.current_round, "rounds": rounds}
 
 
 def _quiz_payload(match, actor):
-    english = str(match.family.locale or "").lower().startswith("en")
+    english = str((match.family.locale if match.family_id else match.locale) or "").lower().startswith("en")
     rounds = []
     my_score = 0
     opponent_score = 0
     for row in match.quiz_rounds.select_related("question").all():
-        mine = row.challenger_answer if actor.id == match.challenger_id else row.opponent_answer
-        theirs = row.opponent_answer if actor.id == match.challenger_id else row.challenger_answer
-        my_correct = row.challenger_correct if actor.id == match.challenger_id else row.opponent_correct
-        opponent_correct = row.opponent_correct if actor.id == match.challenger_id else row.challenger_correct
+        mine = row.challenger_answer if actor.id == player_id(match, "challenger") else row.opponent_answer
+        theirs = row.opponent_answer if actor.id == player_id(match, "challenger") else row.challenger_answer
+        my_correct = row.challenger_correct if actor.id == player_id(match, "challenger") else row.opponent_correct
+        opponent_correct = row.opponent_correct if actor.id == player_id(match, "challenger") else row.challenger_correct
         resolved = bool(row.resolved_at)
         if my_correct is True:
             my_score += 1
@@ -151,9 +155,9 @@ def _quiz_payload(match, actor):
 
 
 def _battleship_payload(match, actor):
-    boards = {row.player_id: row for row in match.battleship_boards.all()}
+    boards = {player_id(row, "player"): row for row in match.battleship_boards.all()}
     mine = boards.get(actor.id)
-    opponent = match.opponent if actor.id == match.challenger_id else match.challenger
+    opponent = player(match, "opponent") if actor.id == player_id(match, "challenger") else player(match, "challenger")
     theirs = boards.get(opponent.id)
     shots = [
         {
@@ -162,7 +166,7 @@ def _battleship_payload(match, actor):
             "result": row.result,
             "ship_size": row.ship_size,
             "sequence": row.sequence,
-            "mine": row.shooter_id == actor.id,
+            "mine": player_id(row, "shooter") == actor.id,
         }
         for row in match.battleship_shots.all()
     ]
@@ -187,7 +191,7 @@ def _connect_four_payload(match, actor):
             "column": move.column,
             "row": move.row,
             "sequence": move.sequence,
-            "mine": move.player_id == actor.id,
+            "mine": player_id(move, "player") == actor.id,
         }
         for move in match.connect_four_moves.all()
     ]
@@ -195,6 +199,8 @@ def _connect_four_payload(match, actor):
 
 
 def _task_assignment_payload(match):
+    if match.friendship_id:
+        return None
     stake = getattr(match, "task_assignment", None)
     if not stake:
         return None
@@ -224,19 +230,20 @@ def _task_assignment_payload(match):
 def _serialize(match, actor):
     payload = {
         "id": str(match.id),
-        "family": str(match.family_id),
+        "family": str(match.family_id) if match.family_id else None,
+        "friendship_id": str(match.friendship_id) if match.friendship_id else None,
         "game_type": match.game_type,
         "status": match.status,
-        "challenger": _member(match.challenger),
-        "opponent": _member(match.opponent),
-        "winner": _member(match.winner),
+        "challenger": _member(player(match, "challenger")),
+        "opponent": _member(player(match, "opponent")),
+        "winner": _member(player(match, "winner")),
         "is_draw": match.is_draw,
-        "current_turn": _member(match.current_turn),
-        "is_my_turn": match.current_turn_id == actor.id,
-        "am_challenger": match.challenger_id == actor.id,
-        "can_accept": match.status == GameMatch.Status.PENDING and match.opponent_id == actor.id,
-        "can_decline": match.status == GameMatch.Status.PENDING and match.opponent_id == actor.id,
-        "can_cancel": match.status == GameMatch.Status.PENDING and match.challenger_id == actor.id,
+        "current_turn": _member(player(match, "current_turn")),
+        "is_my_turn": player_id(match, "current_turn") == actor.id,
+        "am_challenger": player_id(match, "challenger") == actor.id,
+        "can_accept": match.status == GameMatch.Status.PENDING and player_id(match, "opponent") == actor.id,
+        "can_decline": match.status == GameMatch.Status.PENDING and player_id(match, "opponent") == actor.id,
+        "can_cancel": match.status == GameMatch.Status.PENDING and player_id(match, "challenger") == actor.id,
         "created_at": match.created_at,
         "updated_at": match.updated_at,
         "finished_at": match.finished_at,
@@ -262,7 +269,7 @@ def _match_queryset(user):
     return GameMatch.objects.exclude(task_assignment__task__hidden_from_user=user).filter(
         Q(task_assignment__isnull=True) | Q(task_assignment__task__family_id=F("family_id"))
     ).select_related(
-        "family",
+        "family", "friendship", "challenger_user", "opponent_user", "winner_user", "current_turn_user",
         "challenger__user",
         "opponent__user",
         "winner__user",
@@ -270,7 +277,7 @@ def _match_queryset(user):
         "task_assignment__task__assignee",
         "task_assignment__applied_assignee",
     ).prefetch_related(
-        "rps_rounds__winner__user",
+        "rps_rounds__winner__user", "rps_rounds__winner_user",
         "battleship_boards",
         "battleship_shots",
         "quiz_rounds__question",
@@ -283,6 +290,8 @@ def _fresh(match_id, actor):
 
 
 def _create_task_assignment(match, actor, opponent, assignment_data):
+    if match.friendship_id:
+        raise GameApiError("personal_task_stake_forbidden")
     if not isinstance(assignment_data, dict):
         raise GameApiError("invalid_task_assignment")
     if assignment_data.get("confirmed") is not True:
@@ -307,10 +316,43 @@ def _create_task_assignment(match, actor, opponent, assignment_data):
     )
 
 
+def _personal_match_list(request, friendship_id):
+    require_writer(request.user)
+    with transaction.atomic():
+        friend = friendship_access(request.user, _uuid(friendship_id, "match_unavailable"), lock=request.method == "POST")
+        require_writer(friend.low_user)
+        require_writer(friend.high_user)
+        actor = PersonalActor(request.user)
+        if request.method == "GET":
+            rows = _match_queryset(request.user).filter(friendship=friend).filter(Q(challenger_user=request.user) | Q(opponent_user=request.user))[:50]
+            return Response([_serialize(row, actor) for row in rows])
+        rate(request, "chat.write")
+        if any(key in request.data for key in ("family", "task_assignment", "opponent")):
+            raise GameApiError("personal_task_stake_forbidden")
+        game_type = str(request.data.get("game_type") or "")
+        if game_type not in GameMatch.GameType.values:
+            raise GameApiError("invalid_game_type")
+        try:
+            count = int(request.data.get("round_count", 5 if game_type == GameMatch.GameType.QUIZ else 3))
+        except (ValueError, TypeError):
+            raise GameApiError("invalid_round_count") from None
+        if (game_type == GameMatch.GameType.RPS and not 1 <= count <= 5) or (game_type == GameMatch.GameType.QUIZ and not 3 <= count <= 7):
+            raise GameApiError("invalid_round_count")
+        mode = str(request.data.get("quiz_mode") or GameMatch.QuizMode.MIXED)
+        if mode not in GameMatch.QuizMode.values:
+            raise GameApiError("invalid_quiz_mode")
+        match = GameMatch.objects.create(friendship=friend, challenger_user=request.user, opponent_user_id=friend.other_id(request.user.pk), locale=preferences(request.user).locale, game_type=game_type, rps_round_count=count if game_type == GameMatch.GameType.RPS else 3, quiz_round_count=count if game_type == GameMatch.GameType.QUIZ else 5, quiz_mode=mode)
+        notify_challenge(match)
+        return Response(_fresh(match.pk, actor), status=status.HTTP_201_CREATED)
+
+
 @api_view(["GET", "POST"])
 @permission_classes([IsAuthenticated])
 def match_list(request):
     try:
+        friendship_id = request.data.get("friendship") if request.method == "POST" else request.query_params.get("friendship")
+        if friendship_id:
+            return _personal_match_list(request, friendship_id)
         if request.method == "POST":
             actor = _membership(request.user, request.data.get("family"))
             opponent_id = _uuid(request.data.get("opponent"), "opponent_unavailable")
@@ -369,6 +411,8 @@ def match_detail(request, match_id):
 def _action(request, match_id, service):
     try:
         match, actor = _match_context(request.user, match_id)
+        if match.friendship_id:
+            rate(request, "chat.write")
         service(match.id, actor)
         return Response(_fresh(match.id, actor))
     except (GameApiError, GameError, GameMatch.DoesNotExist) as exc:
@@ -380,6 +424,8 @@ def _action(request, match_id, service):
 def match_accept(request, match_id):
     try:
         match, actor = _match_context(request.user, match_id)
+        if match.friendship_id:
+            rate(request, "chat.write")
         accept_match(match.id, actor, task_assignment_confirmed=request.data.get("task_assignment_confirmed") is True)
         return Response(_fresh(match.id, actor))
     except (GameApiError, GameError, GameMatch.DoesNotExist) as exc:
@@ -403,6 +449,8 @@ def match_cancel(request, match_id):
 def rps_choice(request, match_id):
     try:
         match, actor = _match_context(request.user, match_id)
+        if match.friendship_id:
+            rate(request, "chat.write")
         submit_rps_choice(match.id, actor, str(request.data.get("choice") or ""))
         return Response(_fresh(match.id, actor))
     except (GameApiError, GameError, GameMatch.DoesNotExist) as exc:
@@ -414,6 +462,8 @@ def rps_choice(request, match_id):
 def quiz_answer(request, match_id):
     try:
         match, actor = _match_context(request.user, match_id)
+        if match.friendship_id:
+            rate(request, "chat.write")
         submit_quiz_answer(match.id, actor, request.data.get("answer"))
         return Response(_fresh(match.id, actor))
     except (GameApiError, GameError, GameMatch.DoesNotExist) as exc:
@@ -425,6 +475,8 @@ def quiz_answer(request, match_id):
 def connect_four_drop(request, match_id):
     try:
         match, actor = _match_context(request.user, match_id)
+        if match.friendship_id:
+            rate(request, "chat.write")
         drop_connect_four(match.id, actor, request.data.get("column"))
         return Response(_fresh(match.id, actor))
     except (GameApiError, GameError, GameMatch.DoesNotExist) as exc:
@@ -436,6 +488,8 @@ def connect_four_drop(request, match_id):
 def battleship_fleet(request, match_id):
     try:
         match, actor = _match_context(request.user, match_id)
+        if match.friendship_id:
+            rate(request, "chat.write")
         submit_fleet(match.id, actor, request.data.get("ships"))
         return Response(_fresh(match.id, actor))
     except (GameApiError, GameError, GameMatch.DoesNotExist) as exc:
@@ -447,6 +501,8 @@ def battleship_fleet(request, match_id):
 def battleship_fire(request, match_id):
     try:
         match, actor = _match_context(request.user, match_id)
+        if match.friendship_id:
+            rate(request, "chat.write")
         fire_shot(match.id, actor, request.data.get("x"), request.data.get("y"))
         return Response(_fresh(match.id, actor))
     except (GameApiError, GameError, GameMatch.DoesNotExist) as exc:

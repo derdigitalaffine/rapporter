@@ -1,4 +1,6 @@
-export const APP_PAGES=new Set(['vehicles','notes','documents','board','birthdays','trips','decisions','wishlists','games','home','todo','tasks','shopping','routines','baby','pets','more','calendar','weather','expenses','contracts','inbox','integrations','members','profile','automations','notifications','loyalty']);
+import {APP_PAGES} from './feature-registry';
+
+export {APP_PAGES};
 
 export function pageFromLocation(search=location.search){
  const params=new URLSearchParams(search);

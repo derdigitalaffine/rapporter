@@ -1,6 +1,8 @@
 from urllib.parse import parse_qs, urlsplit
 
 from django.http import Http404
+from django.db.models import Q
+from django.utils import timezone
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.pagination import CursorPagination
 from rest_framework.permissions import IsAuthenticated
@@ -10,7 +12,7 @@ from family.models import Family, Membership
 
 from .models import Notification
 from .serializers import notification_payload
-from .services import mark_all_read, set_read, unread_count
+from .services import mark_all_read, set_read, unread_count, sync_launcher_badge
 
 
 class NotificationCursorPagination(CursorPagination):
@@ -38,13 +40,17 @@ def _cursor_from_link(link):
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def notification_collection(request):
-    membership = _membership_or_404(request.user, request.query_params.get("family"))
-    queryset = Notification.objects.filter(recipient=membership).select_related("recipient", "recipient__user")
+    family_id = request.query_params.get("family")
+    membership = _membership_or_404(request.user, family_id) if family_id else None
+    scope = Q(recipient_user=request.user)
+    if membership:
+        scope |= Q(recipient=membership)
+    queryset = Notification.objects.filter(scope).select_related("recipient", "recipient__user", "recipient_user")
     paginator = NotificationCursorPagination()
     page = paginator.paginate_queryset(queryset, request)
     return Response({
         "results": [notification_payload(row) for row in page],
-        "unread_count": unread_count(request.user, family=membership.family),
+        "unread_count": queryset.filter(read_at__isnull=True).count(),
         "next_cursor": _cursor_from_link(paginator.get_next_link()),
         "previous_cursor": _cursor_from_link(paginator.get_previous_link()),
     })
@@ -53,10 +59,9 @@ def notification_collection(request):
 @api_view(["PATCH"])
 @permission_classes([IsAuthenticated])
 def notification_detail(request, notification_id):
-    notification = Notification.objects.select_related("recipient", "recipient__user").filter(
+    notification = Notification.objects.select_related("recipient", "recipient__user", "recipient_user").filter(
+        Q(recipient_user=request.user) | Q(recipient__user=request.user, family__status=Family.Status.ACTIVE),
         id=notification_id,
-        recipient__user=request.user,
-        family__status=Family.Status.ACTIVE,
     ).first()
     if not notification:
         raise Http404
@@ -69,6 +74,11 @@ def notification_detail(request, notification_id):
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def notification_read_all(request):
-    membership = _membership_or_404(request.user, request.data.get("family"))
-    updated, _ = mark_all_read(membership=membership)
+    family_id = request.data.get("family")
+    membership = _membership_or_404(request.user, family_id) if family_id else None
+    scope = Q(recipient_user=request.user)
+    if membership:
+        scope |= Q(recipient=membership)
+    updated = Notification.objects.filter(scope, read_at__isnull=True).update(read_at=timezone.now())
+    sync_launcher_badge(request.user)
     return Response({"updated": updated, "unread_count": 0})
