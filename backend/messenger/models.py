@@ -116,7 +116,7 @@ class ChatAttachment(TimestampedModel):
 
 
 class ChatReaction(TimestampedModel):
-    message = models.ForeignKey(ChatMessage, on_delete=models.CASCADE, related_name="chat_reactions")
+    message = models.ForeignKey(ChatMessage, on_delete=models.CASCADE, related_name="reactions")
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="chat_reactions")
     emoji = models.CharField(max_length=12)
 
