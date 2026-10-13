@@ -31,8 +31,12 @@ def external_chat_eligible(user):
     verified = EmailIdentity.objects.filter(user=user, kind="primary", verified_at__isnull=False).exists()
     if not verified:
         return False
-    if family_writer(user):
-        return True
+    # External friendships retain the pre-family-channel identity/role fence.
+    # A suspended tenant disables family content, not a verified personal chat;
+    # a child/guest-only membership never gains access through personal_account.
+    members = Membership.objects.filter(user=user)
+    if members.exists():
+        return members.filter(role__in=WRITER_ROLES).exists()
     return ChatPreference.objects.filter(user=user, personal_account=True).exists()
 
 

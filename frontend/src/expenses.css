@@ -3,3 +3,32 @@
 @media(min-width:760px){.expenses-page{grid-template-columns:minmax(0,1.3fr) minmax(300px,.7fr);align-items:start}.expenses-head{grid-column:1/-1}.expenses-primary{display:grid;gap:16px}.expenses-side{display:grid;gap:16px;position:sticky;top:76px}.balance-members{grid-template-columns:repeat(2,minmax(0,1fr))}.balance-member{border-top:0;border:1px solid var(--line);border-radius:14px;padding:10px}.expense-list{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:520px){.expenses-head{flex-direction:column;align-items:stretch}.expenses-toolbar{width:100%;display:flex;flex-wrap:wrap}.expenses-toolbar select{min-width:0;flex:1 1 118px}.expenses-toolbar .primary{flex:0 0 auto}.subbudget-row{grid-template-columns:minmax(0,1fr) 94px}.subbudget-status{grid-column:1/-1;text-align:left}.expense-sheet-quick{max-height:calc(100dvh - 12px)}.quick-amount-field input{font-size:clamp(2.35rem,15vw,4rem)}.receipt-review-status{grid-template-columns:26px minmax(0,1fr)}.receipt-review-status button{grid-column:1/-1}.receipt-preview{grid-template-columns:58px minmax(0,1fr)}.receipt-preview img{width:58px;height:58px}.receipt-preview button{grid-column:1/-1;justify-self:start}.split-tabs{grid-template-columns:repeat(2,minmax(0,1fr))}.split-values label{grid-template-columns:minmax(0,1fr) 100px}.settlement-row{grid-template-columns:1fr}.settlement-row button{justify-self:start}}
 @media(prefers-reduced-motion:reduce){.receipt-spinner{animation:none}}
+/* One semantic transaction table adapts into scanable mobile rows. */
+.transaction-table{width:100%;border-collapse:collapse;table-layout:auto;background:var(--surface);border-radius:var(--radius-md);font-size:.875rem}
+.transaction-table th,.transaction-table td{padding:.65rem .5rem;text-align:left;border-bottom:1px solid var(--line);vertical-align:middle;overflow-wrap:anywhere}
+.transaction-table thead th{font-weight:600;color:var(--muted);font-size:.8rem}
+.transaction-table .expense-row{display:table-row;cursor:default;background:transparent;box-shadow:none;border:0;border-radius:0}
+.transaction-description{min-width:8rem;font-weight:600}
+.transaction-description .text-button{min-height:44px;text-align:left;padding:0}
+.transaction-description small{display:block;font-weight:400;color:var(--muted)}
+.transaction-table .transaction-amount{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;font-weight:700}
+.transaction-table .expense-actions{display:table-cell;white-space:nowrap}
+.transaction-table .expense-actions button,.transaction-receipt{min-height:44px;min-width:44px}
+.transaction-filters{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:var(--space-3);margin-bottom:var(--space-3)}
+.finance-account-form{grid-column:1/-1}
+.expenses-toolbar{flex-wrap:wrap}.expenses-toolbar select{max-width:100%;min-width:0}
+@media(min-width:1000px){.expenses-page{grid-template-columns:minmax(0,1fr)}.expenses-side{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--space-4)}}
+@media(max-width:767px){
+ .transaction-table,.transaction-table tbody{display:block;width:100%}
+ .transaction-table thead{position:absolute;width:1px;height:1px;padding:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+ .transaction-table .expense-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:.15rem .5rem;padding:.65rem 0;border-bottom:1px solid var(--line)}
+ .transaction-table th,.transaction-table td{display:block;padding:.15rem .25rem;border:0;min-width:0}
+ .transaction-description{grid-column:1;grid-row:1;min-width:0}
+ .transaction-date{grid-column:1;grid-row:2;color:var(--muted)}
+ .transaction-category{grid-column:1;grid-row:3;color:var(--muted)}
+ .transaction-account{grid-column:1;grid-row:4}
+ .transaction-amount{grid-column:2;grid-row:1}
+ .transaction-receipt-cell{grid-column:1;grid-row:5}
+ .transaction-table .expense-actions{display:flex;grid-column:2;grid-row:4/6;align-self:end}
+ .transaction-filters{grid-template-columns:minmax(0,1fr)}
+}

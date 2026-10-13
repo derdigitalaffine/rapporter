@@ -43,7 +43,7 @@ export function useCreateActions({userId,page,family,entitlements}){
   },[scopeKey]);
   const modules=moduleState.familyId===family?.id&&moduleState.userId===userId?moduleState:EMPTY_MODULES;
   const role=userId!=null?family?.memberships?.find(row=>String(row.user)===String(userId))?.role:null;
-  const options=useMemo(()=>({role,capabilities:{...CAPABILITIES,vehicles:Boolean(entitlements?.capabilities?.includes('vehicles'))},modules}),[role,modules,entitlements]);
+  const options=useMemo(()=>({role,capabilities:{...CAPABILITIES,expenses:Boolean(entitlements?.capabilities?.includes('expenses')),vehicles:Boolean(entitlements?.capabilities?.includes('vehicles'))},modules}),[role,modules,entitlements]);
   const actions=useMemo(()=>family?availableCreateActions(options):[],[family,options]);
   const ranked=useMemo(()=>rankCreateActions({availableActions:actions,page,profile:rankingProfile}),[actions,page,rankingProfile]);
   const direct=useMemo(()=>resolveDirectCreateAction({availableActions:actions,rankedActions:ranked,profile:rankingProfile}),[actions,ranked,rankingProfile]);

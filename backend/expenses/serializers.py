@@ -3,6 +3,7 @@ from decimal import Decimal
 from django.db import IntegrityError, transaction
 from rest_framework import serializers
 
+from entitlements.services import require_capability
 from family.models import Family, Membership
 from .models import (
     Expense,
@@ -41,12 +42,16 @@ def _request_can_access_family(request, family):
     if not request or not request.user.is_authenticated:
         return False
     if request.user.is_superuser:
+        require_capability(request.user, family, "expenses")
         return True
-    return Membership.objects.filter(
+    allowed = Membership.objects.filter(
         family=family,
         user=request.user,
         family__status=Family.Status.ACTIVE,
     ).exists()
+    if allowed:
+        require_capability(request.user, family, "expenses")
+    return allowed
 
 
 FX_FIELDS = ("original_amount", "original_currency", "fx_rate")
@@ -182,6 +187,11 @@ class ReceiptExtractionSerializer(serializers.ModelSerializer):
 
 
 class ExpenseSerializer(serializers.ModelSerializer):
+    receipt_mime = serializers.SerializerMethodField()
+
+    def get_receipt_mime(self, obj):
+        return obj.receipt_document.mime_type if obj.receipt_document_id else obj.receipt_mime
+
     shares = ExpenseShareSerializer(many=True, read_only=True)
     extraction = ReceiptExtractionSerializer(read_only=True)
     paid_by_name = serializers.SerializerMethodField()
@@ -396,9 +406,9 @@ class ExpenseSerializer(serializers.ModelSerializer):
     class Meta:
         model = Expense
         fields = [
-            "id", "family", "ledger", "title", "merchant", "occurred_at", "total_amount", "currency",
+            "id", "family", "ledger", "title", "merchant", "category", "occurred_at", "total_amount", "currency",
             "original_amount", "original_currency", "fx_rate", "funding_source", "paid_by", "paid_by_name",
-            "created_by", "client_request_id", "receipt_status", "receipt_available", "source", "status", "notes",
+            "created_by", "client_request_id", "receipt_status", "receipt_available", "receipt_mime", "source", "status", "notes",
             "shares", "extraction", "participants", "split_type", "split_values", "finalize", "created_at", "updated_at",
         ]
         read_only_fields = ["created_by", "receipt_status", "source", "status"]

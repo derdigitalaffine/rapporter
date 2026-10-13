@@ -10,6 +10,7 @@ from rest_framework.response import Response
 from family.models import Family, Membership
 from .document_receipts import canonicalize_receipt_upload, create_receipt_draft, queue_receipt_processing
 from .models import Expense, ExpenseLedger, Settlement, get_default_expense_ledger
+from .permissions import ExpenseAccess, finance_queryset
 from .money import balance_summary, simplify_balances
 from .serializers import ExpenseLedgerSerializer, ExpenseSerializer, SettlementSerializer
 
@@ -27,8 +28,9 @@ def _member_payload(row):
     }
 
 
-def _ledger_for_request(request, family):
-    ledger_id = request.query_params.get("ledger")
+def _ledger_for_request(request, family, *, from_body=False):
+    source = request.data if from_body else request.query_params
+    ledger_id = source.get("ledger")
     if not ledger_id:
         return get_default_expense_ledger(family)
     try:
@@ -66,6 +68,7 @@ def _filter_family_ledger(queryset, family_id, ledger_id):
 
 
 class ExpenseLedgerViewSet(viewsets.ModelViewSet):
+    permission_classes = [ExpenseAccess]
     serializer_class = ExpenseLedgerSerializer
     http_method_names = ["get", "post", "patch", "head", "options"]
 
@@ -86,10 +89,11 @@ class ExpenseLedgerViewSet(viewsets.ModelViewSet):
             if family:
                 get_default_expense_ledger(family)
             queryset = queryset.filter(family_id=family_id)
-        return queryset.distinct()
+        return finance_queryset(queryset, user).distinct()
 
 
 class ExpenseViewSet(viewsets.ModelViewSet):
+    permission_classes = [ExpenseAccess]
     serializer_class = ExpenseSerializer
 
     def get_queryset(self):
@@ -114,7 +118,7 @@ class ExpenseViewSet(viewsets.ModelViewSet):
         queryset = _filter_family_ledger(queryset, family_id, ledger_id)
         if self.action == "list":
             queryset = queryset.filter(status=Expense.Status.POSTED)
-        return queryset.distinct()
+        return finance_queryset(queryset, user).distinct()
 
     @action(detail=False, methods=["get"])
     def balance(self, request):
@@ -161,7 +165,7 @@ class ExpenseViewSet(viewsets.ModelViewSet):
         family = self._family(request, from_body=True)
         upload = request.FILES.get("receipt")
         if not upload:
-            return Response({"receipt": ["Belegfoto ist erforderlich."]}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"receipt": ["Beleg ist erforderlich."]}, status=status.HTTP_400_BAD_REQUEST)
         try:
             canonical, quality_warnings = canonicalize_receipt_upload(upload)
         except ValueError as exc:
@@ -177,17 +181,16 @@ class ExpenseViewSet(viewsets.ModelViewSet):
         if not paid_by or not owner_membership:
             return Response({"paid_by": ["Zahler ist erforderlich."]}, status=status.HTTP_400_BAD_REQUEST)
 
+        ledger = _ledger_for_request(request, family, from_body=True)
         expense = create_receipt_draft(
             family=family,
             paid_by=paid_by,
             owner_membership=owner_membership,
             created_by=request.user,
             canonical=canonical,
+            ledger=ledger,
             quality_warnings=quality_warnings,
         )
-        if expense.ledger_id is None:
-            expense.ledger = get_default_expense_ledger(family)
-            expense.save(update_fields=["ledger", "updated_at"])
         data = ExpenseSerializer(expense, context={"request": request}).data
         data["quality_warnings"] = quality_warnings
         return Response(data, status=status.HTTP_202_ACCEPTED)
@@ -218,6 +221,7 @@ class ExpenseViewSet(viewsets.ModelViewSet):
 
 
 class SettlementViewSet(viewsets.ModelViewSet):
+    permission_classes = [ExpenseAccess]
     serializer_class = SettlementSerializer
     http_method_names = ["get", "post", "head", "options"]
 
@@ -236,7 +240,7 @@ class SettlementViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(family__memberships__user=user, family__status=Family.Status.ACTIVE)
         family_id = self.request.query_params.get("family")
         ledger_id = self.request.query_params.get("ledger")
-        return _filter_family_ledger(queryset, family_id, ledger_id).distinct()
+        return finance_queryset(_filter_family_ledger(queryset, family_id, ledger_id), user).distinct()
 
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)

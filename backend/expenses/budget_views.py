@@ -3,6 +3,8 @@ from rest_framework.decorators import api_view
 from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.response import Response
 
+from entitlements.services import require_capability
+from .permissions import ExpenseAccess, finance_queryset
 from family.models import Family
 from .budget_serializers import ExpenseBudgetSerializer, BudgetAllocationReplaceSerializer
 from .budget_services import ledger_budget_summary, replace_budget_allocations
@@ -19,6 +21,7 @@ def _visible_expense(request, expense_id):
     expense = queryset.distinct().first()
     if not expense:
         raise NotFound()
+    require_capability(request.user, expense.family, "expenses")
     return expense
 
 
@@ -33,6 +36,7 @@ def _visible_ledger(request, ledger_id):
     ledger = queryset.distinct().first()
     if not ledger:
         raise NotFound()
+    require_capability(request.user, ledger.family, "expenses")
     return ledger
 
 
@@ -54,6 +58,7 @@ def _allocation_payload(expense, allocations):
 
 
 class ExpenseBudgetViewSet(viewsets.ModelViewSet):
+    permission_classes = [ExpenseAccess]
     serializer_class = ExpenseBudgetSerializer
     http_method_names = ["get", "post", "patch", "head", "options"]
 
@@ -71,7 +76,7 @@ class ExpenseBudgetViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(family_id=family_id)
         if ledger_id:
             queryset = queryset.filter(ledger_id=ledger_id)
-        return queryset.distinct()
+        return finance_queryset(queryset, user).distinct()
 
 
 @api_view(["GET", "PUT"])

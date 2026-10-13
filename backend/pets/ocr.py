@@ -13,7 +13,7 @@ from documents.legacy_image import canonicalize_legacy_image, extract_legacy_ima
 
 from .models import PetDocument
 
-MAX_DOCUMENT_BYTES = 10 * 1024 * 1024
+MAX_DOCUMENT_BYTES = 30 * 1024 * 1024
 MAX_DOCUMENT_TEXT = 60000
 MAX_PDF_PAGES = 25
 DATE_RE = re.compile(r"\b(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})\b")
@@ -198,11 +198,11 @@ class UploadAdapter:
 
 def prepare_pet_upload(upload):
     """Validate a legacy private PetDocument through shared Document primitives."""
-    raw = upload.read()
+    raw = upload.read(MAX_DOCUMENT_BYTES + 1)
     if not raw:
         raise ValueError("Die Datei ist leer.")
     if len(raw) > MAX_DOCUMENT_BYTES:
-        raise ValueError("Das Dokument darf höchstens 10 MB groß sein.")
+        raise ValueError("Das Dokument darf höchstens 30 MB groß sein.")
     filename = (getattr(upload, "name", "") or "document").strip()[:180]
     content_type = (getattr(upload, "content_type", "") or "").lower()
     is_pdf = content_type == "application/pdf" or filename.lower().endswith(".pdf") or raw.startswith(b"%PDF")

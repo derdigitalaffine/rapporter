@@ -10,7 +10,7 @@ export default function BabyPrivateMediaField({
  babyId,
  media,
  onChange,
- accept='image/jpeg,image/png,image/webp',
+ accept='image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif',
  capture,
  title,
  hint,

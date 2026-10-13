@@ -206,6 +206,8 @@ def create_follow_up(*, user, item, action, payload):
         return "shopping_item", created
 
     if action == "expense":
+        from entitlements.services import require_capability
+        require_capability(user, item.wishlist.family, "expenses")
         if payload.get("acknowledge_family_visibility") is not True:
             raise ProjectionConflict("expense_family_visibility")
         amount = _positive_amount(payload.get("amount"))

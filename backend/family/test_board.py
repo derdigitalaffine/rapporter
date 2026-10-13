@@ -66,7 +66,7 @@ class BoardTests(TestCase):
     def test_orientation_and_pixel_limit(self):
         output=io.BytesIO();exif=Image.Exif();exif[274]=6;Image.new('RGB',(200,100),'red').save(output,'JPEG',exif=exif)
         data,width,height=optimize_image(SimpleUploadedFile('orient.jpg',output.getvalue()));self.assertEqual((width,height),(100,200))
-        output=io.BytesIO();Image.new('RGB',(5001,5000)).save(output,'JPEG')
+        output=io.BytesIO();Image.new('RGB',(16400,10)).save(output,'JPEG')
         from rest_framework.exceptions import ValidationError
         with self.assertRaises(ValidationError):optimize_image(SimpleUploadedFile('pixels.jpg',output.getvalue()))
     def test_family_cascade_removes_media(self):

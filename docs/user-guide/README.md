@@ -50,3 +50,5 @@ Wenn ein kompletter Ablauf nicht mehr stimmt, ist das ein Doku-Fehler. Dann soll
 ---
 
 **Für Mitwirkende:** Regeln für Stil, Screenshots und Pflege stehen im [Redaktionsleitfaden](editorial-plan.md).
+
+- [Geld & Finanzen](finances.md): Konten, Buchungen, Belege und Premium-Zugang.

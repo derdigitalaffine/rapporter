@@ -31,7 +31,7 @@ test('expenses hub uses canonical action hierarchy on mobile and desktop',async(
   await installExpensesActionMocks(page);
   await page.goto('/?page=expenses');
   await page.waitForLoadState('networkidle');
-  await expect(page.getByRole('heading',{name:'Ausgaben',exact:true})).toBeVisible();
+  await expect(page.getByRole('heading',{name:'Geld & Finanzen',exact:true})).toBeVisible();
   await expect(page.getByText('Supermarkt',{exact:true})).toBeVisible();
 
   const back=page.locator('.expenses-back');

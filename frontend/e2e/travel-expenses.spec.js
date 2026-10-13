@@ -54,9 +54,9 @@ test('travel · trip expenses create one canonical ledger and reopen the same le
  await openTrip(page);
 
  await page.getByRole('button',{name:'Reisekosten',exact:true}).click();
- await expect(page.getByRole('heading',{name:'Ausgaben',exact:true})).toBeVisible();
+ await expect(page.getByRole('heading',{name:'Geld & Finanzen',exact:true})).toBeVisible();
  await expect(page).toHaveURL(/page=expenses.*ledger=ledger-trip/);
- await expect(page.getByLabel('Abrechnungskreis')).toHaveValue('ledger-trip');
+ await expect(page.getByLabel('Konto')).toHaveValue('ledger-trip');
  await expect(page.locator('.balance-card-head').getByText('Japan',{exact:true})).toBeVisible();
  expect(store.createCalls).toBe(1);
 
@@ -64,7 +64,7 @@ test('travel · trip expenses create one canonical ledger and reopen the same le
  await expect(page.getByRole('heading',{name:'Reisen',exact:true})).toBeVisible();
  await page.getByRole('button',{name:'Öffnen',exact:true}).click();
  await page.getByRole('button',{name:'Reisekosten',exact:true}).click();
- await expect(page.getByRole('heading',{name:'Ausgaben',exact:true})).toBeVisible();
+ await expect(page.getByRole('heading',{name:'Geld & Finanzen',exact:true})).toBeVisible();
  await expect(page).toHaveURL(/ledger=ledger-trip/);
  expect(store.createCalls).toBe(1);
 });
