@@ -1,5 +1,6 @@
 import io
 import uuid
+import tempfile
 from datetime import timedelta
 from unittest.mock import patch
 
@@ -173,7 +174,7 @@ class MessengerTests(TestCase):
     def test_attachment_download_requires_visible_message_and_delete_revokes_it(self):
         image = io.BytesIO()
         Image.new("RGB", (8, 8), "red").save(image, "PNG")
-        with override_settings(MEDIA_ROOT='/workspace/scratch/04a6df67c9df/chat-test-media'):
+        with tempfile.TemporaryDirectory() as media_root, override_settings(MEDIA_ROOT=media_root):
             response = self.client.post(f"/api/chat/conversations/{self.conv}/messages/", {"client_id": str(uuid.uuid4()), "body": "photo", "files": SimpleUploadedFile("test.png", image.getvalue(), content_type="image/png")}, format="multipart")
             self.assertEqual(response.status_code, 201, response.data)
             attachment = response.data["attachments"][0]
