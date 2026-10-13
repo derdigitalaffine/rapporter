@@ -120,6 +120,12 @@ class TaskViewSet(FamilyScopedViewSet):
     @action(detail=True, methods=["post"])
     def toggle(self, request, pk=None):
         from django.db import transaction
+        if request.data.get("request_id"):
+            from .unified_action_service import execute
+            task = self.get_object()
+            execute(request.user, f"task:{task.id}", {**request.data, "operation": request.data.get("operation", "complete")})
+            task.refresh_from_db()
+            return Response(self.get_serializer(task).data)
         with transaction.atomic():
             task = self.get_object()
             if task.task_list_id:
@@ -220,6 +226,11 @@ class RoutineViewSet(FamilyScopedViewSet):
             request_id = UUID(str(request_id)) if request_id else None
         except ValueError:
             raise ValidationError({"request_id": "Invalid request ID."})
+        from .unified_action_service import validate_command, observe_log
+        if "duration_minutes" in request.data:
+            _, duration, _ = validate_command({**request.data, "request_id": str(request_id) if request_id else str(__import__("uuid").uuid4())})
+        else:
+            duration = None
         note = str(request.data.get("note", ""))
         if len(note)>240:
             raise ValidationError({"note": "Maximum 240 characters."})
@@ -234,6 +245,10 @@ class RoutineViewSet(FamilyScopedViewSet):
                 log = RoutineLog.objects.create(routine=routine, done_at=timezone.now(), done_by=request.user, note=note, request_id=request_id)
             elif log.done_by_id!=request.user.id:
                 raise PermissionDenied()
+            if created and duration is not None:
+                completion = observe_log(log)
+                completion.duration_minutes = duration
+                completion.save(update_fields=["duration_minutes", "updated_at"])
         return Response(RoutineLogSerializer(log).data, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
 
     @action(detail=True, methods=["get"])

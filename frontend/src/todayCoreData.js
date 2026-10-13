@@ -69,6 +69,7 @@ export function useTodayCoreData(family){
   watchProjection(store,{load:options=>loadTodayCoreData(family,options),clear:()=>clearProjection(store,emit)});
   return()=>{active=false;store.listeners.delete(listener);if(!store.listeners.size)store.stopWatching?.()};
  },[familyId,timeZone]);
+ useEffect(()=>{const handler=event=>{if(String(event.detail?.family)===familyId)loadTodayCoreData(family,{force:true,coalesce:true})};window.addEventListener('familyos:actions-changed',handler);return()=>window.removeEventListener('familyos:actions-changed',handler)},[familyId,timeZone]);
  const refresh=useCallback(()=>loadTodayCoreData(family,{force:true}),[familyId,timeZone]);
  return {...state,refresh};
 }

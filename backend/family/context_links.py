@@ -320,11 +320,15 @@ def _birthday_occasion_visible_queryset(user, family):
 def default_context_registry():
     """Canonical registry. New domains extend this allowlist explicitly."""
     from .board_models import BoardPost
-    from .models import ShoppingItem, ShoppingList, Task
+    from .models import ShoppingItem, ShoppingList, Task, Routine
     from .notes_models import Note
     from .travel_models import Trip
 
     registry = ContextRegistry()
+    from documents.access import visible_documents_for_user, can_manage_document
+    registry.register_type(ContextTypeAdapter(key='document', visible_queryset=lambda user, family: visible_documents_for_user(user, [family.id]), family_id=lambda obj: obj.family_id, deep_link=lambda obj: f'/?page=documents&document={obj.id}', can_link=can_manage_document))
+    registry.register_type(ContextTypeAdapter(key="routine", visible_queryset=lambda user, family: Routine.objects.filter(family=family), family_id=lambda obj: obj.family_id, deep_link=lambda obj: f"/?page=routines&routine={obj.id}"))
+    registry.register_relation(ContextRelationAdapter(key="action.context", allowed_pairs=frozenset((source, context) for source in ("task", "routine") for context in ("note", "document", "shopping_list", "decision", "event", "trip", "birthday_occasion"))))
     registry.register_type(
         ContextTypeAdapter(
             key="task",

@@ -1,6 +1,6 @@
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
-  faHouse, faListCheck, faCartShopping, faClockRotateLeft, faEllipsis, faPlus, faCalendarDays, faCloudSun, faTrashCan,
+  faBed, faDog, faBowlFood, faDroplet, faBroom, faUtensils, faCar, faRecycle, faHouse, faListCheck, faCartShopping, faClockRotateLeft, faEllipsis, faPlus, faCalendarDays, faCloudSun, faTrashCan,
   faPlug, faInbox, faUsers, faLanguage, faRightFromBracket, faRightToBracket, faWifi, faTriangleExclamation, faCheck, faRotate,
   faArrowLeft, faChevronRight, faXmark, faWandMagicSparkles, faBolt, faSnowflake, faCloudRain, faBell,
   faMagnifyingGlass, faFilter, faPen, faTrash, faStar, faStore, faLayerGroup, faClock, faUser, faCircleInfo,
@@ -14,6 +14,7 @@ import {
 // high-visibility FamilyOS navigation/module layer below uses one calmer,
 // rounded 24×24 outline language while inheriting every existing CSS color.
 export const icons = {
+  bed:faBed, dog:faDog, 'bowl-food':faBowlFood, water:faDroplet, broom:faBroom, utensils:faUtensils, car:faCar, recycle:faRecycle,
   home:faHouse, smartHome:faHouse, tasks:faListCheck, shopping:faCartShopping, history:faClockRotateLeft, more:faEllipsis, plus:faPlus,
   calendar:faCalendarDays, weather:faCloudSun, waste:faTrashCan, integrations:faPlug, inbox:faInbox, members:faUsers, users:faUsers,
   language:faLanguage, logout:faRightFromBracket, login:faRightToBracket, online:faWifi, offline:faTriangleExclamation, check:faCheck, refresh:faRotate,

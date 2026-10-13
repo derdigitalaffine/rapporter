@@ -14,7 +14,17 @@ function body(payload){
   return payload===undefined?undefined:JSON.stringify(payload);
 }
 
-export async function runTodoPrimary(item){
+const pendingCommands=new Map();
+export async function runTodoPrimary(item,options={}){
+  if(item?.completion_command&&['complete','reopen','record_done'].includes(item?.primary_action?.id)){
+    const operation=item.primary_action.id==='reopen'?'reopen':'complete';
+    const key=`${item.family}:${item.id}:${operation}`;
+    if(!pendingCommands.has(key))pendingCommands.set(key,requestId());
+    const result=await api(actionApiPath(item.completion_command.href),{method:'POST',body:body({action_id:item.id,operation,request_id:pendingCommands.get(key),...options})});
+    pendingCommands.delete(key);
+    const undoKey=requestId();
+    return {completion:result,undo:()=>api(actionApiPath(item.completion_command.href),{method:'POST',body:body({action_id:item.id,operation:operation==='reopen'?'complete':'undo',completion_id:result.id,request_id:undoKey})})};
+  }
   const action=item?.primary_action||{};
   const endpoint=action.href?actionApiPath(action.href):'';
   if(!endpoint)throw new Error('todo_action_missing');

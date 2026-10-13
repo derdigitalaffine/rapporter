@@ -278,12 +278,13 @@ def _task_queryset(*, family, user, scope, list_id=None, workflow_id=None, today
             Q(completed_at__gte=today_start, completed_at__lt=tomorrow_start)
             | Q(completed_at__isnull=True, due_at__lt=tomorrow_start)
             | Q(completed_at__isnull=True, workflow_column__kind__in=["active", "waiting"])
+            | Q(unified_action__schedule__recurrence__frequency__in=["daily", "weekly", "monthly", "yearly"])
         )
     if scope == "upcoming":
         return rows.filter(completed_at__isnull=True, due_at__gte=tomorrow_start)
     if scope in {"completed", "recent"}:
         return rows.filter(completed_at__gte=recent_start)
-    return rows.filter(Q(completed_at__isnull=True) | Q(completed_at__gte=today_start))
+    return rows.filter(Q(completed_at__isnull=True) | Q(completed_at__gte=today_start) | Q(unified_action__schedule__recurrence__frequency__in=["daily", "weekly", "monthly", "yearly"]))
 
 
 def _routine_queryset(*, family, user, scope, now, recent_start):
@@ -318,6 +319,9 @@ def _routine_queryset(*, family, user, scope, now, recent_start):
 
 def _matches_scope(item, *, scope, today, zone, recent_start):
     if scope == "today":
+        prediction = item.get("prediction_v2")
+        if prediction and prediction.get("expected_at") and _local_day(prediction["expected_at"], zone) == today:
+            return True
         return item["state"] in {"overdue", "due", "active", "waiting", "done_today"}
     if scope == "upcoming":
         next_at = item["next_due_at"]
@@ -398,6 +402,7 @@ def project_actions(
         routines = _routine_queryset(family=family, user=user, scope=scope, now=now, recent_start=recent_start)
         items.extend(_routine_item(routine, user=user, family=family, now=now) for routine in routines)
 
+    _decorate_unified(items, user=user, family=family, now=now)
     items = [
         item
         for item in items
@@ -405,3 +410,56 @@ def project_actions(
     ]
     items.sort(key=_sort_key)
     return [_public_item(item) for item in items]
+
+
+def _decorate_unified(items, *, user, family, now):
+    """Two bounded queries; keep the versioned v1 command contract as fallback."""
+    from .unified_action_models import Action, ActionCompletion
+    from .action_prediction import prediction_for
+    from .unified_action_models import ActionPolicy, ActionPersonalSetting
+    from collections import defaultdict
+    rows = list(Action.objects.filter(family=family).exclude(state='archived'))
+    by_id = {}
+    for row in rows:
+        if row.legacy_task_id:
+            by_id[f'task:{row.legacy_task_id}'] = row
+        elif row.legacy_routine_id:
+            by_id[f'routine:{row.legacy_routine_id}'] = row
+    scheduled_ids = [r.id for r in rows if r.schedule]
+    policy = ActionPolicy.objects.filter(family=family).first() if scheduled_ids else None
+    busy_intervals = []
+    if policy and policy.calendar_aware:
+        personal = ActionPersonalSetting.objects.filter(membership__family=family,membership__user=user).first()
+        if personal and personal.calendar_aware:
+            from .models import FamilyEvent
+            busy_intervals = list(FamilyEvent.objects.filter(family=family, type="calendar.event", starts_at__gte=now-timedelta(days=1), starts_at__lt=now+timedelta(days=32), ends_at__isnull=False).values_list("starts_at","ends_at")[:1000])
+    history = defaultdict(list)
+    if scheduled_ids:
+        events = (ActionCompletion.objects.filter(action_id__in=scheduled_ids, undone_at__isnull=True, occurred_at__lte=now)
+            .annotate(_rank=Window(expression=RowNumber(), partition_by=[F('action_id')], order_by=[F('occurred_at').desc(), F('id').desc()]))
+            .filter(_rank__lte=64).values_list('action_id', 'occurred_at'))
+        for action_id, occurred_at in events:
+            history[action_id].append(occurred_at)
+    for item in items:
+        item['completion_command'] = {'href': '/api/actions/execute/', 'version': 'action-completion-v1'}
+        row = by_id.get(item['id'])
+        if row is None:
+            continue
+        item['canonical_action_id'] = str(row.id)
+        item['icon'] = row.icon or 'tasks'
+        item['accent_token'] = row.accent_token
+        if row.schedule:
+            prediction = prediction_for(row, history[row.id], now, policy, busy_intervals)
+            item['prediction_v2'] = prediction
+            item['schedule'] = row.schedule
+            # New schedule intent applies only to configured actions. Legacy feed
+            # fields and algorithms stay available until the explicit cutover.
+            recurring_task = item['kind'] == 'task' and row.schedule.get('recurrence', {}).get('frequency') in {'daily','weekly','monthly','yearly'}
+            if (item['kind'] == 'routine' or recurring_task) and item['state'] not in {'paused', 'done_today'}:
+                if recurring_task:
+                    item['primary_action'] = _action('task', 'complete', 'POST', f'/api/tasks/{row.legacy_task_id}/toggle/')
+                item['next_due_at'] = prediction['expected_at']
+                item['_sort_at'] = prediction['expected_at']
+                item['state'] = prediction['status'] if prediction['status'] in {'due', 'overdue'} else 'open'
+                item['urgency'] = _urgency(item['state'])
+                item['ranking'] = _ranking('routine', item['state'])
