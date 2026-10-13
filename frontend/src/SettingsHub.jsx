@@ -10,6 +10,12 @@ const SETTINGS_LINKS=[
  ['automations','Automationen','Regeln und automatische Abläufe'],
  ['members','Familie','Mitglieder und Rollen verwalten'],
 ];
+const COLOR_PROFILES=[
+ ['green','Dunkelgrün','Hell','Das bekannte FamilyOS-Farbprofil','settings-swatch-green'],
+ ['blue','Dunkelblau','Hell','Kühleres Blau statt Dunkelgrün','settings-swatch-blue'],
+ ['green-dark','Dunkelgrün','Dunkel','Moderner dunkler Modus mit grünen Akzenten','settings-swatch-green-dark'],
+ ['blue-dark','Dunkelblau','Dunkel','Moderner dunkler Modus mit blauen Akzenten','settings-swatch-blue-dark'],
+];
 const href=page=>`/?page=${encodeURIComponent(page)}`;
 
 export default function SettingsHub(){
@@ -18,10 +24,9 @@ export default function SettingsHub(){
  return <main className="settings-page content" data-page="settings">
   <div className="settings-head"><a className="back-button secondary" href="/?page=more" aria-label="Zurück">‹</a><div><small>App</small><h1>Einstellungen</h1></div></div>
   <section className="card settings-section" aria-labelledby="settings-design-title">
-   <div><small>Darstellung</small><h2 id="settings-design-title">Design</h2><p>Wähle das Farbprofil der App oder aktiviere einen maximal kontrastreichen Schwarz-Weiß-Modus.</p></div>
+   <div><small>Darstellung</small><h2 id="settings-design-title">Design</h2><p>Wähle zwischen hellen und dunklen Farbprofilen oder aktiviere den maximal kontrastreichen Schwarz-Weiß-Modus.</p></div>
    <fieldset className="settings-choice"><legend>Farbprofil</legend>
-    <label className="settings-option"><input type="radio" name="color-profile" value="green" checked={appearance.profile==='green'} onChange={()=>update({profile:'green'})}/><span><strong>Dunkelgrün</strong><small>Das bekannte FamilyOS-Farbprofil</small></span><i className="settings-swatch settings-swatch-green" aria-hidden="true"/></label>
-    <label className="settings-option"><input type="radio" name="color-profile" value="blue" checked={appearance.profile==='blue'} onChange={()=>update({profile:'blue'})}/><span><strong>Dunkelblau</strong><small>Kühleres Blau statt Dunkelgrün</small></span><i className="settings-swatch settings-swatch-blue" aria-hidden="true"/></label>
+    {COLOR_PROFILES.map(([profile,title,mode,description,swatch])=><label className="settings-option" key={profile}><input type="radio" name="color-profile" value={profile} checked={appearance.profile===profile} onChange={()=>update({profile})}/><span><strong>{title} <em>{mode}</em></strong><small>{description}</small></span><i className={`settings-swatch ${swatch}`} aria-hidden="true"/></label>)}
    </fieldset>
    <label className="settings-toggle"><span><strong>Hochkontrast Schwarz/Weiß</strong><small>Reduziert die Oberfläche auf Schwarz, Weiß und klare Konturen. Das Farbprofil bleibt gespeichert.</small></span><input type="checkbox" role="switch" checked={appearance.highContrast} onChange={event=>update({highContrast:event.target.checked})}/></label>
   </section>
