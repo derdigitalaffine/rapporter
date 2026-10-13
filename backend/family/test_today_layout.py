@@ -60,7 +60,7 @@ class TodayLayoutTests(TestCase):
         self.assertTrue(all(required <= set(entry) for entry in TODAY_WIDGET_REGISTRY))
         self.assertTrue(all(set(entry['supportedSizes']) <= {'compact', 'medium', 'wide'} for entry in TODAY_WIDGET_REGISTRY))
         self.assertTrue(all(entry['defaultSize'] in entry['supportedSizes'] for entry in TODAY_WIDGET_REGISTRY))
-        self.assertEqual(list(DEFAULT_WIDGET_ORDER[:5]), ['focus', 'timeline', 'week', 'todo', 'pinboard'])
+        self.assertEqual(list(DEFAULT_WIDGET_ORDER[:6]), ['situation', 'focus', 'timeline', 'week', 'todo', 'pinboard'])
 
     def test_default_roundtrip_is_v2_and_private(self):
         initial = self.client.get(self.url)
@@ -75,7 +75,7 @@ class TodayLayoutTests(TestCase):
         self.assertNotIn('next', DEFAULT_WIDGET_ORDER)
         self.assertEqual(
             [row['id'] for row in initial.data['widgets'] if row['visible']],
-            ['focus', 'timeline', 'week', 'todo', 'pinboard', 'games'],
+            ['situation', 'focus', 'timeline', 'week', 'todo', 'pinboard', 'games'],
         )
         self.assertEqual(
             {row['id']: row['size'] for row in initial.data['widgets']},
@@ -131,7 +131,7 @@ class TodayLayoutTests(TestCase):
         self.assertFalse(weather['visible'])
         self.assertEqual(next(row for row in expanded if row['id'] == 'week')['settings'], DEFAULT_WEEK_SETTINGS)
         self.assertEqual(next(row for row in expanded if row['id'] == 'trip')['size'], 'medium')
-        self.assertEqual(next(row for row in expanded if row['id'] == 'pinboard')['size'], 'compact')
+        self.assertEqual(next(row for row in expanded if row['id'] == 'pinboard')['size'], 'wide')
 
         weather_index = ids.index('weather')
         todo_index = ids.index('todo')
@@ -271,6 +271,37 @@ class TodayLayoutTests(TestCase):
         self.assertEqual(saved.status_code, 200)
         self.assertEqual(self.client.get(self.url).data, saved.data)
         self.assertEqual(next(row for row in saved.data['widgets'] if row['id'] == 'games'), {'id': 'games', 'visible': False, 'size': 'compact'})
+
+    def test_status_and_pinboard_sizes_roundtrip_without_reordering_saved_choices(self):
+        config = deepcopy(self.client.get(self.url).data)
+        status = next(row for row in config['widgets'] if row['id'] == 'situation')
+        board = next(row for row in config['widgets'] if row['id'] == 'pinboard')
+        self.assertEqual(status, {'id': 'situation', 'visible': True, 'size': 'compact'})
+        self.assertEqual(board, {'id': 'pinboard', 'visible': True, 'size': 'medium'})
+        config['widgets'].reverse()
+        status.update(visible=False, size='medium')
+        board['size'] = 'wide'
+        saved = self.client.put(self.url, config, format='json')
+        self.assertEqual(saved.status_code, 200, saved.data)
+        self.assertEqual(saved.data['widgets'], config['widgets'])
+        self.assertEqual(self.client.get(self.url).data, saved.data)
+        invalid = deepcopy(saved.data)
+        next(row for row in invalid['widgets'] if row['id'] == 'situation')['size'] = 'wide'
+        self.assertEqual(self.client.put(self.url, invalid, format='json').status_code, 400)
+        self.assertEqual(self.client.get(self.url).data, saved.data)
+
+    def test_registry_parity_preserves_existing_personal_status_and_pinboard(self):
+        custom = deepcopy(DEFAULT_WIDGETS)
+        custom.reverse()
+        next(row for row in custom if row['id'] == 'situation').update(visible=False, size='medium')
+        next(row for row in custom if row['id'] == 'pinboard').update(visible=False, size='compact')
+        layout = TodayLayout.objects.create(family=self.family, user=self.user, widgets=custom, revision=9)
+        response = self.client.get(self.url)
+        self.assertEqual(response.data['widgets'], custom)
+        self.assertEqual(response.data['revision'], 9)
+        layout.refresh_from_db()
+        self.assertEqual(layout.widgets, custom)
+        self.assertEqual(layout.revision, 9)
 
     def test_v2_medium_is_allowed_only_for_supported_widgets(self):
         valid = deepcopy(self.client.get(self.url).data)
