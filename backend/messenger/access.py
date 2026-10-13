@@ -4,7 +4,7 @@ from django.utils import timezone
 from rest_framework.exceptions import PermissionDenied
 
 from auth_identity.models import EmailIdentity
-from family.models import Family, Membership
+from family.models import Membership
 from .models import ChatBlock, ChatPreference, ConversationMember, Friendship
 
 WRITER_ROLES = (Membership.Role.OWNER, Membership.Role.ADULT, Membership.Role.TEEN)
@@ -16,14 +16,14 @@ def preferences(user):
 
 
 def eligible(user):
-    if not user or not user.is_active or getattr(user, "is_superadmin", False):
+    if not user or not user.is_active or (getattr(user, "is_superadmin", False) or user.is_superuser):
         return False
     verified = EmailIdentity.objects.filter(user=user, kind="primary", verified_at__isnull=False).exists()
     if not verified:
         return False
     members = Membership.objects.filter(user=user)
     if members.exists():
-        return members.filter(role__in=WRITER_ROLES, family__status=Family.Status.ACTIVE).exists()
+        return members.filter(role__in=WRITER_ROLES).exists()
     return ChatPreference.objects.filter(user=user, personal_account=True).exists()
 
 

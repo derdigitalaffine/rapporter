@@ -4,7 +4,7 @@ Unter **Nachrichten** gibt es persönliche Chats, Freunde und separat die bisher
 
 ## Freunde und Einladungen
 
-**Freunde → Per E-Mail einladen** verschickt eine sieben Tage gültige Einladung. Der Empfänger entscheidet ausdrücklich über die Annahme. Nur die eingeladene, bestätigte E-Mail-Adresse kann zustimmen. Wer noch kein Konto hat, kann über die an sein Postfach gelieferte Einladung eines erstellen; dabei entsteht keine Familienmitgliedschaft. Bestätigte Erwachsene/Teens können persönliche Chats verwenden; Kinder, Gäste und unbestätigte Konten erhalten keinen persönlichen Chat-Zugang.
+**Freunde → Per E-Mail einladen** verschickt eine sieben Tage gültige Einladung. Der Empfänger entscheidet ausdrücklich über die Annahme. Nur die eingeladene, bestätigte E-Mail-Adresse kann zustimmen. Wer noch kein Konto hat, kann über die an sein Postfach gelieferte Einladung eines erstellen; dabei entsteht keine Familienmitgliedschaft. Bestätigte Erwachsene/Teens können persönliche Chats verwenden; Kinder, Gäste und unbestätigte Konten erhalten keinen persönlichen Chat-Zugang. Ein ausdrücklich begonnenes bzw. angenommenes persönliches Profil bleibt auch nach Verlassen der Familie nutzbar. Eine ausgesetzte Familie sperrt ihre Familieninhalte, nicht den persönlichen Messenger. Bestehende Kinder-/Gastrollen und global gesperrte Konten bleiben ausgeschlossen.
 
 Einladungen können zurückgezogen werden. Die Oberfläche zeigt dem Sender nicht, ob eine fremde Adresse bereits registriert oder blockiert ist. Entfernen und Blockieren sperren neue Nachrichten, Tippanzeige und Duelle. Entblocken stellt die Freundschaft nicht wieder her. Dafür braucht es erneut eine angenommene Einladung.
 
@@ -24,6 +24,6 @@ Den Kontaktkopf eines Einzelchats öffnen und **Freundesduelle** wählen. Schere
 
 ## Betrieb und Migration
 
-Die bestehende WSGI-Architektur bleibt: begrenztes Vordergrund-Polling und in der Datenbank gespeicherte Typing-TTL funktionieren über mehrere Worker. `/api/chat/` ist grundsätzlich `private, no-store`. Einladungen nutzen EmailIdentity, MailOutbox und AuthAbuse; persönliche Benachrichtigungen erweitern den bestehenden Notification-Core um einen expliziten User-Empfänger mit XOR-Scope-Constraint.
+Die bestehende WSGI-Architektur bleibt: begrenztes Vordergrund-Polling und in der Datenbank gespeicherte Typing-TTL funktionieren über mehrere Worker. `/api/chat/` und `/api/games/` sind grundsätzlich `private, no-store`. Einladungen nutzen EmailIdentity, MailOutbox und AuthAbuse; persönliche Benachrichtigungen erweitern den bestehenden Notification-Core um einen expliziten User-Empfänger mit XOR-Scope-Constraint.
 
 Additive Migrationen: neue Messenger-Tabellen, persönliche Game-Spieler-FKs neben vorhandenen Membership-Spielern und nullable Family/Recipient plus User-Recipient in Notifications. Bestehende Familiendaten werden nicht umgeschrieben. Zuerst Migrationen, dann neuer Code. Bei einem Rollback persönlichen Chat-/Game-Traffic deaktivieren; ältere Server verstehen persönliche Game-/Notification-Zeilen nicht. Keine Contract-Migration und kein Löschen bestehender Daten.

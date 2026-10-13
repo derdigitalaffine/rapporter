@@ -71,6 +71,10 @@ def create_invitation(sender, email, request_id):
                 raise ValidationError({"code": "request_conflict"})
             return previous
         invite = ContactInvitation.objects.create(sender=sender, email=email, request_id=request_id, expires_at=timezone.now() + timedelta(days=7))
+        pref = preferences(sender)
+        if not pref.personal_account:
+            pref.personal_account = True
+            pref.save(update_fields=["personal_account"])
         target = EmailIdentity.objects.filter(email_normalized=email, kind="primary").values_list("user_id", flat=True).first()
         # The sender receives the same response regardless of registration or block status.
         if not target or not is_blocked(sender.pk, target):
@@ -82,7 +86,7 @@ def accept_invitation(invite, user):
     # Keep FK key-share locks compatible with chat/game inserts while serializing consent.
     users = {row.pk: row for row in get_user_model().objects.select_for_update(no_key=True).filter(pk__in=(user.pk, invite.sender_id)).order_by("pk")}
     user, sender = users.get(user.pk), users.get(invite.sender_id)
-    if not user or not sender or not user.is_active or getattr(user, "is_superadmin", False) or not eligible(sender) or user.pk == sender.pk or is_blocked(user.pk, sender.pk):
+    if not user or not sender or not user.is_active or (getattr(user, "is_superadmin", False) or user.is_superuser) or not eligible(sender) or user.pk == sender.pk or is_blocked(user.pk, sender.pk):
         raise Http404
     identity = EmailIdentity.objects.filter(user=user, kind="primary", verified_at__isnull=False, email_normalized=invite.email).first()
     if not identity:
@@ -102,6 +106,11 @@ def accept_invitation(invite, user):
             raise PermissionDenied({"code": "friendship_removed"})
         friend.active = True
         friend.save(update_fields=["active", "updated_at"])
+    for participant in (user, sender):
+        pref = preferences(participant)
+        if not pref.personal_account:
+            pref.personal_account = True
+            pref.save(update_fields=["personal_account"])
     invite.status, invite.accepted_by, invite.accepted_at = "accepted", user, timezone.now()
     invite.save(update_fields=["status", "accepted_by", "accepted_at", "updated_at"])
     return friend

@@ -4,7 +4,7 @@ class MessengerNoStoreMiddleware:
 
     def __call__(self, request):
         response = self.get_response(request)
-        if request.path.startswith("/api/chat/"):
+        if request.path.startswith(("/api/chat/", "/api/games/")):
             response["Cache-Control"] = "private, no-store"
             response["Referrer-Policy"] = "no-referrer"
         return response

@@ -287,3 +287,31 @@ class MessengerTests(TestCase):
         fresh = create_invitation(self.one, self.two.email, uuid.uuid4())
         self.client.force_authenticate(self.two)
         self.assertEqual(self.post("invite/accept/", {"token": invitation_token(fresh)}).status_code, 200)
+
+
+    def test_superadmin_flag_never_grants_personal_chat_access(self):
+        self.one.is_superuser = True
+        self.one.save(update_fields=["is_superuser"])
+        self.client.force_authenticate(self.one)
+        self.assertFalse(eligible(self.one))
+        response = self.post("invitations/", {"email": self.two.email, "request_id": str(uuid.uuid4())})
+        self.assertEqual(response.status_code, 403)
+
+
+    def test_personal_chat_does_not_depend_on_family_service_status(self):
+        self.family.status = Family.Status.SUSPENDED
+        self.family.save(update_fields=["status"])
+        self.assertTrue(eligible(self.one))
+        self.assertEqual(self.send("personal, no family content").status_code, 201)
+        self.assertIn(self.client.get(f"/api/tasks/?family={self.family.pk}").status_code, [403, 404])
+
+    def test_accepted_personal_profile_survives_leaving_family_without_granting_child_access(self):
+        invite = create_invitation(self.one, self.two.email, uuid.uuid4())
+        self.client.force_authenticate(self.two)
+        self.assertEqual(self.post("invite/accept/", {"token": invitation_token(invite)}).status_code, 200)
+        Membership.objects.filter(user=self.two).delete()
+        self.assertTrue(eligible(self.two))
+        self.assertEqual(self.send("still personal").status_code, 201)
+        Membership.objects.create(user=self.two, family=self.other_family, role="child")
+        self.assertFalse(eligible(self.two))
+        self.assertEqual(self.send().status_code, 403)

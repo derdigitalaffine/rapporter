@@ -43,6 +43,7 @@ class PersonalDuelTests(TestCase):
     def test_rps_uses_same_engine_hides_choice_and_finishes_without_family_stake(self):
         response = self.create("rps", round_count=1)
         self.assertEqual(response.status_code, 201, response.data)
+        self.assertEqual(response["Cache-Control"], "private, no-store")
         match = self.accept(response.data)
         self.action(match, "rps/choice", {"choice": "scissors"})
         self.client.force_authenticate(self.one)
