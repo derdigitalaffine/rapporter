@@ -8,6 +8,7 @@ class FamilyConfig(AppConfig):
     def ready(self):
         # Feature models live in separate modules to keep the core model file merge-friendly.
         from . import models as core_models
+        from .birthday_age_models import BirthdayAgePreference
         from .birthday_context_models import BirthdayOccasion
         from .board_models import (
             BoardImage,
@@ -26,6 +27,7 @@ class FamilyConfig(AppConfig):
         from .today_models import TodayLayout
         from .todo_models import TodoActionPreference, TodoPreference
         from .travel_models import Trip, TripPhoto
+        core_models.BirthdayAgePreference = BirthdayAgePreference
         core_models.BirthdayOccasion = BirthdayOccasion
         core_models.BoardPost = BoardPost
         core_models.BoardImage = BoardImage
