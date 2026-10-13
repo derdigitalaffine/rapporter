@@ -81,6 +81,7 @@ def serialize_child_identity(baby):
         "membership": str(baby.membership_id) if baby.membership_id else None,
         "user": user.pk if user else None,
         "display_name": baby.display_name,
+        "birth_date": baby.birth_date.isoformat(),
         "role": baby.membership.role if baby.membership_id else None,
         "access_state": state,
         "email_hint": _masked_email(email),
