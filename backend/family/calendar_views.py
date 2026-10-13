@@ -42,29 +42,15 @@ def _family_zone(family):
         return ZoneInfo("UTC")
 
 
-def _validate_member_marker(serializer, request):
-    """Validate native event assignment, including explicit managed-child guardian authority."""
-    if "payload" not in serializer.validated_data:
-        return
-    payload = serializer.validated_data.get("payload")
-    if not isinstance(payload, dict):
-        return
-    member_id = payload.get("member_id")
-    if member_id in (None, ""):
-        return
+def _effective_family(serializer):
+    return serializer.validated_data.get("family") or getattr(serializer.instance, "family", None)
 
-    event_type = serializer.validated_data.get("type") or getattr(serializer.instance, "type", None)
-    if event_type != "calendar.event":
-        raise ValidationError({"payload": {"member_id": "Personenzuordnung ist nur für FamilyOS-Kalendertermine verfügbar."}})
 
-    family = serializer.validated_data.get("family") or getattr(serializer.instance, "family", None)
-    try:
-        normalized = UUID(str(member_id))
-    except (TypeError, ValueError, AttributeError) as exc:
-        raise ValidationError({"payload": {"member_id": "Ungültige Personenzuordnung."}}) from exc
-    target = Membership.objects.filter(family=family, id=normalized).first() if family else None
-    if not target:
-        raise ValidationError({"payload": {"member_id": "Person gehört nicht zu dieser Familie."}})
+def _effective_event_type(serializer):
+    return serializer.validated_data.get("type") or getattr(serializer.instance, "type", None)
+
+
+def _validate_guardian(target, family, request):
     if target.role != Membership.Role.CHILD or target.user_id == request.user.id:
         return
 
@@ -79,10 +65,69 @@ def _validate_member_marker(serializer, request):
         raise PermissionDenied("Nur ein expliziter Guardian darf Termine für dieses Kind anlegen oder ändern.")
 
 
+def _legacy_participant_selection(serializer, family):
+    """Map the old payload.member_id write contract to the canonical participant relation."""
+    if "participants" in serializer.validated_data or "payload" not in serializer.validated_data:
+        return None
+    payload = serializer.validated_data.get("payload")
+    if not isinstance(payload, dict):
+        return None
+    member_id = payload.get("member_id")
+    if member_id in (None, ""):
+        return []
+    try:
+        normalized = UUID(str(member_id))
+    except (TypeError, ValueError, AttributeError) as exc:
+        raise ValidationError({"payload": {"member_id": "Ungültige Personenzuordnung."}}) from exc
+    target = Membership.objects.filter(family=family, id=normalized).first() if family else None
+    if not target:
+        raise ValidationError({"payload": {"member_id": "Person gehört nicht zu dieser Familie."}})
+    return [target]
+
+
+def _validate_event_people(serializer, request):
+    """Validate the final native-event participant set and return legacy selection when used."""
+    family = _effective_family(serializer)
+    event_type = _effective_event_type(serializer)
+    legacy_selection = _legacy_participant_selection(serializer, family)
+
+    if "participants" in serializer.validated_data:
+        participants = list(serializer.validated_data.get("participants") or [])
+    elif legacy_selection is not None:
+        participants = legacy_selection
+    elif serializer.instance:
+        participants = list(serializer.instance.participants.all())
+    else:
+        participants = []
+
+    is_family_event = serializer.validated_data.get(
+        "is_family_event",
+        getattr(serializer.instance, "is_family_event", False),
+    )
+    if event_type != "calendar.event" and (participants or is_family_event):
+        raise ValidationError(
+            {
+                "participants": "Personenzuordnung und Familientermin sind nur für FamilyOS-Kalendertermine verfügbar."
+            }
+        )
+
+    for target in participants:
+        if not family or target.family_id != family.id:
+            raise ValidationError({"participants": "Mindestens eine Person gehört nicht zu dieser Familie."})
+        _validate_guardian(target, family, request)
+    return legacy_selection
+
+
 class FamilyEventViewSet(BaseFamilyEventViewSet):
     """Calendar contract: forecasts/current conditions are weather data, not appointments."""
 
-    queryset = FamilyEvent.objects.select_related("source").exclude(type__in=["weather.current", "weather.forecast"]).all().order_by("starts_at")
+    queryset = (
+        FamilyEvent.objects.select_related("source")
+        .prefetch_related("participants")
+        .exclude(type__in=["weather.current", "weather.forecast"])
+        .all()
+        .order_by("starts_at")
+    )
 
     def get_queryset(self):
         queryset = super().get_queryset()
@@ -130,16 +175,20 @@ class FamilyEventViewSet(BaseFamilyEventViewSet):
             raise PermissionDenied("Externe Kalendertermine werden von ihrer Quelle verwaltet.")
         if serializer.validated_data.get("type") in READ_ONLY_EVENT_TYPES:
             raise PermissionDenied("Dieser Termin wird von seinem Fachbereich verwaltet.")
-        _validate_member_marker(serializer, self.request)
+        legacy_selection = _validate_event_people(serializer, self.request)
         super().perform_create(serializer)
+        if legacy_selection is not None:
+            serializer.instance.participants.set(legacy_selection)
 
     def perform_update(self, serializer):
         if serializer.instance.source_id or serializer.validated_data.get("source"):
             raise PermissionDenied("Externe Kalendertermine sind schreibgeschützt.")
         if serializer.instance.type in READ_ONLY_EVENT_TYPES or serializer.validated_data.get("type") in READ_ONLY_EVENT_TYPES:
             raise PermissionDenied("Dieser Termin ist hier schreibgeschützt.")
-        _validate_member_marker(serializer, self.request)
+        legacy_selection = _validate_event_people(serializer, self.request)
         super().perform_update(serializer)
+        if legacy_selection is not None:
+            serializer.instance.participants.set(legacy_selection)
 
     def perform_destroy(self, instance):
         if instance.source_id:

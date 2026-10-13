@@ -9,13 +9,15 @@ function initials(person){
  return (parts.length>1?`${parts[0][0]}${parts.at(-1)[0]}`:parts[0][0]).toUpperCase();
 }
 
-export default function MemberAvatar({person,size=44,className='',decorative=false}){
+export default function MemberAvatar({person,size=44,className='',decorative=false,color=null}){
  const src=person?.avatar_url||person?.avatar||'';
+ const tone=color||person?.calendar_color||null;
  const [failed,setFailed]=useState(false);
  useEffect(()=>setFailed(false),[src]);
  const label=person?.display_name||person?.username||'Person';
  const fallback=initials(person);
- return <span className={`member-avatar-ui ${className}`} style={{'--avatar-size':`${size}px`}} aria-label={decorative?undefined:label} aria-hidden={decorative?'true':undefined}>
+ const style={'--avatar-size':`${size}px`,...(tone?{'--member-avatar-color':tone}:{})};
+ return <span className={`member-avatar-ui ${tone?'has-member-color':''} ${className}`} style={style} aria-label={decorative?undefined:label} aria-hidden={decorative?'true':undefined}>
   {src&&!failed?<img src={src} alt={decorative?'':label} width={size} height={size} loading="lazy" onError={()=>setFailed(true)}/>:fallback?<span aria-hidden="true">{fallback}</span>:<Icon name="user" size={Math.round(size*.42)}/>} 
  </span>;
 }

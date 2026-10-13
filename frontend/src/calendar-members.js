@@ -9,17 +9,30 @@ export function membershipCalendarColor(member){
  return member?.calendar_color||DEFAULT_CALENDAR_COLORS[0];
 }
 
+export function eventParticipantIds(event){
+ const participantValues=Array.isArray(event?.participants)?event.participants:[];
+ const ids=participantValues.map(value=>typeof value==='object'?value?.id:value).filter(Boolean).map(String);
+ if(ids.length)return [...new Set(ids)];
+ const legacy=event?.payload?.member_id;
+ return legacy?[String(legacy)]:[];
+}
+
+export function eventMemberDescriptors(event,family){
+ const byId=new Map((family?.memberships||[]).map(member=>[String(member.id),member]));
+ return eventParticipantIds(event).map(id=>{
+  const member=byId.get(String(id));
+  if(!member)return null;
+  const name=membershipDisplayName(member);
+  return name?{id:member.id,name,color:membershipCalendarColor(member),member}:null;
+ }).filter(Boolean);
+}
+
 export function eventMemberDescriptor(event,family){
- const memberId=event?.payload?.member_id;
- if(!memberId)return null;
- const member=(family?.memberships||[]).find(item=>String(item.id)===String(memberId));
- if(!member)return null;
- const name=membershipDisplayName(member);
- return name?{id:member.id,name,color:membershipCalendarColor(member)}:null;
+ return eventMemberDescriptors(event,family)[0]||null;
 }
 
 export function eventMemberStyle(event,family){
- const member=eventMemberDescriptor(event,family);
- if(!member||event?.source||event?.type!=='calendar.event')return {};
- return {'--calendar-member-color':member.color};
+ const members=eventMemberDescriptors(event,family);
+ if(members.length!==1||event?.source||event?.type!=='calendar.event')return {};
+ return {'--calendar-member-color':members[0].color};
 }
