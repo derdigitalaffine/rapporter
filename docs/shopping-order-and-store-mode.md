@@ -1,6 +1,6 @@
-# Shopping: manuelle Reihenfolge und Store Mode
+# Shopping: manuelle Reihenfolge, Listenwechsel und Store Mode
 
-Dieses Dokument beschreibt den UX- und Datenvertrag aus #536 sowie den darauf aufbauenden Bedienflow-Hotfix #547.
+Dieses Dokument beschreibt den UX- und Datenvertrag aus #536 sowie die darauf aufbauenden Bedienflow-Slices #547 und #549.
 
 ## Planung: manuelle Artikelreihenfolge
 
@@ -14,9 +14,22 @@ Reorder ist derzeit bewusst online-only. Solange lokale Shopping-Mutationen auf 
 
 Die Planungsansicht bleibt ruhiger als zuvor: Es gibt keine große Prozent-/Progressdarstellung und keinen permanenten Favoriten-Stern bzw. Favoriten-Badge pro Artikelzeile. Favoriten bleiben im kanonischen Artikel-Editor änderbar. Normales Einzel-Hinzufügen bestätigt sich durch die unmittelbar sichtbare neue Zeile und erzeugt keinen zusätzlichen Success-Toast; Fehlerfeedback bleibt unverändert sichtbar.
 
+## Listenwechsel und Zustände
+
+Mehrere Einkaufslisten werden in der Planung nicht mehr als permanent horizontal scrollende Tab-Leiste dargestellt. Bei mehr als einer Liste gibt es einen kompakten nativen Listen-Switcher. Er zeigt die aktive Liste eindeutig, ist per Touch, Tastatur und Screenreader bedienbar und hält die eigentliche Artikelliste auch bei vielen Listen im Vordergrund. Das Anlegen einer weiteren Liste bleibt direkt daneben erreichbar.
+
+Die Planungsansicht unterscheidet vier Zustände ausdrücklich:
+
+- **Keine Liste:** Es gibt noch kein Shopping-Ziel. Ein primärer CTA öffnet den bestehenden Listen-Anlegeflow; Quick Add wird nicht so dargestellt, als könne bereits in eine konkrete Liste geschrieben werden.
+- **Leere Liste:** Die Liste existiert, enthält aber noch keine Artikel. Der primäre CTA fokussiert dieselbe kanonische Quick-Add-Eingabe.
+- **Nur erledigte Artikel:** Die Liste ist nicht leer, hat aber keine offenen Artikel mehr. Der Recovery-CTA öffnet den bestehenden Store Mode direkt mit `Erledigt`; es entsteht keine zweite Completed-Ansicht und keine parallele Artikeldomain.
+- **Offline/Sync-Fehler:** Offline bleibt als ruhiger persistenter Status sichtbar. Fehlgeschlagene Synchronisierung bleibt davon getrennt als Fehler mit Retry bestehen. Die bestehende Offline-Queue und ihre Konfliktsemantik werden nicht ersetzt.
+
+Der Store-Status (`open` oder `done`) kann für diesen Recovery-Pfad als URL-Zustand mitgeführt werden. Ein normaler Einstieg in den Store Mode startet weiterhin mit `Offen`; nur der explizite „Erledigte ansehen“-Pfad startet in `Erledigt`.
+
 ## Store Mode: Offen, Erledigt, Alle
 
-Der Store Mode startet mit `Offen`. `Erledigt` zeigt bereits abgehakte Artikel und erlaubt das Wiederöffnen. `Alle` zeigt beide Zustände, wobei die manuelle Reihenfolge innerhalb der Statusgruppen stabil bleibt.
+Der Store Mode startet im normalen Einkaufsflow mit `Offen`. `Erledigt` zeigt bereits abgehakte Artikel und erlaubt das Wiederöffnen. `Alle` zeigt beide Zustände, wobei die manuelle Reihenfolge innerhalb der Statusgruppen stabil bleibt.
 
 Kategorie-/Gangabschnitte folgen dem realen Laufweg: Entscheidend ist die Position des jeweils ersten sichtbaren Artikels in der kanonischen `ShoppingItem.position`, nicht die alphabetische Bezeichnung der Kategorie oder des Gangs. Eine manuell festgelegte Reihenfolge wird damit nicht durch eine zweite Smart-/Alphabet-Sortierung überschrieben.
 
@@ -32,10 +45,12 @@ Fehler, relevante Offline-Zustände und fehlgeschlagene Synchronisierung bleiben
 - Reorder-Aktionen und Drag-Griff haben mindestens 44×44 px Touchfläche.
 - Der Drag-Griff ist die einzige Fläche, die normales Touch-Scrolling für Reorder übernimmt; die restliche Zeile bleibt normal scrollbar.
 - Reorder-Ergebnisse werden über eine höfliche Live-Region angekündigt.
+- Der Listen-Switcher verwendet eine native Select-Bedienung und mindestens 44 px Höhe.
+- Empty-/Completed-State-CTAs verwenden dieselben 44-px-Kernkontrollen wie der restliche Shopping-Flow.
 - Store Check-off ist per ganzer Checkfläche, Tastatur und Screenreader bedienbar.
 - Die kurze Check-off-Transition respektiert `prefers-reduced-motion`.
 - Status wird nicht ausschließlich über Farbe vermittelt.
 
 ## Regressionen
 
-Backend-Tests decken Persistenz, Family-Scoping, vollständige Sequenzen und die Unabhängigkeit von Check-off und Reihenfolge ab. Playwright deckt zusätzlich sichtbare/touch-sichere Reorder-Controls, reduzierte Planning-Chrome, Laufweg-Gruppierung, Store-Filter, leises Add/Check-off, automatischen Online-Refresh sowie tastatur- und pointerbasiertes Planning-Reorder auf Desktop und Mobile ab.
+Backend-Tests decken Persistenz, Family-Scoping, vollständige Sequenzen und die Unabhängigkeit von Check-off und Reihenfolge ab. Playwright deckt zusätzlich sichtbare/touch-sichere Reorder-Controls, den kompakten Listenwechsel, No-list/Empty/Completed/Offline-Zustände, reduzierte Planning-Chrome, Laufweg-Gruppierung, Store-Filter, leises Add/Check-off, automatischen Online-Refresh sowie tastatur- und pointerbasiertes Planning-Reorder auf Desktop und Mobile ab.
