@@ -9,6 +9,7 @@ from rest_framework.response import Response
 from family.models import Membership, UserProfile
 
 from .child_identity_service import child_profile, require_child_guardian
+from .family_modules import require_module
 from .models import PregnancyBaby
 from .views import _serialize_baby
 
@@ -16,7 +17,17 @@ from .views import _serialize_baby
 User = get_user_model()
 
 
-class ChildProfileInput(serializers.Serializer):
+class ChildRenameInput(serializers.Serializer):
+    display_name = serializers.CharField(max_length=80, trim_whitespace=True)
+
+    def validate_display_name(self, value):
+        value = value.strip()
+        if not value:
+            raise serializers.ValidationError("Name must not be empty.")
+        return value
+
+
+class ChildFamilyProfileInput(serializers.Serializer):
     display_name = serializers.CharField(max_length=80, trim_whitespace=True, required=False)
     birth_date = serializers.DateField(required=False)
 
@@ -48,40 +59,60 @@ def _require_child_confirmation(request, baby):
         raise ValidationError({"confirm_name": "Repeat the current child name exactly."})
 
 
-@api_view(["GET", "PATCH", "DELETE"])
-def baby_profile_detail(request, baby_id):
+@api_view(["GET", "PATCH"])
+def child_family_profile(request, baby_id):
     with transaction.atomic():
-        baby = child_profile(baby_id, for_update=request.method != "GET")
-        require_child_guardian(request.user, baby, manage=request.method != "GET")
+        baby = child_profile(baby_id, for_update=request.method == "PATCH")
+        require_child_guardian(request.user, baby, manage=request.method == "PATCH")
 
         if request.method == "GET":
             return Response(_family_profile(baby))
 
+        serializer = ChildFamilyProfileInput(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        display_name = serializer.validated_data.get("display_name")
+        birth_date = serializer.validated_data.get("birth_date")
+        update_fields = ["updated_at"]
+        if display_name is not None:
+            baby.display_name = display_name
+            update_fields.append("display_name")
+            if baby.membership_id:
+                Membership.objects.filter(pk=baby.membership_id).update(display_name=display_name)
+            if baby.source_pregnancy_baby_id:
+                PregnancyBaby.objects.filter(pk=baby.source_pregnancy_baby_id).update(display_name=display_name)
+        if birth_date is not None:
+            baby.birth_date = birth_date
+            update_fields.append("birth_date")
+            if baby.membership_id:
+                profile, _ = UserProfile.objects.get_or_create(user_id=baby.membership.user_id)
+                profile.birth_year = birth_date.year
+                profile.birth_month = birth_date.month
+                profile.birth_day = birth_date.day
+                profile.save(update_fields=["birth_year", "birth_month", "birth_day", "updated_at"])
+        baby.save(update_fields=update_fields)
+        baby.refresh_from_db()
+        return Response(_family_profile(baby))
+
+
+@api_view(["PATCH", "DELETE"])
+def baby_profile_detail(request, baby_id):
+    with transaction.atomic():
+        baby = child_profile(baby_id, for_update=True)
+        require_module(baby.family)
+        require_child_guardian(request.user, baby, manage=True)
+
         if request.method == "PATCH":
-            serializer = ChildProfileInput(data=request.data)
+            serializer = ChildRenameInput(data=request.data)
             serializer.is_valid(raise_exception=True)
-            display_name = serializer.validated_data.get("display_name")
-            birth_date = serializer.validated_data.get("birth_date")
-            update_fields = ["updated_at"]
-            if display_name is not None:
-                baby.display_name = display_name
-                update_fields.append("display_name")
-                if baby.membership_id:
-                    Membership.objects.filter(pk=baby.membership_id).update(display_name=display_name)
-                if baby.source_pregnancy_baby_id:
-                    PregnancyBaby.objects.filter(pk=baby.source_pregnancy_baby_id).update(display_name=display_name)
-            if birth_date is not None:
-                baby.birth_date = birth_date
-                update_fields.append("birth_date")
-                if baby.membership_id:
-                    profile, _ = UserProfile.objects.get_or_create(user_id=baby.membership.user_id)
-                    profile.birth_year = birth_date.year
-                    profile.birth_month = birth_date.month
-                    profile.birth_day = birth_date.day
-                    profile.save(update_fields=["birth_year", "birth_month", "birth_day", "updated_at"])
-            baby.save(update_fields=update_fields)
+            display_name = serializer.validated_data["display_name"]
+            baby.display_name = display_name
+            baby.save(update_fields=["display_name", "updated_at"])
+            if baby.membership_id:
+                Membership.objects.filter(pk=baby.membership_id).update(display_name=display_name)
+            if baby.source_pregnancy_baby_id:
+                PregnancyBaby.objects.filter(pk=baby.source_pregnancy_baby_id).update(display_name=display_name)
             baby.refresh_from_db()
-            return Response(_family_profile(baby))
+            return Response(_serialize_baby(baby))
 
         _require_child_confirmation(request, baby)
         membership = baby.membership
