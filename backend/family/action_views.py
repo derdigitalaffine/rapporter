@@ -165,6 +165,6 @@ def action_list(request):
     response.data["focus"] = focus
     response.data["preferences"] = preferences
     response.data["ranking_version"] = RANKING_VERSION
-    response.data["focus_ranking_version"] = FOCUS_RANKING_VERSION
+    response.data["focus_ranking_version"] = "todo-focus-v2" if any(row.get("prediction_v2") for row in decorated) else FOCUS_RANKING_VERSION
     response.data["scope"] = scope
     return response

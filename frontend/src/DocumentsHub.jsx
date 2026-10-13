@@ -1,3 +1,4 @@
+import ContextActionButton from './ContextActionButton';
 import React,{useEffect,useMemo,useState} from 'react';
 import {useTranslation} from 'react-i18next';
 import {api} from './api';
@@ -87,6 +88,7 @@ export default function DocumentsHub({family,onBack}){
      </div>
      {row.snippet&&<p className="documents-snippet">{row.snippet}</p>}
     </div>
+    <ContextActionButton family={family} context={{type:'document',id:row.id}} title={row.title||''}/>
     <a className="secondary compact documents-open" href={row.file_url} target="_blank" rel="noreferrer"><span>{t('open')}</span><Icon name="next"/></a>
    </article>)}
   </div>

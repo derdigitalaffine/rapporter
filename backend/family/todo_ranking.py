@@ -108,7 +108,7 @@ def apply_todo_preferences(rows, *, membership, now=None):
             "pinned": item["id"] in pinned,
             "hidden_from_focus": item["id"] in hidden,
             "reasons": _explanation_reasons(item, pinned=item["id"] in pinned),
-            "version": FOCUS_RANKING_VERSION,
+            "version": "todo-focus-v2" if item.get("prediction_v2") else FOCUS_RANKING_VERSION,
         }
         decorated.append(item)
 
@@ -129,6 +129,10 @@ def apply_todo_preferences(rows, *, membership, now=None):
             snoozed_until = _as_datetime((row.get("repeat") or {}).get("snoozed_until"))
             if snoozed_until and snoozed_until > now:
                 continue
+        prediction = row.get("prediction_v2") or {}
+        window = _as_datetime(prediction.get("window_start"))
+        if window and window > now and row["id"] not in pinned:
+            continue
         candidates.append(row)
 
     # Manual pin is the only preference that outranks the canonical deterministic
