@@ -7,5 +7,5 @@ from .legacy_bridge import schedule_inbox_mirror
 
 @receiver(post_save, sender=InboxItem, dispatch_uid='messenger.mirror_family_inbox')
 def mirror_family_inbox(sender, instance, created, **kwargs):
-    if created:
+    if created and instance.source != 'manual_message':
         schedule_inbox_mirror(instance.pk)
