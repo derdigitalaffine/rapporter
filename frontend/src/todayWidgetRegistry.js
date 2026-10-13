@@ -7,14 +7,14 @@ const tripSettings={show_wishes:false};
 const deprecatedTodoIds=new Set(['tasks','routines']);
 const legacyCoreAliases={priority:'focus',next:'timeline'};
 
-const entry=(id,defaultOrder,{component='external',category='family',supportedSizes=['compact','wide'],defaultSize='wide',defaultVisible=true,settingsSchema=null,deepLink=null}={})=>{
+const entry=(id,defaultOrder,{component='external',category='family',supportedSizes=['compact','wide'],defaultSize='wide',defaultVisible=true,settingsSchema=null,deepLink=null,locked=false}={})=>{
  if(!supportedSizes.includes(defaultSize))throw new Error(`Unsupported default size ${defaultSize} for ${id}`);
- return {id,titleKey:id,category,component,defaultVisible,defaultOrder,defaultSize,supportedSizes,moduleGate:null,permissionGate:null,
+ return {id,titleKey:id,category,component,defaultVisible,defaultOrder,defaultSize,supportedSizes,moduleGate:null,permissionGate:null,locked,
  sensitivity:'family',refreshPolicy:'on-focus',emptyStatePolicy:'render',deepLink,settingsSchema};
 };
 
 export const TodayWidgetRegistry=[
- entry('situation',0,{component:'TodaySituation',category:'planning',supportedSizes:['compact','medium'],defaultSize:'compact'}),
+ entry('situation',0,{component:'TodaySituation',category:'planning',supportedSizes:['compact'],defaultSize:'compact',locked:true}),
  entry('focus',1,{component:'TodayFocusWidget',category:'planning',defaultSize:'wide'}),
  entry('timeline',2,{component:'TodayTimelineWidget',category:'planning',supportedSizes:TODAY_WIDGET_SIZES,defaultSize:'wide'}),
  entry('week',3,{component:'WeekCompassWidget',category:'planning',supportedSizes:TODAY_WIDGET_SIZES,defaultSize:'medium',settingsSchema:weekSettings}),
@@ -28,7 +28,7 @@ export const TodayWidgetRegistry=[
  entry('shopping',11,{category:'household',defaultSize:'compact',defaultVisible:false}),
  entry('waste',12,{category:'household',supportedSizes:TODAY_WIDGET_SIZES,defaultSize:'medium',defaultVisible:false}),
  entry('inbox',13,{category:'collaboration',supportedSizes:TODAY_WIDGET_SIZES,defaultSize:'medium',defaultVisible:false}),
- entry('games',14,{category:'collaboration',supportedSizes:TODAY_WIDGET_SIZES,defaultSize:'medium',defaultVisible:true,deepLink:'/?page=games'}),
+ entry('games',14,{category:'collaboration',supportedSizes:TODAY_WIDGET_SIZES,defaultSize:'medium',defaultVisible:false,deepLink:'/?page=games'}),
  entry('birthdays',15,{supportedSizes:TODAY_WIDGET_SIZES,defaultSize:'medium',defaultVisible:false}),
  entry('notes',16,{supportedSizes:TODAY_WIDGET_SIZES,defaultSize:'medium',defaultVisible:false}),
  entry('loyalty',17,{category:'household',supportedSizes:TODAY_WIDGET_SIZES,defaultSize:'compact',defaultVisible:false}),
@@ -47,11 +47,12 @@ const defaultSizeFor=id=>TodayWidgetsById[id]?.defaultSize||'wide';
 
 export const defaultTodayWidgets=()=>TodayWidgetRegistry
  .slice().sort((a,b)=>a.defaultOrder-b.defaultOrder)
- .map(widget=>({id:widget.id,visible:widget.defaultVisible,size:widget.defaultSize,...(settingsFor(widget.id)?{settings:settingsFor(widget.id)}:{})}));
+ .map(widget=>({id:widget.id,visible:widget.locked?true:widget.defaultVisible,size:widget.defaultSize,...(settingsFor(widget.id)?{settings:settingsFor(widget.id)}:{})}));
 
 export const cleanTodayWidget=widget=>{
+ const definition=TodayWidgetsById[widget.id];
  const settings=settingsFor(widget.id);
- const row={id:widget.id,visible:widget.visible,size:widget.size};
+ const row={id:widget.id,visible:definition?.locked?true:widget.visible,size:definition?.locked?definition.defaultSize:widget.size};
  if(settings)row.settings={...settings,...(widget.settings||{})};
  return row;
 };
@@ -91,13 +92,13 @@ function normalizeRow(raw,version){
  if(version===1)size=LEGACY_SIZE_MAP[size];
  if(!TODAY_WIDGET_SIZES.includes(size))return null;
  const entry=TodayWidgetsById[raw.id];
- if(entry&&!entry.supportedSizes.includes(size))return null;
+ if(entry&&!entry.supportedSizes.includes(size)&&!entry.locked)return null;
  if(raw.id==='tasks'&&!['compact','wide'].includes(size))return null;
  if(raw.id==='routines'&&!TODAY_WIDGET_SIZES.includes(size))return null;
  const defaults=settingsFor(raw.id);
  const allowed=defaults?['id','visible','size','settings']:['id','visible','size'];
  if(Object.keys(raw).some(key=>!allowed.includes(key)))return null;
- const row={id:raw.id,visible:raw.visible,size};
+ const row={id:raw.id,visible:entry?.locked?true:raw.visible,size:entry?.locked?entry.defaultSize:size};
  if(defaults){
   const supplied=raw.settings;
   if(supplied!==undefined&&(!supplied||typeof supplied!=='object'||Array.isArray(supplied)||Object.keys(supplied).length!==Object.keys(defaults).length||Object.keys(defaults).some(key=>typeof supplied[key]!=='boolean')))return null;
@@ -109,15 +110,14 @@ function normalizeRow(raw,version){
 function expandKnownWidgets(rows,legacyDefaults){
  const widgets=migrateTodoWidgets(migrateCoreWidgets(rows));
  const seen=new Set(widgets.map(widget=>widget.id));
- // Lage heute used to sit outside the editable grid and was therefore always visible.
- // Migrate it into the registry as visible so existing families keep the same signal,
- // while gaining the ability to move, resize or hide it from now on.
  if(!seen.has('situation')){widgets.unshift(cleanTodayWidget({id:'situation',visible:true,size:defaultSizeFor('situation')}));seen.add('situation')}
  if(!seen.has('week')){const timelineIndex=widgets.findIndex(widget=>widget.id==='timeline');widgets.splice(timelineIndex>=0?timelineIndex+1:0,0,{...cleanTodayWidget({id:'week',visible:legacyDefaults,size:defaultSizeFor('week')}),settings:settingsFor('week')});seen.add('week')}
  if(!seen.has('trip')){const focusIndex=widgets.findIndex(widget=>widget.id==='focus');widgets.splice(focusIndex>=0?focusIndex+1:Math.min(1,widgets.length),0,{...cleanTodayWidget({id:'trip',visible:legacyDefaults,size:defaultSizeFor('trip')}),settings:settingsFor('trip')});seen.add('trip')}
  if(!seen.has('pinboard')){const timelineIndex=widgets.findIndex(widget=>widget.id==='timeline');widgets.splice(timelineIndex>=0?timelineIndex+1:Math.min(5,widgets.length),0,cleanTodayWidget({id:'pinboard',visible:legacyDefaults,size:defaultSizeFor('pinboard')}));seen.add('pinboard')}
- TodayWidgetRegistry.forEach(entry=>{if(!seen.has(entry.id)){widgets.push(cleanTodayWidget({id:entry.id,visible:entry.id==='games'?entry.defaultVisible:false,size:entry.defaultSize}));seen.add(entry.id)}});
- return widgets;
+ TodayWidgetRegistry.forEach(entry=>{if(!seen.has(entry.id)){widgets.push(cleanTodayWidget({id:entry.id,visible:entry.defaultVisible,size:entry.defaultSize}));seen.add(entry.id)}});
+ const locked=widgets.filter(widget=>TodayWidgetsById[widget.id]?.locked).map(cleanTodayWidget);
+ const flexible=widgets.filter(widget=>!TodayWidgetsById[widget.id]?.locked);
+ return [...locked,...flexible];
 }
 
 export function normalizeTodayLayout(value){
