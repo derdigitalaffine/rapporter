@@ -5,8 +5,9 @@ from datetime import timedelta
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
+from django.core import signals
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.db import IntegrityError, transaction
+from django.db import IntegrityError, close_old_connections, transaction
 from django.test import TestCase, override_settings
 from django.utils import timezone
 from PIL import Image
@@ -93,8 +94,9 @@ class MessengerTests(TestCase):
         invite = create_invitation(self.one, self.two.email, uuid.uuid4())
         outbox = TransactionalEmail.objects.get(reference_type="chat.invitation")
         self.assertNotIn("token", str(outbox.context))
-        _, text, _ = render_transactional_email(outbox)
-        self.assertIn("#chat-invite=", text)
+        with override_settings(APP_URL="https://familyos.test"):
+            _, text, _ = render_transactional_email(outbox)
+        self.assertIn("https://familyos.test/?page=inbox#chat-invite=", text)
         token = invitation_token(invite)
         self.client.force_authenticate(self.outsider)
         self.assertEqual(self.post("invite/accept/", {"token": token}).status_code, 404)
@@ -185,7 +187,11 @@ class MessengerTests(TestCase):
             downloaded = self.client.get(attachment["url"])
             self.assertEqual(downloaded.status_code, 200)
             self.assertEqual(downloaded["Cache-Control"], "private, no-store")
-            downloaded.close()
+            signals.request_finished.disconnect(close_old_connections)
+            try:
+                downloaded.close()
+            finally:
+                signals.request_finished.connect(close_old_connections)
             self.client.force_authenticate(self.one)
             self.client.delete(f'/api/chat/conversations/{self.conv}/messages/{response.data["id"]}/')
             self.assertEqual(self.client.get(attachment["url"]).status_code, 404)

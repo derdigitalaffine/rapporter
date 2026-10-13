@@ -1,8 +1,9 @@
 from django.urls import path
-from . import views
+from . import family_views, views
 
 urlpatterns = [
     path("account/", views.account), path("contacts/", views.contacts),
+    path("family-contacts/", family_views.family_contacts), path("family-conversations/", family_views.family_conversation),
     path("contacts/<uuid:friendship_id>/", views.contact_action), path("blocks/<int:user_id>/", views.unblock),
     path("invitations/", views.invitations), path("invitations/<uuid:invitation_id>/", views.invitation_action),
     path("invite/preview/", views.invitation_preview), path("invite/accept/", views.invitation_accept), path("invite/register/", views.invitation_register),

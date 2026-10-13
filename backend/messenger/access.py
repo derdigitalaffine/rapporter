@@ -41,7 +41,23 @@ def is_blocked(one, other):
     return ChatBlock.objects.filter(Q(blocker_id=one, blocked_id=other) | Q(blocker_id=other, blocked_id=one)).exists()
 
 
-def friendship_for(one, other, *, lock=False):
+def shared_chat_family(one, other):
+    try:
+        one, other = int(one), int(other)
+    except (TypeError, ValueError):
+        return False
+    if one == other:
+        return False
+    return Membership.objects.filter(
+        user_id=one,
+        role__in=WRITER_ROLES,
+        family__status="active",
+        family__memberships__user_id=other,
+        family__memberships__role__in=WRITER_ROLES,
+    ).exists()
+
+
+def friendship_for(one, other, *, lock=False, allow_family=False):
     low, high = sorted((int(one), int(other)))
     rows = Friendship.objects.select_related("low_user", "high_user")
     if lock:
@@ -49,15 +65,19 @@ def friendship_for(one, other, *, lock=False):
     row = rows.filter(low_user_id=low, high_user_id=high, active=True).first()
     if not row or not eligible(row.low_user) or not eligible(row.high_user) or is_blocked(low, high):
         raise Http404
+    if row.family_derived and (not allow_family or not shared_chat_family(low, high)):
+        raise Http404
     return row
 
 
-def friendship_access(user, friendship_id, *, lock=False):
+def friendship_access(user, friendship_id, *, lock=False, allow_family=False):
     rows = Friendship.objects.select_related("low_user", "high_user")
     if lock:
         rows = rows.select_for_update(of=("self",))
     row = rows.filter(pk=friendship_id, active=True).filter(Q(low_user=user) | Q(high_user=user)).first()
     if not row or not eligible(row.low_user) or not eligible(row.high_user) or is_blocked(row.low_user_id, row.high_user_id):
+        raise Http404
+    if row.family_derived and (not allow_family or not shared_chat_family(row.low_user_id, row.high_user_id)):
         raise Http404
     return row
 
@@ -75,7 +95,7 @@ def membership(user, conversation_id, *, write=False, lock=False):
         if member.state != "active":
             raise PermissionDenied({"code": "chat_not_active"})
         if member.conversation.kind == "direct":
-            friendship_access(user, member.conversation.friendship_id, lock=lock)
+            friendship_access(user, member.conversation.friendship_id, lock=lock, allow_family=True)
     return member
 
 
@@ -99,4 +119,3 @@ def can_send(member):
 
 def profile_payload(user, *, label=None):
     return {"id": user.pk, "display_name": label or preferences(user).display_name, "avatar_url": f"/api/chat/avatars/{user.pk}/"}
-
