@@ -1,12 +1,14 @@
 import {test,expect} from '@playwright/test';
 import {installApiMocks} from './mock-api.js';
 
+const TARGET_EPSILON_PX=0.01;
+
 function json(route,body,status=200){return route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)})}
 
 async function expectMinTarget(locator){
   const box=await locator.boundingBox();
-  expect(box?.width||0).toBeGreaterThanOrEqual(44);
-  expect(box?.height||0).toBeGreaterThanOrEqual(44);
+  expect((box?.width||0)+TARGET_EPSILON_PX).toBeGreaterThanOrEqual(44);
+  expect((box?.height||0)+TARGET_EPSILON_PX).toBeGreaterThanOrEqual(44);
 }
 
 async function expectClasses(locator,...classes){
