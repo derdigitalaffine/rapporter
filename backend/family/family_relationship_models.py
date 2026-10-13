@@ -91,4 +91,9 @@ class FamilyRelationship(TimestampedModel):
 
     @property
     def display_label(self):
-        return self.custom_label.strip() or self.get_kind_display()
+        custom = self.custom_label.strip()
+        if custom:
+            return custom
+        if self.kind == self.Kind.NONE:
+            return ""
+        return self.get_kind_display()
