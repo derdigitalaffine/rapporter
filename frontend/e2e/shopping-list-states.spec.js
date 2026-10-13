@@ -15,7 +15,7 @@ test('shopping lists use one compact accessible switcher instead of a tab wall',
     {id:'shop-3',family:'family-1',name:'Baumarkt und Garten',store:'',icon:'cart-shopping',archived:false,sort_order:2,items:[]},
   )},'de',{width:320,height:844});
   await expect(page.locator('.shopping-list-tabs')).toHaveCount(0);
-  const select=page.getByLabel('Einkaufsliste wechseln');await expect(select).toBeVisible();await expect(select.locator('option')).toHaveCount(3);const box=await select.boundingBox();expect(box.height).toBeGreaterThanOrEqual(48);
+  const select=page.getByLabel('Einkaufsliste wechseln');await expect(select).toBeVisible();await expect(select.locator('option')).toHaveCount(3);const box=await select.boundingBox();expect(box.height).toBeGreaterThanOrEqual(48);expect(parseFloat(await select.evaluate(element=>getComputedStyle(element).fontSize))).toBeGreaterThanOrEqual(16);
   const createButton=page.getByRole('button',{name:'Neue Liste'});const createBox=await createButton.boundingBox();expect(createBox.width).toBeGreaterThanOrEqual(48);expect(createBox.height).toBeGreaterThanOrEqual(48);await expectNoHorizontalOverflow(page);
   await select.selectOption('shop-2');await expect(page.locator('.shopping-session-title').getByText('Drogerie',{exact:true})).toBeVisible();await expect(page.getByText('Diese Liste ist noch leer',{exact:true})).toBeVisible();
   await page.setViewportSize({width:1024,height:768});await expect(createButton.locator('span')).toBeVisible();await expectNoHorizontalOverflow(page);
