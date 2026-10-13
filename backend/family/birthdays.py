@@ -9,6 +9,7 @@ from zoneinfo import ZoneInfo
 from django.db import transaction
 from django.utils import timezone
 
+from .birthday_age import age_preference_map
 from .models import BirthdayGiftPlan, BirthdayPerson, BirthdayReminder, Family, Membership
 from .models_features import NotificationPreference
 from .push import send_user_push
@@ -34,6 +35,7 @@ def next_occurrence(month, day, today):
 
 def targets(family, user):
     result = []
+    age_preferences = age_preference_map(family)
     for member in family.memberships.select_related("user", "user__familyos_profile"):
         profile = getattr(member.user, "familyos_profile", None)
         if not profile or not profile.birth_month or not profile.birth_day:
@@ -41,9 +43,11 @@ def targets(family, user):
         if member.birthday_visibility=="hidden" and member.user_id!=user.id:
             continue
         year = profile.birth_year if member.user_id==user.id or member.birthday_visibility=="full_date" else None
-        result.append({"key":f"member:{member.id}", "id":str(member.id), "kind":"member", "name":member.display_name or member.user.username, "birth_month":profile.birth_month, "birth_day":profile.birth_day, "birth_year":year, "target_user":member.user_id, "created_at":max(member.created_at, profile.updated_at), "relation":"", "object":member})
+        key=f"member:{member.id}"
+        result.append({"key":key, "id":str(member.id), "kind":"member", "name":member.display_name or member.user.username, "birth_month":profile.birth_month, "birth_day":profile.birth_day, "birth_year":year, "show_birthday_age":age_preferences.get(key,True), "target_user":member.user_id, "created_at":max(member.created_at, profile.updated_at), "relation":"", "object":member})
     for person in family.birthday_people.filter(active=True):
-        result.append({"key":f"person:{person.id}", "id":str(person.id), "kind":"person", "name":person.name, "birth_month":person.birth_month, "birth_day":person.birth_day, "birth_year":person.birth_year, "target_user":None, "created_at":person.created_at, "relation":person.relation, "object":person})
+        key=f"person:{person.id}"
+        result.append({"key":key, "id":str(person.id), "kind":"person", "name":person.name, "birth_month":person.birth_month, "birth_day":person.birth_day, "birth_year":person.birth_year, "show_birthday_age":age_preferences.get(key,True), "target_user":None, "created_at":person.created_at, "relation":person.relation, "object":person})
     return result
 
 
@@ -53,6 +57,10 @@ def can_plan(family, user, target):
 
 def plan_query(target):
     return {"membership_id":target["id"]} if target["kind"]=="member" else {"person_id":target["id"]}
+
+
+def _turning_age(target, year):
+    return year-target["birth_year"] if target["birth_year"] and target.get("show_birthday_age",True) else None
 
 
 def project(family, user, today=None):
@@ -66,8 +74,8 @@ def project(family, user, today=None):
         status = ("ready" if plan.linked_task and plan.linked_task.completed_at and plan.status!="given" else plan.status) if plan else "none"
         if plan and plan.linked_task and not plan.linked_task.completed_at and status=="ready":
             status = "planned"
-        row = {key:target[key] for key in ["key", "id", "kind", "name", "birth_month", "birth_day", "birth_year", "relation"]}
-        row.update(next_occurrence=upcoming.isoformat(),days_until=(upcoming-today).days,turning_age=upcoming.year-target["birth_year"] if target["birth_year"] else None,can_plan=allowed)
+        row = {key:target[key] for key in ["key", "id", "kind", "name", "birth_month", "birth_day", "birth_year", "show_birthday_age", "relation"]}
+        row.update(next_occurrence=upcoming.isoformat(),days_until=(upcoming-today).days,turning_age=_turning_age(target,upcoming.year),can_plan=allowed)
         if allowed:
             row.update(gift_status=status,idea_text=plan.idea_text if plan else "",gift_plan_id=str(plan.id) if plan else None,linked_task=str(plan.linked_task_id) if plan and plan.linked_task_id else None,linked_shopping_item=str(plan.linked_shopping_item_id) if plan and plan.linked_shopping_item_id else None,suggested_action="celebrate" if upcoming==today else "gift_ready" if status in {"ready","given"} else "gift_prepare")
         result.append(row)
@@ -76,12 +84,17 @@ def project(family, user, today=None):
 
 def calendar_projection(family,user,start,end):
     rows = []
+    english = family.locale.startswith("en")
     for target in targets(family,user):
         for year in range(start.year,end.year+1):
             day = occurrence(target["birth_month"],target["birth_day"],year)
             if start<=day<=end:
                 start_at = datetime.combine(day,time.min,ZoneInfo(family.timezone))
-                rows.append({"id":f"birthday:{target['key']}:{year}","family":str(family.id),"source":None,"type":"birthday","title":f"{target['name']}: Geburtstag" if not family.locale.startswith("en") else f"{target['name']}'s birthday","starts_at":start_at.isoformat(),"ends_at":datetime.combine(day+timedelta(days=1),time.min,ZoneInfo(family.timezone)).isoformat(),"actionable":True,"payload":{"all_day":True,"birthday_key":target["key"],"provider":"FamilyOS","url":f"/?page=birthdays&birthday={target['key']}"}})
+                age = _turning_age(target,year)
+                title = f"{target['name']}'s birthday" if english else f"{target['name']}: Geburtstag"
+                if age is not None:
+                    title += f" · turns {age}" if english else f" · wird {age}"
+                rows.append({"id":f"birthday:{target['key']}:{year}","family":str(family.id),"source":None,"type":"birthday","title":title,"starts_at":start_at.isoformat(),"ends_at":datetime.combine(day+timedelta(days=1),time.min,ZoneInfo(family.timezone)).isoformat(),"actionable":True,"payload":{"all_day":True,"birthday_key":target["key"],"turning_age":age,"provider":"FamilyOS","url":f"/?page=birthdays&birthday={target['key']}"}})
     return rows
 
 
@@ -110,7 +123,15 @@ def run_birthday_reminders(now=None):
                 if not created:
                     continue
                 english = family.locale.startswith("en")
-                body = (f"Today is {row['name']}'s birthday!" if stage==0 else f"{row['name']}'s birthday is in {stage} day(s).") if english else (f"Heute hat {row['name']} Geburtstag!" if stage==0 else f"{row['name']} hat in {stage} Tagen Geburtstag.")
+                age = row.get("turning_age")
+                if english:
+                    body = f"Today is {row['name']}'s birthday!" if stage==0 else f"{row['name']}'s birthday is in {stage} day(s)."
+                    if age is not None:
+                        body = f"Today is {row['name']}'s birthday — turns {age}!" if stage==0 else f"{row['name']}'s birthday is in {stage} day(s) — turning {age}."
+                else:
+                    body = f"Heute hat {row['name']} Geburtstag!" if stage==0 else f"{row['name']} hat in {stage} Tagen Geburtstag."
+                    if age is not None:
+                        body = f"Heute hat {row['name']} Geburtstag und wird {age}!" if stage==0 else f"{row['name']} hat in {stage} Tagen Geburtstag und wird {age}."
                 if stage in {21,7}:
                     labels = {"none":("No gift prepared yet.","Noch kein Geschenk vorbereitet."),"idea":("A gift idea is noted.","Eine Geschenkidee ist notiert."),"planned":("The gift is being prepared.","Das Geschenk ist geplant."),"ordered":("The gift has been ordered.","Das Geschenk ist bestellt.")}
                     body += " " + labels.get(row.get("gift_status"),labels["none"])[0 if english else 1]
