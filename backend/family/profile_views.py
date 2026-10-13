@@ -1,13 +1,12 @@
 import io
 import uuid
-import warnings
 from datetime import date
 from pathlib import Path
 
 from django.conf import settings
 from django.db import transaction
 from django.http import FileResponse, Http404
-from PIL import Image, ImageOps, UnidentifiedImageError
+from PIL import Image
 from rest_framework import permissions, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.exceptions import PermissionDenied
@@ -18,8 +17,6 @@ from .models import Family, Membership, UserProfile
 
 
 AVATAR_SIZES = (64, 128, 256)
-MAX_AVATAR_PIXELS = 20_000_000
-ALLOWED_FORMATS = {"JPEG", "PNG", "WEBP"}
 
 
 def _profile(user):

@@ -188,11 +188,9 @@ class ExpenseViewSet(viewsets.ModelViewSet):
             owner_membership=owner_membership,
             created_by=request.user,
             canonical=canonical,
+            ledger=ledger,
             quality_warnings=quality_warnings,
         )
-        if expense.ledger_id != ledger.id:
-            expense.ledger = ledger
-            expense.save(update_fields=["ledger", "updated_at"])
         data = ExpenseSerializer(expense, context={"request": request}).data
         data["quality_warnings"] = quality_warnings
         return Response(data, status=status.HTTP_202_ACCEPTED)

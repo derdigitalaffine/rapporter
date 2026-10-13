@@ -106,13 +106,14 @@ def _create_receipt_document(expense, canonical, *, owner_membership, created_by
     return document, key
 
 
-def create_receipt_draft(*, family, paid_by, owner_membership, created_by, canonical, quality_warnings):
+def create_receipt_draft(*, family, paid_by, owner_membership, created_by, canonical, quality_warnings, ledger=None):
     """Create an Expense draft and its hidden family-scoped Document atomically."""
     stored_key = None
     try:
         with transaction.atomic():
             expense = Expense.objects.create(
                 family=family,
+                ledger=ledger,
                 paid_by=paid_by,
                 created_by=created_by,
                 source=Expense.Source.RECEIPT,

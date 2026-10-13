@@ -125,7 +125,7 @@ async function boot(page,path='/',options={}){
 test('expenses · two-tap quick add uses visible safe defaults and updates balance',async({page})=>{
   const store=await boot(page);
   await page.locator('.bottom-nav').getByRole('button',{name:'Mehr'}).click();
-  await page.getByRole('button',{name:'Ausgabe',exact:true}).click();
+  await page.getByRole('button',{name:'Geld & Finanzen',exact:true}).click();
   await expect(page.getByRole('heading',{name:'Geld & Finanzen',exact:true})).toBeVisible();
   await expect(page.locator('.bottom-nav')).toHaveCount(0);
 

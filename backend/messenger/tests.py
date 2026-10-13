@@ -19,7 +19,7 @@ from mailing.models import TransactionalEmail
 from mailing.service import process_one_transactional_email, render_transactional_email
 from notifications.models import Notification
 from notifications.services import record_personal_notification
-from .access import eligible
+from .access import eligible, external_chat_eligible
 from .invitations import create_invitation, invitation_token
 from .models import ChatMessage, ContactInvitation, ConversationMember, Friendship
 
@@ -86,7 +86,7 @@ class MessengerTests(TestCase):
 
     def test_child_unverified_guest_and_personal_without_consent_cannot_write(self):
         for user in (self.child, self.user("guest", self.family, "guest"), self.user("unverified", self.family, verified=False), self.user("lonely")):
-            self.assertFalse(eligible(user))
+            self.assertFalse(external_chat_eligible(user))
             self.client.force_authenticate(user)
             self.assertEqual(self.post("invitations/", {"email": "x@example.com", "request_id": str(uuid.uuid4())}).status_code, 403)
 

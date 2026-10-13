@@ -13,10 +13,15 @@ from rest_framework.exceptions import PermissionDenied, ValidationError
 from auth_identity.models import EmailIdentity
 from auth_identity.service import create_primary_identity, generate_internal_username, normalize_email
 from mailing.service import enqueue_transactional_email
-from .access import eligible, is_blocked, preferences, require_writer
+from .access import external_chat_eligible, is_blocked, preferences
 from .models import ChatPreference, ContactInvitation, Friendship
 
 SALT = "familyos.chat-invitation.v1"
+
+
+def _require_external_writer(user):
+    if not external_chat_eligible(user):
+        raise PermissionDenied({"code": "chat_account_unavailable"})
 
 
 def invitation_token(invite):
@@ -35,7 +40,7 @@ def resolve_invitation(token, *, lock=False):
     if lock:
         rows = rows.select_for_update(of=("self",))
     invite = rows.filter(pk=invite_id, generation=generation, status__in=("pending", "accepted"), expires_at__gt=timezone.now()).first()
-    if not invite or not eligible(invite.sender):
+    if not invite or not external_chat_eligible(invite.sender):
         raise Http404
     return invite
 
@@ -46,7 +51,7 @@ def invitation_path(reference_id):
         invite = ContactInvitation.objects.filter(pk=uuid.UUID(invite_id), generation=uuid.UUID(generation), status="pending", expires_at__gt=timezone.now()).select_related("sender").first()
     except (ValueError, TypeError):
         return ""
-    if not invite or not eligible(invite.sender):
+    if not invite or not external_chat_eligible(invite.sender):
         return ""
     target = EmailIdentity.objects.filter(email_normalized=invite.email, kind="primary").values_list("user_id", flat=True).first()
     if target:
@@ -58,7 +63,7 @@ def invitation_path(reference_id):
 
 
 def create_invitation(sender, email, request_id):
-    require_writer(sender)
+    _require_external_writer(sender)
     email = normalize_email(email)
     own = EmailIdentity.objects.filter(user=sender, kind="primary").first()
     if own and email == own.email_normalized:
@@ -92,7 +97,7 @@ def accept_invitation(invite, user):
     if not identity:
         raise Http404
     if user.family_memberships.exists():
-        require_writer(user)
+        _require_external_writer(user)
     else:
         pref = preferences(user)
         pref.personal_account = True
