@@ -50,7 +50,7 @@ async function boot(page,{withOverdueRoutine=false}={}){
  return {state,actionRequests:()=>actionRequests};
 }
 
-test('legacy priority and next migrate to canonical Focus, Timeline and editable Day status with one shared action read',async({page})=>{
+test('legacy priority and next migrate to canonical Focus, Timeline and fixed Day status with one shared action read',async({page})=>{
  const {state,actionRequests}=await boot(page);
  const situation=page.getByTestId('today-situation');
  await expect(situation.getByRole('link',{name:'1 offener Punkt heute'})).toBeVisible();
@@ -64,6 +64,9 @@ test('legacy priority and next migrate to canonical Focus, Timeline and editable
  await expect(timeline).toContainText('Kinderarzt');
  await expect(timeline).toContainText('Wäsche aufhängen');
  await expect(timeline).not.toContainText('Sturmwarnung');
+ const now=timeline.locator('.today-timeline-now');
+ await expect(now).toContainText('Jetzt');
+ await expect(now).toHaveCount(1);
  await expect.poll(actionRequests).toBe(1);
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=document.documentElement.clientWidth)).toBe(true);
 
@@ -71,14 +74,16 @@ test('legacy priority and next migrate to canonical Focus, Timeline and editable
  const editor=page.getByRole('region',{name:'Anpassen'});
  const situationRow=editor.locator('[data-editor-widget-id="situation"]');
  await expect(situationRow).toBeVisible();
- await expect(situationRow.getByRole('combobox',{name:'Tageslage · Größe'}).locator('option')).toHaveText(['Kompakt','Mittel']);
+ await expect(situationRow.getByRole('combobox',{name:'Tageslage · Größe'})).toHaveCount(0);
+ await expect(situationRow.getByRole('button',{name:/Tageslage · (Verschieben|Ausblenden|Nach oben|Nach unten)/})).toHaveCount(0);
+ await expect(situationRow).toContainText('Fest');
  await expect(editor.locator('[data-editor-widget-id="focus"]')).toBeVisible();
  await expect(editor.locator('[data-editor-widget-id="timeline"]')).toBeVisible();
  await expect(editor.locator('[data-editor-widget-id="priority"]')).toHaveCount(0);
  await expect(editor.locator('[data-editor-widget-id="next"]')).toHaveCount(0);
  await editor.getByRole('button',{name:'Speichern',exact:true}).click();
  expect(state.todayLayout.version).toBe(2);
- expect(state.todayLayout.widgets.find(row=>row.id==='situation')).toEqual(expect.objectContaining({visible:true,size:'compact'}));
+ expect(state.todayLayout.widgets[0]).toEqual(expect.objectContaining({id:'situation',visible:true,size:'compact'}));
  expect(state.todayLayout.widgets.some(row=>row.id==='focus')).toBe(true);
  expect(state.todayLayout.widgets.some(row=>row.id==='timeline')).toBe(true);
  expect(state.todayLayout.widgets.some(row=>['priority','next'].includes(row.id))).toBe(false);
@@ -99,19 +104,11 @@ test('completing a shared Today action refreshes To-do, Focus, Timeline and Day 
  await expect.poll(actionRequests).toBe(2);
 });
 
-test('Day status exposes overdue routines as icon-only one-click actions with undo',async({page})=>{
+test('Day status aggregates overdue routines and sends completion to the canonical To-do surface',async({page})=>{
  const {actionRequests}=await boot(page,{withOverdueRoutine:true});
  const situation=page.getByTestId('today-situation');
- const routine= situation.getByRole('button',{name:'Erledigen: Müll rausstellen'});
- await expect(routine).toBeVisible();
- await expect(routine).toHaveText('');
  await expect(situation.getByRole('link',{name:'2 offene Punkte heute'})).toBeVisible();
- await routine.click();
- await expect(situation.getByRole('button',{name:'Erledigen: Müll rausstellen'})).toHaveCount(0);
- const undo=situation.getByRole('button',{name:'Rückgängig: Müll rausstellen'});
- await expect(undo).toBeVisible();
- await expect.poll(actionRequests).toBe(2);
- await undo.click();
- await expect(situation.getByRole('button',{name:'Erledigen: Müll rausstellen'})).toBeVisible();
- await expect.poll(actionRequests).toBe(3);
+ await expect(situation.getByRole('link',{name:'1 überfällige Routine'})).toBeVisible();
+ await expect(situation.getByRole('button',{name:/Müll rausstellen|Erledigen/})).toHaveCount(0);
+ await expect.poll(actionRequests).toBe(1);
 });
