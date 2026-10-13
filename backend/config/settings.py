@@ -56,5 +56,5 @@ MATOMO_TRACKING_ENABLED=env_bool("MATOMO_TRACKING_ENABLED",False)
 MATOMO_TRACKING_APP_ORIGIN=(os.getenv("MATOMO_TRACKING_APP_ORIGIN","").strip().rstrip("/") or APP_URL)
 MATOMO_TRACKING_TIMEOUT=float(os.getenv("MATOMO_TRACKING_TIMEOUT","4") or "4")
 
-# Deployment-owned Geofabrik raster template, including server-only account key.
-VEHICLES_GEOFABRIK_TILE_URL=os.getenv("VEHICLES_GEOFABRIK_TILE_URL", "").strip()
+# Public OSM raster tiles by default; optionally use a same-origin tile service.
+VEHICLES_OSM_TILE_URL=os.getenv("VEHICLES_OSM_TILE_URL", "https://tile.openstreetmap.org/{z}/{x}/{y}.png").strip()

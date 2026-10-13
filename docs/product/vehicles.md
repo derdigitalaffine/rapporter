@@ -22,13 +22,19 @@ Ein Startrequest, Tankrequest und GPS-Punkt haben stabile Wiederholungsschlüsse
 
 Dieses Fahrtenbuch ist eine persönliche Dokumentation, keine Zusage eines steuerrechtlich anerkannten oder manipulationssicheren Fahrtenbuchs.
 
-## Geofabrik und Betrieb
+## OpenStreetMap und Betrieb
 
-MapLibre GL JS wird als versionierte npm-Abhängigkeit gebündelt und erst beim Öffnen der Karte geladen. Die Kartenbasis nutzt Geofabrik-Rasterkacheln. Geofabrik liefert Kunden einen individuellen Schlüssel und URL-Vertrag: https://www.geofabrik.de/de/maps/rastertiles.html. **Kein öffentlicher Demo-/OSM-Server wird als Produktionsfallback benutzt.**
+MapLibre GL JS wird als versionierte npm-Abhängigkeit gebündelt und erst beim Öffnen der Karte geladen. Standardmäßig kommt die OpenStreetMap-Rasterkarte von `https://tile.openstreetmap.org/{z}/{x}/{y}.png` zum Einsatz. **Kein Account oder API-Schlüssel erforderlich.** Sichtbare Attribution verlinkt die OSM-Copyrightseite und bleibt ohne zusätzlichen Toggle sichtbar.
 
-`VEHICLES_GEOFABRIK_TILE_URL` in der Backend-Umgebung auf die vertraglich freigegebene HTTPS-URL mit `{z}`, `{x}`, `{y}` setzen. Der Host muss unter `.geofabrik.de` liegen; keine Redirects, keine requestgesteuerten URLs. Der Account-Schlüssel bleibt serverseitig. Der Browser fordert nur authentifizierte `/api/vehicles/tiles/z/x/y/?family=…`-Kacheln an. Zoom 0–19, feste Timeout-/Größenlimits, keine serverseitige Weitergabe von Cookies. Die Geofabrik-Requests übermitteln den sichtbaren Kartenausschnitt, jedoch keinen Fahrtzweck und keine vollständige Route. Die Route wird lokal in MapLibre gerendert. Kartenaufruf erfolgt bewusst durch **Karte anzeigen**. Attribution bleibt sichtbar.
+Die Kacheln werden direkt vom Browser abgerufen. Der Browser respektiert die normalen HTTP-Cache-/Expiry-/ETag-Header; es werden keine `no-cache`-Header und keine FamilyOS-Credentials an den Anbieter gesendet. Nur für Tile-Requests gilt `referrerPolicy: origin`: OSM erhält die App-Adresse, keine Family-/Vehicle-/Journey-Queryparameter. Die globale Referrer-Policy bleibt unverändert. OSM sieht außerdem die Client-IP und den sichtbaren Kartenausschnitt. Der Fahrtzweck und die vollständigen GPS-Routendaten werden nicht übermittelt: die Route wird lokal als GeoJSON-Overlay gezeichnet. Karten werden nur nach **Karte anzeigen** geladen, nicht beim Öffnen des Fahrtenbuchs. Keine Offline-/Bulk-Downloads, keine Hintergrund-Prefetch-Jobs.
 
-Ohne Geofabrik-Konfiguration bzw. bei Dienstfehler bleibt die Routenzeichnung auf neutraler Basis verfügbar; die Oberfläche weist auf die fehlende/unverfügbare Kartenbasis hin. Fahrzeugverwaltung und GPS/Fahrtenbuch sind unabhängig davon verfügbar. Die API und ihre Fehler sind `private, no-store`; GPS-Daten werden nicht im gemeinsamen Offline-Store abgelegt.
+Die [OSM Tile Usage Policy](https://operations.osmfoundation.org/policies/tiles/) gilt für diesen Community-Dienst. Der Dienst bietet keine garantierte Verfügbarkeit. Bei Fehlern bleibt die Route auf neutraler Kartenbasis bzw. mit Hinweis verfügbar; Fahrzeugverwaltung und GPS/Fahrtenbuch sind davon unabhängig. Für größeren Betrieb oder eigene Verfügbarkeitsanforderungen kann eine eigene OSM-Kachelinfrastruktur genutzt werden.
+
+`VEHICLES_OSM_TILE_URL` ist optional und standardmäßig auf den OSM-Endpoint gesetzt. Ein eigener Dienst im selben Origin kann als `/maptiles/{z}/{x}/{y}.png` konfiguriert werden. Die drei Platzhalter sind erforderlich; fremde Hosts, HTTP-Drittanbieter, URL-Credentials, Querytokens und Fragmente werden abgelehnt. Die Variable ist öffentlich und darf keine Geheimnisse enthalten. Die alte `VEHICLES_GEOFABRIK_TILE_URL` wird nicht mehr verwendet und kann aus bestehenden Deployment-Umgebungen entfernt werden. Es gibt keinen Geofabrik-Tile-Proxy mehr.
+
+Alle Caddyvarianten erlauben OSM-Kacheln gezielt in `connect-src`/`img-src`; sonstige externe Quellen bleiben gesperrt. MapLibre verwendet einen gebündelten Worker im selben Origin, sodass `worker-src self` erhalten bleibt. `img-src blob:` erlaubt die lokale Bilddecodierung der Rasterkacheln, keine Scriptausführung. `Permissions-Policy: geolocation=(self)` erlaubt die Standortfunktion ausschließlich der eigenen Anwendung. Die explizite Aufzeichnungswahl und die Standortfreigabe des Browsers bleiben nötig; Kamera/Mikrofon werden weiterhin nicht aktiviert.
+
+Die privaten Fahrzeuge-/Fahrt-APIs einschließlich Kartenkonfiguration bleiben `private, no-store`. Der Service Worker behandelt Drittanbieterrequests nicht und legt keine OSM-Kacheln oder GPS-Punkte in seinem Offline-Appcache ab.
 
 ## API und Migration
 
@@ -38,7 +44,7 @@ Ohne Geofabrik-Konfiguration bzw. bei Dienstfehler bleibt die Routenzeichnung au
 - `GET /api/vehicles/active/?family=<uuid>`
 - `GET/POST/DELETE /api/vehicle-journeys/<uuid>/` (POST beendet; DELETE nur abgeschlossene eigene Fahrt)
 - `POST /api/vehicle-journeys/<uuid>/points/`
-- `GET /api/vehicles/map-config/?family=<uuid>` und authentifizierte Tile-URLs
+- `GET /api/vehicles/map-config/?family=<uuid>` liefert die öffentliche Kartenkonfiguration nach Premium-/Family-/Adult-Prüfung
 
 Additive Migration `vehicles.0001` legt ausschließlich neue Tabellen/Constraints an. `entitlements.0002` ergänzt den vorhandenen Capability-Katalog, keine Änderung des Cutover-/Grant-Modells. Auf bestehendem Datenbestand `python manage.py migrate` ausführen. Anwendungsrollback lässt Tabellen und Daten bestehen; Schema-Downgrade von `vehicles.0001` löscht Fahrzeug-/Tank-/Fahrtdaten und gehört nur in eine bewusst geplante Wiederherstellung mit Backup. Capability-Seed-Rückweg ist absichtlich ein No-op, damit bestehende Grant-Verweise erhalten bleiben. Keine irreversiblen Backfills.
 

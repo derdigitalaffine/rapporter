@@ -1,9 +1,7 @@
 import math
 from urllib.parse import urlparse
-import requests
 from django.conf import settings
 from django.db import transaction
-from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework.decorators import api_view, permission_classes
@@ -207,32 +205,11 @@ def active(request):
 @permission_classes([IsAuthenticated])
 def map_config(request):
     access(request, request.query_params.get("family"))
-    return private_response({"configured": bool(settings.VEHICLES_GEOFABRIK_TILE_URL)})
-
-
-@api_view(["GET"])
-@permission_classes([IsAuthenticated])
-def tile(request, z, x, y):
-    access(request, request.query_params.get("family"))
-    if not (0 <= z <= 19 and 0 <= x < 2**z and 0 <= y < 2**z):
-        return private_response({"code": "invalid_tile"}, 400)
-    template = settings.VEHICLES_GEOFABRIK_TILE_URL
-    # A deployment-owned Geofabrik endpoint, never a URL from a request.
+    template = settings.VEHICLES_OSM_TILE_URL
     parsed = urlparse(template)
-    if parsed.scheme != "https" or not parsed.hostname or not parsed.hostname.endswith(".geofabrik.de") or parsed.username or parsed.password or parsed.port not in (None, 443):
-        return private_response({"code": "map_unavailable"}, 503)
-    try:
-        upstream = requests.get(template.replace("{z}", str(z)).replace("{x}", str(x)).replace("{y}", str(y)), timeout=(3, 8), allow_redirects=False, stream=True)
-        with upstream:
-            if upstream.status_code != 200 or upstream.headers.get("Content-Type", "").split(";")[0] != "image/png":
-                return private_response({"code": "map_unavailable"}, 502)
-            content = bytearray()
-            for chunk in upstream.iter_content(16384):
-                content.extend(chunk)
-                if len(content) > 1048576:
-                    return private_response({"code": "map_unavailable"}, 502)
-        response = HttpResponse(bytes(content), content_type="image/png")
-        response["Cache-Control"] = "private, no-store"
-        return response
-    except requests.RequestException:
-        return private_response({"code": "map_unavailable"}, 502)
+    public_osm = template == "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+    same_origin = template.startswith("/") and not template.startswith("//") and not parsed.netloc
+    valid = (public_osm or same_origin) and "\\" not in template and not any(ord(char) < 32 for char in template) and all(token in template for token in ("{z}", "{x}", "{y}")) and not parsed.query and not parsed.fragment
+    if not valid:
+        return private_response({"configured": False})
+    return private_response({"configured": True, "tile_url": template})
