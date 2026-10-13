@@ -1,53 +1,17 @@
-import {useEffect,useMemo,useRef,useState} from 'react';
+import {useEffect,useRef,useState} from 'react';
 import {useTranslation} from 'react-i18next';
 import './create-i18n';
 import './vehicles-i18n';
 import './create-smart.css';
-import {api} from './api';
 import {Icon} from './icons';
-import {availableCreateActions,CREATE_PAGES,createActionById,normalizeCreateRankingProfile,rankCreateActions,resolveDirectCreateAction} from './create-actions';
-import {CREATE_RANKING_UPDATED_EVENT,createRankingScope,createRankingScopeKey,fetchCreateRanking,flushCreateUsageQueue,loadCachedCreateRanking} from './create-ranking-client';
+import {CREATE_PAGES,createActionById} from './create-actions';
 import {CREATE_REQUEST_EVENT} from './create-request';
 
-const CAPABILITIES={loyalty:true,messages:false};
-const EMPTY_MODULES={baby:null,pets:null};
-
-export default function GlobalCreate({userId,page,family,role,context={},onCreate,suppressed=false,entitlements=null}){
+export default function GlobalCreate({page,family,role,context={},onCreate,suppressed=false,createActions}){
   const {t}=useTranslation();
   const fabRef=useRef(null);const firstActionRef=useRef(null);const pendingAction=useRef(null);const previousSuppressed=useRef(suppressed);
-  const [paletteOpen,setPaletteOpen]=useState(false);const [showAll,setShowAll]=useState(false);const [frozenQuick,setFrozenQuick]=useState([]);const [keyboardOpen,setKeyboardOpen]=useState(false);const [externalDialog,setExternalDialog]=useState(false);const [restoreFocus,setRestoreFocus]=useState(false);const [moduleState,setModuleState]=useState({familyId:null,...EMPTY_MODULES});
-  const [rankingView,setRankingView]=useState(()=>({scopeKey:'',profile:normalizeCreateRankingProfile({})}));
-  useEffect(()=>{
-    let live=true;
-    const familyId=family?.id||null;
-    if(!familyId){setModuleState({familyId:null,...EMPTY_MODULES});return()=>{live=false}};
-    setModuleState({familyId:null,...EMPTY_MODULES});
-    Promise.all([
-      api(`/baby/module/?family=${encodeURIComponent(familyId)}`).catch(()=>null),
-      api(`/pets/module/?family=${encodeURIComponent(familyId)}`).catch(()=>null),
-    ]).then(([baby,pets])=>{if(live)setModuleState({familyId,baby,pets})});
-    return()=>{live=false};
-  },[family?.id]);
-  const rankingScope=useMemo(()=>createRankingScope(family,userId),[family,userId]);
-  const scopeKey=createRankingScopeKey(rankingScope);
-  const rankingProfile=rankingView.scopeKey===scopeKey?rankingView.profile:normalizeCreateRankingProfile({});
-  const setRankingProfile=profile=>setRankingView({scopeKey,profile});
-  useEffect(()=>{
-    let live=true;
-    if(!rankingScope){setRankingProfile(normalizeCreateRankingProfile({}));return}
-    setRankingProfile(loadCachedCreateRanking(rankingScope));
-    fetchCreateRanking(rankingScope).then(profile=>{if(live&&profile)setRankingProfile(profile)}).catch(()=>{});
-    flushCreateUsageQueue(rankingScope).catch(()=>{});
-    const update=event=>{if(event.detail?.scopeKey===scopeKey&&event.detail?.profile)setRankingProfile(normalizeCreateRankingProfile(event.detail.profile))};
-    const online=()=>flushCreateUsageQueue(rankingScope).catch(()=>{});
-    window.addEventListener(CREATE_RANKING_UPDATED_EVENT,update);window.addEventListener('online',online);
-    return()=>{live=false;window.removeEventListener(CREATE_RANKING_UPDATED_EVENT,update);window.removeEventListener('online',online)};
-  },[scopeKey]);
-  const modules=moduleState.familyId===family?.id?moduleState:EMPTY_MODULES;
-  const options=useMemo(()=>({role,capabilities:{...CAPABILITIES,vehicles:Boolean(entitlements?.capabilities?.includes('vehicles'))},modules}),[role,modules,entitlements]);
-  const actions=useMemo(()=>availableCreateActions(options),[options]);
-  const ranked=useMemo(()=>rankCreateActions({availableActions:actions,page,profile:rankingProfile}),[actions,page,rankingProfile]);
-  const direct=useMemo(()=>resolveDirectCreateAction({availableActions:actions,rankedActions:ranked,profile:rankingProfile}),[actions,ranked,rankingProfile]);
+  const [paletteOpen,setPaletteOpen]=useState(false);const [showAll,setShowAll]=useState(false);const [frozenQuick,setFrozenQuick]=useState([]);const [keyboardOpen,setKeyboardOpen]=useState(false);const [externalDialog,setExternalDialog]=useState(false);const [restoreFocus,setRestoreFocus]=useState(false);
+  const {actions,ranked,direct,options,modules}=createActions;
   const allPrimary=actions.filter(action=>action.group==='primary');const allSecondary=actions.filter(action=>action.group==='secondary');
   const mounted=Boolean(family);
   const modulePage=page==='baby'?'baby':page==='pets'?'pets':null;

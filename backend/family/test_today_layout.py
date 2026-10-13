@@ -60,7 +60,7 @@ class TodayLayoutTests(TestCase):
         self.assertTrue(all(required <= set(entry) for entry in TODAY_WIDGET_REGISTRY))
         self.assertTrue(all(set(entry['supportedSizes']) <= {'compact', 'medium', 'wide'} for entry in TODAY_WIDGET_REGISTRY))
         self.assertTrue(all(entry['defaultSize'] in entry['supportedSizes'] for entry in TODAY_WIDGET_REGISTRY))
-        self.assertEqual(list(DEFAULT_WIDGET_ORDER[:6]), ['situation', 'focus', 'timeline', 'week', 'todo', 'pinboard'])
+        self.assertEqual(list(DEFAULT_WIDGET_ORDER[:7]), ['situation', 'focus', 'timeline', 'week', 'todo', 'quick-actions', 'pinboard'])
 
     def test_default_roundtrip_is_v2_and_private(self):
         initial = self.client.get(self.url)
@@ -75,7 +75,7 @@ class TodayLayoutTests(TestCase):
         self.assertNotIn('next', DEFAULT_WIDGET_ORDER)
         self.assertEqual(
             [row['id'] for row in initial.data['widgets'] if row['visible']],
-            ['situation', 'focus', 'timeline', 'week', 'todo', 'pinboard', 'games'],
+            ['situation', 'focus', 'timeline', 'week', 'todo', 'quick-actions', 'pinboard', 'games'],
         )
         self.assertEqual(
             {row['id']: row['size'] for row in initial.data['widgets']},
@@ -253,6 +253,26 @@ class TodayLayoutTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data['revision'], 7)
         self.assertEqual(response.data['widgets'], custom)
+
+    def test_quick_actions_introduction_is_hidden_and_preserves_personal_choices(self):
+        custom = [row for row in deepcopy(DEFAULT_WIDGETS) if row['id'] != 'quick-actions']
+        custom.reverse()
+        layout = TodayLayout.objects.create(family=self.family, user=self.user, widgets=custom, revision=7)
+        introduced = self.client.get(self.url).data
+        quick = next(row for row in introduced['widgets'] if row['id'] == 'quick-actions')
+        self.assertEqual(quick, {'id': 'quick-actions', 'visible': False, 'size': 'compact'})
+        self.assertEqual([row for row in introduced['widgets'] if row['id'] != 'quick-actions'], custom)
+        self.assertEqual(introduced['revision'], 7)
+        layout.refresh_from_db()
+        self.assertEqual(layout.widgets, custom)
+        quick.update(visible=True, size='wide')
+        saved = self.client.put(self.url, introduced, format='json')
+        self.assertEqual(saved.status_code, 200, saved.data)
+        self.assertEqual(self.client.get(self.url).data, saved.data)
+        invalid = deepcopy(saved.data)
+        next(row for row in invalid['widgets'] if row['id'] == 'quick-actions')['size'] = 'medium'
+        self.assertEqual(self.client.put(self.url, invalid, format='json').status_code, 400)
+        self.assertEqual(self.client.get(self.url).data, saved.data)
 
     def test_games_registry_introduction_preserves_explicit_hidden_choice(self):
         custom = [row for row in deepcopy(DEFAULT_WIDGETS) if row['id'] != 'games']
