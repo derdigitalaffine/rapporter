@@ -86,7 +86,20 @@ def pin_picker(request):
     start = (page - 1) * page_size
     if start > MAX_OFFSET:
         raise ValidationError({'page': 'Auswahlgrenze erreicht. Bitte Suche eingrenzen.'})
-    queryset = _search(adapter.pinnable_queryset(request.user, family_id), adapter.key, request.query_params.get('q'))
+    target_id = request.query_params.get('target_id')
+    if target_id is not None:
+        try:
+            target_id = UUID(target_id)
+        except (ValueError, TypeError, AttributeError):
+            raise ValidationError({'target_id': 'Ungültiges Ziel.'})
+
+    queryset = adapter.pinnable_queryset(request.user, family_id)
+    # Context links carry only an identifier, never authority or a preview.
+    # Exact lookup narrows the canonical admission selector; denied and missing
+    # objects have the same empty response and cannot fall back to other rows.
+    if target_id is not None:
+        queryset = queryset.filter(pk=target_id)
+    queryset = _search(queryset, adapter.key, request.query_params.get('q'))
     queryset = queryset.order_by('-updated_at', '-id')
 
     # Admission and lifecycle filtering happen before pagination in the same
