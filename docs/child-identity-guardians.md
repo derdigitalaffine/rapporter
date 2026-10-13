@@ -18,7 +18,9 @@ The child appears immediately as the same `Membership(role=child)` used by famil
 
 ## Family profile data
 
-A guardian can read and update the family-facing child profile at `GET/PATCH /api/baby/profiles/<baby-id>/`. This endpoint intentionally returns only the minimal family profile (`id`, `membership`, `display_name`, `birth_date`). Medical birth fields, growth data and Care Circle content are not returned here.
+A guardian can read and update the family-facing child profile at `GET/PATCH /api/baby/profiles/<baby-id>/family-profile/`. This endpoint intentionally returns only the minimal family profile (`id`, `membership`, `display_name`, `birth_date`). Medical birth fields, growth data and Care Circle content are not returned here.
+
+For compatibility with the existing Family Members client, `GET /api/baby/profiles/<baby-id>/` and a PATCH to that URL containing `birth_date` are routed through the same narrow family-profile contract. The pre-existing Baby-module rename/delete behavior remains module-gated. New family-facing callers should use the explicit `/family-profile/` endpoint.
 
 Changing the display name synchronizes `BabyProfile.display_name` and `Membership.display_name` (and the linked expected-baby label when present). Changing the birth date synchronizes `BabyProfile.birth_date` with `UserProfile.birth_year`, `birth_month` and `birth_day`, so canonical birthday consumers continue to use one source of truth.
 
