@@ -124,6 +124,7 @@ export default function PinComposer({
  },[activeAdapter,editing,familyId,mode,query,retryNonce,setAdapterKey,setKind,setTargetId,w.loadFailed]);
 
  function chooseMode(next){
+  if(next===mode)return;
   generation.current+=1;setMode(next);setQuery('');setItems([]);setHasNext(false);setPage(1);setPickerError('');setTargetId('');setText('');setFiles([]);
   if(next==='existing'){
    const nextAdapter=GROUPS.find(row=>row.key===group)?.adapters[0]||'task';
@@ -132,7 +133,7 @@ export default function PinComposer({
  }
  function chooseGroup(nextGroup){
   const row=GROUPS.find(item=>item.key===nextGroup);if(!row)return;
-  generation.current+=1;setGroup(nextGroup);setActiveAdapter(row.adapters[0]);setQuery('');setItems([]);setTargetId('');setAdapterKey(row.adapters[0]);setKind(ADAPTERS[row.adapters[0]].kind);
+  generation.current+=1;setGroup(nextGroup);setActiveAdapter(row.adapters[0]);setQuery('');setItems([]);setTargetId('');setAdapterKey(row.adapters[0]);setKind(ADAPTERS[row.adapters[0]].kind);setRetryNonce(value=>value+1);
  }
  function chooseAdapter(nextAdapter){
   if(!ADAPTERS[nextAdapter]||nextAdapter===activeAdapter)return;

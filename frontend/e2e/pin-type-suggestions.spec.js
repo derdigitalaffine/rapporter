@@ -118,7 +118,7 @@ test('auth loss invalidates suggestions and a late save cannot learn old types',
  await page.evaluate(()=>{localStorage.removeItem('famuhle-session');window.dispatchEvent(new CustomEvent('famuhle:auth-changed',{detail:{authenticated:false}}))});
  await expect(form(page).locator('.pin-type-preference')).toHaveCount(0);
  const settled=page.waitForResponse(response=>response.url().endsWith('/api/board/')&&response.request().method()==='POST');release();await settled;await page.waitForLoadState('networkidle');
- expect(await prefs(page)).toBeNull();await expect(form(page).getByRole('button',{name:'Anpinnen',exact:true})).toBeDisabled();
+ expect(await prefs(page)).toBeNull();await expect(form(page).locator('.form-actions button.primary:enabled')).toHaveCount(0);await expect(page.getByText('Private task source',{exact:true})).toHaveCount(0);
 });
 
 test('family switch fences a late create result and does not learn in either family',async({page})=>{
@@ -145,6 +145,15 @@ test('English keyboard suggestions keep 44px targets, 320px/200% and accessibili
  await page.evaluate(()=>document.documentElement.style.fontSize='200%');
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1)).toBe(true);
  const accessibility=await new AxeBuilder({page}).include('.pin-composer').analyze();expect(accessibility.violations).toEqual([]);
+});
+
+test('current group can be reopened and clicking the active native root preserves a draft',async({page})=>{
+ const state=await boot(page);await expect(sourceButton(page,'task')).toBeVisible();
+ const before=state.reads.length;await form(page).locator('.pin-source-groups').getByRole('button',{name:'To-dos',exact:true}).click();
+ await expect(sourceButton(page,'task')).toBeVisible();await expect.poll(()=>state.reads.length).toBeGreaterThan(before);
+ await form(page).getByRole('button',{name:'Notizzettel',exact:true}).click();const draft=form(page).getByRole('textbox',{name:'Notizzettel',exact:true});
+ await draft.fill('Bitte behalten');await form(page).getByRole('button',{name:'Notizzettel',exact:true}).click();await expect(draft).toHaveValue('Bitte behalten');
+ expect(state.posts).toEqual([]);expect(await prefs(page)).toBeNull();
 });
 
 for(const language of ['fr','nl','th'])test(`suggestion controls use ${language} copy`,async({page})=>{
