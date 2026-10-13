@@ -77,13 +77,13 @@ class FamilyManagedChildTests(TestCase):
         membership = baby.membership
 
         client = self.client_for(self.owner)
-        read = client.get(f"/api/baby/profiles/{baby.id}/")
+        read = client.get(f"/api/baby/profiles/{baby.id}/family-profile/")
         self.assertEqual(read.status_code, 200)
         self.assertEqual(set(read.data), {"id", "membership", "display_name", "birth_date"})
         self.assertEqual(read.data["birth_date"], "2021-05-06")
 
         patched = client.patch(
-            f"/api/baby/profiles/{baby.id}/",
+            f"/api/baby/profiles/{baby.id}/family-profile/",
             {"display_name": "Mia Marie", "birth_date": "2021-05-07"},
             format="json",
         )
@@ -103,5 +103,5 @@ class FamilyManagedChildTests(TestCase):
         Membership.objects.create(family=self.family, user=adult, role=Membership.Role.ADULT, display_name="Other Adult")
         client = self.client_for(adult)
 
-        self.assertEqual(client.get(f"/api/baby/profiles/{baby_id}/").status_code, 403)
-        self.assertEqual(client.patch(f"/api/baby/profiles/{baby_id}/", {"birth_date": "2020-01-01"}, format="json").status_code, 403)
+        self.assertEqual(client.get(f"/api/baby/profiles/{baby_id}/family-profile/").status_code, 403)
+        self.assertEqual(client.patch(f"/api/baby/profiles/{baby_id}/family-profile/", {"birth_date": "2020-01-01"}, format="json").status_code, 403)
