@@ -22,6 +22,7 @@ class FamilyConfig(AppConfig):
         from .context_models import ContextLink
         from .create_action_models import CreateActionPreference, CreateActionStat, CreateActionUsageReceipt
         from .family_master_models import FamilyMasterData
+        from .family_relationship_models import FamilyRelationship
         from .notes_models import Note, NoteRevision, NoteShare
         from .shopping_models import ShoppingListStoreProfile, ShoppingStore, ShoppingTemplate, ShoppingTemplateItem
         from .today_models import TodayLayout
@@ -41,6 +42,7 @@ class FamilyConfig(AppConfig):
         core_models.CreateActionStat = CreateActionStat
         core_models.CreateActionUsageReceipt = CreateActionUsageReceipt
         core_models.FamilyMasterData = FamilyMasterData
+        core_models.FamilyRelationship = FamilyRelationship
         core_models.Note = Note
         core_models.NoteShare = NoteShare
         core_models.NoteRevision = NoteRevision
