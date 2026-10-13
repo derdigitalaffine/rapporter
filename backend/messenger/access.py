@@ -15,21 +15,34 @@ def preferences(user):
     return ChatPreference.objects.get_or_create(user=user, defaults={"display_name": name[:80]})[0]
 
 
-def eligible(user):
-    if not user or not user.is_active or (getattr(user, "is_superadmin", False) or user.is_superuser):
+def active_chat_user(user):
+    return bool(user and user.is_active and not (getattr(user, "is_superadmin", False) or user.is_superuser))
+
+
+def family_writer(user):
+    if not active_chat_user(user):
+        return False
+    return Membership.objects.filter(user=user, role__in=WRITER_ROLES, family__status="active").exists()
+
+
+def external_chat_eligible(user):
+    if not active_chat_user(user):
         return False
     verified = EmailIdentity.objects.filter(user=user, kind="primary", verified_at__isnull=False).exists()
     if not verified:
         return False
-    members = Membership.objects.filter(user=user)
-    if members.exists():
-        return members.filter(role__in=WRITER_ROLES).exists()
+    if family_writer(user):
+        return True
     return ChatPreference.objects.filter(user=user, personal_account=True).exists()
+
+
+def eligible(user):
+    return family_writer(user) or external_chat_eligible(user)
 
 
 def require_writer(user):
     if not eligible(user):
-        raise PermissionDenied({"code": "chat_account_unavailable", "detail": "Für persönliche Chats benötigst du eine bestätigte E-Mail-Adresse und eine berechtigte Rolle."})
+        raise PermissionDenied({"code": "chat_account_unavailable", "detail": "Für Chats benötigst du eine berechtigte Familienrolle oder ein bestätigtes persönliches Chat-Konto."})
 
 
 def blocked_ids(user):
@@ -63,9 +76,12 @@ def friendship_for(one, other, *, lock=False, allow_family=False):
     if lock:
         rows = rows.select_for_update(of=("self",))
     row = rows.filter(low_user_id=low, high_user_id=high, active=True).first()
-    if not row or not eligible(row.low_user) or not eligible(row.high_user) or is_blocked(low, high):
+    if not row or is_blocked(low, high):
         raise Http404
-    if row.family_derived and (not allow_family or not shared_chat_family(low, high)):
+    if row.family_derived:
+        if not allow_family or not family_writer(row.low_user) or not family_writer(row.high_user) or not shared_chat_family(low, high):
+            raise Http404
+    elif not external_chat_eligible(row.low_user) or not external_chat_eligible(row.high_user):
         raise Http404
     return row
 
@@ -75,20 +91,25 @@ def friendship_access(user, friendship_id, *, lock=False, allow_family=False):
     if lock:
         rows = rows.select_for_update(of=("self",))
     row = rows.filter(pk=friendship_id, active=True).filter(Q(low_user=user) | Q(high_user=user)).first()
-    if not row or not eligible(row.low_user) or not eligible(row.high_user) or is_blocked(row.low_user_id, row.high_user_id):
+    if not row or is_blocked(row.low_user_id, row.high_user_id):
         raise Http404
-    if row.family_derived and (not allow_family or not shared_chat_family(row.low_user_id, row.high_user_id)):
+    if row.family_derived:
+        if not allow_family or not family_writer(row.low_user) or not family_writer(row.high_user) or not shared_chat_family(row.low_user_id, row.high_user_id):
+            raise Http404
+    elif not external_chat_eligible(row.low_user) or not external_chat_eligible(row.high_user):
         raise Http404
     return row
 
 
 def membership(user, conversation_id, *, write=False, lock=False):
     require_writer(user)
-    rows = ConversationMember.objects.select_related("conversation", "conversation__friendship", "user", "invited_by")
+    rows = ConversationMember.objects.select_related("conversation", "conversation__friendship", "conversation__family", "user", "invited_by")
     if lock:
         rows = rows.select_for_update(of=("self",))
     member = rows.filter(user=user, conversation_id=conversation_id).first()
     if not member or not user.is_active:
+        raise Http404
+    if member.conversation.family_id and not Membership.objects.filter(user=user, family_id=member.conversation.family_id, role__in=WRITER_ROLES, family__status="active").exists():
         raise Http404
     if write:
         require_writer(user)
