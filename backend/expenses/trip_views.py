@@ -8,6 +8,7 @@ from rest_framework.response import Response
 
 from family.context_links import create_context_link
 from family.context_models import ContextLink
+from entitlements.services import require_capability
 from family.models import Family, Membership
 from family.travel_models import Trip
 
@@ -66,6 +67,8 @@ def trip_expense_ledger(request):
     family, membership = _family_membership(request.user, source.get("family"))
     if not family:
         return Response({"code": "family_unavailable"}, status=status.HTTP_404_NOT_FOUND)
+
+    require_capability(request.user, family, "expenses")
 
     trip_id = _uuid(source.get("trip"))
     if not trip_id:

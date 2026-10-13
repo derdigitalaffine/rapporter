@@ -23,6 +23,7 @@ def _register_relation(registry, adapter):
 
 def register_context_adapters():
     from expenses.models import Expense
+    from expenses.permissions import finance_queryset
     from .access import can_coordinate_item, can_manage_wishlist, visible_items, visible_wishlists
 
     registry = default_context_registry()
@@ -52,11 +53,11 @@ def register_context_adapters():
         registry,
         ContextTypeAdapter(
             key="expense",
-            visible_queryset=lambda user, family: Expense.objects.filter(
+            visible_queryset=lambda user, family: finance_queryset(Expense.objects.filter(
                 family=family,
                 family__memberships__user=user,
                 status=Expense.Status.POSTED,
-            ).distinct(),
+            ), user).distinct(),
             family_id=lambda obj: obj.family_id,
             deep_link=lambda obj: f"/?page=expenses&expense={obj.id}",
         ),

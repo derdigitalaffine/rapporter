@@ -110,6 +110,7 @@ class Expense(TimestampedModel):
         related_name="expenses",
     )
     title = models.CharField(max_length=180, blank=True)
+    category = models.CharField(max_length=80, blank=True)
     merchant = models.CharField(max_length=180, blank=True)
     occurred_at = models.DateTimeField(default=timezone.now)
     # `total_amount`/`currency` are the amount used by debt, settlement and

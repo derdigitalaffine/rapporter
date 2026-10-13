@@ -18,7 +18,6 @@ from .models import Family, Membership, UserProfile
 
 
 AVATAR_SIZES = (64, 128, 256)
-MAX_AVATAR_BYTES = 10 * 1024 * 1024
 MAX_AVATAR_PIXELS = 20_000_000
 ALLOWED_FORMATS = {"JPEG", "PNG", "WEBP"}
 
@@ -134,33 +133,11 @@ def _delete_avatar_files(key):
 
 
 def _decode_avatar(upload):
-    if upload.size > MAX_AVATAR_BYTES:
-        raise ValueError("Profilbild darf maximal 10 MB groß sein.")
-    raw = upload.read(MAX_AVATAR_BYTES + 1)
-    if len(raw) > MAX_AVATAR_BYTES:
-        raise ValueError("Profilbild darf maximal 10 MB groß sein.")
-    try:
-        with warnings.catch_warnings():
-            warnings.simplefilter("error", Image.DecompressionBombWarning)
-            with Image.open(io.BytesIO(raw)) as probe:
-                if probe.format not in ALLOWED_FORMATS:
-                    raise ValueError("Nur JPEG, PNG oder WebP sind erlaubt.")
-                if probe.width * probe.height > MAX_AVATAR_PIXELS:
-                    raise ValueError("Profilbild hat zu viele Pixel.")
-                probe.verify()
-            with Image.open(io.BytesIO(raw)) as decoded:
-                image = ImageOps.exif_transpose(decoded)
-                image.load()
-                if image.width * image.height > MAX_AVATAR_PIXELS:
-                    raise ValueError("Profilbild hat zu viele Pixel.")
-                mode = "RGBA" if "A" in image.getbands() else "RGB"
-                image = image.convert(mode)
-                side = min(image.width, image.height)
-                left = (image.width - side) // 2
-                top = (image.height - side) // 2
-                return image.crop((left, top, left + side, top + side))
-    except (UnidentifiedImageError, OSError, Image.DecompressionBombError, Image.DecompressionBombWarning) as exc:
-        raise ValueError("Datei ist kein gültiges, sicheres Bild.") from exc
+    from documents.images import decode_image, read_image_upload
+    image = decode_image(read_image_upload(upload))
+    side = min(image.width, image.height)
+    left, top = (image.width - side) // 2, (image.height - side) // 2
+    return image.crop((left, top, left + side, top + side))
 
 
 @api_view(["POST", "DELETE"])

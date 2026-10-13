@@ -7,6 +7,7 @@ from rest_framework.response import Response
 from rest_framework import status
 
 from documents.storage import open_canonical, remove_canonical
+from entitlements.services import require_capability
 from family.models import Family
 from .models import Expense
 
@@ -19,6 +20,8 @@ def receipt_file(request, expense_id):
     expense = queryset.distinct().first()
     if not expense:
         raise NotFound()
+
+    require_capability(request.user, expense.family, "expenses")
 
     if request.method == "DELETE":
         with transaction.atomic():

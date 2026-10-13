@@ -8,13 +8,10 @@ bytes for duplicate hashes and may depend on the existing OCR layout behavior.
 """
 from io import BytesIO
 
-from PIL import Image, ImageEnhance, ImageOps, ImageStat, UnidentifiedImageError
+from PIL import Image, ImageEnhance, ImageOps, ImageStat
 import pytesseract
 
-MAX_LEGACY_IMAGE_BYTES = 10 * 1024 * 1024
-MAX_LEGACY_IMAGE_PIXELS = 25_000_000
 LEGACY_OCR_TIMEOUT_SECONDS = 20
-ALLOWED_LEGACY_FORMATS = {"JPEG", "PNG", "WEBP"}
 
 
 def canonicalize_legacy_image(upload):
@@ -26,24 +23,8 @@ def canonicalize_legacy_image(upload):
     would make identical re-uploads miss duplicate detection. Keep this transform
     here only as an explicit migration compatibility boundary.
     """
-    raw = upload.read()
-    if not raw:
-        raise ValueError("Die Bilddatei ist leer.")
-    if len(raw) > MAX_LEGACY_IMAGE_BYTES:
-        raise ValueError("Das Dokument darf höchstens 10 MB groß sein.")
-    try:
-        probe = Image.open(BytesIO(raw))
-        image_format = (probe.format or "").upper()
-        probe.verify()
-        if image_format not in ALLOWED_LEGACY_FORMATS:
-            raise ValueError("Nur JPEG-, PNG- oder WebP-Bilder werden unterstützt.")
-        image = Image.open(BytesIO(raw))
-        width, height = image.size
-        if width * height > MAX_LEGACY_IMAGE_PIXELS:
-            raise ValueError("Das Bild hat zu viele Bildpunkte.")
-        image = ImageOps.exif_transpose(image).convert("RGB")
-    except (UnidentifiedImageError, OSError, Image.DecompressionBombError) as exc:
-        raise ValueError("Die Datei ist kein gültiges Bild.") from exc
+    from .images import decode_image, read_image_upload
+    image = decode_image(read_image_upload(upload)).convert("RGB")
 
     warnings = []
     if min(image.size) < 700:

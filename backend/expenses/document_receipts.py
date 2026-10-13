@@ -18,7 +18,7 @@ from family.models import Membership
 from .models import Expense, ReceiptExtraction
 from .ocr import parse_receipt_text
 
-MAX_RECEIPT_BYTES = 10 * 1024 * 1024
+MAX_RECEIPT_BYTES = 30 * 1024 * 1024
 MAX_RECEIPT_TEXT_CHARS = 50_000
 PUBLIC_QUALITY_WARNINGS = {"low_resolution", "dark"}
 
@@ -62,13 +62,11 @@ def canonicalize_receipt_upload(upload):
     """Apply receipt admission policy; all quality detection belongs to Documents."""
     size = getattr(upload, "size", None)
     if size is not None and size > MAX_RECEIPT_BYTES:
-        raise ValueError("Der Beleg darf höchstens 10 MB groß sein.")
+        raise ValueError("Der Beleg darf höchstens 30 MB groß sein.")
     try:
         canonical = canonicalize_upload(upload)
     except ValidationError as exc:
         raise ValueError(_validation_message(exc)) from exc
-    if not canonical.mime_type.startswith("image/"):
-        raise ValueError("Nur JPEG-, PNG- oder WebP-Belege werden unterstützt.")
     # Quality warnings are populated after the shared worker has assessed the
     # canonical image. The request path must not own or duplicate that work.
     return canonical, []

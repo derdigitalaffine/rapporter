@@ -80,7 +80,7 @@ async function boot(page,configure){
  configure?.(store);
  await page.goto('/?page=expenses');
  await page.waitForLoadState('networkidle');
- await expect(page.getByRole('heading',{name:'Ausgaben',exact:true})).toBeVisible();
+ await expect(page.getByRole('heading',{name:'Geld & Finanzen',exact:true})).toBeVisible();
  return store;
 }
 
@@ -109,7 +109,7 @@ test('expenses budget · ledger switch refreshes progress and reports unconverte
   store.expenses.push(expense({id:'trip-usd',ledger:'ledger-trip',amount:'50.00',currency:'USD',title:'Taxi'}));
   Object.assign(store.budgets[1],{spent_amount:'120.00',remaining_amount:'680.00',over_budget:false});
  });
- await page.getByLabel('Abrechnungskreis').selectOption('ledger-trip');
+ await page.getByLabel('Konto').selectOption('ledger-trip');
  const card=page.locator('.budget-progress-card');
  await expect(card).toContainText('Urlaub');
  await expect(card).toContainText('120,00');
@@ -122,7 +122,7 @@ test('expenses budget · ledger switch refreshes progress and reports unconverte
  const dimensions=await page.evaluate(()=>({scrollWidth:document.documentElement.scrollWidth,innerWidth:window.innerWidth}));
  expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.innerWidth+1);
 
- await page.getByLabel('Abrechnungskreis').selectOption('ledger-default');
+ await page.getByLabel('Konto').selectOption('ledger-default');
  await expect(card).toContainText('Familie – laufend');
  await expect(card).not.toContainText('Fremdwährungs-Ausgabe');
 });

@@ -10,7 +10,7 @@ const de={wishlistUi:{
  reserve:'Reservieren',reserved:'Reserviert',purchased:'Gekauft',markPurchased:'Als gekauft markieren',release:'Freigeben',reservedBy:'Reserviert von {{name}}',purchasedBy:'Gekauft von {{name}}',
  surpriseOwner:'Reservierungen und Kaufstatus werden dir als Listenbesitzer absichtlich nicht angezeigt.',
  coordination:'Geschenkkoordination',actionTitle:'Folgeaktion',actionHint:'Folgeaktionen werden erst nach deiner Bestätigung angelegt.',task:'Aufgabe',shopping:'Einkaufsartikel',expense:'Ausgabe',createAction:'Bestätigt anlegen',
- shoppingList:'Einkaufsliste',amount:'Betrag',currency:'Währung',expenseAck:'Ich verstehe, dass die Ausgabe im aktuellen Ausgabenmodul familienweit sichtbar ist.',
+ shoppingList:'Einkaufsliste',amount:'Betrag',currency:'Währung',expenseAck:'Ich verstehe, dass die Ausgabe im Modul Geld & Finanzen familienweit sichtbar ist.',
  selectedActionBlocked:'Diese Liste ist nur ausgewählt sichtbar. Familienweite Aufgabe/Einkauf/Ausgabe bleibt deshalb gesperrt.',
  noShoppingList:'Keine Einkaufsliste verfügbar.',openLink:'Link öffnen',archiveItem:'Wunsch entfernen',archived:'Entfernt',
  loadFailed:'Wunschlisten konnten nicht geladen werden.',actionCreated:'Folgeaktion angelegt.',reservationSaved:'Geschenkstatus gespeichert.',reservationReleased:'Reservierung freigegeben.',

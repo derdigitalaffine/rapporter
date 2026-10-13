@@ -8,6 +8,7 @@ from family.context_links import (
 from family.models import Family, Membership
 
 from .models import ExpenseLedger
+from entitlements.services import has_capability
 
 
 def _visible_ledgers(user, family):
@@ -18,7 +19,7 @@ def _visible_ledgers(user, family):
         family=family,
         family__status=Family.Status.ACTIVE,
     ).first()
-    if not membership:
+    if not membership or not has_capability(family, "expenses"):
         return ExpenseLedger.objects.none()
     return ExpenseLedger.objects.filter(family=family)
 

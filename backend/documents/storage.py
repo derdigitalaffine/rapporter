@@ -6,17 +6,15 @@ stored file; OCR/processing is provided by the separate document-processing core
 from dataclasses import dataclass
 from hashlib import sha256
 import io
-import warnings
 
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
-from PIL import Image, ImageOps, UnidentifiedImageError
+from PIL import Image
 from pypdf import PdfReader
 from pypdf.errors import PdfReadError
 from rest_framework.exceptions import ValidationError
 
 MAX_UPLOAD_BYTES = 30 * 1024 * 1024
-MAX_PIXELS = 32_000_000
 MAX_IMAGE_DIMENSION = 2600
 MAX_PDF_PAGES = 300
 
@@ -62,25 +60,15 @@ def _canonicalize_pdf(data):
 
 
 def _canonicalize_image(data):
+    from .images import decode_image
     try:
-        with warnings.catch_warnings():
-            warnings.simplefilter("error", Image.DecompressionBombWarning)
-            with Image.open(io.BytesIO(data)) as source:
-                if source.format not in {"JPEG", "PNG", "WEBP"} or source.width * source.height > MAX_PIXELS:
-                    raise ValueError()
-                source.verify()
-            with Image.open(io.BytesIO(data)) as source:
-                image = ImageOps.exif_transpose(source).convert("RGB")
-                if image.width * image.height > MAX_PIXELS:
-                    raise ValueError()
-                image.thumbnail((MAX_IMAGE_DIMENSION, MAX_IMAGE_DIMENSION), Image.Resampling.LANCZOS)
-                clean = Image.new("RGB", image.size)
-                clean.paste(image)
-                output = io.BytesIO()
-                clean.save(output, "WEBP", quality=86, method=4)
-                return output.getvalue(), "image/webp", "webp", 1
-    except (ValueError, OSError, UnidentifiedImageError, Image.DecompressionBombError, Image.DecompressionBombWarning) as exc:
-        raise ValidationError({"file": "Ungültiges Bild. Erlaubt sind JPEG, PNG oder WebP bis 32 Megapixel."}) from exc
+        image = decode_image(data).convert("RGB")
+        image.thumbnail((MAX_IMAGE_DIMENSION, MAX_IMAGE_DIMENSION), Image.Resampling.LANCZOS)
+        output = io.BytesIO()
+        image.save(output, "WEBP", quality=86, method=4)
+        return output.getvalue(), "image/webp", "webp", 1
+    except ValueError as exc:
+        raise ValidationError({"file": str(exc)}) from exc
 
 
 def canonicalize_upload(upload):

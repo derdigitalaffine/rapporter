@@ -14,10 +14,10 @@ from .models import ChatAttachment
 def prepare_uploads(files):
     result = []
     for upload in files:
-        if upload.size > 10 * 1024 * 1024:
-            raise ValidationError({"files": "Maximal 10 MB pro Datei."})
-        data = upload.read(10 * 1024 * 1024 + 1)
-        if not data or len(data) > 10 * 1024 * 1024:
+        if upload.size > 30 * 1024 * 1024:
+            raise ValidationError({"files": "Maximal 30 MB pro Datei."})
+        data = upload.read(30 * 1024 * 1024 + 1)
+        if not data or len(data) > 30 * 1024 * 1024:
             raise ValidationError({"files": "Ungültige Dateigröße."})
         mime = str(upload.content_type or "").split(";", 1)[0]
         if mime in {"audio/webm", "audio/ogg", "audio/mp4"}:

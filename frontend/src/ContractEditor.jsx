@@ -219,7 +219,7 @@ export default function ContractEditor({family,contract=null,onClose,onSaved}){
         <div className="contract-source-grid">
           <button type="button" className="contract-source-card manual-contract" onClick={()=>setStage('form')}><Icon name="edit"/><strong>{t('contractUi.manual')}</strong></button>
           <FileDropZone className="compact" accept="image/*" capture="environment" icon="camera" title={t('contractUi.scan')} hint="JPG / PNG / WebP" onFiles={files=>upload(files[0])}/>
-          <FileDropZone className="compact" accept="application/pdf,image/jpeg,image/png,image/webp" icon="upload" title={t('contractUi.chooseFile')} hint="PDF / Bild" onFiles={files=>upload(files[0])}/>
+          <FileDropZone className="compact" accept="application/pdf,image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif" icon="upload" title={t('contractUi.chooseFile')} hint="PDF / Bild" onFiles={files=>upload(files[0])}/>
         </div>
         {error&&<p className="error" role="alert">{error}</p>}
       </div>}
@@ -291,7 +291,7 @@ export default function ContractEditor({family,contract=null,onClose,onSaved}){
               <span><Icon name="receipt"/> {document.title}</span>
               <button type="button" className="text-button" disabled={busy} onClick={()=>removeDocument(document.id)}>{t('contractUi.removeDocument')}</button>
             </div>)}
-            <FileDropZone className="compact" accept="application/pdf,image/jpeg,image/png,image/webp" icon="upload" title={t('contractUi.addDocument')} hint="PDF / Bild" onFiles={files=>upload(files[0])}/>
+            <FileDropZone className="compact" accept="application/pdf,image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif" icon="upload" title={t('contractUi.addDocument')} hint="PDF / Bild" onFiles={files=>upload(files[0])}/>
           </div>
         </ProgressiveFieldGroup>
 
