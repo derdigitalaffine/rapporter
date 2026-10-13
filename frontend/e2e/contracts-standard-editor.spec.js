@@ -41,7 +41,7 @@ async function mockContracts(page,onPatch=()=>{}){
   });
 }
 
-test('contract editor groups primary fields and preserves progressive details',async({page})=>{
+test('contract editor groups primary fields and uses explicit sharing choices',async({page})=>{
   await page.setViewportSize({width:390,height:844});
   await installApiMocks(page);
   let patchPayload=null;
@@ -56,7 +56,15 @@ test('contract editor groups primary fields and preserves progressive details',a
   await expect(dialog.getByRole('group',{name:'Vertrag'})).toBeVisible();
   await expect(dialog.getByRole('group',{name:'Laufzeit'})).toBeVisible();
   await expect(dialog.getByRole('group',{name:'Kosten'})).toBeVisible();
-  await expect(dialog.getByRole('group',{name:'Freigabe'})).toBeVisible();
+  const sharing=dialog.getByRole('group',{name:'Freigabe'});
+  await expect(sharing).toBeVisible();
+  const privateChoice=sharing.getByRole('radio',{name:/Privat/});
+  const familyChoice=sharing.getByRole('radio',{name:/Familie/});
+  await expect(privateChoice).toBeChecked();
+  await expect(familyChoice).not.toBeChecked();
+  await expect(sharing).toContainText('Nur du');
+  await familyChoice.check();
+  await expect(familyChoice).toBeChecked();
 
   const details=dialog.getByRole('button',{name:/Weitere Details/});
   await expect(details).toHaveAttribute('aria-expanded','false');
@@ -88,7 +96,7 @@ test('contract editor groups primary fields and preserves progressive details',a
     renewal_rule:'12 Monate',
     status:'active',
     notes:'Router inklusive',
-    visibility:'private',
+    visibility:'family',
   });
 });
 

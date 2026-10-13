@@ -65,6 +65,27 @@ export function FieldGroup({legend,description,children,className='',...props}){
   </fieldset>;
 }
 
+export function ChoiceField({legend,description,options=[],value,onChange,name:providedName,className='',disabled=false,error=''}){
+  const generatedName=useId();
+  const name=providedName||generatedName;
+  const descriptionId=description?`${name}-description`:undefined;
+  const errorId=error?`${name}-error`:undefined;
+  return <fieldset className={cx('choice-field',error&&'choice-field--invalid',className)} aria-describedby={describedBy(descriptionId,errorId)}>
+    <legend>{legend}</legend>
+    {description&&<p id={descriptionId} className="choice-field__description">{description}</p>}
+    <div className="choice-field__options">
+      {options.map((option,index)=>{
+        const id=`${name}-${index}`;
+        return <label key={String(option.value)} className={cx('choice-field__option',String(value)===String(option.value)&&'is-selected')} htmlFor={id}>
+          <input id={id} type="radio" name={name} value={option.value} checked={String(value)===String(option.value)} disabled={disabled||option.disabled} onChange={()=>onChange?.(option.value)}/>
+          <span className="choice-field__copy"><strong>{option.label}</strong>{option.description&&<small>{option.description}</small>}</span>
+        </label>;
+      })}
+    </div>
+    {error&&<p id={errorId} className="form-field__error" role="status">{error}</p>}
+  </fieldset>;
+}
+
 export function ProgressiveFieldGroup({label,summary,children,defaultOpen=false,className=''}){
   const [open,setOpen]=useState(defaultOpen);
   const regionId=useId();
