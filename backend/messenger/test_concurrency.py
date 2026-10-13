@@ -76,3 +76,27 @@ class MessengerConcurrencyTests(TransactionTestCase):
         self.assertEqual([status for status, _ in results], [200, 200], results)
         self.assertEqual(results[0][1], results[1][1])
         self.assertEqual(Friendship.objects.count(), 1)
+
+
+    def test_acceptance_racing_block_never_restores_blocked_friendship(self):
+        from rest_framework.test import APIClient
+        from messenger.models import ChatBlock
+        friend = Friendship.objects.create(low_user=self.one, high_user=self.two)
+        invite = create_invitation(self.one, self.two.email, uuid.uuid4())
+        def action(index):
+            close_old_connections()
+            try:
+                client = APIClient()
+                client.force_authenticate(get_user_model().objects.get(pk=self.one.pk if index == 0 else self.two.pk))
+                path = f"/api/chat/contacts/{friend.pk}/" if index == 0 else f"/api/chat/invitations/{invite.pk}/"
+                response = client.post(path, {"action": "block" if index == 0 else "accept"}, format="json")
+                return response.status_code
+            finally:
+                close_old_connections()
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            results = list(executor.map(action, [0, 1]))
+        self.assertEqual(results[0], 200)
+        self.assertIn(results[1], [200, 403, 404])
+        friend.refresh_from_db()
+        self.assertFalse(friend.active)
+        self.assertTrue(ChatBlock.objects.filter(blocker=self.one, blocked=self.two).exists())

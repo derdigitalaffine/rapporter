@@ -49,8 +49,11 @@ def invitation_path(reference_id):
     if not invite or not eligible(invite.sender):
         return ""
     target = EmailIdentity.objects.filter(email_normalized=invite.email, kind="primary").values_list("user_id", flat=True).first()
-    if target and is_blocked(invite.sender_id, target):
-        return ""
+    if target:
+        low, high = sorted((invite.sender_id, target))
+        removed = Friendship.objects.filter(low_user_id=low, high_user_id=high, active=False, updated_at__gte=invite.created_at).exists()
+        if removed or is_blocked(invite.sender_id, target):
+            return ""
     return f"/?page=inbox#chat-invite={quote(invitation_token(invite), safe='')}"
 
 
@@ -61,7 +64,7 @@ def create_invitation(sender, email, request_id):
     if own and email == own.email_normalized:
         raise ValidationError({"email": "Du kannst dich nicht selbst einladen."})
     with transaction.atomic():
-        get_user_model().objects.select_for_update().get(pk=sender.pk)
+        get_user_model().objects.select_for_update(no_key=True).get(pk=sender.pk)
         previous = ContactInvitation.objects.filter(sender=sender, request_id=request_id).first()
         if previous:
             if previous.email != email:
@@ -76,8 +79,13 @@ def create_invitation(sender, email, request_id):
 
 
 def accept_invitation(invite, user):
+    # Keep FK key-share locks compatible with chat/game inserts while serializing consent.
+    users = {row.pk: row for row in get_user_model().objects.select_for_update(no_key=True).filter(pk__in=(user.pk, invite.sender_id)).order_by("pk")}
+    user, sender = users.get(user.pk), users.get(invite.sender_id)
+    if not user or not sender or not user.is_active or getattr(user, "is_superadmin", False) or not eligible(sender) or user.pk == sender.pk or is_blocked(user.pk, sender.pk):
+        raise Http404
     identity = EmailIdentity.objects.filter(user=user, kind="primary", verified_at__isnull=False, email_normalized=invite.email).first()
-    if not identity or user.pk == invite.sender_id or not user.is_active or getattr(user, "is_superadmin", False) or is_blocked(user.pk, invite.sender_id):
+    if not identity:
         raise Http404
     if user.family_memberships.exists():
         require_writer(user)
@@ -87,12 +95,10 @@ def accept_invitation(invite, user):
         pref.save(update_fields=["personal_account"])
     if invite.status == "accepted" and invite.accepted_by_id != user.pk:
         raise Http404
-    # Serialize both directions and invite retries on the same canonical user pair.
-    list(get_user_model().objects.select_for_update().filter(pk__in=(user.pk, invite.sender_id)).order_by("pk"))
-    low, high = sorted((user.pk, invite.sender_id))
-    friend, created = Friendship.objects.get_or_create(low_user_id=low, high_user_id=high)
+    low, high = sorted((user.pk, sender.pk))
+    friend, _ = Friendship.objects.get_or_create(low_user_id=low, high_user_id=high)
     if not friend.active:
-        if invite.status == "accepted":
+        if invite.status == "accepted" or invite.created_at <= friend.updated_at:
             raise PermissionDenied({"code": "friendship_removed"})
         friend.active = True
         friend.save(update_fields=["active", "updated_at"])

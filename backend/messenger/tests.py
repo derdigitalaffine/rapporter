@@ -273,3 +273,17 @@ class MessengerTests(TestCase):
         self.assertIsNotNone(own.read_at)
         self.assertIsNone(unrelated.read_at)
         self.assertIsNone(family.read_at)
+
+
+    def test_pending_invite_from_before_removal_cannot_reactivate_friendship(self):
+        invite = create_invitation(self.one, self.two.email, uuid.uuid4())
+        self.post(f"contacts/{self.friend.pk}/", {"action": "remove"})
+        # TestCase deliberately leaves on_commit cleanup pending, exercising the consent fence itself.
+        self.client.force_authenticate(self.two)
+        self.assertEqual(self.post("invite/accept/", {"token": invitation_token(invite)}).status_code, 403)
+        self.friend.refresh_from_db()
+        self.assertFalse(self.friend.active)
+        self.client.force_authenticate(self.one)
+        fresh = create_invitation(self.one, self.two.email, uuid.uuid4())
+        self.client.force_authenticate(self.two)
+        self.assertEqual(self.post("invite/accept/", {"token": invitation_token(fresh)}).status_code, 200)

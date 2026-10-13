@@ -74,7 +74,7 @@ def change_friendship(user, friendship_id, *, block=False):
     friend = Friendship.objects.filter(pk=friendship_id).filter(Q(low_user=user) | Q(high_user=user)).first()
     if not friend:
         raise Http404
-    list(get_user_model().objects.select_for_update().filter(pk__in=(friend.low_user_id, friend.high_user_id)).order_by("pk"))
+    list(get_user_model().objects.select_for_update(no_key=True).filter(pk__in=(friend.low_user_id, friend.high_user_id)).order_by("pk"))
     friend = Friendship.objects.select_for_update().get(pk=friend.pk)
     friend.active = False
     friend.save(update_fields=["active", "updated_at"])
@@ -82,7 +82,14 @@ def change_friendship(user, friendship_id, *, block=False):
     if block:
         ChatBlock.objects.get_or_create(blocker=user, blocked_id=other)
     identities = dict(EmailIdentity.objects.filter(user_id__in=(user.pk, other), kind="primary").values_list("user_id", "email_normalized"))
-    ContactInvitation.objects.filter(Q(sender_id=user.pk, email=identities.get(other, "")) | Q(sender_id=other, email=identities.get(user.pk, "")), status="pending").update(status="revoked")
+    invite_scope = Q(sender_id=user.pk, email=identities.get(other, "")) | Q(sender_id=other, email=identities.get(user.pk, ""))
+    cutoff = friend.updated_at
+    # Invite acceptance locks invite -> users -> friendship. Never invert that order.
+    def revoke_pending():
+        with transaction.atomic():
+            rows = list(ContactInvitation.objects.select_for_update().filter(invite_scope, status="pending", created_at__lte=cutoff).order_by("pk"))
+            ContactInvitation.objects.filter(pk__in=[row.pk for row in rows]).update(status="revoked")
+    transaction.on_commit(revoke_pending)
     ConversationMember.objects.filter(conversation__friendship=friend).update(typing_until=None)
     return friend
 
