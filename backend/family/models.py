@@ -368,6 +368,8 @@ class FamilyEvent(TimestampedModel):
     actionable = models.BooleanField(default=False)
     payload = models.JSONField(default=dict, blank=True)
     external_id = models.CharField(max_length=180, blank=True)
+    participants = models.ManyToManyField(Membership, related_name="calendar_events", blank=True)
+    is_family_event = models.BooleanField(default=False)
 
     class Meta:
         indexes = [
