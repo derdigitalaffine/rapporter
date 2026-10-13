@@ -9,12 +9,28 @@ DEFAULT_LEDGER_NAME = "Familie – laufend"
 
 
 class ExpenseLedger(TimestampedModel):
+    class DefaultSplitType(models.TextChoices):
+        EQUAL = "equal", "Equal"
+        PERCENTAGE = "percentage", "Percentage"
+        SHARES = "shares", "Shares"
+
     family = models.ForeignKey(Family, on_delete=models.CASCADE, related_name="expense_ledgers")
     name = models.CharField(max_length=120)
     base_currency = models.CharField(max_length=3, default="EUR")
     budget_amount = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
     is_default = models.BooleanField(default=False)
     archived = models.BooleanField(default=False)
+    default_split_type = models.CharField(
+        max_length=16,
+        choices=DefaultSplitType.choices,
+        default=DefaultSplitType.EQUAL,
+    )
+    # Empty participants means "all current family members" for backwards
+    # compatibility. Explicit ids freeze the account's normal participant set.
+    default_participants = models.JSONField(default=list, blank=True)
+    # Values are stored as JSON strings so percentage/share precision is not
+    # lost. Keys are Membership UUID strings.
+    default_split_values = models.JSONField(default=dict, blank=True)
 
     class Meta:
         ordering = ["-is_default", "created_at"]

@@ -112,11 +112,31 @@ def _apply_frozen_fx(attrs, instance, ledger):
     return attrs
 
 
+def _ledger_default_participants(ledger, family):
+    configured = [str(value) for value in (ledger.default_participants or [])]
+    if configured:
+        return configured
+    return [str(value) for value in Membership.objects.filter(family=family).order_by("created_at").values_list("id", flat=True)]
+
+
+def _ledger_default_values(ledger):
+    return {str(key): Decimal(str(value)) for key, value in (ledger.default_split_values or {}).items()}
+
+
 class ExpenseLedgerSerializer(serializers.ModelSerializer):
     budget_amount = LocalizedDecimalField(
         max_digits=12,
         decimal_places=2,
         allow_null=True,
+        required=False,
+    )
+    default_participants = serializers.ListField(
+        child=serializers.UUIDField(),
+        required=False,
+        allow_empty=True,
+    )
+    default_split_values = serializers.DictField(
+        child=LocalizedDecimalField(max_digits=12, decimal_places=4),
         required=False,
     )
 
@@ -142,6 +162,29 @@ class ExpenseLedgerSerializer(serializers.ModelSerializer):
                 })
         if self.instance and self.instance.is_default and attrs.get("archived") is True:
             raise serializers.ValidationError({"archived": "Der Standard-Abrechnungskreis kann nicht archiviert werden."})
+
+        split_type = attrs.get("default_split_type", getattr(self.instance, "default_split_type", ExpenseLedger.DefaultSplitType.EQUAL))
+        participants = attrs.get("default_participants", getattr(self.instance, "default_participants", [])) or []
+        values = attrs.get("default_split_values", getattr(self.instance, "default_split_values", {})) or {}
+        participant_ids = {str(value) for value in participants}
+        if participant_ids:
+            found = set(str(value) for value in Membership.objects.filter(family=family, id__in=participants).values_list("id", flat=True))
+            if participant_ids != found:
+                raise serializers.ValidationError({"default_participants": "Mindestens eine konfigurierte Person gehört nicht zu dieser Familie."})
+        if split_type == ExpenseLedger.DefaultSplitType.EQUAL:
+            attrs["default_split_values"] = {}
+        else:
+            if not participant_ids:
+                raise serializers.ValidationError({"default_participants": "Für Prozent- oder Anteilverteilung müssen feste Beteiligte gewählt werden."})
+            normalized = {str(key): Decimal(str(value)) for key, value in values.items()}
+            if set(normalized) != participant_ids:
+                raise serializers.ValidationError({"default_split_values": "Für jede beteiligte Person ist ein Wert erforderlich."})
+            if any(value <= 0 for value in normalized.values()):
+                raise serializers.ValidationError({"default_split_values": "Alle Werte müssen größer als 0 sein."})
+            if split_type == ExpenseLedger.DefaultSplitType.PERCENTAGE and sum(normalized.values(), Decimal("0")) != Decimal("100"):
+                raise serializers.ValidationError({"default_split_values": "Prozentwerte müssen zusammen 100 ergeben."})
+            attrs["default_split_values"] = {key: str(value) for key, value in normalized.items()}
+        attrs["default_participants"] = [str(value) for value in participants]
         return attrs
 
     class Meta:
@@ -154,6 +197,9 @@ class ExpenseLedgerSerializer(serializers.ModelSerializer):
             "budget_amount",
             "is_default",
             "archived",
+            "default_split_type",
+            "default_participants",
+            "default_split_values",
             "created_at",
             "updated_at",
         ]
@@ -201,7 +247,7 @@ class ExpenseSerializer(serializers.ModelSerializer):
     original_currency = serializers.CharField(max_length=3, allow_null=True, allow_blank=True, required=False)
     fx_rate = LocalizedDecimalField(max_digits=20, decimal_places=10, allow_null=True, required=False)
     participants = serializers.ListField(child=serializers.UUIDField(), write_only=True, required=False)
-    split_type = serializers.ChoiceField(choices=ExpenseShare.SplitType.choices, write_only=True, required=False, default=ExpenseShare.SplitType.EQUAL)
+    split_type = serializers.ChoiceField(choices=ExpenseShare.SplitType.choices, write_only=True, required=False)
     split_values = serializers.DictField(child=LocalizedDecimalField(max_digits=12, decimal_places=4), write_only=True, required=False)
     client_request_id = serializers.UUIDField(write_only=True, required=False, allow_null=True)
     finalize = serializers.BooleanField(write_only=True, required=False, default=False)
@@ -212,9 +258,6 @@ class ExpenseSerializer(serializers.ModelSerializer):
         return obj.paid_by.display_name or obj.paid_by.user.username
 
     def get_receipt_available(self, obj):
-        # A backfilled legacy row may have had missing MIME metadata. Once its
-        # hidden Document exists, availability must follow that canonical link
-        # without forcing a deferred BinaryField read on expense lists.
         return bool(obj.receipt_document_id or obj.receipt_mime)
 
     def validate_currency(self, value):
@@ -277,6 +320,14 @@ class ExpenseSerializer(serializers.ModelSerializer):
         _apply_frozen_fx(attrs, self.instance, ledger)
 
         participants = attrs.get("participants")
+        has_existing_shares = bool(self.instance and self.instance.shares.exists())
+        if funding_source == Expense.FundingSource.MEMBER and participants is None and not has_existing_shares:
+            participants = _ledger_default_participants(ledger, family)
+            attrs["participants"] = participants
+            attrs.setdefault("split_type", ledger.default_split_type or ExpenseShare.SplitType.EQUAL)
+            if attrs["split_type"] != ExpenseShare.SplitType.EQUAL:
+                attrs.setdefault("split_values", _ledger_default_values(ledger))
+
         if funding_source == Expense.FundingSource.SHARED:
             if participants is not None:
                 raise serializers.ValidationError({
@@ -301,10 +352,8 @@ class ExpenseSerializer(serializers.ModelSerializer):
             total = attrs.get("total_amount", getattr(self.instance, "total_amount", None))
             if total is None:
                 raise serializers.ValidationError({"total_amount": "Gesamtbetrag ist erforderlich."})
-            if funding_source == Expense.FundingSource.MEMBER:
-                has_existing_shares = bool(self.instance and self.instance.shares.exists())
-                if participants is None and not has_existing_shares:
-                    raise serializers.ValidationError({"participants": "Beteiligte sind erforderlich."})
+            if funding_source == Expense.FundingSource.MEMBER and participants is None and not has_existing_shares:
+                raise serializers.ValidationError({"participants": "Beteiligte sind erforderlich."})
         if (
             self.instance
             and current_status == Expense.Status.POSTED
