@@ -5,6 +5,7 @@ const matchesAny=(...pages)=>({page:current})=>pages.includes(current);
 const nowhere=()=>false;
 
 export const CREATE_ACTIONS=[
+  {id:'vehicle',labelKey:'vehiclesUi.add',icon:'route',group:'secondary',permission:'manageSettings',capability:'vehicles',contextMatcher:matches('vehicles'),open:({open,context})=>open('vehicle',context)},
   {id:'task',labelKey:'createUi.task',icon:'tasks',group:'primary',permission:'createContent',contextMatcher:matchesAny('tasks','todo'),open:({open,context})=>open('task',context)},
   {id:'shoppingItem',labelKey:'createUi.shoppingItem',icon:'shopping',group:'primary',permission:'createContent',contextMatcher:matches('shopping'),open:({open,context})=>open('shoppingItem',context)},
   {id:'event',labelKey:'createUi.event',icon:'calendar',group:'primary',permission:'createContent',contextMatcher:matches('calendar'),open:({open,context})=>open('event',context)},
@@ -22,7 +23,7 @@ export const CREATE_ACTIONS=[
   {id:'loyalty',labelKey:'createUi.loyalty',icon:'store',group:'secondary',permission:'createContent',contextMatcher:matches('loyalty'),capability:'loyalty',open:({open,context})=>open('loyalty',context)},
 ];
 
-export const CREATE_PAGES=new Set(['birthdays','home','todo','tasks','shopping','routines','more','calendar','expenses','contracts','wishlists','inbox','loyalty','baby','pets']);
+export const CREATE_PAGES=new Set(['vehicles','birthdays','home','todo','tasks','shopping','routines','more','calendar','expenses','contracts','wishlists','inbox','loyalty','baby','pets']);
 export const DEFAULT_CREATE_PREFERENCES={smart_ranking_enabled:true,context_ranking_enabled:true,time_patterns_enabled:false,direct_mode:false,direct_action_id:'',max_quick_actions:4,pinned_action_ids:[],hidden_action_ids:[],manual_order:[],learning_scope:'family'};
 export const DEFAULT_CREATE_RANKING_PROFILE={ranking_version:1,cold_start_threshold:5,preferences:DEFAULT_CREATE_PREFERENCES,stats:[]};
 

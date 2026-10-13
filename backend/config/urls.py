@@ -68,6 +68,7 @@ urlpatterns = [
     path("api/", include("entitlements.urls")),
     path("api/", include("family.urls")),
     path("api/", include("expenses.urls")),
+    path("api/", include("vehicles.urls")),
     path("api/", include("baby.urls")),
     path("api/", include("pets.urls")),
     path("api/", include("documents.urls")),

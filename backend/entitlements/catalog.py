@@ -17,6 +17,7 @@ CAPABILITY_SPECS = (
     CapabilitySpec("shopping", "shopping", "Gemeinsame Einkaufslisten", default_light=True),
     CapabilitySpec("pinboard", "pinboard", "Universelle Familien-Pinnwand", default_light=True),
     CapabilitySpec("notes", "notes", "Einfache Familiennotizen", default_light=True),
+    CapabilitySpec("vehicles", "vehicles", "Fahrzeuge und privates GPS-Fahrtenbuch", premium=True),
     CapabilitySpec("travel", "travel", "Reiseplanung und Travel Hub", premium=True),
     CapabilitySpec("documents", "documents", "Document Core und Dokument-Workflows", premium=True),
     CapabilitySpec("school", "school", "Schule und Lernintegrationen", premium=True),
