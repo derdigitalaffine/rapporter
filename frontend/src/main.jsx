@@ -10,6 +10,8 @@ import './smart.css';
 import './smart-extra.css';
 import './automation-guided.css';
 import './design-system.css';
+import './appearance';
+import './appearance.css';
 import './form-primitives';
 import './feedback.css';
 import './accessibility.css';
