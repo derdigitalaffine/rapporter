@@ -59,7 +59,7 @@ class FamilyRelationship(TimestampedModel):
     child_visibility = models.CharField(
         max_length=24,
         choices=ChildVisibility.choices,
-        default=ChildVisibility.FULL,
+        default=ChildVisibility.RELATIONSHIP_ONLY,
     )
 
     class Meta:
