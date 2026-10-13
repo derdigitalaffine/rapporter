@@ -23,7 +23,7 @@ Die Planungsansicht unterscheidet vier Zustände ausdrücklich:
 - **Keine Liste:** Es gibt noch kein Shopping-Ziel. Ein primärer CTA öffnet den bestehenden Listen-Anlegeflow; Quick Add wird nicht so dargestellt, als könne bereits in eine konkrete Liste geschrieben werden.
 - **Leere Liste:** Die Liste existiert, enthält aber noch keine Artikel. Der primäre CTA fokussiert dieselbe kanonische Quick-Add-Eingabe.
 - **Nur erledigte Artikel:** Die Liste ist nicht leer, hat aber keine offenen Artikel mehr. Der Recovery-CTA öffnet den bestehenden Store Mode direkt mit `Erledigt`; es entsteht keine zweite Completed-Ansicht und keine parallele Artikeldomain.
-- **Offline/Sync-Fehler:** Offline bleibt als ruhiger persistenter Status sichtbar. Fehlgeschlagene Synchronisierung bleibt davon getrennt als Fehler mit Retry bestehen. Die bestehende Offline-Queue und ihre Konfliktsemantik werden nicht ersetzt.
+- **Offline/Sync-Fehler:** Offline bleibt als ruhiger persistenter Status sichtbar. Fehlgeschlagene Synchronisierung bleibt davon getrennt als Fehler mit Retry bestehen. Die bestehende Offline-Queue und ihre Konfliktsemantik werden nicht ersetzt. Die Anlage einer neuen Liste ist nicht Teil dieser Queue und wird deshalb offline früh als onlinepflichtig erklärt und gesperrt; Artikelmutationen in bestehenden Listen bleiben weiterhin queue-fähig.
 
 Der Store-Status (`open` oder `done`) kann für diesen Recovery-Pfad als URL-Zustand mitgeführt werden. Ein normaler Einstieg in den Store Mode startet weiterhin mit `Offen`; nur der explizite „Erledigte ansehen“-Pfad startet in `Erledigt`.
 
@@ -45,12 +45,12 @@ Fehler, relevante Offline-Zustände und fehlgeschlagene Synchronisierung bleiben
 - Reorder-Aktionen und Drag-Griff haben mindestens 44×44 px Touchfläche.
 - Der Drag-Griff ist die einzige Fläche, die normales Touch-Scrolling für Reorder übernimmt; die restliche Zeile bleibt normal scrollbar.
 - Reorder-Ergebnisse werden über eine höfliche Live-Region angekündigt.
-- Der Listen-Switcher verwendet eine native Select-Bedienung und mindestens 44 px Höhe.
-- Empty-/Completed-State-CTAs verwenden dieselben 44-px-Kernkontrollen wie der restliche Shopping-Flow.
+- Der Listen-Switcher verwendet eine native Select-Bedienung und mindestens 48 px Höhe; die danebenliegende Listenanlage bietet mindestens 48×48 px Touchfläche.
+- Empty-/Completed-State-CTAs sind mindestens 48 px hoch.
 - Store Check-off ist per ganzer Checkfläche, Tastatur und Screenreader bedienbar.
 - Die kurze Check-off-Transition respektiert `prefers-reduced-motion`.
 - Status wird nicht ausschließlich über Farbe vermittelt.
 
 ## Regressionen
 
-Backend-Tests decken Persistenz, Family-Scoping, vollständige Sequenzen und die Unabhängigkeit von Check-off und Reihenfolge ab. Playwright deckt zusätzlich sichtbare/touch-sichere Reorder-Controls, den kompakten Listenwechsel, No-list/Empty/Completed/Offline-Zustände, reduzierte Planning-Chrome, Laufweg-Gruppierung, Store-Filter, leises Add/Check-off, automatischen Online-Refresh sowie tastatur- und pointerbasiertes Planning-Reorder auf Desktop und Mobile ab.
+Backend-Tests decken Persistenz, Family-Scoping, vollständige Sequenzen und die Unabhängigkeit von Check-off und Reihenfolge ab. Playwright deckt zusätzlich sichtbare/touch-sichere Reorder-Controls, den kompakten Listenwechsel, No-list/Empty/Completed/Offline-Zustände, 320-px-Mobile-Reflow ohne Horizontaloverflow, Desktop-Reflow, reduzierte Planning-Chrome, Laufweg-Gruppierung, Store-Filter, leises Add/Check-off, automatischen Online-Refresh sowie tastatur- und pointerbasiertes Planning-Reorder auf Desktop und Mobile ab.
