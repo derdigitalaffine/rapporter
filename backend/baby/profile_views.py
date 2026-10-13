@@ -32,6 +32,15 @@ class ChildProfileInput(serializers.Serializer):
         return attrs
 
 
+def _family_profile(baby):
+    return {
+        "id": str(baby.id),
+        "membership": str(baby.membership_id) if baby.membership_id else None,
+        "display_name": baby.display_name,
+        "birth_date": baby.birth_date.isoformat(),
+    }
+
+
 def _require_child_confirmation(request, baby):
     if request.data.get("confirm") != "DELETE_CHILD":
         raise ValidationError({"confirm": "Send DELETE_CHILD to remove this child from the family."})
@@ -39,11 +48,14 @@ def _require_child_confirmation(request, baby):
         raise ValidationError({"confirm_name": "Repeat the current child name exactly."})
 
 
-@api_view(["PATCH", "DELETE"])
+@api_view(["GET", "PATCH", "DELETE"])
 def baby_profile_detail(request, baby_id):
     with transaction.atomic():
-        baby = child_profile(baby_id, for_update=True)
-        require_child_guardian(request.user, baby, manage=True)
+        baby = child_profile(baby_id, for_update=request.method != "GET")
+        require_child_guardian(request.user, baby, manage=request.method != "GET")
+
+        if request.method == "GET":
+            return Response(_family_profile(baby))
 
         if request.method == "PATCH":
             serializer = ChildProfileInput(data=request.data)
@@ -69,7 +81,7 @@ def baby_profile_detail(request, baby_id):
                     profile.save(update_fields=["birth_year", "birth_month", "birth_day", "updated_at"])
             baby.save(update_fields=update_fields)
             baby.refresh_from_db()
-            return Response(_serialize_baby(baby))
+            return Response(_family_profile(baby))
 
         _require_child_confirmation(request, baby)
         membership = baby.membership
