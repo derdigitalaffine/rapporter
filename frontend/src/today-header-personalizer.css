@@ -1,6 +1,0 @@
-.topbar .brand-mini.today-personal-header[role="heading"]{gap:2px}
-.topbar .brand-mini.today-personal-header[role="heading"]::before{content:attr(data-today-greeting);display:block;padding-left:0;background:none;color:var(--ink);font-size:20px;font-weight:900;letter-spacing:-.35px;line-height:1.05;text-transform:none;max-width:min(62vw,430px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.topbar .brand-mini.today-personal-header[role="heading"]::after{content:attr(data-today-family);display:block;color:var(--muted);font-size:12px;font-weight:800;letter-spacing:.01em;line-height:1.2;max-width:min(62vw,430px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.topbar .brand-mini.today-personal-header[role="heading"]>span{display:none}
-@media(max-width:360px){.topbar .brand-mini.today-personal-header[role="heading"]::before,.topbar .brand-mini.today-personal-header[role="heading"]::after{max-width:56vw}}
-html[data-high-contrast="true"] .topbar .brand-mini.today-personal-header[role="heading"]::before{color:var(--ink)}
