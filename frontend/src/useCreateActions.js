@@ -2,9 +2,11 @@ import {useEffect,useMemo,useState} from 'react';
 import {api} from './api';
 import {availableCreateActions,normalizeCreateRankingProfile,rankCreateActions,resolveDirectCreateAction} from './create-actions';
 import {CREATE_RANKING_UPDATED_EVENT,createRankingScope,createRankingScopeKey,fetchCreateRanking,flushCreateUsageQueue,loadCachedCreateRanking} from './create-ranking-client';
+import {readFamilyModuleRuntime} from './family-runtime';
 
 const CAPABILITIES={loyalty:true,messages:false};
 const EMPTY_MODULES={baby:null,pets:null};
+const hasOwn=(value,key)=>Boolean(value)&&Object.prototype.hasOwnProperty.call(value,key);
 
 // One canonical snapshot shared by the global palette and Today; no widget reads.
 export function useCreateActions({userId,page,family,entitlements}){
@@ -14,10 +16,13 @@ export function useCreateActions({userId,page,family,entitlements}){
     let live=true;
     const familyId=family?.id||null;
     if(!familyId){setModuleState({familyId:null,userId:null,...EMPTY_MODULES});return()=>{live=false}};
+    const cached=readFamilyModuleRuntime(familyId);
+    const needsBaby=!hasOwn(cached,'baby'),needsPets=!hasOwn(cached,'pets');
+    if(!needsBaby&&!needsPets){setModuleState({familyId,userId,baby:cached.baby,pets:cached.pets});return()=>{live=false}};
     setModuleState({familyId:null,userId:null,...EMPTY_MODULES});
     Promise.all([
-      api(`/baby/module/?family=${encodeURIComponent(familyId)}`).catch(()=>null),
-      api(`/pets/module/?family=${encodeURIComponent(familyId)}`).catch(()=>null),
+      needsBaby?api(`/baby/module/?family=${encodeURIComponent(familyId)}`).catch(()=>null):Promise.resolve(cached.baby),
+      needsPets?api(`/pets/module/?family=${encodeURIComponent(familyId)}`).catch(()=>null):Promise.resolve(cached.pets),
     ]).then(([baby,pets])=>{if(live)setModuleState({familyId,userId,baby,pets})});
     return()=>{live=false};
   },[family?.id,userId]);
