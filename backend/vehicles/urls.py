@@ -5,7 +5,6 @@ urlpatterns = [
     path("vehicles/", views.vehicles),
     path("vehicles/active/", views.active),
     path("vehicles/map-config/", views.map_config),
-    path("vehicles/tiles/<int:z>/<int:x>/<int:y>/", views.tile),
     path("vehicles/<uuid:vehicle_id>/", views.vehicle_detail),
     path("vehicles/<uuid:vehicle_id>/fuel/", views.fuel),
     path("vehicles/<uuid:vehicle_id>/journeys/", views.journeys),

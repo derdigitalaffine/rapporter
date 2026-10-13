@@ -2,7 +2,7 @@ import {test,expect} from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import {installApiMocks} from './mock-api';
 
-async function setup(page,{denied=false,gpsDenied=false,language='de',active=false}={}){
+async function setup(page,{denied=false,gpsDenied=false,language='de',active=false,mapConfigured=false}={}){
  await installApiMocks(page,{language});
  const car={id:'car-1',family:'family-1',name:'Familienauto',plate:'B-OS 2026',manufacturer:'VW',model:'Golf',fuel_type:'petrol',odometer:'100.0',vin:'',first_registration:null,notes:'',archived:false};
  const state={cars:[car],fuel:[],journeys:[],points:[],active:null,failFuel:0,failPoints:0,tokens:[]};
@@ -19,7 +19,7 @@ async function setup(page,{denied=false,gpsDenied=false,language='de',active=fal
   if(path==='/api/vehicles/'&&method==='POST'){const created={...car,...body,id:'car-2'};state.cars.push(created);return json(created,201)}
   if(path==='/api/vehicles/car-1/'&&method==='PATCH'){Object.assign(car,body);return json(car)}
   if(path==='/api/vehicles/active/')return json(state.active);
-  if(path==='/api/vehicles/map-config/')return json({configured:false});
+  if(path==='/api/vehicles/map-config/')return json(mapConfigured?{configured:true,tile_url:'https://tile.openstreetmap.org/{z}/{x}/{y}.png'}:{configured:false});
   if(path==='/api/vehicles/car-1/fuel/'&&method==='GET')return json(state.fuel);
   if(path==='/api/vehicles/car-1/fuel/'&&method==='POST'){state.tokens.push(body.request_id);if(state.failFuel-->0)return json({detail:'failed'},500);const entry={...body,id:'fuel-1',vehicle:'car-1'};state.fuel=[entry];return json(entry,201)}
   if(path==='/api/vehicles/car-1/journeys/'&&method==='GET')return json(state.journeys);
@@ -74,3 +74,61 @@ test('English flow and CSV export are available',async({page})=>{
 
 
 test('CSV safely escapes spreadsheet formulas without exporting GPS',async()=>{const {logbookCsv}=await import('../src/vehicle-tracking.js');const csv=logbookCsv([{started_at:'2026-10-13',ended_at:'2026-10-13',kind:'private',purpose:'=HYPERLINK(\"https://example.com\")',start_odometer:100,end_odometer:101,distance_m:1000}]);expect(csv).toContain("'=HYPERLINK");expect(csv).not.toContain('latitude');expect(csv).toContain('1.0')});
+
+const OSM_TEST_TILE='iVBORw0KGgoAAAANSUhEUgAAAQAAAAEACAYAAABccqhmAAADIElEQVR4nO3UIQEAIADAMKB/UwwNIAbiW4Krz332HUDS+h0A/GMAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEGYAEPYA2ysFxQM+KpAAAAAASUVORK5CYII=';
+
+// Real renderer/worker under the production policies; OSM requests are mocked, never sent live.
+test('OSM map renders with self worker, origin referer, cache and no credentials under CSP',async({page,context})=>{
+ await setup(page,{active:true,mapConfigured:true});
+ await context.addCookies([{name:'private_auth',value:'must-not-leave',domain:'tile.openstreetmap.org',path:'/',secure:true,sameSite:'None'}]);
+ await page.addInitScript(()=>{
+  window.__osmRequests=[];window.__mapWorkers=[];window.__cspViolations=[];
+  const originalFetch=window.fetch.bind(window);
+  window.fetch=(input,init)=>{const request=new Request(input,init);if(request.url.startsWith('https://tile.openstreetmap.org/'))window.__osmRequests.push({url:request.url,credentials:request.credentials,cache:request.cache,referrerPolicy:request.referrerPolicy});return originalFetch(input,init)};
+  const NativeWorker=window.Worker;
+  window.Worker=class extends NativeWorker{constructor(url,options){super(url,options);window.__mapWorkers.push(new URL(url,location.href).href)}};
+  document.addEventListener('securitypolicyviolation',event=>window.__cspViolations.push({directive:event.effectiveDirective,url:event.blockedURI}));
+ });
+ const {readFile}=await import('node:fs/promises');
+ const caddy=await readFile(new URL('../../Caddyfile',import.meta.url),'utf8');
+ const csp=caddy.match(/Content-Security-Policy "([^"]+)"/)[1];
+ const permissions=caddy.match(/Permissions-Policy "([^"]+)"/)[1];
+ await page.route('http://127.0.0.1:4173/**',async route=>{
+  if(route.request().resourceType()!=='document')return route.fallback();
+  const response=await route.fetch();
+  return route.fulfill({response,headers:{...response.headers(),'Content-Security-Policy':csp,'Permissions-Policy':permissions,'Referrer-Policy':'same-origin'}});
+ });
+ const tileRequests=[];
+ await page.route('https://tile.openstreetmap.org/**',async route=>{
+  tileRequests.push({url:route.request().url(),headers:await route.request().allHeaders()});
+  return route.fulfill({contentType:'image/png',body:Buffer.from(OSM_TEST_TILE,'base64'),headers:{'Access-Control-Allow-Origin':'*','Cache-Control':'public, max-age=604800'}});
+ });
+ await open(page);
+ expect(tileRequests).toHaveLength(0);
+ await page.getByRole('button',{name:'Karte anzeigen',exact:true}).click();
+ await expect(page.locator('.vehicle-map canvas')).toBeVisible();
+ await expect(page.locator('.maplibregl-ctrl-attrib a[href="https://www.openstreetmap.org/copyright"]')).toBeVisible();
+ await expect.poll(()=>tileRequests.length).toBeGreaterThan(0);
+ await expect(page.getByText('Karte wird geladen …')).toHaveCount(0);
+ await expect(page.getByText('Kartenbasis nicht erreichbar. Fahrtenbuch bleibt verfügbar.')).toHaveCount(0);
+ const requests=await page.evaluate(()=>window.__osmRequests);
+ expect(requests.length).toBeGreaterThan(0);
+ for(const request of requests){expect(request.credentials).toBe('omit');expect(request.cache).toBe('default');expect(request.referrerPolicy).toBe('origin');expect(request.url).not.toMatch(/family|vehicle|journey|key=/)}
+ for(const request of tileRequests){expect(request.headers.cookie).toBeUndefined();expect(request.headers.referer).toBe('http://127.0.0.1:4173/')}
+ const workers=await page.evaluate(()=>window.__mapWorkers);
+ expect(workers.length).toBeGreaterThan(0);
+ for(const worker of workers)expect(worker).toMatch(/^http:\/\/127\.0\.0\.1:4173\/assets\//);
+ expect(await page.evaluate(()=>window.__cspViolations)).toEqual([]);
+});
+
+test('all deployment variants allow only first-party GPS and targeted OSM resources',async()=>{
+ const {readFile}=await import('node:fs/promises');
+ for(const filename of ['Caddyfile','Caddyfile.proxy','Caddyfile.selfsigned']){
+  const text=await readFile(new URL(`../../${filename}`,import.meta.url),'utf8');
+  expect(text).toContain('Permissions-Policy "camera=(), microphone=(), geolocation=(self)"');
+  expect(text).toContain("connect-src 'self' https://tile.openstreetmap.org;");
+  expect(text).toContain("worker-src 'self';");
+  expect(text).toContain('Referrer-Policy same-origin');
+  expect(text).not.toContain('geofabrik');
+ }
+});

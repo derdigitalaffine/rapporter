@@ -1,7 +1,7 @@
 import uuid
 from datetime import timedelta
 from decimal import Decimal
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 from django.contrib.auth import get_user_model
 from django.db import IntegrityError, transaction
 from django.test import TestCase, override_settings
@@ -150,27 +150,30 @@ class VehicleApiTests(TestCase):
         self.assertEqual(self.client.delete(url).status_code,204)
         self.assertEqual(Journey.objects.count(),0)
 
-    @override_settings(VEHICLES_GEOFABRIK_TILE_URL="https://tiles.geofabrik.de/account/{z}/{x}/{y}.png")
-    def test_tile_proxy_hides_key_bounds_and_requires_premium(self):
-        with patch('vehicles.views.requests.get') as fetch:
-            upstream=MagicMock()
-            upstream.__enter__.return_value=upstream
-            upstream.status_code=200
-            upstream.headers={"Content-Type":"image/png"}
-            upstream.iter_content.return_value=[b"png"]
-            fetch.return_value=upstream
-            url=f'/api/vehicles/tiles/2/1/1/?family={self.family.id}'
-            response=self.client.get(url)
-            self.assertEqual(response.status_code,200)
-            self.assertEqual(response.content,b"png")
-            self.assertEqual(self.client.get(f'/api/vehicles/tiles/2/9/1/?family={self.family.id}').status_code,400)
-            self.assertEqual(fetch.call_count,1)
-            self.client.force_authenticate(self.outsider)
-            self.assertEqual(self.client.get(url).status_code,404)
-            self.assertEqual(fetch.call_count,1)
+    def test_osm_map_config_works_without_account_and_is_private(self):
+        url=f'/api/vehicles/map-config/?family={self.family.id}'
+        response=self.client.get(url)
+        self.assertEqual(response.status_code,200)
+        self.assertEqual(response.data,{"configured":True,"tile_url":"https://tile.openstreetmap.org/{z}/{x}/{y}.png"})
+        self.assertEqual(response["Cache-Control"],"private, no-store")
+        for account, status in [(self.outsider,404),(self.child,403)]:
+            self.client.force_authenticate(account)
+            self.assertEqual(self.client.get(url).status_code,status)
+        self.client.force_authenticate(self.alice)
+        now=timezone.now()
+        EntitlementCutover.objects.create(key=COMMERCIAL_CUTOVER_KEY,cutover_at=now,applied_at=now)
+        self.assertEqual(self.client.get(url).status_code,403)
 
-    @override_settings(VEHICLES_GEOFABRIK_TILE_URL="https://geofabrik.de.attacker.example/{z}/{x}/{y}.png")
-    def test_invalid_map_host_never_requested(self):
-        with patch('vehicles.views.requests.get') as fetch:
-            self.assertEqual(self.client.get(f'/api/vehicles/tiles/0/0/0/?family={self.family.id}').status_code,503)
-            fetch.assert_not_called()
+    def test_map_config_rejects_external_hosts_tokens_and_invalid_templates(self):
+        url=f'/api/vehicles/map-config/?family={self.family.id}'
+        for template in ["https://attacker.example/{z}/{x}/{y}.png","https://tile.openstreetmap.org.attacker.example/{z}/{x}/{y}.png","//attacker.example/{z}/{x}/{y}.png","http://tile.openstreetmap.org/{z}/{x}/{y}.png","https://token@tile.openstreetmap.org/{z}/{x}/{y}.png","https://tile.openstreetmap.org/{z}/{x}/{y}.png?key=secret","https://tile.openstreetmap.org/missing.png"]:
+            with self.settings(VEHICLES_OSM_TILE_URL=template):
+                self.assertEqual(self.client.get(url).data,{"configured":False})
+
+    @override_settings(VEHICLES_OSM_TILE_URL="/maptiles/{z}/{x}/{y}.png")
+    def test_same_origin_osm_service_can_be_configured(self):
+        response=self.client.get(f'/api/vehicles/map-config/?family={self.family.id}')
+        self.assertEqual(response.data,{"configured":True,"tile_url":"/maptiles/{z}/{x}/{y}.png"})
+
+    def test_legacy_geofabrik_proxy_is_removed(self):
+        self.assertEqual(self.client.get(f'/api/vehicles/tiles/0/0/0/?family={self.family.id}').status_code,404)

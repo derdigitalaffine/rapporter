@@ -176,4 +176,4 @@ docker-compose.yml           Basisstack
 .github/workflows/           CI
 ```
 
-- [Fahrzeuge und Fahrtenbuch (Premium)](docs/product/vehicles.md) – Stammdaten, Tankvorgänge, private GPS-Aufzeichnung und Geofabrik-Konfiguration.
+- [Fahrzeuge und Fahrtenbuch (Premium)](docs/product/vehicles.md) – Stammdaten, Tankvorgänge, private GPS-Aufzeichnung und OpenStreetMap-Karte.
