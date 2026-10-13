@@ -16,7 +16,15 @@ const COPY={
  }
 };
 
+const TYPE_SUGGESTIONS={
+ de:{recent:'Zuletzt verwendete Typen',suggestionSettings:'Vorschläge',showRecent:'Zuletzt verwendete Typen anzeigen',recentHint:'Nur die letzten drei erfolgreich angepinnten Referenztypen werden auf diesem Gerät für dich und diese Familie gemerkt. Keine Inhalte oder Objekte. Abschalten löscht diese Typen und beendet das Merken.'},
+ en:{recent:'Recently used types',suggestionSettings:'Suggestions',showRecent:'Show recently used types',recentHint:'Only your last three successfully pinned reference types are remembered on this device for you and this family. No content or items. Turning this off clears the types and stops learning.'},
+ fr:{recent:'Types récents',suggestionSettings:'Suggestions',showRecent:'Afficher les types récents',recentHint:'Seuls vos trois derniers types de référence épinglés sont mémorisés sur cet appareil pour vous et cette famille. Aucun contenu ni objet. Désactiver efface ces types et arrête la mémorisation.'},
+ nl:{recent:'Recent gebruikte typen',suggestionSettings:'Suggesties',showRecent:'Recent gebruikte typen tonen',recentHint:'Alleen je laatste drie succesvol vastgepinde referentietypen worden op dit apparaat voor jou en dit gezin onthouden. Geen inhoud of items. Uitschakelen wist de typen en stopt het onthouden.'},
+ th:{recent:'ประเภทที่ใช้ล่าสุด',suggestionSettings:'คำแนะนำ',showRecent:'แสดงประเภทที่ใช้ล่าสุด',recentHint:'อุปกรณ์นี้จดจำเฉพาะประเภทข้อมูลอ้างอิงสามประเภทล่าสุดที่คุณปักหมุดสำเร็จสำหรับคุณและครอบครัวนี้ ไม่เก็บเนื้อหาหรือรายการ ปิดตัวเลือกนี้เพื่อล้างประเภทและหยุดการจดจำ'},
+};
+
 export function pinComposerCopy(language='de'){
  const key=String(language||'de').split('-')[0];
- return COPY[key]||COPY.de;
+ return {...(COPY[key]||COPY.de),...(TYPE_SUGGESTIONS[key]||TYPE_SUGGESTIONS.de)};
 }

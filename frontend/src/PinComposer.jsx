@@ -5,6 +5,7 @@ import {EntityPicker,FieldGroup,FormActions,FormField,FormShell} from './form-pr
 import {Icon} from './icons';
 import {pinIconName,pinTypeLabel} from './pinboard-ui';
 import {pinComposerCopy} from './pin-composer-copy';
+import {PIN_TYPES_UPDATED_EVENT,pinTypeScopeKey,pinTypeStorageKey,readPinTypePreferences,writePinTypePreferences} from './pin-type-preferences';
 import './pin-composer.css';
 
 const ADAPTERS={
@@ -29,6 +30,7 @@ const itemLabel=item=>[item?.title,item?.subtitle].filter(Boolean).join(' · ');
 
 export default function PinComposer({
  familyId,
+ preferenceScope=null,
  language='de',
  kind,
  setKind,
@@ -67,6 +69,18 @@ export default function PinComposer({
  const [retryNonce,setRetryNonce]=useState(0);
  const generation=useRef(0);
  const alive=useRef(true);
+ const scopeKey=pinTypeScopeKey(preferenceScope);
+ const [hintsAuthorized,setHintsAuthorized]=useState(true);
+ const [preferenceView,setPreferenceView]=useState(()=>({scopeKey,preferences:readPinTypePreferences(preferenceScope)}));
+ const preferences=hintsAuthorized&&scopeKey&&preferenceView.scopeKey===scopeKey?preferenceView.preferences:{enabled:false,types:[]};
+ useEffect(()=>{
+  const refresh=()=>setPreferenceView({scopeKey,preferences:readPinTypePreferences(preferenceScope)});
+  refresh();
+  const changed=event=>{if(event.detail?.scopeKey===scopeKey)refresh()};
+  const stored=event=>{if(event.key===null||event.key===pinTypeStorageKey(preferenceScope))refresh()};
+  window.addEventListener(PIN_TYPES_UPDATED_EVENT,changed);window.addEventListener('storage',stored);
+  return()=>{window.removeEventListener(PIN_TYPES_UPDATED_EVENT,changed);window.removeEventListener('storage',stored)};
+ },[scopeKey]);
 
  const selected=useMemo(()=>items.find(item=>String(item.id)===String(targetId))||null,[items,targetId]);
  const isReference=editing?!['note','photo'].includes(editing.kind):mode==='existing';
@@ -82,7 +96,7 @@ export default function PinComposer({
  },[familyId,setTargetId]);
  useEffect(()=>{
   const onAuth=event=>{
-   if(event.detail?.authenticated===false){generation.current+=1;setItems([]);setHasNext(false);setPickerError('');setTargetId('')}
+   if(event.detail?.authenticated===false){generation.current+=1;setItems([]);setHasNext(false);setPickerError('');setTargetId('');setHintsAuthorized(false)}
   };
   window.addEventListener(AUTH_CHANGED_EVENT,onAuth);
   return()=>window.removeEventListener(AUTH_CHANGED_EVENT,onAuth);
@@ -126,6 +140,14 @@ export default function PinComposer({
  }
  function changeQuery(value){generation.current+=1;setTargetId('');setQuery(value)}
  function changeSelection(ids){setTargetId(ids[0]?String(ids[0]):'')}
+ function chooseRecentType(key){
+  const row=GROUPS.find(group=>group.adapters.includes(key));if(!row)return;
+  generation.current+=1;setGroup(row.key);setActiveAdapter(key);setQuery('');setItems([]);setHasNext(false);setPickerError('');setTargetId('');setAdapterKey(key);setKind(ADAPTERS[key].kind);setRetryNonce(value=>value+1);
+ }
+ function changeTypeSuggestions(enabled){
+  if(!hintsAuthorized||!scopeKey)return;
+  setPreferenceView({scopeKey,preferences:writePinTypePreferences(preferenceScope,{enabled,types:enabled?preferences.types:[]})});
+ }
  async function loadMore(){
   if(!hasNext||pickerBusy||pickerError||mode!=='existing')return;
   const expected=ADAPTERS[activeAdapter];const request=generation.current;const nextPage=page+1;setPickerBusy(true);
@@ -158,6 +180,7 @@ export default function PinComposer({
   {editing?.images?.length>0&&<div className="board-edit-photos">{editing.images.map(image=><div key={image.id}><img src={image.url} alt=""/><button type="button" className="secondary compact" disabled={busy} onClick={()=>removePhoto(image)}>{w.removePhoto}</button></div>)}</div>}
 
   {!editing&&mode==='existing'&&<div className="pin-existing-picker">
+   {preferences.enabled&&preferences.types.length>0&&<FieldGroup legend={w.recent}><div className="pin-recent-types">{preferences.types.map(key=><button type="button" key={key} disabled={busy} onClick={()=>chooseRecentType(key)}><Icon name={ADAPTERS[key].icon}/><span>{w[ADAPTERS[key].labelKey]}</span></button>)}</div></FieldGroup>}
    <FieldGroup legend={w.groups}><div className="pin-source-groups" role="group" aria-label={w.groups}>{GROUPS.map(row=><button type="button" key={row.key} className={group===row.key?'active':''} aria-pressed={group===row.key} onClick={()=>chooseGroup(row.key)}>{w[row.key]}</button>)}</div></FieldGroup>
    {currentGroup.adapters.length>1&&<div className="pin-source-types" role="group" aria-label={w[currentGroup.key]}>{currentGroup.adapters.map(key=><button type="button" key={key} className={activeAdapter===key?'active':''} aria-pressed={activeAdapter===key} onClick={()=>chooseAdapter(key)}><Icon name={ADAPTERS[key].icon}/><span>{w[ADAPTERS[key].labelKey]}</span></button>)}</div>}
    <EntityPicker id="pin-existing-search" label={w.choose} description={w.pickerHint} items={items} selectedIds={targetId?[targetId]:[]} onChange={changeSelection} getItemLabel={itemLabel} multiple={false} placeholder={w.search} emptyMessage={pickerBusy?w.loading:w.empty} query={query} onQueryChange={changeQuery} filterLocally={false} clearQueryOnChoose={false} selectionLabel={w.selected} removeLabel={w.remove} getRemoveLabel={item=>`${w.remove}: ${item.title||item.id}`} disabled={busy}/>
@@ -165,6 +188,7 @@ export default function PinComposer({
    {pickerBusy&&items.length>0&&<p role="status" className="pin-choice-loading">{w.loading}</p>}
    {pickerError&&<div role="alert" className="pin-picker-error"><span>{pickerError}</span><button type="button" className="secondary" onClick={retryPicker}>{w.retry}</button></div>}
    {hasNext&&!pickerError&&<button type="button" className="secondary pin-picker-more" disabled={pickerBusy||busy} onClick={loadMore}>{pickerBusy?w.loading:w.loadMore}</button>}
+   {hintsAuthorized&&scopeKey&&<details className="pin-type-preference"><summary>{w.suggestionSettings}</summary><label><input type="checkbox" checked={preferences.enabled} onChange={event=>changeTypeSuggestions(event.target.checked)} disabled={busy}/><span>{w.showRecent}</span></label><p>{w.recentHint}</p></details>}
   </div>}
 
   {(!isReference||editing)&&<VisibilityControl w={w} members={members} visibility={visibility} setVisibility={setVisibility} selectedMembershipIds={selectedMembershipIds} setSelectedMembershipIds={setSelectedMembershipIds}/>} 

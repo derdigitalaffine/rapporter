@@ -1,11 +1,12 @@
 import {useEffect,useRef,useState} from 'react';
 import {useTranslation} from 'react-i18next';
-import {api,AUTH_CHANGED_EVENT} from './api';
+import {api,AUTH_CHANGED_EVENT,isAuthenticated} from './api';
 import {Icon} from './icons';
 import {useFamilyPermissions} from './family-permissions';
 import {confirmAction} from './feedback';
 import PinComposer from './PinComposer';
 import PinCard from './PinBoardCard';
+import {pinTypeScope,pinTypeScopeKey,recordPinnedType} from './pin-type-preferences';
 import './board.css';
 
 const unwrap=value=>value?.results||value||[];
@@ -20,7 +21,9 @@ export default function BoardHub({family,onBack}){
  };
  Object.assign(w,SHARING_COPY[i18n.language.split('-')[0]]||{});
  const [rows,setRows]=useState([]),[next,setNext]=useState(null),[loading,setLoading]=useState(true),[error,setError]=useState(''),[compose,setCompose]=useState(false),[editing,setEditing]=useState(null),[kind,setKind]=useState('note'),[adapterKey,setAdapterKey]=useState(''),[text,setText]=useState(''),[files,setFiles]=useState([]),[targetId,setTargetId]=useState(''),[busy,setBusy]=useState(false),[visibility,setVisibility]=useState('family'),[selectedMembershipIds,setSelectedMembershipIds]=useState([]);
- const {role}=useFamilyPermissions(family);const canPost=!!role&&role!=='guest';const members=family?.memberships||[];
+ const {role,session}=useFamilyPermissions(family);const canPost=!!role&&role!=='guest';const members=family?.memberships||[];
+ const preferenceScope=isAuthenticated()?pinTypeScope(family,session):null;
+ const preferenceScopeRef=useRef(preferenceScope);preferenceScopeRef.current=preferenceScope;
  const [rowScope,setRowScope]=useState(null);
  const visibleRows=rowScope===familyId?rows:[],visibleNext=rowScope===familyId?next:null;
  const boardLease=useRef({familyId,active:true,request:0});
@@ -46,14 +49,16 @@ export default function BoardHub({family,onBack}){
  function startCompose(nextKind='note'){close();setKind(nextKind);setCompose(true)}
  function addFiles(picked){if(picked.length+files.length>4||picked.some(file=>file.size>10*1024*1024)){setError(w.limit);return}setError('');setFiles(old=>[...old,...picked])}
  async function submit(e){
-  e.preventDefault();setBusy(true);setError('');
+  e.preventDefault();const lease=renderLease;if(!lease.active||lease!==boardLease.current||busy)return;setBusy(true);setError('');
   try{
    const sharing={visibility};if(visibility==='selected')sharing.selected_membership_ids=selectedMembershipIds;
    if(editing){const body={...sharing};if(['note','photo'].includes(editing.kind))body.text=text;await api(`/board/${editing.id}/`,{method:'PATCH',body:JSON.stringify(body)})}
    else if(['note','photo'].includes(kind)){const body=new FormData();body.append('family',familyId);body.append('kind',kind);body.append('text',text);body.append('visibility',visibility);if(visibility==='selected')selectedMembershipIds.forEach((id,index)=>body.append(`selected_membership_ids[${index}]`,id));files.forEach(file=>body.append('images',file));await api('/board/',{method:'POST',body})}
    else {const body={family:familyId,kind,target_id:targetId,text:text.trim()};if(adapterKey)body.adapter_key=adapterKey;await api('/board/',{method:'POST',body:JSON.stringify(body)})}
+   if(!lease.active||lease!==boardLease.current||!isAuthenticated())return;
+   if(!editing&&adapterKey&&pinTypeScopeKey(preferenceScope)===pinTypeScopeKey(preferenceScopeRef.current))recordPinnedType(preferenceScope,adapterKey);
    close();await load();
-  }catch(e){setError(e.message||w.failed)}finally{setBusy(false)}
+  }catch(e){if(lease.active&&lease===boardLease.current)setError(e.message||w.failed)}finally{if(lease.active&&lease===boardLease.current)setBusy(false)}
  }
  async function removePhoto(image){setBusy(true);try{await api(`/board-images/${image.id}/`,{method:'DELETE'});setEditing(old=>({...old,images:old.images.filter(row=>row.id!==image.id)}));await load()}catch(e){setError(e.message)}finally{setBusy(false)}}
  function mutationCurrent(lease){return lease.active&&lease===boardLease.current&&lease.familyId===familyId}
@@ -81,7 +86,7 @@ export default function BoardHub({family,onBack}){
 
  return <section className="board-hub"><header className="page-head board-head"><button className="icon-btn" aria-label={w.back} onClick={onBack}><Icon name="back"/></button><div className="grow"><small>{w.eyebrow}</small><h1>{w.title}</h1><p>{w.hint}</p></div>{canPost&&!compose&&<button className="primary board-pin-button" onClick={()=>startCompose()}><Icon name="plus"/> {w.pin}</button>}</header>
  {error&&<div role="alert" className="card board-error">{error} {!compose&&<button onClick={()=>load()}>{w.retry}</button>}</div>}
- {compose&&<PinComposer key={`${familyId}-${editing?.id||'new'}`} familyId={familyId} language={i18n.language} kind={kind} setKind={setKind} adapterKey={adapterKey} setAdapterKey={setAdapterKey} text={text} setText={setText} files={files} addFiles={addFiles} setFiles={setFiles} targetId={targetId} setTargetId={setTargetId} editing={editing} busy={busy} onSubmit={submit} onClose={close} removePhoto={removePhoto} members={members} visibility={visibility} setVisibility={setVisibility} selectedMembershipIds={selectedMembershipIds} setSelectedMembershipIds={setSelectedMembershipIds}/>} 
+ {compose&&<PinComposer key={`${familyId}-${editing?.id||'new'}`} familyId={familyId} preferenceScope={preferenceScope} language={i18n.language} kind={kind} setKind={setKind} adapterKey={adapterKey} setAdapterKey={setAdapterKey} text={text} setText={setText} files={files} addFiles={addFiles} setFiles={setFiles} targetId={targetId} setTargetId={setTargetId} editing={editing} busy={busy} onSubmit={submit} onClose={close} removePhoto={removePhoto} members={members} visibility={visibility} setVisibility={setVisibility} selectedMembershipIds={selectedMembershipIds} setSelectedMembershipIds={setSelectedMembershipIds}/>}
  {!compose&&visibleRows.length>0&&<div className="pinboard-guide"><Icon name="drag"/><span>{w.arrange}</span><small>{({de:'Unter Mehr kannst du Karten mit den Pfeilen anordnen.',en:'Open More on a card to arrange it with the arrow controls.',fr:'Ouvrez Plus pour réorganiser les cartes avec les flèches.',nl:'Open Meer om kaarten met de pijlen te ordenen.',th:'เปิดเพิ่มเติมเพื่อจัดเรียงการ์ดด้วยปุ่มลูกศร'})[i18n.language.split('-')[0]]||'Unter Mehr kannst du Karten mit den Pfeilen anordnen.'}</small></div>}
  <div className="pinboard-grid" aria-live="polite">{visibleRows.map((row,index)=><PinCard key={row.id} row={row} index={index} total={visibleRows.length} language={i18n.language} busy={busy} onMove={move} onRemove={remove} onEdit={()=>startEdit(row)} onInteractionChange={interaction=>updateInteraction(row.id,interaction)}/>)}</div>
  {loading&&<p role="status" className="board-loading">{w.loading}</p>}{!loading&&!error&&!visibleRows.length&&!compose&&<button className="card board-empty" onClick={()=>canPost&&startCompose()} disabled={!canPost}><span><Icon name="plus"/></span><strong>{w.empty}</strong>{canPost&&<small>{w.pin}</small>}</button>}{visibleNext&&<button className="secondary board-more" disabled={loading} onClick={()=>load(visibleNext,true)}>{w.more}</button>}</section>
