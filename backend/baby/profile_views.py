@@ -52,6 +52,31 @@ def _family_profile(baby):
     }
 
 
+def _update_family_profile(baby, validated_data):
+    display_name = validated_data.get("display_name")
+    birth_date = validated_data.get("birth_date")
+    update_fields = ["updated_at"]
+    if display_name is not None:
+        baby.display_name = display_name
+        update_fields.append("display_name")
+        if baby.membership_id:
+            Membership.objects.filter(pk=baby.membership_id).update(display_name=display_name)
+        if baby.source_pregnancy_baby_id:
+            PregnancyBaby.objects.filter(pk=baby.source_pregnancy_baby_id).update(display_name=display_name)
+    if birth_date is not None:
+        baby.birth_date = birth_date
+        update_fields.append("birth_date")
+        if baby.membership_id:
+            profile, _ = UserProfile.objects.get_or_create(user_id=baby.membership.user_id)
+            profile.birth_year = birth_date.year
+            profile.birth_month = birth_date.month
+            profile.birth_day = birth_date.day
+            profile.save(update_fields=["birth_year", "birth_month", "birth_day", "updated_at"])
+    baby.save(update_fields=update_fields)
+    baby.refresh_from_db()
+    return baby
+
+
 def _require_child_confirmation(request, baby):
     if request.data.get("confirm") != "DELETE_CHILD":
         raise ValidationError({"confirm": "Send DELETE_CHILD to remove this child from the family."})
@@ -64,40 +89,34 @@ def child_family_profile(request, baby_id):
     with transaction.atomic():
         baby = child_profile(baby_id, for_update=request.method == "PATCH")
         require_child_guardian(request.user, baby, manage=request.method == "PATCH")
-
         if request.method == "GET":
             return Response(_family_profile(baby))
-
         serializer = ChildFamilyProfileInput(data=request.data)
         serializer.is_valid(raise_exception=True)
-        display_name = serializer.validated_data.get("display_name")
-        birth_date = serializer.validated_data.get("birth_date")
-        update_fields = ["updated_at"]
-        if display_name is not None:
-            baby.display_name = display_name
-            update_fields.append("display_name")
-            if baby.membership_id:
-                Membership.objects.filter(pk=baby.membership_id).update(display_name=display_name)
-            if baby.source_pregnancy_baby_id:
-                PregnancyBaby.objects.filter(pk=baby.source_pregnancy_baby_id).update(display_name=display_name)
-        if birth_date is not None:
-            baby.birth_date = birth_date
-            update_fields.append("birth_date")
-            if baby.membership_id:
-                profile, _ = UserProfile.objects.get_or_create(user_id=baby.membership.user_id)
-                profile.birth_year = birth_date.year
-                profile.birth_month = birth_date.month
-                profile.birth_day = birth_date.day
-                profile.save(update_fields=["birth_year", "birth_month", "birth_day", "updated_at"])
-        baby.save(update_fields=update_fields)
-        baby.refresh_from_db()
-        return Response(_family_profile(baby))
+        return Response(_family_profile(_update_family_profile(baby, serializer.validated_data)))
 
 
-@api_view(["PATCH", "DELETE"])
+@api_view(["GET", "PATCH", "DELETE"])
 def baby_profile_detail(request, baby_id):
     with transaction.atomic():
-        baby = child_profile(baby_id, for_update=True)
+        baby = child_profile(baby_id, for_update=request.method != "GET")
+
+        # Family Members already resolves this canonical child URL. GET is a new,
+        # minimal family-profile read and deliberately exposes no care/health data.
+        if request.method == "GET":
+            require_child_guardian(request.user, baby)
+            return Response(_family_profile(baby))
+
+        # A family-profile edit is distinguishable from the pre-existing Baby
+        # rename contract by the birth_date field. Keep it independent of the
+        # optional Baby module while retaining per-child guardian authorization.
+        if request.method == "PATCH" and "birth_date" in request.data:
+            require_child_guardian(request.user, baby, manage=True)
+            serializer = ChildFamilyProfileInput(data=request.data)
+            serializer.is_valid(raise_exception=True)
+            return Response(_family_profile(_update_family_profile(baby, serializer.validated_data)))
+
+        # Existing Baby-module PATCH/DELETE behavior remains unchanged.
         require_module(baby.family)
         require_child_guardian(request.user, baby, manage=True)
 
