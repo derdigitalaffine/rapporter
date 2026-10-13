@@ -12,14 +12,91 @@ from django.utils import timezone
 from rest_framework.exceptions import PermissionDenied, ValidationError
 
 from auth_identity.models import EmailIdentity
-from .access import friendship_access, friendship_for, is_blocked, membership, preferences, require_writer, shared_chat_family, visible_messages
+from family.models import Membership
+from .access import WRITER_ROLES, family_writer, friendship_access, friendship_for, is_blocked, membership, preferences, require_writer, shared_chat_family, visible_messages
 from .models import ChatBlock, ChatMessage, ChatReaction, ContactInvitation, Conversation, ConversationMember, Friendship
 
 REACTIONS = {"👍", "❤️", "😂", "😮", "😢", "🙏", "🎉", "👎"}
+SYSTEM_USERNAME = "__familyos_system__"
 
 
-def _join(conversation, user, inviter, *, state="active"):
-    return ConversationMember.objects.create(conversation=conversation, user=user, invited_by=inviter, label=preferences(user).display_name, state=state, joined_at=timezone.now() if state == "active" else None)
+def system_user():
+    User = get_user_model()
+    row, created = User.objects.get_or_create(username=SYSTEM_USERNAME, defaults={"is_active": False, "first_name": "System"})
+    if created:
+        row.set_unusable_password()
+        row.save(update_fields=["password"])
+    return row
+
+
+def _join(conversation, user, inviter, *, state="active", label=None):
+    return ConversationMember.objects.create(conversation=conversation, user=user, invited_by=inviter, label=(label or preferences(user).display_name)[:80], state=state, joined_at=timezone.now() if state == "active" else None)
+
+
+def _family_member_rows(family_id):
+    return list(
+        Membership.objects.filter(
+            family_id=family_id,
+            family__status="active",
+            role__in=WRITER_ROLES,
+            user__is_active=True,
+        ).select_related("user").order_by("created_at")
+    )
+
+
+def _sync_family_channel(family, channel, rows, actor, now):
+    title = family.name[:100] if channel == Conversation.Channel.FAMILY else "System"
+    creator = actor if channel == Conversation.Channel.FAMILY else system_user()
+    conv, _ = Conversation.objects.select_for_update().get_or_create(
+        family=family,
+        channel=channel,
+        defaults={"kind": "group", "title": title, "created_by": creator},
+    )
+    if conv.title != title:
+        conv.title = title
+        conv.save(update_fields=["title", "updated_at"])
+    desired = {row.user_id: row for row in rows}
+    existing = {row.user_id: row for row in ConversationMember.objects.select_for_update().filter(conversation=conv)}
+    for user_id, row in desired.items():
+        label = (row.display_name or preferences(row.user).display_name)[:80]
+        participant = existing.get(user_id)
+        if participant:
+            fields = []
+            if participant.state != "active":
+                participant.state = "active"
+                participant.joined_at = now
+                participant.left_at = None
+                fields.extend(["state", "joined_at", "left_at"])
+            if participant.label != label:
+                participant.label = label
+                fields.append("label")
+            if fields:
+                participant.save(update_fields=[*fields, "updated_at"])
+        else:
+            _join(conv, row.user, creator, label=label)
+    for user_id, participant in existing.items():
+        if user_id not in desired and participant.state != "left":
+            participant.state = "left"
+            participant.left_at = now
+            participant.typing_until = None
+            participant.save(update_fields=["state", "left_at", "typing_until", "updated_at"])
+    return conv
+
+
+@transaction.atomic
+def sync_family_groups(user):
+    """Ensure every active chat-capable family has canonical Family and System channels."""
+    require_writer(user)
+    own = list(Membership.objects.filter(user=user, family__status="active", role__in=WRITER_ROLES).select_related("family").order_by("created_at"))
+    now = timezone.now()
+    synced = []
+    for own_member in own:
+        rows = _family_member_rows(own_member.family_id)
+        if not rows:
+            continue
+        synced.append(_sync_family_channel(own_member.family, Conversation.Channel.FAMILY, rows, user, now))
+        synced.append(_sync_family_channel(own_member.family, Conversation.Channel.SYSTEM, rows, user, now))
+    return synced
 
 
 @transaction.atomic
@@ -44,9 +121,8 @@ def family_direct_conversation(user, target_user_id):
         raise Http404
     users = {row.pk: row for row in get_user_model().objects.select_for_update(no_key=True).filter(pk__in=(user.pk, target_user_id)).order_by("pk")}
     target = users.get(target_user_id)
-    if not target:
+    if not target or not family_writer(target):
         raise Http404
-    require_writer(target)
     low, high = sorted((user.pk, target_user_id))
     friend = Friendship.objects.select_for_update().filter(low_user_id=low, high_user_id=high).first()
     if friend:
@@ -81,7 +157,7 @@ def create_group(user, title, friend_ids):
 
 @transaction.atomic
 def group_action(user, conversation_id, action):
-    conv = Conversation.objects.select_for_update().filter(pk=conversation_id, kind="group").first()
+    conv = Conversation.objects.select_for_update().filter(pk=conversation_id, kind="group", family__isnull=True).first()
     if not conv:
         raise Http404
     member = membership(user, conv.pk, lock=True)
@@ -100,7 +176,6 @@ def group_action(user, conversation_id, action):
 @transaction.atomic
 def change_friendship(user, friendship_id, *, block=False):
     require_writer(user)
-    # Same user-pair locks as invitation acceptance prevent reactivation racing a block.
     friend = Friendship.objects.filter(pk=friendship_id).filter(Q(low_user=user) | Q(high_user=user)).first()
     if not friend:
         raise Http404
@@ -114,7 +189,6 @@ def change_friendship(user, friendship_id, *, block=False):
     identities = dict(EmailIdentity.objects.filter(user_id__in=(user.pk, other), kind="primary").values_list("user_id", "email_normalized"))
     invite_scope = Q(sender_id=user.pk, email=identities.get(other, "")) | Q(sender_id=other, email=identities.get(user.pk, ""))
     cutoff = friend.updated_at
-    # Invite acceptance locks invite -> users -> friendship. Never invert that order.
     def revoke_pending():
         with transaction.atomic():
             rows = list(ContactInvitation.objects.select_for_update().filter(invite_scope, status="pending", created_at__lte=cutoff).order_by("pk"))
@@ -131,6 +205,8 @@ def _locked_member(user, conversation_id):
     conv = Conversation.objects.select_for_update().filter(pk=conversation_id).first()
     if not conv:
         raise Http404
+    if conv.channel == Conversation.Channel.SYSTEM:
+        raise PermissionDenied({"code": "system_chat_read_only"})
     member = membership(user, conv.pk, write=True, lock=True)
     return conv, member
 

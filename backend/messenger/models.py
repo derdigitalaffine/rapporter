@@ -3,7 +3,7 @@ import uuid
 from django.conf import settings
 from django.db import models
 
-from family.models import TimestampedModel
+from family.models import Family, TimestampedModel
 
 
 class ChatPreference(models.Model):
@@ -58,15 +58,32 @@ class ContactInvitation(TimestampedModel):
 
 
 class Conversation(TimestampedModel):
+    class Channel(models.TextChoices):
+        CUSTOM = "custom", "Custom"
+        FAMILY = "family", "Family"
+        SYSTEM = "system", "System"
+
     kind = models.CharField(max_length=8, choices=[("direct", "Direct"), ("group", "Group")])
     title = models.CharField(max_length=100, blank=True)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="chat_conversations_created")
     friendship = models.OneToOneField(Friendship, null=True, blank=True, on_delete=models.CASCADE, related_name="conversation")
+    family = models.ForeignKey(Family, null=True, blank=True, on_delete=models.CASCADE, related_name="chat_conversations")
+    channel = models.CharField(max_length=12, choices=Channel.choices, default=Channel.CUSTOM)
     revision = models.PositiveBigIntegerField(default=0)
     members = models.ManyToManyField(settings.AUTH_USER_MODEL, through="ConversationMember", through_fields=("conversation", "user"), related_name="chat_conversations")
 
     class Meta:
-        constraints = [models.CheckConstraint(condition=models.Q(kind="direct", friendship__isnull=False) | models.Q(kind="group", friendship__isnull=True), name="chat_conversation_scope")]
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    models.Q(kind="direct", friendship__isnull=False, family__isnull=True, channel="custom")
+                    | models.Q(kind="group", friendship__isnull=True, family__isnull=True, channel="custom")
+                    | models.Q(kind="group", friendship__isnull=True, family__isnull=False, channel__in=["family", "system"])
+                ),
+                name="chat_conversation_scope",
+            ),
+            models.UniqueConstraint(fields=["family", "channel"], condition=models.Q(family__isnull=False), name="chat_family_channel_unique"),
+        ]
 
 
 class ConversationMember(TimestampedModel):
