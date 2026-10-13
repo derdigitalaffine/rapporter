@@ -23,6 +23,7 @@ export const FEATURE_REGISTRY=Object.freeze([
   defineFeature('baby',{familyContext:true}),
   defineFeature('pets',{familyContext:true}),
   defineFeature('more'),
+  defineFeature('settings',{detail:true}),
   defineFeature('calendar'),
   defineFeature('weather',{detail:true}),
   defineFeature('expenses',{detail:true,queryParams:['ledger']}),

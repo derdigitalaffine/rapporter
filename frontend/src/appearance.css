@@ -1,0 +1,68 @@
+html[data-color-profile="blue"]{
+ --color-text:#17324f;
+ --color-muted:#5b6b7d;
+ --color-brand:#17324f;
+ --color-positive:#315f8c;
+ --color-positive-soft:#e5eef8;
+ --color-info:#315f8c;
+ --color-info-soft:#e8f1fa;
+ --color-neutral-soft:#eef2f6;
+ --color-action-primary:var(--color-brand);
+ --color-action-secondary:var(--color-positive-soft);
+ --color-focus:#286da8;
+ --color-selected:var(--color-positive);
+ --green:var(--color-positive);
+ --green-soft:var(--color-positive-soft);
+ --shadow-sm:0 4px 16px rgba(23,50,79,.06);
+ --shadow-md:0 8px 28px rgba(23,50,79,.08);
+ --shadow-lg:0 18px 50px rgba(23,50,79,.14);
+}
+
+html[data-high-contrast="true"]{
+ --color-bg:#000;
+ --color-surface:#000;
+ --color-text:#fff;
+ --color-muted:#fff;
+ --color-border:#fff;
+ --color-brand:#fff;
+ --color-positive:#fff;
+ --color-positive-soft:#000;
+ --color-accent:#fff;
+ --color-accent-soft:#000;
+ --color-warning:#fff;
+ --color-warning-soft:#000;
+ --color-danger:#fff;
+ --color-danger-soft:#000;
+ --color-info:#fff;
+ --color-info-soft:#000;
+ --color-neutral-soft:#000;
+ --color-action-primary:#fff;
+ --color-action-secondary:#000;
+ --color-focus:#fff;
+ --color-selected:#fff;
+ --color-disabled:#aaa;
+ --card:#000;
+ --surface:#000;
+ --text:#fff;
+ --ink:#fff;
+ --muted:#fff;
+ --line:#fff;
+ --brand:#fff;
+ --positive:#fff;
+ --green:#fff;
+ --green-soft:#000;
+ --soft:#000;
+ --bg:#000;
+ --peach:#fff;
+ --peach-soft:#000;
+ --red:#fff;
+ --shadow-sm:none;
+ --shadow-md:none;
+ --shadow-lg:none;
+ --shadow:none;
+}
+html[data-high-contrast="true"] body{background:#000;color:#fff}
+html[data-high-contrast="true"] :where(.primary){background:#fff!important;color:#000!important;border:2px solid #fff!important}
+html[data-high-contrast="true"] :where(.secondary,.card,input,select,textarea,button:not(.primary)){border-color:#fff!important}
+html[data-high-contrast="true"] :where(a,.text-button){color:#fff!important;text-decoration:underline}
+html[data-high-contrast="true"] :where(button,a,input,select,textarea,summary):focus-visible{outline:4px solid #fff!important;outline-offset:3px}
