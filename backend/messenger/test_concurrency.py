@@ -57,3 +57,22 @@ class MessengerConcurrencyTests(TransactionTestCase):
         self.assertEqual(ChatMessage.objects.count(), 1)
         member.conversation.refresh_from_db()
         self.assertEqual(member.conversation.revision, 1)
+
+
+    def test_opposite_incoming_invites_use_consistent_user_lock_order(self):
+        from rest_framework.test import APIClient
+        invites = [create_invitation(self.one, self.two.email, uuid.uuid4()), create_invitation(self.two, self.one.email, uuid.uuid4())]
+        def accept(index):
+            close_old_connections()
+            try:
+                client = APIClient()
+                client.force_authenticate(get_user_model().objects.get(pk=self.two.pk if index == 0 else self.one.pk))
+                response = client.post(f"/api/chat/invitations/{invites[index].pk}/", {"action": "accept"}, format="json")
+                return response.status_code, response.data
+            finally:
+                close_old_connections()
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            results = list(executor.map(accept, [0, 1]))
+        self.assertEqual([status for status, _ in results], [200, 200], results)
+        self.assertEqual(results[0][1], results[1][1])
+        self.assertEqual(Friendship.objects.count(), 1)

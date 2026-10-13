@@ -84,7 +84,7 @@ def invitation_action(request, invitation_id):
     data = validated(request.data, action=serializers.ChoiceField(choices=["accept", "decline", "revoke"]))
     rate(request, "chat.write")
     with transaction.atomic():
-        invite = ContactInvitation.objects.select_for_update().select_related("sender").filter(pk=invitation_id, expires_at__gt=timezone.now(), status__in=["pending", "accepted"]).first()
+        invite = ContactInvitation.objects.select_for_update(of=("self",)).select_related("sender").filter(pk=invitation_id, expires_at__gt=timezone.now(), status__in=["pending", "accepted"]).first()
         if not invite:
             raise Http404
         if data["action"] == "revoke":
