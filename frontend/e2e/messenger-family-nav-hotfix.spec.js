@@ -39,13 +39,14 @@ test('Messenger is a fixed main destination with personal unread badge',async({p
  await expect(messenger).toHaveAttribute('aria-current','page');
 });
 
-test('own-family member opens direct chat without invitation or acceptance',async({page})=>{
+test('own-family member opens direct chat from unified contacts without invitation or acceptance',async({page})=>{
  const state=await boot(page);
  await page.locator('.bottom-nav button').filter({hasText:'Nachrichten'}).click();
  await page.getByRole('button',{name:/Freunde/}).first().click();
- await expect(page.getByRole('heading',{name:'Familienmitglieder'})).toBeVisible();
- const familySection=page.getByRole('heading',{name:'Familienmitglieder'}).locator('..');
- await familySection.getByRole('button',{name:/Sam/}).click();
+ const sam=page.getByRole('button',{name:/Sam/});
+ await expect(sam).toBeVisible();
+ await expect(sam).toContainText('Familie');
+ await sam.click();
  await expect.poll(()=>state.requests.some(request=>request.path==='/api/chat/family-conversations/'&&request.method==='POST'&&request.body.user_id===2)).toBe(true);
  expect(state.requests.some(request=>request.path==='/api/chat/invitations/'&&request.method==='POST')).toBe(false);
  expect(state.requests.some(request=>request.path==='/api/chat/conversations/'&&request.method==='POST')).toBe(false);
