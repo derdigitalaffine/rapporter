@@ -41,8 +41,8 @@ test('native calendar event shows, edits and persists multiple participant avata
  await expect(page.locator('.calendar-detail')).toContainText('Familientermin');
 
  await page.locator('.calendar-detail .primary').click();
- const sam=page.getByRole('checkbox',{name:'Sam'});
- const alex=page.getByRole('checkbox',{name:'Alex'});
+ const sam=page.getByRole('checkbox',{name:'Sam',exact:true});
+ const alex=page.getByRole('checkbox',{name:'Alex',exact:true});
  await expect(sam).toBeChecked();
  await expect(alex).toBeChecked();
  await sam.uncheck();
