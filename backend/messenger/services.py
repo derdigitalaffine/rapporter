@@ -17,6 +17,16 @@ from .access import WRITER_ROLES, family_writer, friendship_access, friendship_f
 from .models import ChatBlock, ChatMessage, ChatReaction, ContactInvitation, Conversation, ConversationMember, Friendship
 
 REACTIONS = {"👍", "❤️", "😂", "😮", "😢", "🙏", "🎉", "👎"}
+SYSTEM_USERNAME = "__familyos_system__"
+
+
+def system_user():
+    User = get_user_model()
+    row, created = User.objects.get_or_create(username=SYSTEM_USERNAME, defaults={"is_active": False, "first_name": "System"})
+    if created:
+        row.set_unusable_password()
+        row.save(update_fields=["password"])
+    return row
 
 
 def _join(conversation, user, inviter, *, state="active", label=None):
@@ -34,58 +44,58 @@ def _family_member_rows(family_id):
     )
 
 
+def _sync_family_channel(family, channel, rows, actor, now):
+    title = family.name[:100] if channel == Conversation.Channel.FAMILY else "System"
+    creator = actor if channel == Conversation.Channel.FAMILY else system_user()
+    conv, _ = Conversation.objects.select_for_update().get_or_create(
+        family=family,
+        channel=channel,
+        defaults={"kind": "group", "title": title, "created_by": creator},
+    )
+    if conv.title != title:
+        conv.title = title
+        conv.save(update_fields=["title", "updated_at"])
+    desired = {row.user_id: row for row in rows}
+    existing = {row.user_id: row for row in ConversationMember.objects.select_for_update().filter(conversation=conv)}
+    for user_id, row in desired.items():
+        label = (row.display_name or preferences(row.user).display_name)[:80]
+        participant = existing.get(user_id)
+        if participant:
+            fields = []
+            if participant.state != "active":
+                participant.state = "active"
+                participant.joined_at = now
+                participant.left_at = None
+                fields.extend(["state", "joined_at", "left_at"])
+            if participant.label != label:
+                participant.label = label
+                fields.append("label")
+            if fields:
+                participant.save(update_fields=[*fields, "updated_at"])
+        else:
+            _join(conv, row.user, creator, label=label)
+    for user_id, participant in existing.items():
+        if user_id not in desired and participant.state != "left":
+            participant.state = "left"
+            participant.left_at = now
+            participant.typing_until = None
+            participant.save(update_fields=["state", "left_at", "typing_until", "updated_at"])
+    return conv
+
+
 @transaction.atomic
 def sync_family_groups(user):
-    """Ensure each active chat-capable family has one canonical, self-updating group."""
+    """Ensure every active chat-capable family has canonical Family and System channels."""
     require_writer(user)
-    own = list(
-        Membership.objects.filter(
-            user=user,
-            family__status="active",
-            role__in=WRITER_ROLES,
-        ).select_related("family").order_by("created_at")
-    )
+    own = list(Membership.objects.filter(user=user, family__status="active", role__in=WRITER_ROLES).select_related("family").order_by("created_at"))
     now = timezone.now()
     synced = []
     for own_member in own:
-        family = own_member.family
-        rows = _family_member_rows(family.pk)
+        rows = _family_member_rows(own_member.family_id)
         if not rows:
             continue
-        conv, created = Conversation.objects.select_for_update().get_or_create(
-            family=family,
-            defaults={"kind": "group", "title": family.name[:100], "created_by": user},
-        )
-        title = family.name[:100]
-        if conv.title != title:
-            conv.title = title
-            conv.save(update_fields=["title", "updated_at"])
-        desired = {row.user_id: row for row in rows}
-        existing = {row.user_id: row for row in ConversationMember.objects.select_for_update().filter(conversation=conv)}
-        for user_id, row in desired.items():
-            label = (row.display_name or preferences(row.user).display_name)[:80]
-            participant = existing.get(user_id)
-            if participant:
-                fields = []
-                if participant.state != "active":
-                    participant.state = "active"
-                    participant.joined_at = now
-                    participant.left_at = None
-                    fields.extend(["state", "joined_at", "left_at"])
-                if participant.label != label:
-                    participant.label = label
-                    fields.append("label")
-                if fields:
-                    participant.save(update_fields=[*fields, "updated_at"])
-            else:
-                _join(conv, row.user, user, label=label)
-        for user_id, participant in existing.items():
-            if user_id not in desired and participant.state != "left":
-                participant.state = "left"
-                participant.left_at = now
-                participant.typing_until = None
-                participant.save(update_fields=["state", "left_at", "typing_until", "updated_at"])
-        synced.append(conv)
+        synced.append(_sync_family_channel(own_member.family, Conversation.Channel.FAMILY, rows, user, now))
+        synced.append(_sync_family_channel(own_member.family, Conversation.Channel.SYSTEM, rows, user, now))
     return synced
 
 
@@ -195,6 +205,8 @@ def _locked_member(user, conversation_id):
     conv = Conversation.objects.select_for_update().filter(pk=conversation_id).first()
     if not conv:
         raise Http404
+    if conv.channel == Conversation.Channel.SYSTEM:
+        raise PermissionDenied({"code": "system_chat_read_only"})
     member = membership(user, conv.pk, write=True, lock=True)
     return conv, member
 
