@@ -1,4 +1,4 @@
-import {clearFamilyModuleRuntime,invalidateFamilyModuleRuntimeForPath,rememberFamilyModuleRuntime} from './family-runtime';
+import {clearBootstrapRuntime,clearFamilyModuleRuntime,invalidateFamilyModuleRuntimeForPath,rememberBootstrapRuntime,rememberFamilyModuleRuntime,takeBootstrapRuntime} from './family-runtime';
 import {loadFamilyShell,offlineApiFallback,saveFamilyShell,saveShoppingSnapshot} from './offline-store';
 
 const API_BASE = import.meta.env.VITE_API_BASE || '/api';
@@ -10,7 +10,7 @@ let refreshPromise=null;
 let sessionExpiredSent=false;
 
 export function markAuthenticated(value=true){
- if(value)localStorage.setItem(SESSION_MARKER,'1');else{localStorage.removeItem(SESSION_MARKER);clearFamilyModuleRuntime()}
+ if(value)localStorage.setItem(SESSION_MARKER,'1');else{localStorage.removeItem(SESSION_MARKER);clearFamilyModuleRuntime();clearBootstrapRuntime()}
  window.dispatchEvent(new CustomEvent(AUTH_CHANGED_EVENT,{detail:{authenticated:Boolean(value)}}));
 }
 function resetSessionExpiry(){sessionExpiredSent=false}
@@ -87,7 +87,11 @@ function apiError(response,payload){
 }
 export async function api(path,options={}){
  const method=(options.method||'GET').toUpperCase();
- if(method!=='GET')invalidateFamilyModuleRuntimeForPath(path);
+ if(method==='GET'){
+  const runtime=takeBootstrapRuntime(path);if(runtime.found)return runtime.data;
+ }else{
+  invalidateFamilyModuleRuntimeForPath(path);clearBootstrapRuntime();
+ }
  let result=await requestOrOffline(path,options);
  if('fallback' in result)return result.fallback;
  let response=result.response;
@@ -98,6 +102,6 @@ export async function api(path,options={}){
  if(!response.ok){let payload=null;try{payload=await response.json()}catch{}throw apiError(response,payload)}
  if(response.status===204)return null;
  const data=await response.json();
- if(method==='GET')rememberFamilyModuleRuntime(path,data);
+ if(method==='GET'){rememberFamilyModuleRuntime(path,data);rememberBootstrapRuntime(path,data)}
  await rememberOfflineData(path,data,options);return data;
 }
