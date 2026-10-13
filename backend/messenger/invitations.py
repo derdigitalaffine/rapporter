@@ -33,7 +33,7 @@ def resolve_invitation(token, *, lock=False):
         raise Http404 from None
     rows = ContactInvitation.objects.select_related("sender")
     if lock:
-        rows = rows.select_for_update()
+        rows = rows.select_for_update(of=("self",))
     invite = rows.filter(pk=invite_id, generation=generation, status__in=("pending", "accepted"), expires_at__gt=timezone.now()).first()
     if not invite or not eligible(invite.sender):
         raise Http404

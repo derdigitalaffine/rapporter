@@ -1,5 +1,7 @@
 """Personal conversation operations. Every write rechecks consent under row locks."""
 import uuid
+import hashlib
+import json
 from datetime import timedelta
 
 from django.contrib.auth import get_user_model
@@ -108,9 +110,12 @@ def send_message(user, conversation_id, *, client_id, body, reply_to=None, files
     body = str(body or "").strip()
     if len(body) > 4000 or len(files) > 5 or (not body and not files):
         raise ValidationError({"code": "invalid_message"})
+    from .media import prepare_uploads, save_uploads
+    uploads = prepare_uploads(files)
+    digest = hashlib.sha256(json.dumps([body, str(reply_to or ""), [(c.sha256, kind, name) for c, kind, name in uploads]], ensure_ascii=False).encode()).hexdigest()
     previous = conv.messages.filter(sender=user, client_id=client_id).first()
     if previous:
-        if previous.body != body or str(previous.reply_to_id or "") != str(reply_to or ""):
+        if previous.payload_digest != digest:
             raise ValidationError({"code": "message_retry_conflict"})
         return previous
     reply = None
@@ -118,10 +123,8 @@ def send_message(user, conversation_id, *, client_id, body, reply_to=None, files
         reply = visible_messages(member).filter(pk=reply_to, deleted_at__isnull=True).first()
         if not reply:
             raise Http404
-    from .media import prepare_uploads, save_uploads
-    uploads = prepare_uploads(files)
     revision = _revision(conv)
-    msg = ChatMessage.objects.create(conversation=conv, sender=user, client_id=client_id, body=body, reply_to=reply, sequence=revision, event_sequence=revision)
+    msg = ChatMessage.objects.create(conversation=conv, sender=user, client_id=client_id, body=body, reply_to=reply, sequence=revision, event_sequence=revision, payload_digest=digest)
     save_uploads(msg, uploads)
     member.typing_until = None
     member.save(update_fields=["typing_until", "updated_at"])

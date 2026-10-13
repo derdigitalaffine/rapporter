@@ -206,3 +206,51 @@ class MessengerTests(TestCase):
     def test_scope_constraint_prevents_family_plus_personal_recipient(self):
         with self.assertRaises(IntegrityError), transaction.atomic():
             Notification.objects.create(family=self.family, recipient_user=self.two, title="bad", event_type="chat.message")
+
+    def test_expired_revoked_forged_and_wrong_mailbox_tokens_fail_closed(self):
+        invite = create_invitation(self.one, self.two.email, uuid.uuid4())
+        token = invitation_token(invite)
+        self.client.force_authenticate(self.two)
+        self.assertEqual(self.post("invite/accept/", {"token": token + "forged"}).status_code, 404)
+        ContactInvitation.objects.filter(pk=invite.pk).update(expires_at=timezone.now() - timedelta(seconds=1))
+        self.assertEqual(self.post("invite/accept/", {"token": token}).status_code, 404)
+        ContactInvitation.objects.filter(pk=invite.pk).update(expires_at=timezone.now() + timedelta(days=1), status="revoked")
+        self.assertEqual(self.post("invite/accept/", {"token": token}).status_code, 404)
+
+    def test_group_replies_cannot_reference_hidden_prejoin_messages_or_another_chat(self):
+        old_message = self.send("private before joining").data["id"]
+        group = self.post("conversations/", {"kind": "group", "title": "Group", "friends": [str(self.friend.pk)]}).data["id"]
+        old = self.conv
+        self.conv = group
+        group_message = self.send("prejoin").data["id"]
+        self.client.force_authenticate(self.two)
+        self.post(f"conversations/{group}/", {"action": "join"})
+        self.assertEqual(self.send("invalid reply", reply_to=group_message).status_code, 404)
+        self.assertEqual(self.send("cross chat", reply_to=old_message).status_code, 404)
+        self.conv = old
+
+    def test_role_and_identity_revocation_stop_existing_chat_access(self):
+        self.send()
+        Membership.objects.filter(user=self.two).update(role="child")
+        self.assertEqual(self.send().status_code, 404)
+        self.client.force_authenticate(self.two)
+        self.assertEqual(self.client.get(f"/api/chat/conversations/{self.conv}/messages/").status_code, 403)
+
+    def test_private_upload_limits_and_html_are_rejected(self):
+        route = f"/api/chat/conversations/{self.conv}/messages/"
+        html = SimpleUploadedFile("attack.html", b"<html><script>alert(1)</script></html>", content_type="image/png")
+        response = self.client.post(route, {"client_id": str(uuid.uuid4()), "body": "attachment", "files": html}, format="multipart")
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(ChatMessage.objects.exists())
+        response = self.client.post(route, {"client_id": str(uuid.uuid4()), "body": "attachment", "files": [SimpleUploadedFile(str(i), b"invalid") for i in range(6)]}, format="multipart")
+        self.assertEqual(response.status_code, 400)
+
+    def test_personal_notifications_do_not_expand_other_family_scope(self):
+        from notifications.services import record_notification
+        own = record_personal_notification(user=self.two, event_type="chat.message", title="New message")[0]
+        foreign_member = Membership.objects.get(user=self.one)
+        record_notification(recipient=foreign_member, event_type="task.created", title="Family private")
+        self.client.force_authenticate(self.two)
+        response = self.client.get(f"/api/notifications/?family={self.other_family.pk}")
+        self.assertEqual([r["id"] for r in response.data["results"]], [str(own.pk)])
+        self.assertEqual(self.client.get(f"/api/notifications/?family={self.family.pk}").status_code, 404)

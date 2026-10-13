@@ -274,7 +274,7 @@ def avatar(request, user_id):
     from family.profile_views import _avatar_path
     if user_id != request.user.pk:
         friend = Friendship.objects.filter(active=True).filter(Q(low_user=request.user, high_user_id=user_id) | Q(high_user=request.user, low_user_id=user_id)).exists()
-        group = ConversationMember.objects.filter(user=request.user, state="active", conversation__participants__user_id=user_id, conversation__participants__state="active").exists()
+        group = ConversationMember.objects.filter(user=request.user, state="active", conversation__kind="group", conversation__participants__user_id=user_id, conversation__participants__state="active").exists()
         if user_id in blocked_ids(request.user) or not (friend or group):
             raise Http404
     profile = UserProfile.objects.filter(user_id=user_id, user__is_active=True).first()

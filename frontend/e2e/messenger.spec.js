@@ -41,7 +41,7 @@ async function boot(page,{language='de',familyless=false,failSend=false}={}){
 async function openChat(page){await page.locator('.messenger-chat-row').click();await expect(page.locator('.messenger-bubble')).toContainText('Hallo aus der anderen Familie')}
 
 test('personal chat sends canonical retry-safe message and leaves family notices reachable',async({page})=>{
- const state=await boot(page);await openChat(page);await page.getByRole('textbox',{name:'Nachricht',exact:true}).fill('Hallo Kim');await page.getByRole('button',{name:'Senden',exact:true}).click();await expect(page.locator('.messenger-bubble.own')).toContainText('Hallo Kim');await expect(page.getByRole('textbox',{name:'Nachricht',exact:true})).toHaveValue('');expect(state.requests.some(r=>r.path==='/api/inbox/'&&r.method==='POST')).toBe(false);await page.getByRole('button',{name:'Zurück',exact:true}).last().click();await page.getByRole('button',{name:'Familien-Mitteilungen',exact:true}).click();await expect(page.getByRole('heading',{name:'Mitteilungen',exact:true})).toBeVisible();
+ const state=await boot(page);await openChat(page);await page.getByRole('textbox',{name:'Nachricht',exact:true}).fill('Hallo Kim');await page.getByRole('button',{name:'Senden',exact:true}).click();await expect(page.locator('.messenger-bubble.own')).toContainText('Hallo Kim');await expect(page.getByRole('textbox',{name:'Nachricht',exact:true})).toHaveValue('');expect(state.requests.some(r=>r.path==='/api/inbox/'&&r.method==='POST')).toBe(false);if(await page.locator('.messenger-mobile-back').isVisible())await page.locator('.messenger-mobile-back').click();await page.getByRole('button',{name:'Familien-Mitteilungen',exact:true}).click();await expect(page.getByRole('heading',{name:'Mitteilungen',exact:true})).toBeVisible();
 });
 
 test('send failure retains draft and stable retry UUID',async({page})=>{
@@ -65,9 +65,28 @@ for(const width of [320,390,1440])test(`messenger remains responsive and keyboar
 });
 
 test('personal account without family opens messenger and no family tools',async({page})=>{
- await boot(page,{familyless:true,language:'en'});await openChat(page);await expect(page.getByRole('button',{name:'Family notices',exact:true})).toHaveCount(0);await expect(page.locator('.global-create-fab')).toHaveCount(0);await expect(page.getByRole('button',{name:'Sign out',exact:true})).toBeVisible();await expect(page.getByRole('textbox',{name:'Message',exact:true})).toBeVisible();
+ await boot(page,{familyless:true,language:'en'});await openChat(page);await expect(page.getByRole('button',{name:'Family notices',exact:true})).toHaveCount(0);await expect(page.locator('.global-create-fab')).toHaveCount(0);await expect(page.getByRole('textbox',{name:'Message',exact:true})).toBeVisible();if(await page.locator('.messenger-mobile-back').isVisible())await page.locator('.messenger-mobile-back').click();await expect(page.getByRole('button',{name:'Sign out',exact:true})).toBeVisible();
 });
 
 test('invitation token is removed from location and acceptance never joins a family',async({page})=>{
- await installApiMocks(page,{authenticated:false});let registered=null;await page.route('**/api/chat/invite/**',route=>{if(route.request().url().endsWith('/preview/'))return json(route,{sender_name:'Kim',status:'pending'});registered=route.request().postDataJSON();return json(route,{user_id:9,friendship_id:friendId},201)});await page.goto('/?page=inbox#chat-invite=signed-mailbox-token');await expect(page.getByRole('heading',{name:'Persönliche Chat-Einladung'})).toBeVisible();await expect(page).not.toHaveURL(/signed-mailbox-token/);await page.getByRole('button',{name:'Neues Konto anlegen',exact:true}).click();await page.getByRole('textbox',{name:'Anzeigename',exact:true}).fill('New friend');await page.getByLabel('Passwort', {exact:true}).fill('Correct-Horse-4218!');await page.getByRole('button',{name:'Konto anlegen und annehmen'}).click();await expect.poll(()=>registered).toMatchObject({token:'signed-mailbox-token',display_name:'New friend'});
+ await installApiMocks(page,{authenticated:false});let registered=null;await page.route('**/api/chat/invite/**',route=>{if(route.request().url().endsWith('/preview/'))return json(route,{sender_name:'Kim',status:'pending'});registered=route.request().postDataJSON();return json(route,{user_id:9,friendship_id:friendId},201)});await page.goto('/?page=inbox#chat-invite=signed-mailbox-token');await expect(page.getByRole('heading',{name:'Persönliche Chat-Einladung'})).toBeVisible();await expect(page).not.toHaveURL(/signed-mailbox-token/);await page.getByRole('button',{name:'Neues Konto anlegen',exact:true}).click();await page.getByRole('textbox',{name:'Anzeigename',exact:true}).fill('New friend');await page.getByLabel(/^Passwort/).fill('Correct-Horse-4218!');await page.getByRole('button',{name:'Konto anlegen und annehmen'}).click();await expect.poll(()=>registered).toMatchObject({token:'signed-mailbox-token',display_name:'New friend'});
+});
+
+test('200 percent zoom and reduced motion retain composer controls',async({page})=>{
+ await page.setViewportSize({width:1440,height:1000});await page.emulateMedia({reducedMotion:'reduce'});await boot(page);await openChat(page);await page.evaluate(()=>document.documentElement.style.zoom='2');await expect(page.getByRole('textbox',{name:'Nachricht',exact:true})).toBeVisible();expect(await page.evaluate(()=>document.documentElement.scrollWidth-document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
+});
+
+test('microphone is explicit and switching away stops all tracks',async({page})=>{
+ await page.addInitScript(()=>{
+  window.chatMic={requests:0,stops:0};
+  const track={stop:()=>window.chatMic.stops++};
+  Object.defineProperty(navigator,'mediaDevices',{configurable:true,value:{getUserMedia:async()=>{window.chatMic.requests++;return {getTracks:()=>[track]}}}});
+  window.MediaRecorder=class{
+   static isTypeSupported(type){return type.startsWith('audio/webm')}
+   constructor(){this.state='inactive'}
+   start(){this.state='recording'}
+   stop(){this.state='inactive';this.onstop?.()}
+  };
+ });
+ await boot(page);await openChat(page);expect(await page.evaluate(()=>window.chatMic.requests)).toBe(0);await page.getByRole('button',{name:'Sprachnachricht aufnehmen',exact:true}).click();await expect(page.getByRole('button',{name:'Aufnahme beenden',exact:true})).toBeVisible();expect(await page.evaluate(()=>window.chatMic.requests)).toBe(1);await page.locator('.messenger-chat-title').click();if(await page.locator('.messenger-mobile-back').isVisible())await page.locator('.messenger-mobile-back').click();else await page.getByRole('button',{name:'Freunde',exact:false}).first().click();await expect.poll(()=>page.evaluate(()=>window.chatMic.stops)).toBeGreaterThan(0);
 });

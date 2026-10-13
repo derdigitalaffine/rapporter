@@ -91,6 +91,7 @@ class ChatMessage(TimestampedModel):
     client_id = models.UUIDField()
     sequence = models.PositiveBigIntegerField()
     event_sequence = models.PositiveBigIntegerField()
+    payload_digest = models.CharField(max_length=64, blank=True)
     body = models.TextField(blank=True)
     reply_to = models.ForeignKey("self", null=True, blank=True, on_delete=models.SET_NULL, related_name="replies")
     edited_at = models.DateTimeField(null=True, blank=True)
