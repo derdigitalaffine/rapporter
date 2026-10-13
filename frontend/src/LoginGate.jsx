@@ -1,7 +1,6 @@
 import {useEffect,useState} from 'react';
 import {useTranslation} from 'react-i18next';
 import App from './App';
-import SettingsHub,{SettingsShortcut} from './SettingsHub';
 import ProductAnalyticsBridge from './ProductAnalyticsBridge';
 import {AUTH_CHANGED_EVENT,isAuthenticated,login} from './api';
 import {requestPasswordReset} from './password-reset-api';
@@ -14,7 +13,6 @@ import './passkey-login.css';
 function Card({children,className=''}){return <section className={`card ${className}`}>{children}</section>}
 function switchLanguage(i18n){const language=i18n.language?.startsWith('de')?'en':'de';i18n.changeLanguage(language);localStorage.setItem('famuhle-language',language)}
 function initialRecoveryMode(){return new URLSearchParams(window.location.search).get('password-reset')==='1'}
-function isSettingsRoute(){return new URLSearchParams(window.location.search).get('page')==='settings'}
 
 export default function LoginGate(){
  const {t,i18n}=useTranslation();
@@ -38,7 +36,7 @@ export default function LoginGate(){
   window.addEventListener('famuhle:session-expired',sessionExpired);
   return()=>{window.removeEventListener(AUTH_CHANGED_EVENT,authChanged);window.removeEventListener('famuhle:session-expired',sessionExpired)};
  },[]);
- if(authed)return <><ProductAnalyticsBridge/>{isSettingsRoute()?<SettingsHub/>:<><App/><SettingsShortcut/></>}</>;
+ if(authed)return <><ProductAnalyticsBridge/><App/></>;
  async function submit(event){event.preventDefault();setError(false);setPasskeyError('');setBusy(true);try{await login(identifier,password,{legacy});setExpired(false);setAuthed(true)}catch{setError(true)}finally{setBusy(false)}}
  async function submitPasskey(){setError(false);setPasskeyError('');setBusy(true);try{await loginWithPasskey();setExpired(false);setAuthed(true)}catch(err){if(isPasskeyCancellation(err))setPasskeyError('cancelled');else if(err?.status===503)setPasskeyError('unavailable');else if(err?.status===429)setPasskeyError('rateLimited');else setPasskeyError('failed')}finally{setBusy(false)}}
  function toggleMode(){setLegacy(value=>!value);setIdentifier('');setError(false);setPasskeyError('')}
