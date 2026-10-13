@@ -196,7 +196,6 @@ export default function TodoHub({family,data,onCreate}){
  const memberships=family?.memberships||[];const taskLists=data?.task_lists||[];
 
  return <div className="todo-hub">
-  <header className="todo-head"><div><span className="eyebrow">FamilyOS</span><h1 tabIndex="-1">{text.title}</h1></div></header>
   <nav className="todo-tabs" aria-label={text.title}>{tabItems.map(([id,label])=><button key={id} type="button" className={view===id?'active':''} aria-current={view===id?'page':undefined} onClick={()=>setView(id)}>{label}</button>)}</nav>
   {(view==='today'||view==='upcoming')&&<>
    <form className="todo-quick" onSubmit={quickAdd}>
