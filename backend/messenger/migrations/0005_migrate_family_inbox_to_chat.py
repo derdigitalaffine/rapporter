@@ -163,9 +163,10 @@ def forwards(apps, schema_editor):
 
 
 def backwards(apps, schema_editor):
-    Conversation = apps.get_model('messenger', 'Conversation')
-    Conversation.objects.filter(channel__in=['family', 'system']).delete()
-    Conversation.objects.filter(channel='custom', title__isnull=False, friendship__isnull=True).filter(messages__payload_digest='').distinct().delete()
+    # Historical InboxItem rows remain the source of truth for a rollback.
+    # Avoid deleting conversations here because custom chats may have been created
+    # after the migration and must never be removed by a schema rollback.
+    pass
 
 
 class Migration(migrations.Migration):
