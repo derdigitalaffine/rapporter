@@ -12,7 +12,7 @@ from django.utils import timezone
 from rest_framework.exceptions import PermissionDenied, ValidationError
 
 from auth_identity.models import EmailIdentity
-from .access import friendship_access, friendship_for, is_blocked, membership, preferences, require_writer, visible_messages
+from .access import friendship_access, friendship_for, is_blocked, membership, preferences, require_writer, shared_chat_family, visible_messages
 from .models import ChatBlock, ChatMessage, ChatReaction, ContactInvitation, Conversation, ConversationMember, Friendship
 
 REACTIONS = {"👍", "❤️", "😂", "😮", "😢", "🙏", "🎉", "👎"}
@@ -26,6 +26,36 @@ def _join(conversation, user, inviter, *, state="active"):
 def direct_conversation(user, friendship_id):
     require_writer(user)
     friend = friendship_access(user, friendship_id, lock=True)
+    conv, created = Conversation.objects.get_or_create(friendship=friend, defaults={"kind": "direct", "created_by": user})
+    if created:
+        _join(conv, friend.low_user, user)
+        _join(conv, friend.high_user, user)
+    return membership(user, conv.pk)
+
+
+@transaction.atomic
+def family_direct_conversation(user, target_user_id):
+    require_writer(user)
+    try:
+        target_user_id = int(target_user_id)
+    except (TypeError, ValueError):
+        raise Http404 from None
+    if target_user_id == user.pk or is_blocked(user.pk, target_user_id) or not shared_chat_family(user.pk, target_user_id):
+        raise Http404
+    users = {row.pk: row for row in get_user_model().objects.select_for_update(no_key=True).filter(pk__in=(user.pk, target_user_id)).order_by("pk")}
+    target = users.get(target_user_id)
+    if not target:
+        raise Http404
+    require_writer(target)
+    low, high = sorted((user.pk, target_user_id))
+    friend = Friendship.objects.select_for_update().filter(low_user_id=low, high_user_id=high).first()
+    if friend:
+        if not friend.active:
+            friend.active = True
+            friend.family_derived = True
+            friend.save(update_fields=["active", "family_derived", "updated_at"])
+    else:
+        friend = Friendship.objects.create(low_user_id=low, high_user_id=high, family_derived=True)
     conv, created = Conversation.objects.get_or_create(friendship=friend, defaults={"kind": "direct", "created_by": user})
     if created:
         _join(conv, friend.low_user, user)
@@ -97,7 +127,7 @@ def change_friendship(user, friendship_id, *, block=False):
 def _locked_member(user, conversation_id):
     scope = Conversation.objects.filter(pk=conversation_id).first()
     if scope and scope.friendship_id:
-        friendship_access(user, scope.friendship_id, lock=True)
+        friendship_access(user, scope.friendship_id, lock=True, allow_family=True)
     conv = Conversation.objects.select_for_update().filter(pk=conversation_id).first()
     if not conv:
         raise Http404
