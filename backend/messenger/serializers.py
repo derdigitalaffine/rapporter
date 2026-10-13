@@ -38,6 +38,8 @@ def conversation_payload(member):
     return {
         "id": str(conv.pk), "kind": conv.kind, "title": conv.title if conv.kind == "group" else (others[0].label if others else "Kontakt"),
         "friendship_id": str(conv.friendship_id) if conv.friendship_id else None,
+        "family_id": str(conv.family_id) if conv.family_id else None,
+        "family_group": bool(conv.family_id),
         "state": member.state, "can_send": writable, "muted": member.muted,
         "revision": conv.revision, "last_read_sequence": member.last_read_sequence,
         "unread": visible_messages(member).filter(sequence__gt=member.last_read_sequence).exclude(sender=member.user).count(),
