@@ -34,9 +34,15 @@ class GameMatch(TimestampedGameModel):
         PHYSICS_EXPERT = "physics_expert", "Physics expert"
         CHEMISTRY_EXPERT = "chemistry_expert", "Chemistry expert"
 
-    family = models.ForeignKey(Family, on_delete=models.CASCADE, related_name="game_matches")
-    challenger = models.ForeignKey(Membership, on_delete=models.CASCADE, related_name="games_challenged")
-    opponent = models.ForeignKey(Membership, on_delete=models.CASCADE, related_name="games_received")
+    family = models.ForeignKey(Family, on_delete=models.CASCADE, related_name="game_matches", null=True, blank=True)
+    challenger = models.ForeignKey(Membership, on_delete=models.CASCADE, related_name="games_challenged", null=True, blank=True)
+    opponent = models.ForeignKey(Membership, on_delete=models.CASCADE, related_name="games_received", null=True, blank=True)
+    friendship = models.ForeignKey("messenger.Friendship", null=True, blank=True, on_delete=models.CASCADE, related_name="game_matches")
+    challenger_user = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.CASCADE, related_name="personal_games_challenged")
+    opponent_user = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.CASCADE, related_name="personal_games_received")
+    current_turn_user = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="personal_games_turn")
+    winner_user = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="personal_games_won")
+    locale = models.CharField(max_length=8, default="de")
     game_type = models.CharField(max_length=24, choices=GameType.choices)
     status = models.CharField(max_length=16, choices=Status.choices, default=Status.PENDING, db_index=True)
     rps_round_count = models.PositiveSmallIntegerField(default=3)
@@ -64,6 +70,8 @@ class GameMatch(TimestampedGameModel):
     class Meta:
         ordering = ["-updated_at", "-created_at"]
         constraints = [
+            models.CheckConstraint(condition=models.Q(family__isnull=False, challenger__isnull=False, opponent__isnull=False, friendship__isnull=True, challenger_user__isnull=True, opponent_user__isnull=True, current_turn_user__isnull=True, winner_user__isnull=True) | models.Q(family__isnull=True, challenger__isnull=True, opponent__isnull=True, current_turn__isnull=True, winner__isnull=True, friendship__isnull=False, challenger_user__isnull=False, opponent_user__isnull=False), name="games_match_scope"),
+            models.CheckConstraint(condition=~models.Q(challenger_user=models.F("opponent_user")), name="games_personal_distinct"),
             models.CheckConstraint(
                 condition=~models.Q(challenger=models.F("opponent")),
                 name="games_distinct_players",
@@ -82,10 +90,12 @@ class GameMatch(TimestampedGameModel):
         ]
 
     def participant_ids(self):
-        return {self.challenger_id, self.opponent_id}
+        from .participants import player_id
+        return {player_id(self, "challenger"), player_id(self, "opponent")}
 
     def opponent_for(self, membership):
-        return self.opponent if membership.id == self.challenger_id else self.challenger
+        from .participants import player, player_id
+        return player(self, "opponent") if membership.id == player_id(self, "challenger") else player(self, "challenger")
 
 
 class GameTaskAssignment(TimestampedGameModel):
@@ -137,6 +147,7 @@ class RockPaperScissorsRound(TimestampedGameModel):
         on_delete=models.SET_NULL,
         related_name="rps_rounds_won",
     )
+    winner_user = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="personal_rps_rounds_won")
     resolved_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
@@ -146,12 +157,13 @@ class RockPaperScissorsRound(TimestampedGameModel):
 
 class BattleshipBoard(TimestampedGameModel):
     match = models.ForeignKey(GameMatch, on_delete=models.CASCADE, related_name="battleship_boards")
-    player = models.ForeignKey(Membership, on_delete=models.CASCADE, related_name="battleship_boards")
+    player = models.ForeignKey(Membership, on_delete=models.CASCADE, related_name="battleship_boards", null=True, blank=True)
+    player_user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="personal_battleship_boards", null=True, blank=True)
     ships = models.JSONField(default=list, blank=True)
     confirmed = models.BooleanField(default=False)
 
     class Meta:
-        constraints = [models.UniqueConstraint(fields=["match", "player"], name="games_board_player_unique")]
+        constraints = [models.UniqueConstraint(fields=["match", "player"], name="games_board_player_unique"), models.UniqueConstraint(fields=["match", "player_user"], name="games_board_user_unique"), models.CheckConstraint(condition=models.Q(player__isnull=False, player_user__isnull=True) | models.Q(player__isnull=True, player_user__isnull=False), name="games_board_player_scope")]
 
 
 class BattleshipShot(TimestampedGameModel):
@@ -161,8 +173,10 @@ class BattleshipShot(TimestampedGameModel):
         SUNK = "sunk", "Sunk"
 
     match = models.ForeignKey(GameMatch, on_delete=models.CASCADE, related_name="battleship_shots")
-    shooter = models.ForeignKey(Membership, on_delete=models.CASCADE, related_name="battleship_shots_fired")
-    target = models.ForeignKey(Membership, on_delete=models.CASCADE, related_name="battleship_shots_received")
+    shooter = models.ForeignKey(Membership, on_delete=models.CASCADE, related_name="battleship_shots_fired", null=True, blank=True)
+    shooter_user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="personal_battleship_shots_fired", null=True, blank=True)
+    target = models.ForeignKey(Membership, on_delete=models.CASCADE, related_name="battleship_shots_received", null=True, blank=True)
+    target_user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="personal_battleship_shots_received", null=True, blank=True)
     x = models.PositiveSmallIntegerField()
     y = models.PositiveSmallIntegerField()
     result = models.CharField(max_length=8, choices=Result.choices)
@@ -173,6 +187,8 @@ class BattleshipShot(TimestampedGameModel):
         ordering = ["sequence"]
         constraints = [
             models.UniqueConstraint(fields=["match", "target", "x", "y"], name="games_shot_coordinate_unique"),
+            models.UniqueConstraint(fields=["match", "target_user", "x", "y"], name="games_shot_user_coordinate"),
+            models.CheckConstraint(condition=models.Q(shooter__isnull=False, target__isnull=False, shooter_user__isnull=True, target_user__isnull=True) | models.Q(shooter__isnull=True, target__isnull=True, shooter_user__isnull=False, target_user__isnull=False), name="games_shot_player_scope"),
             models.UniqueConstraint(fields=["match", "sequence"], name="games_shot_sequence_unique"),
             models.CheckConstraint(condition=models.Q(x__lte=9, y__lte=9), name="games_shot_inside_board"),
         ]
@@ -213,7 +229,8 @@ class QuizRound(TimestampedGameModel):
 
 class ConnectFourMove(TimestampedGameModel):
     match = models.ForeignKey(GameMatch, on_delete=models.CASCADE, related_name="connect_four_moves")
-    player = models.ForeignKey(Membership, on_delete=models.CASCADE, related_name="connect_four_moves")
+    player = models.ForeignKey(Membership, on_delete=models.CASCADE, related_name="connect_four_moves", null=True, blank=True)
+    player_user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="personal_connect_four_moves", null=True, blank=True)
     column = models.PositiveSmallIntegerField()
     row = models.PositiveSmallIntegerField()
     sequence = models.PositiveSmallIntegerField()
@@ -221,6 +238,7 @@ class ConnectFourMove(TimestampedGameModel):
     class Meta:
         ordering = ["sequence"]
         constraints = [
+            models.CheckConstraint(condition=models.Q(player__isnull=False, player_user__isnull=True) | models.Q(player__isnull=True, player_user__isnull=False), name="games_connect4_player_scope"),
             models.UniqueConstraint(fields=["match", "sequence"], name="games_connect4_sequence_unique"),
             models.UniqueConstraint(fields=["match", "column", "row"], name="games_connect4_cell_unique"),
             models.CheckConstraint(condition=models.Q(column__lte=6, row__lte=5), name="games_connect4_inside_board"),

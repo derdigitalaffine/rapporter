@@ -101,6 +101,10 @@ INVITE_PUBLIC_KEYS = (
 # Stable scope names are part of the API contract. Future auth work (#201/#202)
 # should reuse these entries instead of adding local throttles.
 POLICIES: dict[str, AbusePolicy] = {
+    "chat.invite": AbusePolicy("chat.invite", WindowPolicy(3, 300), WindowPolicy(12, 86400), AUTHENTICATED_KEYS, 60, 1800, "chat.invite"),
+    "chat.consume": AbusePolicy("chat.consume", WindowPolicy(8, 60), WindowPolicy(30, 3600), PUBLIC_IDENTIFIER_KEYS, 30, 900, "chat.consume"),
+    "chat.write": AbusePolicy("chat.write", WindowPolicy(60, 60), WindowPolicy(1000, 3600), AUTHENTICATED_KEYS, 15, 300, "chat.write"),
+    "chat.typing": AbusePolicy("chat.typing", WindowPolicy(40, 60), WindowPolicy(1500, 3600), AUTHENTICATED_KEYS, 5, 60, "chat.typing"),
     "pin.interaction": AbusePolicy(
         "pin.interaction", WindowPolicy(30, 60), WindowPolicy(300, 3600),
         INVITE_KEYS, 15, 300, "pin.interaction"

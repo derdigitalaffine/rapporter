@@ -1,7 +1,7 @@
 def notification_payload(notification):
     return {
         "id": str(notification.id),
-        "family": str(notification.family_id),
+        "family": str(notification.family_id) if notification.family_id else None,
         "event_type": notification.event_type,
         "title": notification.title,
         "body": notification.body,
