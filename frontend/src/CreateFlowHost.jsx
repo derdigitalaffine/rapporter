@@ -1,19 +1,8 @@
-import VehicleEditor from './VehicleEditor';
-import BirthdayEditor from './BirthdayEditor';
 import {useRef,useState} from 'react';
-import {TaskEditor,ShoppingEditor} from './SmartEditors';
-import ListEditor from './ListEditor';
-import EventEditor from './EventEditor';
-import RoutineEditor from './RoutineEditor';
-import LoyaltyCardEditor from './LoyaltyCardEditor';
-import ExpenseEditor from './ExpenseEditor';
-import ContractEditor from './ContractEditor';
-import CorrespondenceEditor from './CorrespondenceEditor';
-import WishlistEditor from './WishlistEditor';
-import {BabyCreateSheet,PetCreateSheet} from './ModuleCreateSheets';
 import {recordCreateUsage,createRankingScope} from './create-ranking-client';
 import {openTaskDuel} from './game-assignment-i18n';
 import {pageHref} from './navigation';
+import {resolveCreateFlowRenderer} from './create-flow-registry';
 
 export default function CreateFlowHost({userId,action,family,data,context={},onClose,onRefresh,onNavigate}){
  const learnedTask=useRef(null);
@@ -31,29 +20,15 @@ export default function CreateFlowHost({userId,action,family,data,context={},onC
  }
  async function saved(record,options={}){if(action!=='task'||learnedTask.current!==record?.id){learnSuccessfulCreate();if(action==='task')learnedTask.current=record?.id}if(options.duelHref){openTaskDuel(options.duelHref);return}await onRefresh?.();onClose()}
  async function savedWithoutClose(){learnSuccessfulCreate();await onRefresh?.()}
- function openModule(page){
-  if(onNavigate){onNavigate(page);return}
+ function openModule(page,params={}){
+  if(onNavigate){onClose();onNavigate(page);return}
   const state={...(history.state||{}),page,appNavigation:true};delete state.createFlow;delete state.createPalette;
-  history.replaceState(state,'',pageHref(page));
+  const href=new URL(pageHref(page),location.origin);
+  Object.entries(params).forEach(([key,value])=>{if(value!==undefined&&value!==null&&value!=='')href.searchParams.set(key,String(value))});
+  history.replaceState(state,'',`${href.pathname}${href.search}${href.hash}`);
   window.dispatchEvent(new PopStateEvent('popstate',{state}));
  }
- if(action==='vehicle')return <VehicleEditor family={family} onClose={onClose} onSaved={saved}/>;
- if(action==='birthday')return <BirthdayEditor family={family} onClose={onClose} onSaved={saved}/>;
- if(action==='baby')return <BabyCreateSheet family={family} onClose={onClose} onOpenPage={openModule} onSuccessfulCreate={learnSuccessfulCreate}/>;
- if(action==='pets')return <PetCreateSheet family={family} onClose={onClose} onOpenPage={openModule} onSuccessfulCreate={learnSuccessfulCreate}/>;
- if(action==='task')return <TaskEditor family={family} lists={taskLists} members={family.memberships||[]} defaultListId={taskListId} onClose={onClose} onSaved={saved}/>;
- if(action==='shoppingItem'){
-  if(!shoppingLists.length)return <ListEditor type="shopping" family={family} onClose={onClose} onSaved={async list=>{setCreatedShoppingList(list);await onRefresh?.()}}/>;
-  return <ShoppingEditor shoppingList={shoppingList} lists={shoppingLists} onClose={onClose} onSaved={saved}/>;
- }
- if(action==='event')return <EventEditor family={family} onClose={onClose} onSaved={saved}/>;
- if(action==='expense')return <ExpenseEditor family={family} initialMode={context.mode==='receipt'?'receipt':'quick'} onClose={onClose} onSaved={saved} onUndo={onRefresh}/>;
- if(action==='contract')return <ContractEditor family={family} onClose={onClose} onSaved={saved}/>;
- if(action==='correspondence')return <CorrespondenceEditor family={family} shoppingLists={shoppingLists} onClose={onClose} onSaved={saved}/>;
- if(action==='wish')return <WishlistEditor family={family} context={context} onClose={onClose} onSaved={savedWithoutClose}/>;
- if(action==='taskList')return <ListEditor type="task" family={family} onClose={onClose} onSaved={saved}/>;
- if(action==='shoppingList')return <ListEditor type="shopping" family={family} onClose={onClose} onSaved={saved}/>;
- if(action==='routine')return <RoutineEditor family={family} onClose={onClose} onSaved={saved}/>;
- if(action==='loyalty')return <LoyaltyCardEditor family={family} onClose={onClose} onSaved={saved}/>;
- return null;
+ const render=resolveCreateFlowRenderer(action);
+ if(!render)return null;
+ return render({family,data,context,taskLists,shoppingLists,taskListId,shoppingList,onClose,onRefresh,saved,savedWithoutClose,openModule,learnSuccessfulCreate,setCreatedShoppingList});
 }
