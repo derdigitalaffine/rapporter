@@ -18,6 +18,16 @@ Native Pins behalten die bestehende Pin-Sichtbarkeit (`Nur du`, `Ausgewählte Pe
 
 `EntityPicker` unterstützt dafür additiv kontrollierte Server-Suche und lokalisierbare Auswahl-/Entfernen-Texte. Bestehende Aufrufer behalten ihre bisherige lokale Suche und Defaults. Composer-Copy ist für Deutsch, Englisch, Französisch, Niederländisch und Thai vorhanden; die Root- und Picker-Aktionen bleiben mit mindestens 44 px Touchziel, Tastatur und schmalen Viewports nutzbar.
 
+## Lokale Typvorschläge (#573)
+
+Unter **Vorhandenes Objekt** zeigt **Zuletzt verwendete Typen** bis zu drei zuletzt erfolgreich angepinnte Referenztypen. Ein Typ ist ein bewusster Shortcut in denselben serverseitig autorisierten Picker: Er wählt weder ein Objekt aus noch pinnt oder teilt er etwas. Alle manuellen Gruppen bleiben erreichbar; die drei Composer-Einstiege und die persönliche Pin-Reihenfolge bleiben erhalten.
+
+Unter **Vorschläge** lässt sich **Zuletzt verwendete Typen anzeigen** abschalten. Das löscht die gemerkten Typen und verhindert weiteres Lernen. Einschalten beginnt mit einer leeren Liste. Die Präferenz ist lokal auf diesem Gerät und getrennt nach verifiziertem Nutzer, Membership und Familie. Nur erfolgreiche neue Referenz-Pins merken einen Adaptertyp; Fehler, Picker-Reads, Bearbeitungen und native Notiz-/Foto-Pins tun das nicht. Die nativen Typen bleiben ohnehin direkt im Composer erreichbar.
+
+Gespeichert werden ausschließlich der Schalter und höchstens drei erlaubte Adapterkeys. Keine Objekt-IDs, Titel, Vorschauen, Inhalte, Freigabeziele, Häufigkeiten oder Zeitstempel; keine Übertragung/Telemetrie. Familien-/Auth-Wechsel verwerfen alte Anzeige und verspätete Save-Ergebnisse. Eine andere Membership übernimmt keine Typen der vorherigen. Bei gesperrtem oder vollem Browserspeicher gilt eine Änderung wenigstens während der laufenden Sitzung; dauerhafte Speicherung setzt nutzbaren Browserspeicher voraus.
+
+Die Shortcuts und der Schalter sind mit Tastatur, 44px-Touchzielen und schmalem Viewport bedienbar; Copy liegt in DE/EN/FR/NL/TH vor. Rollback entfernt den Consumer und den privaten lokalen Typ-Präferenzhelper, ohne Pins, Quellen, Layouts oder Berechtigungen zu verändern. Globale/contextuelle Einstiege bleiben unter #221 offen.
+
 ## Scope-Grenze
 
 Der Composer verwendet den bestehenden Pin-/Quellen-Vertrag. Today, Notifications, Models, Migrationen und Source-ACLs bleiben bei ihren kanonischen Cores. Kontextuelle Vorschläge und die weiteren Epic-Kriterien bleiben unter #221 offen.
