@@ -131,7 +131,7 @@ class TodayLayoutTests(TestCase):
         self.assertFalse(weather['visible'])
         self.assertEqual(next(row for row in expanded if row['id'] == 'week')['settings'], DEFAULT_WEEK_SETTINGS)
         self.assertEqual(next(row for row in expanded if row['id'] == 'trip')['size'], 'medium')
-        self.assertEqual(next(row for row in expanded if row['id'] == 'pinboard')['size'], 'wide')
+        self.assertEqual(next(row for row in expanded if row['id'] == 'pinboard')['size'], 'medium')
 
         weather_index = ids.index('weather')
         todo_index = ids.index('todo')
