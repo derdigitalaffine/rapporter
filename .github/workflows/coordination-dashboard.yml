@@ -22,7 +22,7 @@ concurrency:
 
 jobs:
   update-dashboard:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     steps:
       - name: Update coordination dashboard in issue 223
         uses: actions/github-script@v7
