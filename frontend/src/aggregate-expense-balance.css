@@ -1,11 +1,26 @@
-.aggregate-balance-card{display:grid;gap:16px}
+.aggregate-balance-card,.ledger-split-settings{display:grid;gap:16px}
 .aggregate-balance-head{align-items:flex-start}
-.aggregate-account-controls{display:grid;gap:10px}
+.aggregate-account-controls,.ledger-split-form{display:grid;gap:10px}
 .aggregate-account-controls>.text-button{justify-self:start}
 .aggregate-account-list{display:flex;flex-wrap:wrap;gap:8px}
-.aggregate-account-chip{display:inline-flex;align-items:center;gap:7px;min-height:36px;padding:6px 10px;border:1px solid var(--line);border-radius:999px;background:var(--surface);cursor:pointer}
+.aggregate-account-chip,.aggregate-member-chip{display:inline-flex;align-items:center;gap:7px;min-height:36px;padding:6px 10px;border:1px solid var(--line);border-radius:999px;background:var(--surface);cursor:pointer}
+.aggregate-member-chip.active,.ledger-split-tabs button.active{border-color:currentColor;font-weight:700}
 .aggregate-account-chip input{margin:0}
-.aggregate-account-chip:has(input:focus-visible){outline:2px solid var(--focus,#4968ff);outline-offset:2px}
+.aggregate-account-chip:has(input:focus-visible),.aggregate-member-chip:focus-visible{outline:2px solid var(--focus,#4968ff);outline-offset:2px}
 .aggregate-balance-hint{margin:0;color:var(--muted);font-size:.88rem}
-@media(max-width:560px){.aggregate-balance-head{display:grid;gap:8px}.aggregate-account-list{display:grid;grid-template-columns:1fr 1fr}.aggregate-account-chip{min-width:0}.aggregate-account-chip span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}}
-@media(max-width:360px){.aggregate-account-list{grid-template-columns:1fr}}
+.ledger-split-form fieldset{min-width:0;margin:0;padding:0;border:0;display:grid;gap:8px}
+.ledger-split-form legend{font-weight:700;margin-bottom:6px}
+.ledger-split-form>label,.ledger-split-values label{display:grid;gap:6px}
+.ledger-split-form select,.ledger-split-values input{min-height:44px}
+.ledger-split-tabs{display:flex;flex-wrap:wrap;gap:8px}
+.ledger-split-tabs button{min-height:40px;padding:7px 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface)}
+.ledger-split-values{display:grid;gap:8px}
+.ledger-split-values label{grid-template-columns:minmax(0,1fr) minmax(90px,140px);align-items:center}
+.aggregate-transfer-section,.aggregate-ledger-plans{display:grid;gap:9px;padding-top:4px}
+.aggregate-transfer-section h3,.aggregate-ledger-plans h3{margin:0;font-size:1rem}
+.aggregate-transfer{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:9px 0;border-bottom:1px solid var(--line)}
+.aggregate-transfer:last-child{border-bottom:0}
+.aggregate-transfer-section small{color:var(--muted)}
+.aggregate-ledger-plan{display:grid;gap:3px;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--surface)}
+@media(max-width:560px){.aggregate-balance-head{display:grid;gap:8px}.aggregate-account-list{display:grid;grid-template-columns:1fr 1fr}.aggregate-account-chip,.aggregate-member-chip{min-width:0}.aggregate-account-chip span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.aggregate-transfer{align-items:flex-start}.aggregate-transfer strong{white-space:nowrap}}
+@media(max-width:360px){.aggregate-account-list{grid-template-columns:1fr}.ledger-split-values label{grid-template-columns:1fr}}
