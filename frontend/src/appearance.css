@@ -18,6 +18,48 @@ html[data-color-profile="blue"]{
  --shadow-lg:0 18px 50px rgba(23,50,79,.14);
 }
 
+html[data-color-profile="green-dark"],html[data-color-profile="blue-dark"]{
+ --color-bg:#07100f;
+ --color-surface:#0d1816;
+ --color-text:#f4f8f7;
+ --color-muted:#aabbb7;
+ --color-border:#30433f;
+ --color-brand:#b9e6d8;
+ --color-positive:#82c8b1;
+ --color-positive-soft:#142b25;
+ --color-accent:#d8eee7;
+ --color-accent-soft:#162723;
+ --color-warning:#f0d49a;
+ --color-warning-soft:#302818;
+ --color-danger:#f2b4b4;
+ --color-danger-soft:#321d1d;
+ --color-info:#9dcfd0;
+ --color-info-soft:#14292a;
+ --color-neutral-soft:#15201e;
+ --color-action-primary:var(--color-brand);
+ --color-action-secondary:var(--color-positive-soft);
+ --color-focus:#d8eee7;
+ --color-selected:var(--color-positive);
+ --card:var(--color-surface);--surface:var(--color-surface);--text:var(--color-text);--ink:var(--color-text);--muted:var(--color-muted);--line:var(--color-border);--brand:var(--color-brand);--positive:var(--color-positive);--green:var(--color-positive);--green-soft:var(--color-positive-soft);--soft:var(--color-neutral-soft);--bg:var(--color-bg);--peach:var(--color-warning);--peach-soft:var(--color-warning-soft);--red:var(--color-danger);
+ --shadow-sm:0 4px 18px rgba(0,0,0,.24);--shadow-md:0 10px 32px rgba(0,0,0,.3);--shadow-lg:0 20px 54px rgba(0,0,0,.38);
+}
+html[data-color-profile="blue-dark"]{
+ --color-bg:#070c12;
+ --color-surface:#0d151f;
+ --color-muted:#a9b8c8;
+ --color-border:#2c4055;
+ --color-brand:#b7d9fa;
+ --color-positive:#8cbbe8;
+ --color-positive-soft:#14283b;
+ --color-accent:#d5e9fc;
+ --color-accent-soft:#152536;
+ --color-info:#91c4f2;
+ --color-info-soft:#14283b;
+ --color-neutral-soft:#151f2a;
+ --color-focus:#d5e9fc;
+}
+html[data-color-profile$="-dark"] body{background:var(--color-bg);color:var(--color-text)}
+
 html[data-high-contrast="true"]{
  --color-bg:#000;
  --color-surface:#000;
@@ -66,3 +108,5 @@ html[data-high-contrast="true"] :where(.primary){background:#fff!important;color
 html[data-high-contrast="true"] :where(.secondary,.card,input,select,textarea,button:not(.primary)){border-color:#fff!important}
 html[data-high-contrast="true"] :where(a,.text-button){color:#fff!important;text-decoration:underline}
 html[data-high-contrast="true"] :where(button,a,input,select,textarea,summary):focus-visible{outline:4px solid #fff!important;outline-offset:3px}
+/* Selected/today calendar dates use a white brand fill in high contrast; keep their numerals black. */
+html[data-high-contrast="true"] :where(.calendar-week-day.is-today .calendar-day-head strong,.calendar-mobile-daystrip button.is-today strong,.calendar-month-day.is-today .calendar-month-date){color:#000!important}
