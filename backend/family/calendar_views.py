@@ -42,8 +42,8 @@ def _family_zone(family):
         return ZoneInfo("UTC")
 
 
-def _validate_member_marker(serializer):
-    """Validate the optional Membership id stored in a native event payload."""
+def _validate_member_marker(serializer, request):
+    """Validate native event assignment, including explicit managed-child guardian authority."""
     if "payload" not in serializer.validated_data:
         return
     payload = serializer.validated_data.get("payload")
@@ -62,8 +62,21 @@ def _validate_member_marker(serializer):
         normalized = UUID(str(member_id))
     except (TypeError, ValueError, AttributeError) as exc:
         raise ValidationError({"payload": {"member_id": "Ungültige Personenzuordnung."}}) from exc
-    if not family or not Membership.objects.filter(family=family, id=normalized).exists():
+    target = Membership.objects.filter(family=family, id=normalized).first() if family else None
+    if not target:
         raise ValidationError({"payload": {"member_id": "Person gehört nicht zu dieser Familie."}})
+    if target.role != Membership.Role.CHILD or target.user_id == request.user.id:
+        return
+
+    from baby.models import ManagedChildGuardian
+
+    actor = Membership.objects.filter(family=family, user=request.user).first()
+    if not actor or not ManagedChildGuardian.objects.filter(
+        baby__membership=target,
+        baby__family=family,
+        membership=actor,
+    ).exists():
+        raise PermissionDenied("Nur ein expliziter Guardian darf Termine für dieses Kind anlegen oder ändern.")
 
 
 class FamilyEventViewSet(BaseFamilyEventViewSet):
@@ -77,8 +90,6 @@ class FamilyEventViewSet(BaseFamilyEventViewSet):
         queryset = queryset.filter(family_id__in=[family.id for family in families])
         start_raw = self.request.query_params.get("start")
         end_raw = self.request.query_params.get("end")
-        # Range filtering is additive. Legacy clients historically supplied zero or
-        # one bound and must keep the old paginated-list behavior.
         if not start_raw or not end_raw:
             return queryset
         start, end = _parse_range(self.request, date.today())
@@ -102,8 +113,6 @@ class FamilyEventViewSet(BaseFamilyEventViewSet):
             return response
         families = _visible_families(request)
         virtual = []
-        # Occurrences are included once, on the first page. They are projections,
-        # not persisted duplicate FamilyEvent records.
         if request.query_params.get("page", "1") == "1":
             for family in families:
                 start, end = _parse_range(request, local_now(family).date())
@@ -121,7 +130,7 @@ class FamilyEventViewSet(BaseFamilyEventViewSet):
             raise PermissionDenied("Externe Kalendertermine werden von ihrer Quelle verwaltet.")
         if serializer.validated_data.get("type") in READ_ONLY_EVENT_TYPES:
             raise PermissionDenied("Dieser Termin wird von seinem Fachbereich verwaltet.")
-        _validate_member_marker(serializer)
+        _validate_member_marker(serializer, self.request)
         super().perform_create(serializer)
 
     def perform_update(self, serializer):
@@ -129,7 +138,7 @@ class FamilyEventViewSet(BaseFamilyEventViewSet):
             raise PermissionDenied("Externe Kalendertermine sind schreibgeschützt.")
         if serializer.instance.type in READ_ONLY_EVENT_TYPES or serializer.validated_data.get("type") in READ_ONLY_EVENT_TYPES:
             raise PermissionDenied("Dieser Termin ist hier schreibgeschützt.")
-        _validate_member_marker(serializer)
+        _validate_member_marker(serializer, self.request)
         super().perform_update(serializer)
 
     def perform_destroy(self, instance):
