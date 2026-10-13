@@ -3,9 +3,9 @@
 .aggregate-account-controls{display:grid;gap:10px}
 .aggregate-account-controls>.text-button{justify-self:start}
 .aggregate-account-list{display:flex;flex-wrap:wrap;gap:8px}
-.aggregate-account-chip{display:inline-flex;align-items:center;gap:7px;min-height:36px;padding:6px 10px;border:1px solid var(--border);border-radius:999px;background:var(--surface);cursor:pointer}
+.aggregate-account-chip{display:inline-flex;align-items:center;gap:7px;min-height:36px;padding:6px 10px;border:1px solid var(--line);border-radius:999px;background:var(--surface);cursor:pointer}
 .aggregate-account-chip input{margin:0}
-.aggregate-account-chip:has(input:focus-visible){outline:2px solid var(--focus);outline-offset:2px}
+.aggregate-account-chip:has(input:focus-visible){outline:2px solid var(--focus,#4968ff);outline-offset:2px}
 .aggregate-balance-hint{margin:0;color:var(--muted);font-size:.88rem}
 @media(max-width:560px){.aggregate-balance-head{display:grid;gap:8px}.aggregate-account-list{display:grid;grid-template-columns:1fr 1fr}.aggregate-account-chip{min-width:0}.aggregate-account-chip span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}}
 @media(max-width:360px){.aggregate-account-list{grid-template-columns:1fr}}
