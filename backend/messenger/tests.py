@@ -94,8 +94,9 @@ class MessengerTests(TestCase):
         invite = create_invitation(self.one, self.two.email, uuid.uuid4())
         outbox = TransactionalEmail.objects.get(reference_type="chat.invitation")
         self.assertNotIn("token", str(outbox.context))
-        _, text, _ = render_transactional_email(outbox)
-        self.assertIn("#chat-invite=", text)
+        with override_settings(APP_URL="https://familyos.test"):
+            _, text, _ = render_transactional_email(outbox)
+        self.assertIn("https://familyos.test/?page=inbox#chat-invite=", text)
         token = invitation_token(invite)
         self.client.force_authenticate(self.outsider)
         self.assertEqual(self.post("invite/accept/", {"token": token}).status_code, 404)
