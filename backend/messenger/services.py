@@ -173,6 +173,8 @@ def typing(user, conversation_id, active):
 
 @transaction.atomic
 def read_messages(user, conversation_id, sequence):
+    if not Conversation.objects.select_for_update().filter(pk=conversation_id).exists():
+        raise Http404
     member = membership(user, conversation_id, lock=True)
     if member.state != "active":
         raise Http404
@@ -180,4 +182,11 @@ def read_messages(user, conversation_id, sequence):
     if last and last.sequence > member.last_read_sequence:
         member.last_read_sequence = last.sequence
         member.save(update_fields=["last_read_sequence", "updated_at"])
+    latest = visible_messages(member).order_by("-sequence").first()
+    if latest and member.last_read_sequence >= latest.sequence:
+        from notifications.models import Notification
+        from notifications.services import sync_launcher_badge
+        updated = Notification.objects.filter(recipient_user=user, event_type="chat.message", resource_url=f"/?page=inbox&chat={conversation_id}", read_at__isnull=True).update(read_at=timezone.now())
+        if updated:
+            sync_launcher_badge(user)
     return member

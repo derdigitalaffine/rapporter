@@ -126,6 +126,7 @@ test('all deployment variants allow only first-party GPS and targeted OSM resour
  for(const filename of ['Caddyfile','Caddyfile.proxy','Caddyfile.selfsigned']){
   const text=await readFile(new URL(`../../${filename}`,import.meta.url),'utf8');
   expect(text).toContain('Permissions-Policy "camera=(), microphone=(self), geolocation=(self)"');
+  expect(text).toContain("media-src 'self' blob:");
   expect(text).toContain("connect-src 'self' https://tile.openstreetmap.org;");
   expect(text).toContain("worker-src 'self';");
   expect(text).toContain('Referrer-Policy same-origin');

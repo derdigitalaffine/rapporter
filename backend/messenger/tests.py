@@ -255,3 +255,21 @@ class MessengerTests(TestCase):
         response = self.client.get(f"/api/notifications/?family={self.other_family.pk}")
         self.assertEqual([r["id"] for r in response.data["results"]], [str(own.pk)])
         self.assertEqual(self.client.get(f"/api/notifications/?family={self.family.pk}").status_code, 404)
+
+
+    def test_read_chat_clears_only_own_matching_personal_notification(self):
+        from notifications.services import record_notification
+        msg = self.send()
+        from .delivery import notify_message
+        notify_message(msg.data["id"])
+        own = Notification.objects.get(recipient_user=self.two)
+        unrelated = record_personal_notification(user=self.two, event_type="chat.message", title="Other chat", resource_url="/?page=inbox&chat=other")[0]
+        member = Membership.objects.get(user=self.two)
+        family = record_notification(recipient=member, event_type="task.created", title="Family")[0]
+        self.client.force_authenticate(self.two)
+        response = self.post(f"conversations/{self.conv}/read/", {"sequence": msg.data["sequence"]})
+        self.assertEqual(response.status_code, 200)
+        own.refresh_from_db(); unrelated.refresh_from_db(); family.refresh_from_db()
+        self.assertIsNotNone(own.read_at)
+        self.assertIsNone(unrelated.read_at)
+        self.assertIsNone(family.read_at)
