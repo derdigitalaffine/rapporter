@@ -19,6 +19,7 @@ class Friendship(TimestampedModel):
     low_user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="chat_friendships_low")
     high_user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="chat_friendships_high")
     active = models.BooleanField(default=True)
+    family_derived = models.BooleanField(default=False)
 
     class Meta:
         constraints = [
@@ -115,10 +116,9 @@ class ChatAttachment(TimestampedModel):
 
 
 class ChatReaction(TimestampedModel):
-    message = models.ForeignKey(ChatMessage, on_delete=models.CASCADE, related_name="reactions")
+    message = models.ForeignKey(ChatMessage, on_delete=models.CASCADE, related_name="chat_reactions")
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="chat_reactions")
     emoji = models.CharField(max_length=12)
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=["message", "user"], name="chat_reaction_user_unique")]
-
