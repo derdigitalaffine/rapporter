@@ -5,8 +5,7 @@ import {Icon} from './icons';
 import {useFamilyPermissions} from './family-permissions';
 import {confirmAction} from './feedback';
 import PinComposer from './PinComposer';
-import PinInteractionBar from './PinInteractions';
-import {formatPinEventMeta,pinAuthorHue,pinAuthorInitial,pinIconName,pinTypeLabel} from './pinboard-ui';
+import PinCard from './PinBoardCard';
 import './board.css';
 
 const unwrap=value=>value?.results||value||[];
@@ -26,10 +25,11 @@ export default function BoardHub({family,onBack}){
  const visibleRows=rowScope===familyId?rows:[],visibleNext=rowScope===familyId?next:null;
  const boardLease=useRef({familyId,active:true,request:0});
  if(boardLease.current.familyId!==familyId){boardLease.current.active=false;boardLease.current={familyId,active:true,request:0}}
+ const renderLease=boardLease.current;
  useEffect(()=>{const lease=boardLease.current;lease.active=true;const auth=event=>{if(event.detail?.authenticated===false){lease.active=false;setRows([]);setNext(null)}};window.addEventListener(AUTH_CHANGED_EVENT,auth);return()=>{lease.active=false;window.removeEventListener(AUTH_CHANGED_EVENT,auth)}},[familyId]);
 
  async function load(path=`/board/?family=${encodeURIComponent(familyId)}`,append=false){
-  const lease=boardLease.current,request=++lease.request;if(!lease.active)return;const current=()=>lease.active&&lease===boardLease.current&&lease.request===request;
+  const lease=boardLease.current,request=++lease.request;if(!lease.active||lease.pending)return;const current=()=>lease.active&&lease===boardLease.current&&lease.request===request;
   setLoading(true);setError('');
   try{
    const data=await api(path);let incoming=unwrap(data);const target=new URLSearchParams(location.search).get('post');
@@ -40,7 +40,7 @@ export default function BoardHub({family,onBack}){
    setNext(data?.next?new URL(data.next,location.origin).pathname.replace(/^\/api/,'')+new URL(data.next,location.origin).search:null);
   }catch(e){if(current()){setRows([]);setNext(null);setError(e.message||w.failed)}}finally{if(current())setLoading(false)}
  }
- useEffect(()=>{setRows([]);setNext(null);if(!familyId)return;load();if(new URLSearchParams(location.search).get('compose')==='1'&&canPost)setCompose(true)},[familyId,canPost]);
+ useEffect(()=>{setRows([]);setNext(null);setBusy(false);if(!familyId)return;load();if(new URLSearchParams(location.search).get('compose')==='1'&&canPost)setCompose(true)},[familyId,canPost]);
 
  function close(){setCompose(false);setEditing(null);setKind('note');setAdapterKey('');setText('');setFiles([]);setTargetId('');setVisibility('family');setSelectedMembershipIds([]);setError('')}
  function startCompose(nextKind='note'){close();setKind(nextKind);setCompose(true)}
@@ -56,8 +56,25 @@ export default function BoardHub({family,onBack}){
   }catch(e){setError(e.message||w.failed)}finally{setBusy(false)}
  }
  async function removePhoto(image){setBusy(true);try{await api(`/board-images/${image.id}/`,{method:'DELETE'});setEditing(old=>({...old,images:old.images.filter(row=>row.id!==image.id)}));await load()}catch(e){setError(e.message)}finally{setBusy(false)}}
- async function remove(row){if(!await confirmAction({title:w.confirm,confirmLabel:w.remove,cancelLabel:w.cancel,danger:true}))return;setBusy(true);try{await api(`/board/${row.id}/`,{method:'DELETE'});setRows(old=>old.filter(pin=>pin.id!==row.id))}catch(e){setError(e.message)}finally{setBusy(false)}}
- async function move(row,delta){const index=rows.findIndex(item=>item.id===row.id),other=index+delta;if(index<0||other<0||other>=rows.length)return;const before=rows;const reordered=[...rows];[reordered[index],reordered[other]]=[reordered[other],reordered[index]];setRows(reordered);try{await api('/board/reorder/',{method:'POST',body:JSON.stringify({family:familyId,ids:reordered.map(item=>item.id)})})}catch(e){setRows(before);setError(e.message||w.failed)}}
+ function mutationCurrent(lease){return lease.active&&lease===boardLease.current&&lease.familyId===familyId}
+ async function remove(row){
+  const lease=renderLease;if(!mutationCurrent(lease)||lease.pending||!row.can_delete)return;
+  lease.pending=true;setBusy(true);
+  try{
+   if(!await confirmAction({title:w.confirm,confirmLabel:w.remove,cancelLabel:w.cancel,danger:true})||!mutationCurrent(lease))return;
+   ++lease.request;await api(`/board/${row.id}/`,{method:'DELETE'});
+   if(mutationCurrent(lease))setRows(old=>old.filter(pin=>pin.id!==row.id));
+  }catch(e){if(mutationCurrent(lease))setError(e.message||w.failed)}finally{lease.pending=false;if(mutationCurrent(lease))setBusy(false)}
+ }
+ async function move(row,delta){
+  const lease=renderLease;if(!mutationCurrent(lease)||lease.pending||!row.can_reorder)return;
+  const index=rows.findIndex(item=>item.id===row.id),other=index+delta;if(index<0||other<0||other>=rows.length)return;
+  const before=rows,reordered=[...rows];[reordered[index],reordered[other]]=[reordered[other],reordered[index]];
+  lease.pending=true;++lease.request;setLoading(false);setBusy(true);setRows(reordered);setError('');
+  try{await api('/board/reorder/',{method:'POST',body:JSON.stringify({family:familyId,ids:reordered.map(item=>item.id)})})}
+  catch(e){if(mutationCurrent(lease)){setRows(before);setError(e.message||w.failed)}}
+  finally{lease.pending=false;if(mutationCurrent(lease))setBusy(false)}
+ }
  const startEdit=row=>{setEditing(row);setKind(row.kind);setAdapterKey(row.adapter_key||'');setText(row.text||'');setFiles([]);setVisibility(row.visibility||'family');setSelectedMembershipIds(row.selected_membership_ids||[]);setCompose(true);window.scrollTo({top:0,behavior:'smooth'})};
  const interactionLease=boardLease.current;
  const updateInteraction=(id,interaction)=>{if(!interactionLease.active||interactionLease!==boardLease.current)return;if(interaction?.can_interact===false){setRows(current=>current.filter(row=>String(row.id)!==String(id)));load();return}setRows(current=>current.map(row=>String(row.id)===String(id)?{...row,interaction}:row))};
@@ -65,23 +82,7 @@ export default function BoardHub({family,onBack}){
  return <section className="board-hub"><header className="page-head board-head"><button className="icon-btn" aria-label={w.back} onClick={onBack}><Icon name="back"/></button><div className="grow"><small>{w.eyebrow}</small><h1>{w.title}</h1><p>{w.hint}</p></div>{canPost&&!compose&&<button className="primary board-pin-button" onClick={()=>startCompose()}><Icon name="plus"/> {w.pin}</button>}</header>
  {error&&<div role="alert" className="card board-error">{error} {!compose&&<button onClick={()=>load()}>{w.retry}</button>}</div>}
  {compose&&<PinComposer key={`${familyId}-${editing?.id||'new'}`} familyId={familyId} language={i18n.language} kind={kind} setKind={setKind} adapterKey={adapterKey} setAdapterKey={setAdapterKey} text={text} setText={setText} files={files} addFiles={addFiles} setFiles={setFiles} targetId={targetId} setTargetId={setTargetId} editing={editing} busy={busy} onSubmit={submit} onClose={close} removePhoto={removePhoto} members={members} visibility={visibility} setVisibility={setVisibility} selectedMembershipIds={selectedMembershipIds} setSelectedMembershipIds={setSelectedMembershipIds}/>} 
- {!compose&&rows.length>0&&<div className="pinboard-guide"><Icon name="drag"/><span>{w.arrange}</span><small>{en?'Use the arrow controls on a card to change the shared order.':'Mit den Pfeilen an einer Karte änderst du die gemeinsame Reihenfolge.'}</small></div>}
- <div className="pinboard-grid" aria-live="polite">{visibleRows.map((row,index)=><PinCard key={row.id} row={row} event={eventFromTarget(row.target)} index={index} total={visibleRows.length} w={w} en={en} busy={busy} onMove={move} onRemove={remove} onEdit={()=>startEdit(row)} onInteractionChange={interaction=>updateInteraction(row.id,interaction)}/>)}</div>
+ {!compose&&visibleRows.length>0&&<div className="pinboard-guide"><Icon name="drag"/><span>{w.arrange}</span><small>{({de:'Unter Mehr kannst du Karten mit den Pfeilen anordnen.',en:'Open More on a card to arrange it with the arrow controls.',fr:'Ouvrez Plus pour réorganiser les cartes avec les flèches.',nl:'Open Meer om kaarten met de pijlen te ordenen.',th:'เปิดเพิ่มเติมเพื่อจัดเรียงการ์ดด้วยปุ่มลูกศร'})[i18n.language.split('-')[0]]||'Unter Mehr kannst du Karten mit den Pfeilen anordnen.'}</small></div>}
+ <div className="pinboard-grid" aria-live="polite">{visibleRows.map((row,index)=><PinCard key={row.id} row={row} index={index} total={visibleRows.length} language={i18n.language} busy={busy} onMove={move} onRemove={remove} onEdit={()=>startEdit(row)} onInteractionChange={interaction=>updateInteraction(row.id,interaction)}/>)}</div>
  {loading&&<p role="status" className="board-loading">{w.loading}</p>}{!loading&&!error&&!visibleRows.length&&!compose&&<button className="card board-empty" onClick={()=>canPost&&startCompose()} disabled={!canPost}><span><Icon name="plus"/></span><strong>{w.empty}</strong>{canPost&&<small>{w.pin}</small>}</button>}{visibleNext&&<button className="secondary board-more" disabled={loading} onClick={()=>load(visibleNext,true)}>{w.more}</button>}</section>
 }
-
-function PinCard({row,event,index,total,w,en,busy,onMove,onRemove,onEdit,onInteractionChange}){
- const unavailable=row.target?.available===false;const target=row.target&&!unavailable?row.target:null;const title=unavailable?w.unavailable:(target?.title||row.text||pinTypeLabel(row.kind,!en,event));const eventMeta=row.kind==='event'?formatPinEventMeta(event,en?'en':'de'):'';const meta=eventMeta||target?.subtitle;const open=()=>{if(target?.url)location.assign(target.url)};const authorStyle={'--pin-author-hue':pinAuthorHue(row.author)};const scope=row.effective_scope==='none'?'none':(row.effective_scope||row.visibility);const visibilityText=scope==='none'?w.unavailable:scope==='private'?w.onlyMe:scope==='selected'?w.selectedPeople:w.wholeFamily;
- return <article id={`pin-${row.id}`} className={`pin-card pin-${row.kind} ${unavailable?'pin-unavailable':''}`}><div className="pin-card-top"><span className="pin-kind"><span className="pin-kind-icon"><Icon name={pinIconName(row.kind,event)}/></span>{pinTypeLabel(row.kind,!en,event)}</span><span className="pin-kind"><Icon name={scope==='private'||scope==='none'?'lock':scope==='selected'?'users':'home'}/>{visibilityText}</span><div className="pin-order" aria-label={w.arrange}>{row.can_reorder&&<><button className="icon-btn" disabled={busy||index===0} onClick={()=>onMove(row,-1)} aria-label={`${w.moveUp}: ${title}`}><span aria-hidden="true">↑</span></button><button className="icon-btn" disabled={busy||index===total-1} onClick={()=>onMove(row,1)} aria-label={`${w.moveDown}: ${title}`}><span aria-hidden="true">↓</span></button></>}</div></div>
- {row.images?.length>0&&<div className={`pin-photos pin-photos-${Math.min(row.images.length,4)}`}>{row.images.map((image,i)=><a key={image.id} href={image.url} target="_blank" rel="noreferrer" aria-label={`${w.photos} ${i+1}`}><img src={image.url} width={image.width} height={image.height} loading="lazy" alt=""/></a>)}</div>}
- {target?<button className="pin-target" onClick={open}><span className="pin-target-icon"><Icon name={pinIconName(row.kind,event)}/></span><span className="grow"><strong>{title}</strong>{meta&&<small>{row.kind==='event'&&eventMeta?eventMeta:formatTargetMeta(meta,en)}</small>}</span><Icon name="next"/></button>:<>{row.text&&<p className="pin-text">{row.text}</p>}{unavailable&&<div className="pin-target unavailable"><span className="pin-target-icon"><Icon name="lock"/></span><strong>{w.unavailable}</strong></div>}</>}
- {row.can_interact&&<PinInteractionBar pin={row} onChange={onInteractionChange}/>} 
- <footer>{(row.author_name||row.created_at)&&<span className="pin-author-line">{row.author_name&&<span className="pin-author" style={authorStyle} title={`${w.pinnedBy} ${row.author_name}`}><span className="pin-author-avatar" aria-hidden="true">{pinAuthorInitial(row.author_name)}</span><span>{w.pinnedBy} <strong>{row.author_name}</strong></span></span>}{row.created_at&&<time dateTime={row.created_at}>{new Date(row.created_at).toLocaleDateString(en?'en-GB':'de-DE',{day:'2-digit',month:'short'})}</time>}</span>}<div>{target?.can_share_source&&target?.source_share_url&&<a className="secondary compact" href={target.source_share_url}><Icon name="members"/>{w.shareSource}</a>}{row.can_change_pin_visibility&&<button className="secondary compact" disabled={busy} onClick={onEdit}>{w.edit}</button>}{row.can_delete&&<button className="ghost-danger compact" disabled={busy} onClick={()=>onRemove(row)}>{w.remove}</button>}</div></footer></article>
-}
-
-function eventFromTarget(target){
- if(!target||target.available===false||target.kind!=='event')return null;
- return {type:target.event_type,starts_at:target.subtitle,ends_at:target.ends_at,payload:{date_start:target.date_start,date_end_exclusive:target.date_end_exclusive}};
-}
-function formatDate(value,en){if(!value)return'';const date=new Date(value);return Number.isNaN(date.getTime())?'':date.toLocaleString(en?'en-GB':'de-DE',{dateStyle:'short',timeStyle:'short'})}
-function formatTargetMeta(value,en){if(typeof value==='string'&&/^\d{4}-\d{2}-\d{2}T/.test(value))return formatDate(value,en);return String(value||'').slice(0,140)}

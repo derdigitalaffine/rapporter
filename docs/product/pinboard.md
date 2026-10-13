@@ -16,4 +16,14 @@ Native Pins behalten die bestehende Pin-Sichtbarkeit (`Nur du`, `Ausgewählte Pe
 
 ## Scope-Grenze
 
-Dieser Slice ändert weder PinCard/Mehr/Reorder noch Today, Notifications, Interactions, Models, Migrationen oder Source-ACLs. Diese verbleibenden UX-Teile werden weiterhin unter #221 koordiniert.
+Der Composer verwendet den bestehenden Pin-/Quellen-Vertrag. Today, Notifications, Models, Migrationen und Source-ACLs bleiben bei ihren kanonischen Cores. Kontextuelle Vorschläge und die weiteren Epic-Kriterien bleiben unter #221 offen.
+
+## Karten und Mehr (#534)
+
+Verknüpfte Karten öffnen ihre kanonische Quelle direkt. Die effektive Sichtbarkeit steht als Text an der Karte; Anpinnen erweitert keine Quellrechte. Kommentare und Reaktionen verwenden dieselbe gemeinsame Interaktionsleiste.
+
+Seltene Aktionen stehen unter **Mehr**: mit Pfeilen die gemeinsame Reihenfolge ändern, die Pin-Sichtbarkeit bearbeiten, die Quelle separat freigeben oder den Pin entfernen. Diese Aktionen erscheinen ausschließlich entsprechend den serverseitigen Fähigkeiten. Die Pfeile sind ohne Drag mit Touch und Tastatur bedienbar und mindestens 44 px hoch. Nach einem Sortierschritt bleibt der Fokus auf Mehr derselben Karte; Escape schließt die Optionen und stellt den Fokus dort wieder her.
+
+Nicht mehr verfügbare Quellen zeigen einen neutralen Zustand ohne alte Beschriftungen, Fotos, Autoren, Metadaten, Kommentare oder Freigabelink. Vom Server erlaubte Pin-Verwaltung bleibt erreichbar. Die Reihenfolge reagiert sofort, Änderungen werden während der Bestätigung serialisiert; ein Fehler stellt die bisherige Reihenfolge wieder her. Familien-/Auth-Wechsel invalidieren alte Reads und Mutationsergebnisse, damit keine verspätete Antwort Karten aus dem vorherigen Kontext zurückbringt.
+
+Der Slice nutzt vorhandene details/summary-Aktionen, den bestehenden Board-Reorder-/Delete-Vertrag und PinInteractionBar. Es entstehen keine neuen Menüs, ACLs, Modelle oder Migrationen. Rollback: UI-Commit zurücknehmen; Daten und Quellrechte bleiben unverändert.

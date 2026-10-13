@@ -53,13 +53,13 @@ test('pin note, edit, reload and remove it from the family pinboard',async({page
  const pin=page.locator('.pin-card').first();await expect(pin).toContainText('Wir treffen uns im Garten.');
  await expect(pin.locator('.pin-author')).toContainText('Angepinnt von Alex');
  await expect(pin.locator('.pin-author-avatar')).toHaveText('A');
- await pin.getByRole('button',{name:'Bearbeiten',exact:true}).click();
+ await pin.locator('summary').click();await pin.getByRole('button',{name:'Bearbeiten',exact:true}).click();
  form=page.locator('.pin-composer');await expect(form).toBeVisible();
  const editor=form.getByRole('textbox',{name:'Notizzettel',exact:true});await expect(editor).toBeFocused();
  await editor.fill('Wir treffen uns um 16 Uhr.');
  await form.getByRole('button',{name:'Speichern',exact:true}).click();
  await page.reload();await expect(page.locator('.pin-card')).toContainText('16 Uhr');
- await page.locator('.pin-card').getByRole('button',{name:'Entfernen',exact:true}).click();
+ await page.locator('.pin-card summary').click();await page.locator('.pin-card').getByRole('button',{name:'Entfernen',exact:true}).click();
  await page.getByRole('alertdialog').getByRole('button',{name:'Entfernen',exact:true}).click();
  await expect(page.locator('.pin-card')).toHaveCount(0);
 });
