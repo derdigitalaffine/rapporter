@@ -22,6 +22,7 @@ export default function TodayHeaderPersonalizer(){
    heading.classList.remove('today-personal-header');
    heading.removeAttribute('data-today-greeting');
    heading.removeAttribute('data-today-family');
+   heading.removeAttribute('aria-label');
   };
 
   const loadContext=()=>{
@@ -36,13 +37,15 @@ export default function TodayHeaderPersonalizer(){
   };
 
   const apply=async()=>{
-   const heading=document.querySelector('.topbar .brand-mini[role="heading"]');
+   let heading=document.querySelector('.topbar .brand-mini[role="heading"]');
    if(!heading)return;
-   const onToday=Boolean(document.querySelector('main[data-page="home"]'));
-   if(!onToday){reset();return}
+   if(!document.querySelector('main[data-page="home"]')){reset();return}
 
    const loaded=await loadContext();
-   if(!live||!loaded)return;
+   if(!live||!loaded||!document.querySelector('main[data-page="home"]')){reset();return}
+   heading=document.querySelector('.topbar .brand-mini[role="heading"]');
+   if(!heading)return;
+
    const preferred=localStorage.getItem(ACTIVE_FAMILY_KEY);
    const family=loaded.families.find(item=>String(item.id)===String(preferred))||loaded.families[0];
    const member=(family?.memberships||[]).find(row=>String(row.user)===String(loaded.user?.id));
