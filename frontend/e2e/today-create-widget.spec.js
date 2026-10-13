@@ -76,7 +76,7 @@ test('family switch discards a delayed previous family ranking',async({page})=>{
  });
  await open(page);await page.locator('.family-switcher select').selectOption('family-2');
  await expect.poll(async()=>(await ids(page))[0]).toBe('shoppingItem');
- release();await expect.poll(async()=>(await ids(page))[0]).toBe('shoppingItem');
+ release();await page.waitForLoadState('networkidle');await expect.poll(async()=>(await ids(page))[0]).toBe('shoppingItem');
  await page.locator('.global-create-fab').click();await expect(page.locator('.create-action-card').first()).toContainText('Einkaufsartikel');
 });
 
