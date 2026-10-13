@@ -1,13 +1,28 @@
-from rest_framework import permissions, status, viewsets
-from rest_framework.exceptions import PermissionDenied
+from rest_framework import permissions, serializers, status, viewsets
+from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.response import Response
 
+from .membership_calendar import CALENDAR_COLOR_PALETTE, get_calendar_color, set_calendar_color
 from .models import Membership
 from .serializers import MembershipSerializer
 
 
+class CalendarMembershipSerializer(MembershipSerializer):
+    calendar_color = serializers.SerializerMethodField()
+    calendar_color_palette = serializers.SerializerMethodField()
+
+    def get_calendar_color(self, obj):
+        return get_calendar_color(obj)
+
+    def get_calendar_color_palette(self, obj):
+        return CALENDAR_COLOR_PALETTE
+
+    class Meta(MembershipSerializer.Meta):
+        fields = MembershipSerializer.Meta.fields + ["calendar_color", "calendar_color_palette"]
+
+
 class MembershipViewSet(viewsets.ModelViewSet):
-    serializer_class = MembershipSerializer
+    serializer_class = CalendarMembershipSerializer
     permission_classes = [permissions.IsAuthenticated]
     http_method_names = ["get", "patch", "delete", "head", "options"]
 
@@ -25,9 +40,19 @@ class MembershipViewSet(viewsets.ModelViewSet):
             raise PermissionDenied()
 
         requested_role = request.data.get("role", target.role)
-        self_service = set(request.data.keys()).issubset({"display_name", "birthday_visibility"})
+        color_requested = "calendar_color" in request.data
+        self_service = set(request.data.keys()).issubset({"display_name", "birthday_visibility", "calendar_color"})
         if target.user_id == request.user.id and self_service:
-            return super().partial_update(request, *args, **kwargs)
+            data = {key: value for key, value in request.data.items() if key in {"display_name", "birthday_visibility"}}
+            serializer = self.get_serializer(target, data=data, partial=True)
+            serializer.is_valid(raise_exception=True)
+            serializer.save()
+            if color_requested:
+                try:
+                    set_calendar_color(target, request.data.get("calendar_color"))
+                except ValueError as exc:
+                    raise ValidationError({"calendar_color": str(exc)}) from exc
+            return Response(self.get_serializer(target).data)
         if "birthday_visibility" in request.data and target.user_id != request.user.id:
             raise PermissionDenied("Geburtstagssichtbarkeit kann nur die Person selbst ändern.")
 
@@ -48,7 +73,12 @@ class MembershipViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(target, data=data, partial=True)
         serializer.is_valid(raise_exception=True)
         serializer.save()
-        return Response(serializer.data)
+        if color_requested:
+            try:
+                set_calendar_color(target, request.data.get("calendar_color"))
+            except ValueError as exc:
+                raise ValidationError({"calendar_color": str(exc)}) from exc
+        return Response(self.get_serializer(target).data)
 
     def destroy(self, request, *args, **kwargs):
         target = self.get_object()
