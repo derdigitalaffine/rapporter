@@ -5,7 +5,7 @@ from rest_framework.exceptions import PermissionDenied
 
 from auth_identity.models import EmailIdentity
 from family.models import Membership
-from .models import ChatBlock, ChatPreference, ConversationMember, Friendship
+from .models import ChatBlock, ChatPreference, Conversation, ConversationMember, Friendship
 
 WRITER_ROLES = (Membership.Role.OWNER, Membership.Role.ADULT, Membership.Role.TEEN)
 
@@ -115,6 +115,8 @@ def membership(user, conversation_id, *, write=False, lock=False):
         require_writer(user)
         if member.state != "active":
             raise PermissionDenied({"code": "chat_not_active"})
+        if member.conversation.channel == Conversation.Channel.SYSTEM:
+            raise PermissionDenied({"code": "system_chat_read_only"})
         if member.conversation.kind == "direct":
             friendship_access(user, member.conversation.friendship_id, lock=lock, allow_family=True)
     return member
