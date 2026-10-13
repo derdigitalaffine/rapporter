@@ -30,6 +30,10 @@ test('empty list CTA focuses quick add while completed-only recovers through Sto
   state.shoppingLists[0].items=[{id:'done-1',shopping_list:'shop-1',name:'Schon gekauft',quantity:'1',category:'Vorrat',aisle:'',note:'',favorite:false,checked:true,position:1000,added_by_name:'Alex'}];await page.reload();await expect(page.getByText('Alles erledigt',{exact:true})).toBeVisible();await page.getByRole('button',{name:'Erledigte ansehen'}).click();await expect(page.locator('.store-focus')).toBeVisible();await expect(page.getByRole('button',{name:/^Erledigt 1$/})).toHaveAttribute('aria-pressed','true');await expect(page.getByText('Schon gekauft',{exact:true})).toBeVisible();
 });
 
-test('offline is a persistent quiet state and English copy remains usable',async({page,context})=>{
-  await boot(page,()=>{},'en');await context.setOffline(true);await expect(page.getByText('Offline – changes stay saved on this device.',{exact:true})).toBeVisible();await expect(page.getByLabel('Switch shopping list')).toHaveCount(0);await expect(page.getByRole('button',{name:'New list'})).toBeVisible();await context.setOffline(false);await expect(page.getByText('Offline – changes stay saved on this device.',{exact:true})).toHaveCount(0);
+test('offline is a persistent quiet state and blocks unsupported list creation early',async({page,context})=>{
+  await boot(page,()=>{},'en');await context.setOffline(true);await expect(page.getByText('Offline – changes stay saved on this device.',{exact:true})).toBeVisible();await expect(page.getByLabel('Switch shopping list')).toHaveCount(0);await page.getByRole('button',{name:'New list'}).click();await expect(page.getByText('New lists can be created once you are back online.',{exact:true})).toBeVisible();await expect(page.getByLabel('Name of the new list')).toBeDisabled();await context.setOffline(false);await expect(page.getByText('Offline – changes stay saved on this device.',{exact:true})).toHaveCount(0);await expect(page.getByLabel('Name of the new list')).toBeEnabled();
+});
+
+test('offline no-list state explains why creation is unavailable',async({page,context})=>{
+  await boot(page,state=>{state.shoppingLists=[]},'en');await context.setOffline(true);await expect(page.getByText('You need a connection briefly to create a new list.',{exact:true})).toBeVisible();await expect(page.getByRole('button',{name:'Create shopping list'})).toBeDisabled();
 });
