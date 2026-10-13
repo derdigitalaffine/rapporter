@@ -105,7 +105,8 @@ def accept_invitation(invite, user):
         if invite.status == "accepted" or invite.created_at <= friend.updated_at:
             raise PermissionDenied({"code": "friendship_removed"})
         friend.active = True
-        friend.save(update_fields=["active", "updated_at"])
+    friend.family_derived = False
+    friend.save(update_fields=["active", "family_derived", "updated_at"])
     for participant in (user, sender):
         pref = preferences(participant)
         if not pref.personal_account:
