@@ -251,3 +251,15 @@ class RuntimeAdapterTests(UnifiedCompletionTests):
         self.assertEqual(ActionDomainEvent.objects.filter(action=row,event_type='action.occurrence_due').count(),1)
         self.execute(self.routine)
         self.assertEqual(ActionDomainEvent.objects.filter(action=row,event_type='action.completed').count(),1)
+
+class ActionFamilyImmutabilityTests(UnifiedCompletionTests):
+    def test_member_of_both_families_cannot_move_completion_history(self):
+        second=Family.objects.create(name='Second',slug='second')
+        Membership.objects.create(user=self.user,family=second,role='owner')
+        completed=self.execute(self.routine)
+        self.assertEqual(completed.status_code,200)
+        result=self.client.patch(f'/api/routines/{self.routine.id}/',{'family':str(second.id)},format='json')
+        self.assertEqual(result.status_code,400,result.data)
+        self.routine.refresh_from_db()
+        self.assertEqual(self.routine.family_id,self.family.id)
+        self.assertEqual(self.client.patch(f'/api/tasks/{self.task.id}/',{'family':str(second.id)},format='json').status_code,400)

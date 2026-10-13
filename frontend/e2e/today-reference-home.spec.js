@@ -48,7 +48,7 @@ async function bootReference(page,viewport={width:390,height:844}){
 
 test('Today reference structure uses real family, week, weather, alerts and direct To-do actions',async({page})=>{
   await bootReference(page);
-  await expect(page.getByRole('heading',{name:/Musterfamilie/})).toBeVisible();
+  await expect(page.getByRole('main').getByRole('heading',{name:/Musterfamilie/})).toBeVisible();
   await expect(page.locator('.today-week li')).toHaveCount(7);
   await expect(page.locator('.today-week [aria-current="date"]')).toHaveCount(1);
   await expect(page.getByTestId('current-weather')).toContainText('17 °C');
@@ -101,7 +101,7 @@ test('Today reference modules navigate to unified To-dos, waste calendar and con
   await todo.getByRole('link',{name:/Alle To-dos|All to-dos/}).click();
   await expect(page).toHaveURL(/page=todo/);
   await page.goto('/');await page.waitForLoadState('networkidle');
-  await page.getByTestId('next-waste').getByRole('button',{name:/Papiertonne/}).click();
+  await page.getByTestId('next-waste').locator('.row-main-button').filter({hasText:'Papiertonne'}).click();
   await expect(page).toHaveURL(/page=calendar/);
   await page.goto('/');await page.waitForLoadState('networkidle');
   await page.getByTestId('today-inbox').getByRole('button',{name:/Bitte Brotdose mitnehmen/}).click();

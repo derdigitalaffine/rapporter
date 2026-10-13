@@ -11,6 +11,8 @@ def _validate_family_access(serializer, attrs):
     if family and request and request.user.is_authenticated:
         if family.status != Family.Status.ACTIVE or not Membership.objects.filter(family=family, user=request.user).exists():
             raise PermissionDenied("Familie ist für diesen Benutzer nicht verfügbar.")
+    if isinstance(serializer.instance, (Task, Routine)) and family and family.id != serializer.instance.family_id:
+        raise serializers.ValidationError({"family": "Existing action history cannot move between families."})
     return family
 
 
