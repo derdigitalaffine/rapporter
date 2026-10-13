@@ -55,6 +55,17 @@ def _member(family, membership_id, field):
     return member
 
 
+def _permission_suggestions(row):
+    active = row.status == FamilyRelationship.Status.ACTIVE
+    adult = row.related_membership.role in {Membership.Role.OWNER, Membership.Role.ADULT}
+    parent_authority = row.is_legal_parent or row.has_custody is True
+    return {
+        "account_management": bool(active and adult and parent_authority),
+        "care_circle": bool(active and adult and row.kind != FamilyRelationship.Kind.NONE),
+        "automatic": False,
+    }
+
+
 def _relationship_payload(row, *, actor):
     child_viewer = actor.role == Membership.Role.CHILD
     visibility = row.child_visibility
@@ -78,11 +89,7 @@ def _relationship_payload(row, *, actor):
         "status": row.status,
         "child_visibility": row.child_visibility,
         "can_edit": actor.role == Membership.Role.OWNER,
-        "permission_suggestions": {
-            "account_management": bool(row.status == FamilyRelationship.Status.ACTIVE and row.related_membership.role in {Membership.Role.OWNER, Membership.Role.ADULT}),
-            "care_circle": bool(row.status == FamilyRelationship.Status.ACTIVE and (row.is_legal_parent or row.has_custody is True)),
-            "automatic": False,
-        },
+        "permission_suggestions": _permission_suggestions(row) if sensitive_visible else None,
     }
 
 
