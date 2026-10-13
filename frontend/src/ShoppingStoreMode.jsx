@@ -9,11 +9,11 @@ import './shopping-store.css';
 
 const unwrap=value=>value?.results||value||[];
 const byPosition=(a,b)=>(Number(a.position??2147483647)-Number(b.position??2147483647))||String(a.id).localeCompare(String(b.id),undefined,{numeric:true});
-export default function ShoppingStoreMode({list,onLeave,onToggle,onDetails,onAdd,syncStatus}){
- const {t}=useTranslation();const [cartOpen,setCartOpen]=useState(false);const [offersUrl,setOffersUrl]=useState('');const [statusFilter,setStatusFilter]=useState('open');const [completingIds,setCompletingIds]=useState([]);
+export default function ShoppingStoreMode({list,onLeave,onToggle,onDetails,onAdd,syncStatus,initialStatusFilter='open'}){
+ const {t}=useTranslation();const [cartOpen,setCartOpen]=useState(false);const [offersUrl,setOffersUrl]=useState('');const [statusFilter,setStatusFilter]=useState(initialStatusFilter);const [completingIds,setCompletingIds]=useState([]);
  const items=list?.items||[];const open=items.filter(x=>!x.checked);const checked=items.filter(x=>x.checked);
  useEffect(()=>{let active=true;setOffersUrl('');if(!list?.family||!list?.id)return()=>{active=false};api(`/shopping-stores/?family=${encodeURIComponent(list.family)}`).then(value=>{if(!active)return;const store=unwrap(value).find(row=>(row.shopping_list_ids||[]).some(id=>String(id)===String(list.id)));setOffersUrl(store?.offers_url||'')}).catch(()=>{});return()=>{active=false}},[list?.family,list?.id]);
- useEffect(()=>{setStatusFilter('open');setCompletingIds([])},[list?.id]);
+ useEffect(()=>{setStatusFilter(initialStatusFilter);setCompletingIds([])},[list?.id,initialStatusFilter]);
  const visibleItems=useMemo(()=>statusFilter==='open'?[...open].sort(byPosition):statusFilter==='done'?[...checked].sort(byPosition):[...open].sort(byPosition).concat([...checked].sort(byPosition)),[statusFilter,open,checked]);
  const groups=useMemo(()=>{
   const rows=[...visibleItems];
