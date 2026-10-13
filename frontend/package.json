@@ -31,7 +31,8 @@
     "i18next": "latest",
     "qrcode": "latest",
     "react-i18next": "latest",
-    "rehype-sanitize": "latest"
+    "rehype-sanitize": "latest",
+    "maplibre-gl": "6.14.0"
   },
   "devDependencies": {
     "@axe-core/playwright": "latest",

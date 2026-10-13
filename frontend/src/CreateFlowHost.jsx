@@ -1,3 +1,4 @@
+import VehicleEditor from './VehicleEditor';
 import BirthdayEditor from './BirthdayEditor';
 import {useRef,useState} from 'react';
 import {TaskEditor,ShoppingEditor} from './SmartEditors';
@@ -36,6 +37,7 @@ export default function CreateFlowHost({userId,action,family,data,context={},onC
   history.replaceState(state,'',pageHref(page));
   window.dispatchEvent(new PopStateEvent('popstate',{state}));
  }
+ if(action==='vehicle')return <VehicleEditor family={family} onClose={onClose} onSaved={saved}/>;
  if(action==='birthday')return <BirthdayEditor family={family} onClose={onClose} onSaved={saved}/>;
  if(action==='baby')return <BabyCreateSheet family={family} onClose={onClose} onOpenPage={openModule} onSuccessfulCreate={learnSuccessfulCreate}/>;
  if(action==='pets')return <PetCreateSheet family={family} onClose={onClose} onOpenPage={openModule} onSuccessfulCreate={learnSuccessfulCreate}/>;

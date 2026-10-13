@@ -1,6 +1,7 @@
 import {useEffect,useMemo,useRef,useState} from 'react';
 import {useTranslation} from 'react-i18next';
 import './create-i18n';
+import './vehicles-i18n';
 import './create-smart.css';
 import {api} from './api';
 import {Icon} from './icons';
@@ -11,7 +12,7 @@ import {CREATE_REQUEST_EVENT} from './create-request';
 const CAPABILITIES={loyalty:true,messages:false};
 const EMPTY_MODULES={baby:null,pets:null};
 
-export default function GlobalCreate({userId,page,family,role,context={},onCreate,suppressed=false}){
+export default function GlobalCreate({userId,page,family,role,context={},onCreate,suppressed=false,entitlements=null}){
   const {t}=useTranslation();
   const fabRef=useRef(null);const firstActionRef=useRef(null);const pendingAction=useRef(null);const previousSuppressed=useRef(suppressed);
   const [paletteOpen,setPaletteOpen]=useState(false);const [showAll,setShowAll]=useState(false);const [frozenQuick,setFrozenQuick]=useState([]);const [keyboardOpen,setKeyboardOpen]=useState(false);const [externalDialog,setExternalDialog]=useState(false);const [restoreFocus,setRestoreFocus]=useState(false);const [moduleState,setModuleState]=useState({familyId:null,...EMPTY_MODULES});
@@ -43,7 +44,7 @@ export default function GlobalCreate({userId,page,family,role,context={},onCreat
     return()=>{live=false;window.removeEventListener(CREATE_RANKING_UPDATED_EVENT,update);window.removeEventListener('online',online)};
   },[scopeKey]);
   const modules=moduleState.familyId===family?.id?moduleState:EMPTY_MODULES;
-  const options=useMemo(()=>({role,capabilities:CAPABILITIES,modules}),[role,modules]);
+  const options=useMemo(()=>({role,capabilities:{...CAPABILITIES,vehicles:Boolean(entitlements?.capabilities?.includes('vehicles'))},modules}),[role,modules,entitlements]);
   const actions=useMemo(()=>availableCreateActions(options),[options]);
   const ranked=useMemo(()=>rankCreateActions({availableActions:actions,page,profile:rankingProfile}),[actions,page,rankingProfile]);
   const direct=useMemo(()=>resolveDirectCreateAction({availableActions:actions,rankedActions:ranked,profile:rankingProfile}),[actions,ranked,rankingProfile]);
