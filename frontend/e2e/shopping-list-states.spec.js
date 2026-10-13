@@ -31,7 +31,7 @@ test('empty list CTA focuses quick add while completed-only recovers through Sto
 });
 
 test('offline is a persistent quiet state and blocks unsupported list creation early',async({page,context})=>{
-  await boot(page,()=>{},'en');await context.setOffline(true);await expect(page.getByText('Offline – changes stay saved on this device.',{exact:true})).toBeVisible();await expect(page.getByLabel('Switch shopping list')).toHaveCount(0);await page.getByRole('button',{name:'New list'}).click();await expect(page.getByText('New lists can be created once you are back online.',{exact:true})).toBeVisible();await expect(page.getByLabel('Name of the new list')).toBeDisabled();await context.setOffline(false);await expect(page.getByText('Offline – changes stay saved on this device.',{exact:true})).toHaveCount(0);await expect(page.getByLabel('Name of the new list')).toBeEnabled();
+  await boot(page,()=>{},'en');await context.setOffline(true);await expect(page.getByText('Offline – changes stay saved on this device.',{exact:true})).toBeVisible();await expect(page.getByLabel('Switch shopping list')).toHaveCount(0);await page.getByRole('button',{name:'New list'}).click();await expect(page.getByText('New lists can be created once you are back online.',{exact:true})).toBeVisible();const listNameInput=page.locator('.list-create-panel input');await expect(listNameInput).toBeDisabled();await context.setOffline(false);await expect(page.getByText('Offline – changes stay saved on this device.',{exact:true})).toHaveCount(0);await expect(listNameInput).toBeEnabled();
 });
 
 test('offline no-list state explains why creation is unavailable',async({page,context})=>{
