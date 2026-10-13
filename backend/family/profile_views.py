@@ -13,6 +13,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 
+from .birthday_age import age_is_enabled, set_age_enabled
 from .models import Family, Membership, UserProfile
 
 
@@ -56,6 +57,7 @@ def _payload(profile, membership):
         "display_name": (membership.display_name if membership else "") or profile.user.get_short_name() or profile.user.username,
         "role": membership.role if membership else None,
         "birthday_visibility": membership.birthday_visibility if membership else Membership.BirthdayVisibility.HIDDEN,
+        "show_birthday_age": age_is_enabled(membership.family, f"member:{membership.id}") if membership else True,
     }
 
 
@@ -93,6 +95,9 @@ def profile_detail(request):
         visibility = request.data.get("birthday_visibility", membership.birthday_visibility if membership else Membership.BirthdayVisibility.HIDDEN)
         if visibility not in Membership.BirthdayVisibility.values:
             return Response({"detail": "Ungültige Geburtstagssichtbarkeit."}, status=status.HTTP_400_BAD_REQUEST)
+        show_age = request.data.get("show_birthday_age", None)
+        if show_age is not None and not isinstance(show_age, bool):
+            return Response({"detail": "Ungültige Altersanzeige-Einstellung."}, status=status.HTTP_400_BAD_REQUEST)
         with transaction.atomic():
             profile.birth_month = month
             profile.birth_day = day
@@ -103,6 +108,8 @@ def profile_detail(request):
                     membership.display_name = str(request.data.get("display_name") or "").strip()[:80]
                 membership.birthday_visibility = visibility
                 membership.save(update_fields=["display_name", "birthday_visibility", "updated_at"])
+                if show_age is not None:
+                    set_age_enabled(membership.family, f"member:{membership.id}", show_age)
     return Response(_payload(profile, membership))
 
 
