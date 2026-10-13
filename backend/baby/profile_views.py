@@ -96,27 +96,10 @@ def child_family_profile(request, baby_id):
         return Response(_family_profile(_update_family_profile(baby, serializer.validated_data)))
 
 
-@api_view(["GET", "PATCH", "DELETE"])
+@api_view(["PATCH", "DELETE"])
 def baby_profile_detail(request, baby_id):
     with transaction.atomic():
-        baby = child_profile(baby_id, for_update=request.method != "GET")
-
-        # Family Members already resolves this canonical child URL. GET is a new,
-        # minimal family-profile read and deliberately exposes no care/health data.
-        if request.method == "GET":
-            require_child_guardian(request.user, baby)
-            return Response(_family_profile(baby))
-
-        # A family-profile edit is distinguishable from the pre-existing Baby
-        # rename contract by the birth_date field. Keep it independent of the
-        # optional Baby module while retaining per-child guardian authorization.
-        if request.method == "PATCH" and "birth_date" in request.data:
-            require_child_guardian(request.user, baby, manage=True)
-            serializer = ChildFamilyProfileInput(data=request.data)
-            serializer.is_valid(raise_exception=True)
-            return Response(_family_profile(_update_family_profile(baby, serializer.validated_data)))
-
-        # Existing Baby-module PATCH/DELETE behavior remains unchanged.
+        baby = child_profile(baby_id, for_update=True)
         require_module(baby.family)
         require_child_guardian(request.user, baby, manage=True)
 
