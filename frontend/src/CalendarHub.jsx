@@ -1,4 +1,5 @@
 import {useCallback,useEffect,useMemo,useRef,useState} from 'react';
+import {createPortal} from 'react-dom';
 import i18n from './i18n';
 import './calendar-i18n';
 import './birthday-i18n';
@@ -122,7 +123,7 @@ export default function CalendarHub({family,onBack,t}){
   const editedId=edit?.id;
   setEdit(null);
   if(saved){setEvents(rows=>[...rows.filter(row=>String(row.id)!==String(saved.id)),saved].filter(row=>!family||String(row.family)===String(family.id)).sort((a,b)=>eventTime(a)-eventTime(b)))}
-  else if(deleted&&editedId){setEvents(rows=>rows.filter(row=>String(row.id)!==String(editedId)))}
+  else if(deleted&&editedId){setEvents(rows=>rows.filter(row=>String(row.id)!==String(editedId))) }
   if(lastRange.current)await load(lastRange.current);
  }
  const language=i18n.language;
@@ -135,8 +136,8 @@ export default function CalendarHub({family,onBack,t}){
  {unhealthySources.length>0&&<CalendarSourceHealth sources={unhealthySources} t={t}/>} 
  {(filters.length>1||filter!=='all')&&<div className="calendar-filters" aria-label={t('calendarUi.sources')}><button className={filter==='all'?'active':''} onClick={()=>changeFilter('all')}><Icon name="calendar"/> {t('all')}</button>{filters.map(source=><button key={source.filterKey} className={filter===source.filterKey?'active':''} onClick={()=>changeFilter(source.filterKey)}><Icon name={source.icon}/>{source.key==='family'?(family?.name||source.label):source.label}</button>)}</div>}
  <CalendarPresentation view={view} onViewChange={changeView} onRangeChange={load} events={sourceFiltered} family={calendarFamily} t={t} language={language} onOpen={openEvent} targetDay={targetDay} listContent={listContent}/>
- {detail&&<EventDetail event={detail} family={calendarFamily} t={t} language={language} onClose={()=>setDetail(null)} onEdit={isNativeCalendarEvent(detail)?()=>editEvent(detail):null}/>} 
- {edit&&<EventEditor family={calendarFamily} event={edit.id?edit:null} onClose={()=>setEdit(null)} onSaved={eventSaved}/>}</div>
+ {detail&&createPortal(<EventDetail event={detail} family={calendarFamily} t={t} language={language} onClose={()=>setDetail(null)} onEdit={isNativeCalendarEvent(detail)?()=>editEvent(detail):null}/>,document.body)}
+ {edit&&createPortal(<EventEditor family={calendarFamily} event={edit.id?edit:null} onClose={()=>setEdit(null)} onSaved={eventSaved}/>,document.body)}</div>
 }
 
 function CalendarSourceHealth({sources,t}){const names=sources.map(source=>source.name).filter(Boolean).join(' · ');return <aside className="calendar-source-health" role="status" aria-live="polite"><span className="calendar-source-health-icon" aria-hidden="true"><Icon name="warning"/></span><div className="calendar-source-health-copy"><strong>{sources.length===1?t('calendarUi.sourceHealthOne'):t('calendarUi.sourceHealthMany',{count:sources.length})}</strong><span>{names}</span></div><a className="calendar-source-health-link" href="/?page=integrations"><span>{t('calendarUi.sourceHealthOpen')}</span><Icon name="next"/></a></aside>}
