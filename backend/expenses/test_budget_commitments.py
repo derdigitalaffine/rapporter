@@ -47,6 +47,36 @@ class BudgetCommitmentTests(TestCase):
     def source_url(self):
         return f"/api/budget-commitments/source/shopping_item/{self.item.id}/"
 
+    def reserve(self, amount="75.00", budget=True):
+        payload = {
+            "family": str(self.family.id),
+            "ledger": str(self.ledger.id),
+            "amount": amount,
+        }
+        if budget:
+            payload["budget"] = str(self.budget.id)
+        return self.client.put(self.source_url, payload, format="json").data["commitment"]
+
+    def purchase_payload(self, budget_id=None, amount="83.00"):
+        return {
+            "family": str(self.family.id),
+            "budget": str(budget_id) if budget_id else None,
+            "expense": {
+                "family": str(self.family.id),
+                "ledger": str(self.ledger.id),
+                "title": "Wocheneinkauf",
+                "merchant": "Supermarkt",
+                "total_amount": amount,
+                "currency": "EUR",
+                "occurred_at": "2026-10-15T12:00:00Z",
+                "funding_source": "member",
+                "paid_by": str(self.owner.id),
+                "participants": [str(self.owner.id)],
+                "split_type": "equal",
+                "client_request_id": "11111111-1111-4111-8111-111111111111",
+            },
+        }
+
     def test_reservation_reduces_available_without_creating_expense(self):
         response = self.client.put(
             self.source_url,
@@ -71,16 +101,7 @@ class BudgetCommitmentTests(TestCase):
         self.assertEqual(Decimal(category["available_amount"]), Decimal("225.00"))
 
     def test_actual_expense_consumes_full_reservation_and_uses_actual_amount(self):
-        reserved = self.client.put(
-            self.source_url,
-            {
-                "family": str(self.family.id),
-                "ledger": str(self.ledger.id),
-                "budget": str(self.budget.id),
-                "amount": "100.00",
-            },
-            format="json",
-        ).data["commitment"]
+        reserved = self.reserve(amount="100.00")
         expense = Expense.objects.create(
             family=self.family,
             ledger=self.ledger,
@@ -127,6 +148,40 @@ class BudgetCommitmentTests(TestCase):
         )
         self.assertEqual(retry.status_code, 200, retry.data)
         self.assertEqual(expense.budget_allocations.count(), 1)
+
+    def test_purchase_endpoint_creates_expense_and_consumes_commitment_atomically_and_idempotently(self):
+        reserved = self.reserve(amount="100.00")
+        url = f"/api/budget-commitments/{reserved['id']}/purchase/"
+        payload = self.purchase_payload(self.budget.id, amount="83.00")
+
+        first = self.client.post(url, payload, format="json")
+        self.assertEqual(first.status_code, 201, first.data)
+        self.assertEqual(Expense.objects.count(), 1)
+        expense = Expense.objects.get(id=first.data["expense"]["id"])
+        self.assertEqual(expense.total_amount, Decimal("83.00"))
+        self.assertEqual(expense.shares.get().amount, Decimal("83.00"))
+        self.assertEqual(expense.budget_allocations.get().amount_in_budget_currency, Decimal("83.00"))
+        commitment = BudgetCommitment.objects.get(id=reserved["id"])
+        self.assertEqual(commitment.status, BudgetCommitment.Status.CONSUMED)
+        self.assertEqual(commitment.consumed_by_id, expense.id)
+
+        retry = self.client.post(url, payload, format="json")
+        self.assertEqual(retry.status_code, 200, retry.data)
+        self.assertEqual(retry.data["expense"]["id"], first.data["expense"]["id"])
+        self.assertEqual(Expense.objects.count(), 1)
+        self.assertEqual(expense.budget_allocations.count(), 1)
+
+    def test_purchase_validation_rolls_back_new_expense_and_keeps_reservation_active(self):
+        reserved = self.reserve(amount="40.00")
+        url = f"/api/budget-commitments/{reserved['id']}/purchase/"
+        payload = self.purchase_payload("22222222-2222-4222-8222-222222222222", amount="35.00")
+
+        response = self.client.post(url, payload, format="json")
+        self.assertEqual(response.status_code, 400, response.data)
+        self.assertEqual(Expense.objects.count(), 0)
+        commitment = BudgetCommitment.objects.get(id=reserved["id"])
+        self.assertEqual(commitment.status, BudgetCommitment.Status.ACTIVE)
+        self.assertIsNone(commitment.consumed_by_id)
 
     def test_release_keeps_history_and_restores_availability(self):
         response = self.client.put(
