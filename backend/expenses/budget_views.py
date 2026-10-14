@@ -11,7 +11,9 @@ from .permissions import ExpenseAccess, finance_queryset
 from family.models import Family
 from .budget_serializers import ExpenseBudgetSerializer, BudgetAllocationReplaceSerializer
 from .budget_services import ledger_budget_summary, replace_budget_allocations
+from .commitment_models import BudgetCommitment
 from .models import Expense, ExpenseBudget, ExpenseLedger, get_default_expense_ledger
+from .money import money
 
 
 def _visible_expense(request, expense_id):
@@ -120,6 +122,23 @@ def expense_ledger_budget_summary(request, ledger_id):
             default=Decimal("0.00"),
         )
     ).order_by("created_at", "id")
+    budget_data = ExpenseBudgetSerializer(budgets, many=True, context={"request": request}).data
+    reserved_rows = BudgetCommitment.objects.filter(
+        ledger=ledger,
+        family=ledger.family,
+        status=BudgetCommitment.Status.ACTIVE,
+        budget__isnull=False,
+    ).values("budget_id").annotate(total=Sum("amount"))
+    reserved_by_budget = {str(row["budget_id"]): money(row["total"] or Decimal("0.00")) for row in reserved_rows}
+    for row in budget_data:
+        reserved = reserved_by_budget.get(str(row["id"]), Decimal("0.00"))
+        planned = money(row["amount"])
+        spent = money(row["spent_amount"])
+        available = money(planned - spent - reserved)
+        row["reserved_amount"] = str(reserved)
+        row["available_amount"] = str(available)
+        row["over_available"] = available < Decimal("0.00")
+
     return Response(
         {
             "family": str(ledger.family_id),
@@ -129,9 +148,12 @@ def expense_ledger_budget_summary(request, ledger_id):
             "estimated_amount": None if ledger.estimated_amount is None else str(ledger.estimated_amount),
             "updated_at": ledger.updated_at,
             "spent_amount": str(summary["spent_amount"]),
+            "reserved_amount": str(summary["reserved_amount"]),
             "remaining_amount": None if summary["remaining_amount"] is None else str(summary["remaining_amount"]),
+            "available_amount": None if summary["available_amount"] is None else str(summary["available_amount"]),
             "over_budget": summary["over_budget"],
+            "over_available": summary["over_available"],
             "unconverted_expense_count": summary["unconverted_expense_count"],
-            "budgets": ExpenseBudgetSerializer(budgets, many=True, context={"request": request}).data,
+            "budgets": budget_data,
         }
     )
