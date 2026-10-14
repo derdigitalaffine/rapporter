@@ -24,6 +24,40 @@ test('More groups family features before organisation and administration without
  await expect(page.locator('.bottom-nav').getByRole('button',{name:'Kalender',exact:true})).toBeVisible();
 });
 
+test('More sections collapse and keep their state after reload',async({page})=>{
+ const main=await bootMore(page);
+ const familySection=main.locator('[data-more-section="family"]');
+ const toggle=familySection.locator('[data-more-toggle="family"]');
+ await expect(toggle).toHaveAttribute('aria-expanded','true');
+ await toggle.click();
+ await expect(toggle).toHaveAttribute('aria-expanded','false');
+ await expect(familySection.getByRole('button',{name:'Pinnwand',exact:true})).toBeHidden();
+ await page.reload();
+ await page.waitForLoadState('networkidle');
+ const reloaded=page.locator('main[data-page="more"] [data-more-section="family"]');
+ await expect(reloaded.locator('[data-more-toggle="family"]')).toHaveAttribute('aria-expanded','false');
+ await expect(reloaded.getByRole('button',{name:'Pinnwand',exact:true})).toBeHidden();
+});
+
+test('More sections can be reordered by drag and drop and persist',async({page})=>{
+ const main=await bootMore(page);
+ const administrationHandle=main.locator('[data-more-drag-handle="administration"]');
+ const familySection=main.locator('[data-more-section="family"]');
+ await administrationHandle.dragTo(familySection);
+ await expect.poll(()=>main.locator('[data-more-section]').evaluateAll(nodes=>nodes.map(node=>node.dataset.moreSection))).toEqual(['administration','family','organisation']);
+ await page.reload();
+ await page.waitForLoadState('networkidle');
+ await expect.poll(()=>page.locator('main[data-page="more"] [data-more-section]').evaluateAll(nodes=>nodes.map(node=>node.dataset.moreSection))).toEqual(['administration','family','organisation']);
+});
+
+test('More section order is keyboard-reorderable from the drag handle',async({page})=>{
+ const main=await bootMore(page);
+ const organisationHandle=main.locator('[data-more-drag-handle="organisation"]');
+ await organisationHandle.focus();
+ await page.keyboard.press('ArrowUp');
+ await expect.poll(()=>main.locator('[data-more-section]').evaluateAll(nodes=>nodes.map(node=>node.dataset.moreSection))).toEqual(['organisation','family','administration']);
+});
+
 test('optional care modules are not duplicated when promoted to the main navigation',async({page})=>{
  const activeModule={enabled:true,authorized:true,can_manage:true,show_in_main_navigation:true};
  const main=await bootMore(page,{babyModule:activeModule,petModule:activeModule});
