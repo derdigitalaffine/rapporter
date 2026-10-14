@@ -146,3 +146,23 @@ class BudgetCommitmentTests(TestCase):
         summary = self.client.get(f"/api/expense-ledgers/{self.ledger.id}/budget-summary/")
         self.assertEqual(Decimal(summary.data["reserved_amount"]), Decimal("0.00"))
         self.assertEqual(Decimal(summary.data["available_amount"]), Decimal("500.00"))
+
+    def test_deleting_source_releases_active_commitment_without_deleting_history(self):
+        response = self.client.put(
+            self.source_url,
+            {
+                "family": str(self.family.id),
+                "ledger": str(self.ledger.id),
+                "budget": str(self.budget.id),
+                "amount": "25.00",
+            },
+            format="json",
+        )
+        commitment_id = response.data["commitment"]["id"]
+        self.item.delete()
+        commitment = BudgetCommitment.objects.get(id=commitment_id)
+        self.assertEqual(commitment.status, BudgetCommitment.Status.RELEASED)
+        self.assertIsNotNone(commitment.released_at)
+        summary = self.client.get(f"/api/expense-ledgers/{self.ledger.id}/budget-summary/")
+        self.assertEqual(Decimal(summary.data["reserved_amount"]), Decimal("0.00"))
+        self.assertEqual(Decimal(summary.data["available_amount"]), Decimal("500.00"))
