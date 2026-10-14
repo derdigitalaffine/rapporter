@@ -19,7 +19,7 @@ export default function AvatarAppearanceEditor({value,onChange,hasPhoto=false,di
  const mode=value?.avatar_mode||'initials';
  const update=patch=>onChange?.({...value,...patch});
  const groups=useMemo(()=>GROUPS.map(group=>({...group,icons:group.icons.filter(icon=>options.includes(icon)&&(!query||icon.toLowerCase().includes(query.trim().toLowerCase())))})).filter(group=>group.icons.length),[options,query]);
- function chooseMode(next){if(disabled)return;if(next==='photo'&&!hasPhoto)return;update({avatar_mode:next})}
+ function chooseMode(next){if(disabled)return;if(next==='photo'&&!hasPhoto)return;if(next==='icon'&&!value?.avatar_icon_key){update({avatar_mode:'icon',avatar_icon_key:options[0]||'user'});return}update({avatar_mode:next})}
  function chooseIcon(icon){update({avatar_mode:'icon',avatar_icon_key:icon})}
  return <section className="avatar-appearance-editor">
   <fieldset className="avatar-mode-field"><legend>{t('profileUi.avatarStyle')}</legend><div className="avatar-mode-grid">
