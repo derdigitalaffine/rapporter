@@ -1,5 +1,6 @@
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
@@ -19,12 +20,7 @@ from telemetry.service import try_record_audit_event
 from .admin_views import IsSuperAdminSession
 from .cookies import set_admin_access_cookie
 from .models import AuthSession
-from .service import (
-    issue_access_token,
-    require_fresh_session,
-    revoke_all_user_sessions,
-    serialize_session,
-)
+from .service import issue_access_token, require_fresh_session, serialize_session
 
 SUPERADMIN_CONTEXT = WebAuthnChallenge.Context.SUPERADMIN
 
@@ -39,6 +35,18 @@ def _audit(event_key, request, *, target_type="superadmin_account", target_id=No
         target_type=target_type,
         target_id=str(target_id or request.user.pk),
         metadata={"surface": "superadmin"},
+    )
+
+
+def _revoke_other_superadmin_sessions(user, *, except_sid):
+    now = timezone.now()
+    return AuthSession.objects.filter(
+        user=user,
+        surface=AuthSession.Surface.SUPERADMIN,
+        revoked_at__isnull=True,
+    ).exclude(pk=except_sid).update(
+        revoked_at=now,
+        revoked_reason="password_changed",
     )
 
 
@@ -125,7 +133,7 @@ def superadmin_passkey_reauthentication_verify(request):
         credential=request.data.get("credential") or {},
         context=SUPERADMIN_CONTEXT,
     )
-    current = request.auth_session
+    current = AuthSession.objects.get(pk=request.auth_session.pk)
     if current.surface != AuthSession.Surface.SUPERADMIN:
         return Response({"detail": "Keine aktive Admin-Sitzung."}, status=status.HTTP_401_UNAUTHORIZED)
     access = issue_access_token(current)
@@ -160,7 +168,7 @@ def superadmin_password_change(request):
 
     request.user.set_password(new_password)
     request.user.save(update_fields=["password"])
-    revoke_all_user_sessions(request.user, reason="password_changed", except_sid=current.pk)
+    _revoke_other_superadmin_sessions(request.user, except_sid=current.pk)
     _audit("auth.password.changed", request, reason="superadmin_self_service")
     access = issue_access_token(current)
     response = Response(
