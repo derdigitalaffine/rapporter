@@ -10,22 +10,27 @@ const FAMILY_LANE='__family__';
 const ICS_LANE='__ics__';
 const SETTINGS_KEY='familyos:calendar:timeline:v2';
 const clamp=(value,min,max)=>Math.min(max,Math.max(min,value));
+const settingNumber=(value,fallback,min,max)=>{const parsed=Number(value);return Number.isFinite(parsed)?clamp(parsed,min,max):fallback};
 
 export default function CalendarFamilyTimeline({days,events,family,t,language,onOpen,today}){
  const timeZone=family?.timezone||'Europe/Berlin';
  const settings=useMemo(readTimelineSettings,[]);
  const [orientation,setOrientation]=useState(settings.orientation==='columns'?'columns':'rows');
- const [zoom,setZoom]=useState(clamp(Number(settings.zoom)||48,0,100));
+ const [zoom,setZoom]=useState(()=>settingNumber(settings.zoom,48,0,200));
+ const [laneDensity,setLaneDensity]=useState(()=>settingNumber(settings.laneDensity,18,0,100));
  const [hiddenLaneIds,setHiddenLaneIds]=useState(()=>new Set(Array.isArray(settings.hiddenLaneIds)?settings.hiddenLaneIds.map(String):[]));
  const [viewport,setViewport]=useState({width:0,height:0});
  const scrollRef=useRef(null);
  const lanes=useMemo(()=>buildLanes(days,events,family,timeZone,t),[days,events,family,timeZone,t]);
  const visibleLanes=useMemo(()=>lanes.filter(lane=>!hiddenLaneIds.has(lane.id)),[lanes,hiddenLaneIds]);
- const daySize=58+(zoom*1.22);
- const rowSize=46+(zoom*.68);
- const visibleDays=useMemo(()=>estimateVisibleDays({orientation,viewport,daySize,rowSize,total:days.length}),[orientation,viewport,daySize,rowSize,days.length]);
+ const daySize=32+(zoom*1.4);
+ const timeRowSize=28+(zoom*.46);
+ const laneBaseHeight=40+(laneDensity*.42);
+ const eventRowHeight=26+(laneDensity*.24);
+ const laneGap=3+(laneDensity*.03);
+ const visibleDays=useMemo(()=>estimateVisibleDays({orientation,viewport,daySize,rowSize:timeRowSize,total:days.length}),[orientation,viewport,daySize,timeRowSize,days.length]);
  const peopleCount=visibleLanes.filter(lane=>lane.kind==='member').length;
- useEffect(()=>{writeTimelineSettings({orientation,zoom,hiddenLaneIds:[...hiddenLaneIds]})},[orientation,zoom,hiddenLaneIds]);
+ useEffect(()=>{writeTimelineSettings({orientation,zoom,laneDensity,hiddenLaneIds:[...hiddenLaneIds]})},[orientation,zoom,laneDensity,hiddenLaneIds]);
  useEffect(()=>{
   const node=scrollRef.current;if(!node)return;
   const update=()=>setViewport({width:node.clientWidth,height:node.clientHeight});update();
@@ -41,37 +46,39 @@ export default function CalendarFamilyTimeline({days,events,family,t,language,on
     <button type="button" aria-pressed={orientation==='rows'} className={orientation==='rows'?'active':''} onClick={()=>setOrientation('rows')}><Icon name="members"/>{t('calendarUi.timelineOrientationRows')}</button>
     <button type="button" aria-pressed={orientation==='columns'} className={orientation==='columns'?'active':''} onClick={()=>setOrientation('columns')}><Icon name="refresh"/>{t('calendarUi.timelineOrientationColumns')}</button>
    </div>
-   <label className="family-timeline-zoom"><span><Icon name="search"/>{t('calendarUi.timelineZoom')}</span><input type="range" min="0" max="100" step="1" value={zoom} onChange={event=>setZoom(Number(event.target.value))}/><output>{t('calendarUi.timelineVisibleDays',{count:visibleDays})}</output></label>
+   <label className="family-timeline-zoom"><span><Icon name="search"/>{t('calendarUi.timelineZoom')}</span><input type="range" min="0" max="200" step="1" value={zoom} onChange={event=>setZoom(Number(event.target.value))}/><output>{t('calendarUi.timelineVisibleDays',{count:visibleDays})}</output></label>
+   <label className="family-timeline-zoom family-timeline-density"><span><Icon name="members"/>{t('calendarUi.timelineRowHeight')}</span><input type="range" min="0" max="100" step="1" value={laneDensity} onChange={event=>setLaneDensity(Number(event.target.value))}/><output>{Math.round(laneBaseHeight)} px</output></label>
    <details className="family-timeline-lane-picker"><summary><Icon name="members"/><span>{t('calendarUi.timelineLanes')}</span><strong>{visibleLanes.length}/{lanes.length}</strong></summary><div className="family-timeline-lane-controls">
     <div className="family-timeline-lane-controls-head"><span>{t('calendarUi.timelineLanesHint')}</span>{hiddenLaneIds.size>0&&<button type="button" className="text-link" onClick={showAll}>{t('calendarUi.timelineShowAll')}</button>}</div>
     {lanes.map(lane=><label key={lane.id} className="family-timeline-lane-toggle">{lane.kind==='member'?<MemberAvatar person={lane.member} color={lane.color} size={28}/>:<span className={`family-timeline-control-icon is-${lane.kind}`}><Icon name={lane.kind==='ics'?'calendar':'members'}/></span>}<span className="grow"><strong>{lane.name}</strong><small>{lane.subtitle}</small></span><input type="checkbox" checked={!hiddenLaneIds.has(lane.id)} onChange={()=>toggleLane(lane.id)} aria-label={lane.name}/></label>)}
    </div></details>
   </div>
   {visibleLanes.length?<div ref={scrollRef} className="family-timeline-scroll" tabIndex="0" aria-label={t(orientation==='rows'?'calendarUi.timelineScrollHint':'calendarUi.timelineScrollHintVertical')}>
-   {orientation==='rows'?<TimelineRows lanes={visibleLanes} days={days} family={family} t={t} language={language} onOpen={onOpen} today={today} daySize={daySize}/>:<TimelineColumns lanes={visibleLanes} days={days} family={family} t={t} language={language} onOpen={onOpen} today={today} rowSize={rowSize}/>} 
+   {orientation==='rows'?<TimelineRows lanes={visibleLanes} days={days} family={family} t={t} language={language} onOpen={onOpen} today={today} daySize={daySize} laneBaseHeight={laneBaseHeight} eventRowHeight={eventRowHeight} laneGap={laneGap} laneDensity={laneDensity}/>:<TimelineColumns lanes={visibleLanes} days={days} family={family} t={t} language={language} onOpen={onOpen} today={today} rowSize={timeRowSize} laneDensity={laneDensity}/>} 
   </div>:<div className="family-timeline-empty"><Icon name="members"/><strong>{t('calendarUi.timelineNoLanes')}</strong><button type="button" className="secondary compact" onClick={showAll}>{t('calendarUi.timelineShowAll')}</button></div>}
  </section>;
 }
 
-function TimelineRows({lanes,days,family,t,language,onOpen,today,daySize}){
+function TimelineRows({lanes,days,family,t,language,onOpen,today,daySize,laneBaseHeight,eventRowHeight,laneGap,laneDensity}){
  return <div className="family-timeline-table family-timeline-rows" style={{'--timeline-day-width':`${daySize}px`,'--timeline-day-count':days.length}}>
   <div className="family-timeline-header family-timeline-row">
    <div className="family-timeline-label family-timeline-corner"><span>{t('calendarUi.timelinePeopleLabel')}</span></div>
    <div className="family-timeline-days">{days.map(day=><DayHead key={day} day={day} today={today} language={language}/>)}</div>
   </div>
-  {lanes.map(lane=><TimelineLane key={lane.id} lane={lane} days={days} family={family} t={t} language={language} onOpen={onOpen}/>) }
+  {lanes.map(lane=><TimelineLane key={lane.id} lane={lane} days={days} family={family} t={t} language={language} onOpen={onOpen} laneBaseHeight={laneBaseHeight} eventRowHeight={eventRowHeight} laneGap={laneGap} laneDensity={laneDensity}/>) }
  </div>;
 }
 
-function TimelineLane({lane,days,family,t,language,onOpen}){
+function TimelineLane({lane,days,family,t,language,onOpen,laneBaseHeight,eventRowHeight,laneGap,laneDensity}){
  const packed=packEvents(lane.events,days,family?.timezone||'Europe/Berlin');
  const rows=Math.max(1,...packed.map(item=>item.level+1));
- const minHeight=Math.max(72,rows*46+20);
+ const minHeight=Math.max(laneBaseHeight,rows*(eventRowHeight+laneGap)+10);
+ const eventPadding=Math.max(3,Math.round((eventRowHeight-18)/4));
  return <div data-lane-id={lane.id} className={`family-timeline-row family-timeline-lane is-${lane.kind}`} style={{'--lane-color':lane.color||'var(--brand)','--timeline-lane-height':`${minHeight}px`}}>
-  <LaneLabel lane={lane}/>
-  <div className="family-timeline-track" style={{'--timeline-rows':rows}}>
+  <LaneLabel lane={lane} density={laneDensity}/>
+  <div className="family-timeline-track" style={{'--timeline-rows':rows,gridAutoRows:`${eventRowHeight}px`,rowGap:`${laneGap}px`,padding:`${Math.max(4,Math.round(laneGap))}px 0`}}>
    {days.map(day=><span key={day} className="family-timeline-grid-cell" aria-hidden="true"/>)}
-   {packed.length?packed.map(item=><button key={`${lane.id}-${item.event.id}-${item.start}`} className="family-timeline-event" style={{gridColumn:`${item.start+1} / ${item.end+2}`,gridRow:item.level+1,...timelineEventStyle(item.event,lane)}} onClick={()=>onOpen(item.event)} title={timelineTitle(item.event,language,t)}>
+   {packed.length?packed.map(item=><button key={`${lane.id}-${item.event.id}-${item.start}`} className="family-timeline-event" style={{gridColumn:`${item.start+1} / ${item.end+2}`,gridRow:item.level+1,minHeight:`${eventRowHeight}px`,padding:`${eventPadding}px 8px`,...timelineEventStyle(item.event,lane)}} onClick={()=>onOpen(item.event)} title={timelineTitle(item.event,language,t)}>
     <span className="family-timeline-event-time">{eventTimeLabel(item.event,language,t,item.span)}</span>
     <strong>{item.event.title}</strong>
     {(item.event.payload?.location||lane.kind==='ics')&&<small><Icon name={item.event.payload?.location?'location':'calendar'} size={10}/>{item.event.payload?.location||item.event.source_meta?.name||t('calendarUi.timelineImportsLane')}</small>}
@@ -80,19 +87,20 @@ function TimelineLane({lane,days,family,t,language,onOpen}){
  </div>;
 }
 
-function TimelineColumns({lanes,days,family,t,language,onOpen,today,rowSize}){
+function TimelineColumns({lanes,days,family,t,language,onOpen,today,rowSize,laneDensity}){
  const timeZone=family?.timezone||'Europe/Berlin';
  const packedByLane=lanes.map(lane=>({lane,items:packEvents(lane.events,days,timeZone)}));
- return <div className="family-timeline-columns" style={{'--timeline-lane-count':lanes.length,'--timeline-row-height':`${rowSize}px`}}>
+ const headerSize=42+(laneDensity*.18);
+ return <div className="family-timeline-columns" style={{'--timeline-lane-count':lanes.length,'--timeline-row-height':`${rowSize}px`,gridTemplateRows:`${headerSize}px repeat(${days.length}, ${rowSize}px)`}}>
   <div className="family-timeline-column-corner">{t('calendarUi.timelineDaysLabel')}</div>
-  {lanes.map((lane,index)=><div key={lane.id} data-lane-id={lane.id} className={`family-timeline-column-head is-${lane.kind}`} style={{gridColumn:index+2,gridRow:1,'--lane-color':lane.color||'var(--brand)'}}><LaneLabel lane={lane} compact/></div>)}
+  {lanes.map((lane,index)=><div key={lane.id} data-lane-id={lane.id} className={`family-timeline-column-head is-${lane.kind}`} style={{gridColumn:index+2,gridRow:1,'--lane-color':lane.color||'var(--brand)'}}><LaneLabel lane={lane} compact density={laneDensity}/></div>)}
   {days.map((day,dayIndex)=><div key={`day-${day}`} className={`family-timeline-date-label ${day===today?'is-today':''}`} style={{gridColumn:1,gridRow:dayIndex+2}}><span>{weekday(day,language)}</span><strong>{Number(day.slice(-2))}</strong><small>{month(day,language)}</small></div>)}
   {days.flatMap((day,dayIndex)=>lanes.map((lane,laneIndex)=><span key={`${day}-${lane.id}`} className={`family-timeline-column-cell ${day===today?'is-today':''}`} style={{gridColumn:laneIndex+2,gridRow:dayIndex+2}} aria-hidden="true"/>))}
   {packedByLane.flatMap(({lane,items},laneIndex)=>items.map(item=><button key={`${lane.id}-${item.event.id}-${item.start}`} className={`family-timeline-vertical-event is-${lane.kind}`} style={{gridColumn:laneIndex+2,gridRow:`${item.start+2} / ${item.end+3}`,'--event-level':item.level,...timelineEventStyle(item.event,lane)}} onClick={()=>onOpen(item.event)} title={timelineTitle(item.event,language,t)}><span>{eventTimeLabel(item.event,language,t,item.span)}</span><strong>{item.event.title}</strong>{lane.kind==='ics'&&<small>{item.event.source_meta?.name}</small>}</button>))}
  </div>;
 }
 
-function LaneLabel({lane,compact=false}){return <div className={`family-timeline-label ${compact?'compact':''}`}>{lane.kind==='member'?<MemberAvatar person={lane.member} color={lane.color} size={compact?30:38}/>:<span className={`family-timeline-family-avatar is-${lane.kind}`}><Icon name={lane.kind==='ics'?'calendar':'members'}/></span>}<span className="family-timeline-person-copy"><strong>{lane.name}</strong><small>{lane.subtitle}</small></span></div>}
+function LaneLabel({lane,compact=false,density=18}){const avatarSize=compact?Math.round(24+density*.05):Math.round(26+density*.08);const padY=Math.round(4+density*.04);return <div className={`family-timeline-label ${compact?'compact':''}`} style={{paddingBlock:`${padY}px`}}>{lane.kind==='member'?<MemberAvatar person={lane.member} color={lane.color} size={avatarSize}/>:<span className={`family-timeline-family-avatar is-${lane.kind}`} style={{width:`${avatarSize}px`,height:`${avatarSize}px`}}><Icon name={lane.kind==='ics'?'calendar':'members'}/></span>}<span className="family-timeline-person-copy"><strong>{lane.name}</strong><small>{lane.subtitle}</small></span></div>}
 function DayHead({day,today,language}){return <div className={`family-timeline-day-head ${day===today?'is-today':''}`}><span>{weekday(day,language)}</span><strong>{Number(day.slice(-2))}</strong><small>{month(day,language)}</small></div>}
 
 function buildLanes(days,events,family,timeZone,t){
