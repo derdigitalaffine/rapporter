@@ -73,6 +73,13 @@ class SchedulingRuleVersion(TimestampedModel):
         ordering = ["version"]
         constraints = [
             models.UniqueConstraint(fields=["series", "version"], name="schedule_rule_version_unique"),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(change_scope="future", effective_from__isnull=False)
+                    | models.Q(change_scope__in=["initial", "whole"], effective_from__isnull=True)
+                ),
+                name="schedule_rule_scope_effective_valid",
+            ),
         ]
         indexes = [
             models.Index(fields=["series", "effective_from", "version"], name="schedule_rule_effective_idx"),
@@ -140,6 +147,15 @@ class SchedulingDependency(TimestampedModel):
     )
 
     class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    models.Q(anchor_scope="series", anchor_occurrence_key="")
+                    | (models.Q(anchor_scope="occurrence") & ~models.Q(anchor_occurrence_key=""))
+                ),
+                name="schedule_dependency_scope_key_valid",
+            ),
+        ]
         indexes = [
             models.Index(fields=["family", "anchor_type", "anchor_id"], name="schedule_dependency_anchor_idx"),
             models.Index(fields=["family", "enabled"], name="schedule_dependency_enabled_idx"),
@@ -178,9 +194,22 @@ class SchedulingTemplate(TimestampedModel):
     class Meta:
         ordering = ["name", "created_at"]
         constraints = [
+            models.CheckConstraint(
+                condition=(
+                    models.Q(scope="personal", owner__isnull=False)
+                    | models.Q(scope__in=["family", "admin"], owner__isnull=True)
+                ),
+                name="schedule_template_scope_owner_valid",
+            ),
             models.UniqueConstraint(
-                fields=["family", "scope", "owner", "name"],
-                name="schedule_template_name_unique",
+                fields=["family", "owner", "name"],
+                condition=models.Q(scope="personal"),
+                name="schedule_template_personal_name_unique",
+            ),
+            models.UniqueConstraint(
+                fields=["family", "scope", "name"],
+                condition=models.Q(scope__in=["family", "admin"]),
+                name="schedule_template_shared_name_unique",
             ),
         ]
         indexes = [models.Index(fields=["family", "scope", "name"], name="schedule_template_scope_idx")]
