@@ -34,27 +34,53 @@ export default function SuperAdminEntitlementControl({familyId,control,onChanged
   }catch(err){setError(err.message||'Lizenz-Override konnte nicht entfernt werden.')}finally{setBusy(false)}
  }
 
- return <section aria-labelledby={`license-${familyId}`}>
-  <div className="admin-section-head"><div><small>Entitlement · #83</small><h3 id={`license-${familyId}`}>Lizenz &amp; Zugriff</h3><p>Billing gilt standardmäßig. Nur dieser explizite Override ersetzt den effektiven Lizenzgrad vorübergehend oder dauerhaft.</p></div></div>
-  <dl className="admin-insight-metrics">
-   <div><dt>Effektiver Lizenzgrad</dt><dd>{label(effective.tier)}</dd></div>
-   <div><dt>Quelle</dt><dd>{activeOverride?'Superadmin Override':effective.origin_summary||'—'}</dd></div>
-   <div><dt>Fallback</dt><dd>Automatisch</dd></div>
-   <div><dt>Daten bei Downgrade</dt><dd>Bleiben erhalten</dd></div>
+ const source=activeOverride?'Superadmin Override':effective.origin_summary||'Standard';
+ const overrideUntil=activeOverride?.ends_at?new Date(activeOverride.ends_at).toLocaleString():null;
+
+ return <section className="admin-entitlement" aria-labelledby={`license-${familyId}`}>
+  <header className="admin-entitlement-head">
+   <div>
+    <small>Entitlement · #83</small>
+    <h3 id={`license-${familyId}`}>Lizenz &amp; Zugriff</h3>
+    <p>Der effektive Zugriff wird zentral auf Familienebene aufgelöst. Billing bleibt unverändert; ein Superadmin-Override überlagert den Lizenzgrad nur so lange, wie er aktiv ist.</p>
+   </div>
+   <div className="admin-license-state" aria-label={`Aktueller Lizenzgrad ${label(effective.tier)}`}>
+    <span>Aktueller Lizenzgrad</span>
+    <strong>{label(effective.tier)}</strong>
+    <small>{source}</small>
+   </div>
+  </header>
+
+  {activeOverride&&<div className="admin-notice warning admin-entitlement-notice" role="note">
+   <div><strong>Superadmin-Override aktiv</strong><span>{label(activeOverride.tier)}{overrideUntil?` bis ${overrideUntil}`:' ohne Ablaufdatum'}. Danach gilt automatisch der nächste gültige Billing-/Grant-Zustand.</span></div>
+  </div>}
+
+  <dl className="admin-entitlement-facts">
+   <div><dt>Fallback</dt><dd>Automatisch auf den nächsten gültigen Grant</dd></div>
+   <div><dt>Downgrade</dt><dd>Keine Löschung von Familien- oder Premium-Daten</dd></div>
+   <div><dt>Durchsetzung</dt><dd>Zentral über Capabilities, auch serverseitig</dd></div>
   </dl>
-  {activeOverride&&<div className="admin-notice warning" role="note"><div><strong>Expliziter Override: {label(activeOverride.tier)}</strong><span>{activeOverride.ends_at?` bis ${new Date(activeOverride.ends_at).toLocaleString()}`:' ohne Ablaufdatum'} · Danach gilt automatisch der nächste gültige Zustand.</span></div></div>}
-  <details>
-   <summary>Lizenzgrad ändern</summary>
-   <form className="admin-audit-filters" onSubmit={save}>
-    <label>Lizenzgrad<select value={tier} onChange={event=>setTier(event.target.value)}>{tiers.map(value=><option key={value} value={value}>{label(value)}</option>)}</select></label>
-    <label>Ablauf<select value={temporary?'temporary':'permanent'} onChange={event=>setTemporary(event.target.value==='temporary')}><option value="permanent">Dauerhaft</option><option value="temporary">Zeitlich begrenzt</option></select></label>
-    {temporary&&<label>Gültig bis<input type="datetime-local" value={endsAt} onChange={event=>setEndsAt(event.target.value)} required/></label>}
-    <label>Grund<input value={reason} onChange={event=>setReason(event.target.value)} required maxLength={500} placeholder="z. B. Support-Freischaltung"/></label>
-    <button className="primary" type="submit" disabled={busy||!reason.trim()||(temporary&&!endsAt)}>{busy?'Wird gespeichert …':'Override speichern'}</button>
-    {activeOverride&&<button className="secondary" type="button" disabled={busy||!reason.trim()} onClick={clear}>Override entfernen</button>}
+
+  <details className="admin-entitlement-editor">
+   <summary><span>Lizenzgrad ändern</span><small>Auditierter Override mit Pflichtbegründung</small></summary>
+   <form onSubmit={save}>
+    <fieldset disabled={busy}>
+     <legend>Override konfigurieren</legend>
+     <div className="admin-entitlement-grid">
+      <label>Lizenzgrad<select value={tier} onChange={event=>setTier(event.target.value)}>{tiers.map(value=><option key={value} value={value}>{label(value)}</option>)}</select></label>
+      <label>Gültigkeit<select value={temporary?'temporary':'permanent'} onChange={event=>setTemporary(event.target.value==='temporary')}><option value="permanent">Dauerhaft</option><option value="temporary">Zeitlich begrenzt</option></select></label>
+      {temporary&&<label>Gültig bis<input type="datetime-local" value={endsAt} onChange={event=>setEndsAt(event.target.value)} required/></label>}
+      <label className="admin-entitlement-reason">Grund<span className="admin-field-hint">Pflichtfeld · wird im Audit protokolliert</span><input value={reason} onChange={event=>setReason(event.target.value)} required maxLength={500} placeholder="z. B. Support-Freischaltung"/></label>
+     </div>
+     <div className="admin-entitlement-actions">
+      <button className="primary" type="submit" disabled={!reason.trim()||(temporary&&!endsAt)}>{busy?'Wird gespeichert …':'Override speichern'}</button>
+      {activeOverride&&<button className="secondary" type="button" disabled={!reason.trim()} onClick={clear}>Aktiven Override entfernen</button>}
+     </div>
+    </fieldset>
    </form>
   </details>
-  <p className="admin-cockpit-caption">Ein Downgrade löscht keine Familien- oder Premium-Daten. Schreib-/Create-Rechte werden ausschließlich über den zentralen Capability-Resolver begrenzt.</p>
-  {error&&<p role="alert">{error}</p>}{notice&&<p role="status">{notice}</p>}
+
+  <p className="admin-cockpit-caption admin-entitlement-footnote">Lizenzwechsel verändern nur den effektiven Zugriff. Bestehende Daten bleiben gespeichert und stehen nach einer erneuten Freischaltung ohne Wiederherstellungsmigration wieder zur Verfügung.</p>
+  <div className="admin-entitlement-feedback" aria-live="polite">{error&&<p className="admin-form-message error" role="alert">{error}</p>}{notice&&<p className="admin-form-message success" role="status">{notice}</p>}</div>
  </section>;
 }
