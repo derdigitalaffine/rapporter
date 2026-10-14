@@ -1,7 +1,7 @@
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
-from .budget_views import ExpenseBudgetViewSet, expense_budget_allocations, expense_budget_participant_plans, expense_ledger_budget_summary
+from .budget_views import ExpenseBudgetViewSet, expense_budget_allocations, expense_budget_participant_plans, expense_ledger_budget_summary, expense_ledger_participant_plans
 from .commitment_views import budget_commitment_consume, budget_commitment_purchase, budget_commitment_source
 from .views import ExpenseLedgerViewSet, ExpenseViewSet, SettlementViewSet
 from .receipt_views import receipt_file
@@ -19,6 +19,7 @@ settlement_void = SettlementViewSet.as_view({"post": "void"})
 urlpatterns = [
     path("expense-ledgers/for-trip/", trip_expense_ledger, name="expense-ledger-for-trip"),
     path("expense-ledgers/<uuid:ledger_id>/budget-summary/", expense_ledger_budget_summary, name="expense-ledger-budget-summary"),
+    path("expense-ledgers/<uuid:ledger_id>/participant-plans/", expense_ledger_participant_plans, name="expense-ledger-participant-plans"),
     path("expense-budgets/<uuid:budget_id>/participant-plans/", expense_budget_participant_plans, name="expense-budget-participant-plans"),
     path("budget-commitments/source/<str:source_type>/<uuid:source_id>/", budget_commitment_source, name="budget-commitment-source"),
     path("budget-commitments/<uuid:commitment_id>/consume/", budget_commitment_consume, name="budget-commitment-consume"),
