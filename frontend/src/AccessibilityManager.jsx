@@ -61,6 +61,7 @@ function inertOutside(dialog){
 
 export default function AccessibilityManager(){
   useEffect(()=>{
+    const root=document.documentElement;
     let active=null;
     let restoreBackground=()=>{};
     let restoreFocus=null;
@@ -71,6 +72,7 @@ export default function AccessibilityManager(){
       if(next===active)return;
       restoreBackground();
       window.clearTimeout(focusTimer);
+      root.toggleAttribute('data-app-modal',Boolean(next));
       if(!next){
         active=null;
         const target=restoreFocus;
@@ -121,6 +123,7 @@ export default function AccessibilityManager(){
       document.removeEventListener('keydown',onKeyDown,true);
       window.clearTimeout(focusTimer);
       restoreBackground();
+      root.removeAttribute('data-app-modal');
     };
   },[]);
   return null;

@@ -7,8 +7,8 @@
 
 .bottom-nav{
   position:fixed;
-  /* Persistent navigation follows the layout viewport. VisualViewport can
-     transiently shrink or pan while iOS presents sheets and keyboards. */
+  /* Persistent navigation belongs to the layout viewport. The visual
+     viewport is reserved for keyboard-aware modal/content surfaces. */
   bottom:0;
   grid-template-columns:repeat(var(--bottom-nav-items,5),minmax(0,1fr));
   gap:4px;
@@ -56,6 +56,24 @@
   color:currentColor;
 }
 
+/* True modal surfaces own the screen. Likewise, while the OS keyboard is
+   visible, persistent app chrome must not be lifted to the keyboard edge or
+   become a solid obstruction above it. */
+html[data-app-modal] .bottom-nav,
+html[data-app-keyboard] .bottom-nav,
+html[data-app-modal] .global-create-controls,
+html[data-app-keyboard] .global-create-controls{
+  visibility:hidden!important;
+  pointer-events:none!important;
+}
+
+/* Once the keyboard hides persistent navigation, keyboard-aware surfaces must
+   not keep reserving its height. Keeping this gap was the opaque band that
+   appeared above iOS keyboards in Messenger and editors. */
+html[data-app-keyboard] .app-shell{
+  --app-nav-space:0px;
+}
+
 @media(max-width:380px){
   .bottom-nav{
     gap:2px;
@@ -98,7 +116,10 @@ html[data-app-standalone] body{
 }
 
 html[data-app-standalone] .app-shell:not(.messenger-shell){
-  height:var(--app-viewport-height,100dvh);
+  /* Keep permanent app chrome on the layout viewport. Shrinking this shell
+     to VisualViewport height is what used to pull the navigation upward and
+     expose opaque bands while iOS opened/closed the keyboard. */
+  height:100%;
   min-height:0;
   display:flex;
   flex-direction:column;

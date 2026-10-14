@@ -7,6 +7,7 @@ import {Icon} from './icons';
 import ActionCapture from './ActionCapture';
 import {CREATE_PAGES,createActionById} from './create-actions';
 import {CREATE_REQUEST_EVENT} from './create-request';
+import OverlayPortal from './OverlayPortal';
 
 export default function GlobalCreate({page,family,role,context={},onCreate,suppressed=false,createActions}){
   const {t}=useTranslation();
@@ -96,11 +97,11 @@ export default function GlobalCreate({page,family,role,context={},onCreate,suppr
       <button ref={fabRef} type="button" className="global-create-fab" onClick={activate} aria-label={direct?t('createUi.addNamed',{name:t(direct.labelKey)}):t('createUi.button')} title={direct?t('createUi.addNamed',{name:t(direct.labelKey)}):t('createUi.button')}><Icon name="plus" size={22}/><span>{direct?t(direct.labelKey):t('createUi.button')}</span></button>
       {direct&&<button type="button" className="global-create-menu-button" onClick={openPalette} aria-label={t('createUi.openQuickstart')} title={t('createUi.openQuickstart')}><Icon name="more" size={18}/></button>}
     </div>}
-    {paletteOpen&&<div className="sheet-backdrop create-palette-backdrop" onMouseDown={event=>event.target===event.currentTarget&&closePalette()}><section className="quick-sheet create-palette-sheet" role="dialog" aria-modal="true" aria-labelledby="create-palette-title"><div className="sheet-handle"/><div className="sheet-head"><div><small>{family?.name}</small><h2 id="create-palette-title">{t('createUi.paletteTitle')}</h2></div><button type="button" className="sheet-close" onClick={closePalette} aria-label={t('createUi.close')}><Icon name="close"/></button></div><p className="create-palette-hint">{t('createUi.paletteHint',{family:family?.name||''})}</p>
+    {paletteOpen&&<OverlayPortal><div className="sheet-backdrop create-palette-backdrop" onMouseDown={event=>event.target===event.currentTarget&&closePalette()}><section className="quick-sheet create-palette-sheet" role="dialog" aria-modal="true" aria-labelledby="create-palette-title"><div className="sheet-handle"/><div className="sheet-head"><div><small>{family?.name}</small><h2 id="create-palette-title">{t('createUi.paletteTitle')}</h2></div><button type="button" className="sheet-close" onClick={closePalette} aria-label={t('createUi.close')}><Icon name="close"/></button></div><p className="create-palette-hint">{t('createUi.paletteHint',{family:family?.name||''})}</p>
       <ActionCapture family={family}/>{frozenQuick.length>0&&<div className="create-palette-group"><small>{t('createUi.forYou')}</small><div className="create-action-grid">{frozenQuick.map((action,index)=><button ref={index===0?firstActionRef:null} type="button" className="create-action-card primary-action" key={action.id} onClick={()=>choose(action)}><span><Icon name={action.icon} size={22}/></span><strong>{t(action.labelKey)}</strong><small className="create-action-reason">{t(reasonKey(action))}</small></button>)}</div></div>}
       <button type="button" className="secondary create-all-toggle" aria-expanded={showAll} onClick={()=>setShowAll(value=>!value)}><span>{t(showAll?'createUi.hideAllActions':'createUi.allActions')}</span><Icon name="next" size={14}/></button>
       {showAll&&<div className="create-all-actions"><div className="create-palette-group"><small>{t('createUi.quick')}</small><div className="create-action-list">{allPrimary.map(action=><button type="button" key={action.id} onClick={()=>choose(action)}><Icon name={action.icon}/><span>{t(action.labelKey)}</span><Icon name="next" size={14}/></button>)}</div></div>{allSecondary.length>0&&<div className="create-palette-group"><small>{t('createUi.more')}</small><div className="create-action-list">{allSecondary.map(action=><button type="button" key={action.id} onClick={()=>choose(action)}><Icon name={action.icon}/><span>{t(action.labelKey)}</span><Icon name="next" size={14}/></button>)}</div></div>}</div>}
       {!actions.length&&<p className="create-palette-empty">{t('createUi.noActions')}</p>}
-    </section></div>}
+    </section></div></OverlayPortal>}
   </>;
 }
