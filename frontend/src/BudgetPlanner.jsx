@@ -85,7 +85,7 @@ export default function BudgetPlanner({familyId,ledger,summary,loading,onReload,
     const saved=configured.get(row.member);
     return saved?{...row,spending_limit:saved.spending_limit??'',planned_share:saved.planned_share??''}:row;
    });
-   setDraft(current=>current?.id===scopeId?{...current,participantPlans,participantLoaded:true,participantLoading:false,participantError:''}:current);
+   setDraft(current=>current?.id===scopeId?{...current,participantPlans,participantLoaded:true,participantLoading:false,participantError:'',participantDirty:false}:current);
   }).catch(()=>{
    if(active)setDraft(current=>current?.id===scopeId?{...current,participantLoading:false,participantLoaded:false,participantError:t('budgetPlanning.participantLoadFailed')}:current);
   });
@@ -106,14 +106,14 @@ export default function BudgetPlanner({familyId,ledger,summary,loading,onReload,
   setDraft({
    type,id:record?.id?String(record.id):null,name:record?.name||'',amount:String((type==='overall'?summary?.budget_amount:record?.amount)??''),estimate:String((type==='overall'?summary?.estimated_amount:record?.estimated_amount)??''),
    periodType:record?.period_type||'open',rolloverPolicy:record?.rollover_policy||'reset',startsOn:record?.starts_on||'',endsOn:record?.ends_on||'',
-   participantPlans:blankParticipantPlans(familyContext.members),participantLoaded:!record?.id,participantLoading:false,participantError:'',
+   participantPlans:blankParticipantPlans(familyContext.members),participantLoaded:!record?.id,participantLoading:false,participantError:'',participantDirty:false,
    revision:type==='overall'?summary?.updated_at:record?.updated_at,requestId:crypto.randomUUID(),
   });
  }
  function close(){restoreFocus.current=true;setDraft(null);setErrors({});setFailure('');setConflict(false)}
  function set(key,value){setDraft(current=>({...current,[key]:value}));setErrors(current=>({...current,[key]:''}));if(!conflict)setFailure('')}
  function setParticipant(member,key,value){
-  setDraft(current=>({...current,participantPlans:(current.participantPlans||[]).map(row=>row.member===member?{...row,[key]:value}:row)}));
+  setDraft(current=>({...current,participantDirty:true,participantPlans:(current.participantPlans||[]).map(row=>row.member===member?{...row,[key]:value}:row)}));
   setErrors(current=>({...current,[`participant-${member}-${key}`]:''}));
   if(!conflict)setFailure('');
  }
@@ -155,7 +155,8 @@ export default function BudgetPlanner({familyId,ledger,summary,loading,onReload,
     payload.starts_on=null;payload.ends_on=null;
    }
   }
-  if(canManageParticipants&&draft.participantLoaded){
+  const participantWrite=canManageParticipants&&draft.participantLoaded&&draft.participantDirty;
+  if(participantWrite){
    payload.participant_plans=(draft.participantPlans||[]).filter(row=>String(row.spending_limit||'').trim()||String(row.planned_share||'').trim()).map(row=>({
     member:row.member,
     spending_limit:String(row.spending_limit||'').trim()||null,
@@ -163,8 +164,7 @@ export default function BudgetPlanner({familyId,ledger,summary,loading,onReload,
    }));
   }
   try{
-   const overallParticipantWrite=overall&&canManageParticipants&&draft.participantLoaded;
-   const url=overall?(overallParticipantWrite?`/expense-ledgers/${ledger.id}/participant-plans/`:`/expense-ledgers/${ledger.id}/`):draft.id?`/expense-budgets/${draft.id}/`:'/expense-budgets/';
+   const url=overall?(participantWrite?`/expense-ledgers/${ledger.id}/participant-plans/`:`/expense-ledgers/${ledger.id}/`):draft.id?`/expense-budgets/${draft.id}/`:'/expense-budgets/';
    await api(url,{method:overall||draft.id?'PATCH':'POST',body:JSON.stringify(payload)});
    if(!live.current)return;
    close();toast(label('saved'),{type:'success'});await onSaved();
