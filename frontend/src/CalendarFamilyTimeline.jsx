@@ -62,18 +62,20 @@ export default function CalendarFamilyTimeline({days,events,family,t,language,on
   writeTimelineSettings(activeSettingsKey,{orientation,zoom,laneDensity,hiddenLaneIds:[...hiddenLaneIds],laneOrder,hideEmptyLanes});
  },[activeSettingsKey,orientation,zoom,laneDensity,hiddenLaneIds,laneOrder,hideEmptyLanes]);
  useEffect(()=>{setLaneOrder(current=>{const next=normalizeLaneOrder(current,lanes.map(lane=>lane.id));return arraysEqual(next,current)?current:next})},[laneIdsKey]);
+ useEffect(()=>{laneOrderTouchedRef.current=false},[family?.id]);
  useEffect(()=>{
-  laneOrderTouchedRef.current=false;
   let live=true;
-  if(!family?.id)return()=>{live=false};
+  if(!family?.id||!settingsKey)return()=>{live=false};
   api(`/calendar-planner-preferences/?family=${encodeURIComponent(family.id)}`).then(value=>{
    if(!live||laneOrderTouchedRef.current)return;
    const serverOrder=Array.isArray(value?.lane_order)?value.lane_order.map(String):[];
    if(serverOrder.length){setLaneOrder(serverOrder);return}
-   if(laneOrder.length)persistLaneOrder(laneOrder);
+   const local=readTimelineSettings(settingsKey);
+   const fallback=Array.isArray(local.laneOrder)?local.laneOrder.map(String):[];
+   if(fallback.length)persistLaneOrder(fallback);
   }).catch(()=>{});
   return()=>{live=false};
- },[family?.id]);
+ },[family?.id,settingsKey]);
  useEffect(()=>{
   const node=scrollRef.current;if(!node)return;
   const update=()=>setViewport({width:node.clientWidth,height:node.clientHeight});update();
