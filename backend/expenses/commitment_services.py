@@ -13,13 +13,20 @@ from .money import money
 SUPPORTED_SOURCES = {"shopping_item"}
 
 
-def _validate_source(family, source_type, source_id):
+def _lock_source(family, source_type, source_id):
     if source_type not in SUPPORTED_SOURCES:
         raise ValueError("Diese Reservierungsquelle wird nicht unterstützt.")
     if source_type == "shopping_item":
-        exists = ShoppingItem.objects.filter(id=source_id, shopping_list__family=family).exists()
-        if not exists:
+        source = (
+            ShoppingItem.objects.select_for_update()
+            .select_related("shopping_list")
+            .filter(id=source_id, shopping_list__family=family)
+            .first()
+        )
+        if not source:
             raise ValueError("Der Einkaufsartikel ist für diese Familie nicht verfügbar.")
+        return source
+    return None
 
 
 def _ledger(family, ledger_id):
@@ -40,7 +47,10 @@ def _budget(family, ledger, budget_id):
 
 @transaction.atomic
 def upsert_budget_commitment(*, user, family, source_type, source_id, ledger_id, amount, budget_id=None):
-    _validate_source(family, source_type, source_id)
+    # Lock the canonical source before checking/creating the active commitment.
+    # Concurrent retries for the same shopping item therefore serialize before
+    # they reach the partial unique constraint.
+    _lock_source(family, source_type, source_id)
     ledger = _ledger(family, ledger_id)
     budget = _budget(family, ledger, budget_id)
     amount = money(amount)
