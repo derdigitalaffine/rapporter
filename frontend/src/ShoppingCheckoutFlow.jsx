@@ -52,7 +52,8 @@ export default function ShoppingCheckoutFlow({list,sessionId,openCount,onClose,o
   }catch(err){toast(t('shoppingCheckout.linkFailed'),{type:'error'})}
   setExpenseMode('');setLinkedExpense(expense);setStage('summary');
  }
- if(expenseMode&&family)return <ExpenseEditor family={family} initialMode={expenseMode} onClose={()=>setExpenseMode('')} onSaved={linkExpense}/>;
+ const expensePrefill={title:completion?.completion?.shopping_list?.store||list?.store||'',occurred_at:completion?.session?.completed_at||completion?.completion?.completed_at||''};
+ if(expenseMode&&family)return <ExpenseEditor family={family} initialMode={expenseMode} initialPrefill={expensePrefill} onClose={()=>setExpenseMode('')} onSaved={linkExpense}/>;
  if(stage==='summary'&&completion)return <ShoppingCompletionSummary payload={completion} expense={linkedExpense} onClose={onClose}/>;
  const purchased=completion?.completion?.purchased_count||0;
  const stillOpen=completion?.completion?.open_count??openCount;
