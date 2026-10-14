@@ -1,3 +1,4 @@
+from copy import deepcopy
 from datetime import timedelta
 
 from django.db import transaction
@@ -24,6 +25,14 @@ def _visible_list(user, list_id):
         user,
         ShoppingList.objects.select_related("family").filter(id=list_id, archived=False),
     ).first()
+
+
+def _visible_session_queryset(user):
+    return (
+        ShoppingSession.objects.filter(shopping_list__in=visible_shopping_lists(user))
+        .select_related("shopping_list", "family", "started_by", "completed_by")
+        .prefetch_related("participants__user")
+    )
 
 
 def _membership_map(session, users):
@@ -92,14 +101,31 @@ def _item_snapshot(item):
         "aisle": item.aisle,
         "note": item.note,
         "checked_at": item.checked_at.isoformat() if item.checked_at else None,
+        # The source item is deleted after checkout, so retain just enough ACL
+        # metadata to keep gift/surprise items private when history is read later.
+        "hidden_from_user_ids": [user.id for user in item.hidden_from_user.all()],
     }
 
 
+def _snapshot_for_user(snapshot, request_user):
+    result = deepcopy(snapshot or {})
+    for key, count_key in (("purchased_items", "purchased_count"), ("open_items", "open_count")):
+        visible = []
+        for raw in result.get(key) or []:
+            row = dict(raw)
+            hidden_ids = {str(value) for value in row.pop("hidden_from_user_ids", [])}
+            if str(request_user.id) in hidden_ids:
+                continue
+            visible.append(row)
+        result[key] = visible
+        result[count_key] = len(visible)
+    return result
+
+
 def _completion_payload(session, request_user):
-    snapshot = session.snapshot or {}
     return {
         "session": _session_payload(session, request_user),
-        "completion": snapshot,
+        "completion": _snapshot_for_user(session.snapshot, request_user),
         "context_ref": {"type": "shopping_session", "id": str(session.id)},
     }
 
@@ -189,6 +215,33 @@ def shopping_session_current(request):
     })
 
 
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def shopping_session_detail(request, session_id):
+    session = _visible_session_queryset(request.user).filter(id=session_id).first()
+    if not session:
+        return Response({"detail": "Einkaufssession nicht gefunden."}, status=status.HTTP_404_NOT_FOUND)
+    return Response(_completion_payload(session, request.user))
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def shopping_session_history(request):
+    shopping_list = _visible_list(request.user, request.query_params.get("shopping_list"))
+    if not shopping_list:
+        return Response({"detail": "Einkaufsliste nicht gefunden."}, status=status.HTTP_404_NOT_FOUND)
+    try:
+        limit = min(50, max(1, int(request.query_params.get("limit", "20"))))
+    except (TypeError, ValueError):
+        return Response({"limit": "Ungültiges Limit."}, status=status.HTTP_400_BAD_REQUEST)
+    sessions = list(
+        _visible_session_queryset(request.user)
+        .filter(shopping_list=shopping_list, status=ShoppingSession.Status.COMPLETED)
+        .order_by("-completed_at", "-updated_at")[:limit]
+    )
+    return Response({"results": [_completion_payload(session, request.user) for session in sessions]})
+
+
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def shopping_session_complete(request):
@@ -220,6 +273,7 @@ def shopping_session_complete(request):
             ShoppingItem.objects.select_for_update()
             .filter(shopping_list=shopping_list)
             .exclude(hidden_from_user=request.user)
+            .prefetch_related("hidden_from_user")
             .order_by("position", "created_at", "id")
         )
         purchased = [item for item in visible_items if item.checked]
