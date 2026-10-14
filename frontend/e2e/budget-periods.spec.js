@@ -49,7 +49,9 @@ test('finance · period and carryover stay progressive inside the existing budge
  await expect(period.getByText('Zeitraum & Übertrag',{exact:true})).toBeVisible();
  await expect(period).not.toHaveAttribute('open','');
  await period.locator('summary').click();
- await dialog.getByLabel('Budgetzeitraum',{exact:true}).selectOption('month');
+ const periodSelect=dialog.getByLabel('Budgetzeitraum',{exact:true});
+ await expect(periodSelect.locator('option[value="context"]')).toHaveCount(0);
+ await periodSelect.selectOption('month');
  await expect(dialog.getByLabel('Am Periodenende',{exact:true})).toBeVisible();
  await dialog.getByLabel('Am Periodenende',{exact:true}).selectOption('carry_positive');
  await expect(dialog.getByText(/Aktive Vormerkungen bleiben erhalten/)).toBeVisible();
