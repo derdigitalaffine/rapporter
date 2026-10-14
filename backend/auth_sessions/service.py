@@ -22,7 +22,10 @@ class SessionUnavailable(APIException):
 
 class FreshAuthenticationRequired(APIException):
     status_code = 403
-    default_detail = "Bitte bestätige deine Identität erneut."
+    default_detail = {
+        "detail": "Bitte bestätige deine Identität erneut.",
+        "code": "reauth_required",
+    }
     default_code = "reauth_required"
 
 
@@ -36,7 +39,13 @@ class RefreshRotationResult:
     session: AuthSession
     access: AccessToken | None
     refresh: RefreshToken | None
-    parallel_conflict: bool = False
+    parallel_conflict: bool
+
+    def __init__(self, session, access, refresh, parallel_conflict=False):
+        object.__setattr__(self, "session", session)
+        object.__setattr__(self, "access", access)
+        object.__setattr__(self, "refresh", refresh)
+        object.__setattr__(self, "parallel_conflict", parallel_conflict)
 
 
 def _setting_int(name: str, default: int) -> int:
@@ -263,9 +272,6 @@ def rotate_refresh(raw_refresh: str) -> RefreshRotationResult:
             and session.previous_refresh_valid_until is not None
             and session.previous_refresh_valid_until >= now
         ):
-            # A parallel tab may have sent the same cookie before the first
-            # response rotated it. Do not mint a second refresh token and do not
-            # revoke the session; the browser shares the cookie set by the winner.
             session.last_seen_at = now
             session.save(update_fields=["last_seen_at"])
             result = RefreshRotationResult(session=session, access=None, refresh=None, parallel_conflict=True)
