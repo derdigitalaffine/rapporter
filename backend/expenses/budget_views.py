@@ -14,6 +14,7 @@ from .budget_services import ledger_budget_summary, replace_budget_allocations
 from .commitment_models import BudgetCommitment
 from .models import Expense, ExpenseBudget, ExpenseLedger, get_default_expense_ledger
 from .money import money
+from .participant_services import participant_plan_payload
 
 
 def _visible_expense(request, expense_id):
@@ -43,6 +44,20 @@ def _visible_ledger(request, ledger_id):
         raise NotFound()
     require_capability(request.user, ledger.family, "expenses")
     return ledger
+
+
+def _visible_budget(request, budget_id):
+    queryset = ExpenseBudget.objects.select_related("family", "ledger").filter(
+        id=budget_id,
+        family__status=Family.Status.ACTIVE,
+    )
+    if not request.user.is_superuser:
+        queryset = queryset.filter(family__memberships__user=request.user)
+    budget = queryset.distinct().first()
+    if not budget:
+        raise NotFound()
+    require_capability(request.user, budget.family, "expenses")
+    return budget
 
 
 def _allocation_payload(expense, allocations):
@@ -88,6 +103,12 @@ class ExpenseBudgetViewSet(viewsets.ModelViewSet):
         if ledger_id:
             queryset = queryset.filter(ledger_id=ledger_id)
         return finance_queryset(queryset, user).distinct()
+
+
+@api_view(["GET"])
+def expense_budget_participant_plans(request, budget_id):
+    budget = _visible_budget(request, budget_id)
+    return Response(participant_plan_payload(budget=budget, user=request.user))
 
 
 @api_view(["GET", "PUT"])
