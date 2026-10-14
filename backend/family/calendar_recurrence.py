@@ -7,7 +7,7 @@ from .action_schedule import _days, local_datetime, normalize_schedule
 
 
 LEGACY_RECURRENCES = {"weekly", "monthly", "yearly"}
-SUPPORTED_FREQUENCIES = {"weekly", "monthly", "quarterly", "yearly"}
+SUPPORTED_FREQUENCIES = {"daily", "weekly", "monthly", "quarterly", "yearly"}
 MAX_OCCURRENCES_PER_EVENT = 400
 
 
