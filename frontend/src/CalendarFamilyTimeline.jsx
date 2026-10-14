@@ -20,7 +20,7 @@ export default function CalendarFamilyTimeline({days,events,family,t,language,on
  const settingsKey=timelineSettingsKey(family);
  const initialSettings=useMemo(()=>{const scoped=settingsKey?readTimelineSettings(settingsKey):{};return hasSettings(scoped)?scoped:readTimelineSettings(LEGACY_SETTINGS_KEY)},[]);
  const [orientation,setOrientation]=useState(initialSettings.orientation==='columns'?'columns':'rows');
- const [zoom,setZoom]=useState(()=>settingNumber(initialSettings.zoom,48,0,200));
+ const [visibleDays,setVisibleDays]=useState(()=>settingNumber(initialSettings.visibleDays,7,2,30));
  const [laneDensity,setLaneDensity]=useState(()=>settingNumber(initialSettings.laneDensity,18,0,100));
  const [hiddenLaneIds,setHiddenLaneIds]=useState(()=>new Set(Array.isArray(initialSettings.hiddenLaneIds)?initialSettings.hiddenLaneIds.map(String):[]));
  const [laneOrder,setLaneOrder]=useState(()=>Array.isArray(initialSettings.laneOrder)?initialSettings.laneOrder.map(String):[]);
@@ -36,12 +36,14 @@ export default function CalendarFamilyTimeline({days,events,family,t,language,on
  const orderedLanes=useMemo(()=>orderLanes(lanes,laneOrder),[lanes,laneOrder]);
  const visibleLanes=useMemo(()=>orderedLanes.filter(lane=>!hiddenLaneIds.has(lane.id)&&(!hideEmptyLanes||lane.events.length>0)),[orderedLanes,hiddenLaneIds,hideEmptyLanes]);
  const laneControls=useMemo(()=>{const query=laneQuery.trim().toLocaleLowerCase(language||undefined);if(!query)return orderedLanes;return orderedLanes.filter(lane=>`${lane.name} ${lane.subtitle}`.toLocaleLowerCase(language||undefined).includes(query))},[orderedLanes,laneQuery,language]);
- const daySize=32+(zoom*1.4);
- const timeRowSize=28+(zoom*.46);
- const laneBaseHeight=40+(laneDensity*.42);
- const eventRowHeight=26+(laneDensity*.24);
- const laneGap=3+(laneDensity*.03);
- const visibleDays=useMemo(()=>estimateVisibleDays({orientation,viewport,daySize,rowSize:timeRowSize,total:days.length}),[orientation,viewport,daySize,timeRowSize,days.length]);
+ const horizontalLabelWidth=viewport.width<=500?112:164;
+ const horizontalSpace=Math.max(120,(viewport.width||920)-horizontalLabelWidth);
+ const verticalSpace=Math.max(300,Math.min(viewport.height||620,760)-62);
+ const daySize=horizontalSpace/clamp(visibleDays,2,30);
+ const timeRowSize=Math.max(20,verticalSpace/clamp(visibleDays,2,30));
+ const laneBaseHeight=64+(laneDensity*.5);
+ const eventRowHeight=32+(laneDensity*.28);
+ const laneGap=5+(laneDensity*.03);
  const peopleCount=visibleLanes.filter(lane=>lane.kind==='member').length;
  const nowPosition=useMemo(()=>timelineNowPosition(days,timeZone),[days,timeZone,today]);
  useEffect(()=>{
@@ -49,7 +51,7 @@ export default function CalendarFamilyTimeline({days,events,family,t,language,on
   const saved=readTimelineSettings(settingsKey);
   if(hasSettings(saved)){
    setOrientation(saved.orientation==='columns'?'columns':'rows');
-   setZoom(settingNumber(saved.zoom,48,0,200));
+   setVisibleDays(settingNumber(saved.visibleDays,7,2,30));
    setLaneDensity(settingNumber(saved.laneDensity,18,0,100));
    setHiddenLaneIds(new Set(Array.isArray(saved.hiddenLaneIds)?saved.hiddenLaneIds.map(String):[]));
    setLaneOrder(Array.isArray(saved.laneOrder)?saved.laneOrder.map(String):[]);
@@ -59,8 +61,8 @@ export default function CalendarFamilyTimeline({days,events,family,t,language,on
  },[settingsKey,activeSettingsKey]);
  useEffect(()=>{
   if(!activeSettingsKey)return;
-  writeTimelineSettings(activeSettingsKey,{orientation,zoom,laneDensity,hiddenLaneIds:[...hiddenLaneIds],laneOrder,hideEmptyLanes});
- },[activeSettingsKey,orientation,zoom,laneDensity,hiddenLaneIds,laneOrder,hideEmptyLanes]);
+  writeTimelineSettings(activeSettingsKey,{orientation,visibleDays,laneDensity,hiddenLaneIds:[...hiddenLaneIds],laneOrder,hideEmptyLanes});
+ },[activeSettingsKey,orientation,visibleDays,laneDensity,hiddenLaneIds,laneOrder,hideEmptyLanes]);
  useEffect(()=>{setLaneOrder(current=>{const next=normalizeLaneOrder(current,lanes.map(lane=>lane.id));return arraysEqual(next,current)?current:next})},[laneIdsKey]);
  useEffect(()=>{laneOrderTouchedRef.current=false},[family?.id]);
  useEffect(()=>{
@@ -94,7 +96,7 @@ export default function CalendarFamilyTimeline({days,events,family,t,language,on
     <button type="button" aria-pressed={orientation==='rows'} className={orientation==='rows'?'active':''} onClick={()=>setOrientation('rows')}><Icon name="members"/>{t('calendarUi.timelineOrientationRows')}</button>
     <button type="button" aria-pressed={orientation==='columns'} className={orientation==='columns'?'active':''} onClick={()=>setOrientation('columns')}><Icon name="refresh"/>{t('calendarUi.timelineOrientationColumns')}</button>
    </div>
-   <label className="family-timeline-zoom"><span><Icon name="search"/>{t('calendarUi.timelineZoom')}</span><input type="range" min="0" max="200" step="1" value={zoom} onChange={event=>setZoom(Number(event.target.value))}/><output>{t('calendarUi.timelineVisibleDays',{count:visibleDays})}</output></label>
+   <label className="family-timeline-zoom"><span><Icon name="search"/>{t('calendarUi.timelineZoom')}</span><input type="range" min="2" max="30" step="1" value={visibleDays} onChange={event=>setVisibleDays(Number(event.target.value))}/><output>{t('calendarUi.timelineVisibleDays',{count:visibleDays})}</output></label>
    <label className="family-timeline-zoom family-timeline-density"><span><Icon name="members"/>{t('calendarUi.timelineRowHeight')}</span><input type="range" min="0" max="100" step="1" value={laneDensity} onChange={event=>setLaneDensity(Number(event.target.value))}/><output>{Math.round(laneBaseHeight)} px</output></label>
    <details className="family-timeline-lane-picker"><summary><Icon name="members"/><span>{t('calendarUi.timelineLanes')}</span><strong>{visibleLanes.length}/{lanes.length}</strong></summary><div className="family-timeline-lane-controls">
     <div className="family-timeline-lane-controls-head"><span>{t('calendarUi.timelineLanesHint')}</span>{(hiddenLaneIds.size>0||hideEmptyLanes)&&<button type="button" className="text-link" onClick={showAll}>{t('calendarUi.timelineShowAll')}</button>}</div>
@@ -128,18 +130,19 @@ function TimelineLane({lane,days,family,t,language,onOpen,laneBaseHeight,eventRo
  const packed=packEvents(lane.events,days,family?.timezone||'Europe/Berlin');
  const rows=Math.max(1,...packed.map(item=>item.level+1));
  const conflicts=countLaneConflicts(lane.events);
- const minHeight=Math.max(laneBaseHeight,rows*(eventRowHeight+laneGap)+10);
+ const lanePadding=Math.max(4,Math.round(laneGap));
+ const minHeight=Math.max(laneBaseHeight,rows*(eventRowHeight+laneGap)+(lanePadding*2));
  const eventPadding=Math.max(3,Math.round((eventRowHeight-18)/4));
  return <div data-lane-id={lane.id} className={`family-timeline-row family-timeline-lane is-${lane.kind}`} style={{'--lane-color':lane.color||'var(--brand)','--timeline-lane-height':`${minHeight}px`}}>
   <LaneLabel lane={lane} density={laneDensity} conflictCount={conflicts} t={t}/>
-  <div className="family-timeline-track" style={{'--timeline-rows':rows,gridAutoRows:`${eventRowHeight}px`,rowGap:`${laneGap}px`,padding:`${Math.max(4,Math.round(laneGap))}px 0`}}>
+  <div className="family-timeline-track" style={{'--timeline-rows':rows,gridAutoRows:`${eventRowHeight}px`,rowGap:`${laneGap}px`,padding:`${lanePadding}px 0`}}>
    {days.map(day=><span key={day} className={`family-timeline-grid-cell ${isWeekend(day)?'is-weekend':''}`} aria-hidden="true"/>)}
    {Number.isFinite(nowPosition)&&<span className="family-timeline-now-marker" style={{left:`${nowPosition}%`}} title={t('calendarUi.timelineNow')} aria-hidden="true"/>}
-   {packed.length?packed.map(item=><button key={`${lane.id}-${item.event.id}-${item.start}`} className="family-timeline-event" style={{gridColumn:`${item.start+1} / ${item.end+2}`,gridRow:item.level+1,minHeight:`${eventRowHeight}px`,padding:`${eventPadding}px 8px`,...timelineEventStyle(item.event,lane)}} onClick={()=>onOpen(item.event)} title={timelineTitle(item.event,language,t)}>
+   {packed.length?packed.map(item=>{const left=(item.timelineStart/days.length)*100;const width=((item.timelineEnd-item.timelineStart)/days.length)*100;const top=lanePadding+(item.level*(eventRowHeight+laneGap));return <button key={`${lane.id}-${item.event.id}-${item.start}`} className="family-timeline-event" data-start-offset={item.timelineStart.toFixed(4)} data-end-offset={item.timelineEnd.toFixed(4)} style={{position:'absolute',left:`${left}%`,width:`${width}%`,top:`${top}px`,height:`${eventRowHeight}px`,minHeight:`${eventRowHeight}px`,margin:0,padding:`${eventPadding}px 8px`,...timelineEventStyle(item.event,lane)}} onClick={()=>onOpen(item.event)} title={timelineTitle(item.event,language,t)}>
     <span className="family-timeline-event-time">{eventTimeLabel(item.event,language,t,item.span)}</span>
     <strong>{item.event.title}</strong>
     {(item.event.payload?.location||lane.kind==='ics')&&<small><Icon name={item.event.payload?.location?'location':'calendar'} size={10}/>{item.event.payload?.location||item.event.source_meta?.name||t('calendarUi.timelineImportsLane')}</small>}
-   </button>):<span className="family-timeline-free">{t('calendarUi.free')}</span>}
+   </button>}):<span className="family-timeline-free">{t('calendarUi.free')}</span>}
   </div>
  </div>;
 }
@@ -180,17 +183,29 @@ function timelineEventStyle(event,lane){if(lane.kind!=='ics')return{'--timeline-
 function uniqueEvents(events){const seen=new Set();return events.filter(event=>{const key=String(event.id);if(seen.has(key))return false;seen.add(key);return true})}
 function packEvents(events,days,timeZone){
  const dayIndex=new Map(days.map((day,index)=>[day,index]));const items=[];
- for(const event of events){const keys=eventDayKeys(event,timeZone).filter(key=>dayIndex.has(key));if(!keys.length)continue;const indexes=keys.map(key=>dayIndex.get(key));items.push({event,start:Math.min(...indexes),end:Math.max(...indexes),span:keys.length})}
- items.sort((a,b)=>a.start-b.start||a.end-b.end||new Date(a.event.starts_at||0)-new Date(b.event.starts_at||0));
- const levelEnds=[];for(const item of items){let level=levelEnds.findIndex(end=>end<item.start);if(level<0)level=levelEnds.length;levelEnds[level]=item.end;item.level=level}return items;
+ for(const event of events){
+  const keys=eventDayKeys(event,timeZone).filter(key=>dayIndex.has(key));if(!keys.length)continue;
+  const indexes=keys.map(key=>dayIndex.get(key));const start=Math.min(...indexes);const end=Math.max(...indexes);
+  let timelineStart=start;let timelineEnd=end+1;
+  if(!event.payload?.all_day){
+   const startPoint=localDateTimePoint(event.starts_at,timeZone);const endPoint=localDateTimePoint(event.ends_at||event.starts_at,timeZone);
+   if(startPoint){if(dayIndex.has(startPoint.key))timelineStart=dayIndex.get(startPoint.key)+(startPoint.minutes/1440);else if(startPoint.key<days[0])timelineStart=0}
+   if(endPoint){if(dayIndex.has(endPoint.key))timelineEnd=dayIndex.get(endPoint.key)+(endPoint.minutes/1440);else if(endPoint.key>days[days.length-1])timelineEnd=days.length}
+   timelineStart=clamp(timelineStart,0,days.length);timelineEnd=clamp(timelineEnd,0,days.length);
+   if(timelineEnd<=timelineStart)timelineEnd=Math.min(days.length,timelineStart+(15/1440));
+  }
+  items.push({event,start,end,span:keys.length,timelineStart,timelineEnd});
+ }
+ items.sort((a,b)=>a.timelineStart-b.timelineStart||a.timelineEnd-b.timelineEnd||new Date(a.event.starts_at||0)-new Date(b.event.starts_at||0));
+ const levelEnds=[];for(const item of items){let level=levelEnds.findIndex(end=>end<=item.timelineStart);if(level<0)level=levelEnds.length;levelEnds[level]=item.timelineEnd;item.level=level}return items;
 }
+function localDateTimePoint(value,timeZone){if(!value)return null;try{const date=new Date(value);if(!Number.isFinite(date.getTime()))return null;const parts=new Intl.DateTimeFormat('en-GB',{timeZone,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(date);const get=type=>parts.find(part=>part.type===type)?.value;return{key:`${get('year')}-${get('month')}-${get('day')}`,minutes:(Number(get('hour'))*60)+Number(get('minute'))}}catch{return null}}
 function countLaneConflicts(events){const ranges=(events||[]).map(event=>({start:Date.parse(event.starts_at||''),end:Date.parse(event.ends_at||event.starts_at||'')})).filter(range=>Number.isFinite(range.start)&&Number.isFinite(range.end)).sort((a,b)=>a.start-b.start||a.end-b.end);let maxEnd=-Infinity;let conflicts=0;for(const range of ranges){if(range.start<maxEnd)conflicts+=1;maxEnd=Math.max(maxEnd,range.end)}return conflicts}
 function normalizeLaneOrder(order,ids){const valid=new Set(ids.map(String));const next=[];for(const id of order||[]){const value=String(id);if(valid.has(value)&&!next.includes(value))next.push(value)}for(const id of ids){const value=String(id);if(!next.includes(value))next.push(value)}return next}
 function orderLanes(lanes,order){const byId=new Map(lanes.map(lane=>[lane.id,lane]));return normalizeLaneOrder(order,lanes.map(lane=>lane.id)).map(id=>byId.get(id)).filter(Boolean)}
 function moveLaneOrder(order,ids,id,direction){const next=normalizeLaneOrder(order,ids);const index=next.indexOf(String(id));const target=index+direction;if(index<0||target<0||target>=next.length)return next;[next[index],next[target]]=[next[target],next[index]];return next}
 function dropLaneOrder(order,ids,sourceId,targetId){const next=normalizeLaneOrder(order,ids);const source=next.indexOf(String(sourceId));const target=next.indexOf(String(targetId));if(source<0||target<0||source===target)return next;const [value]=next.splice(source,1);next.splice(target,0,value);return next}
 function arraysEqual(a,b){return a.length===b.length&&a.every((value,index)=>value===b[index])}
-function estimateVisibleDays({orientation,viewport,daySize,rowSize,total}){if(!total)return 0;if(!viewport.width)return Math.min(7,total);if(orientation==='columns'){const available=Math.max(rowSize,Math.min(viewport.height||520,760)-62);return clamp(Math.floor(available/rowSize),1,total)}const stickyWidth=viewport.width<=500?112:164;return clamp(Math.floor(Math.max(daySize,viewport.width-stickyWidth)/daySize),1,total)}
 function timelineSettingsKey(family){if(!family?.id||!family?.current_membership_id)return'';return `${SETTINGS_KEY_PREFIX}:${String(family.id)}:${String(family.current_membership_id)}`}
 function hasSettings(value){return Boolean(value&&typeof value==='object'&&Object.keys(value).length)}
 function readTimelineSettings(key){if(!key)return{};try{return JSON.parse(window.localStorage.getItem(key)||'{}')||{}}catch{return{}}}
