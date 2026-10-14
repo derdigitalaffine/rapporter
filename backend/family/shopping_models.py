@@ -1,7 +1,7 @@
 from django.conf import settings
 from django.db import models
 
-from .models import Family, ShoppingList, TimestampedModel
+from .models import Family, Membership, ShoppingList, TimestampedModel
 
 
 class ShoppingStore(TimestampedModel):
@@ -44,6 +44,48 @@ class ShoppingListStoreProfile(TimestampedModel):
 
     class Meta:
         ordering = ["created_at"]
+
+
+class ShoppingListAccess(TimestampedModel):
+    """Object-level shopping visibility and responsibility.
+
+    Absence of this row intentionally means the legacy family-wide contract.
+    Responsibility is descriptive only and never grants access.
+    """
+
+    class Visibility(models.TextChoices):
+        FAMILY = "family", "Whole family"
+        PRIVATE = "private", "Private"
+        SELECTED = "selected", "Selected people"
+
+    shopping_list = models.OneToOneField(
+        ShoppingList,
+        on_delete=models.CASCADE,
+        related_name="access_settings",
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="created_shopping_list_access",
+    )
+    visibility = models.CharField(
+        max_length=16,
+        choices=Visibility.choices,
+        default=Visibility.FAMILY,
+        db_index=True,
+    )
+    visible_members = models.ManyToManyField(
+        Membership,
+        blank=True,
+        related_name="visible_shopping_lists",
+    )
+    responsible_members = models.ManyToManyField(
+        Membership,
+        blank=True,
+        related_name="responsible_shopping_lists",
+    )
 
 
 class ShoppingTemplate(TimestampedModel):

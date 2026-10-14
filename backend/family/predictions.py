@@ -6,6 +6,7 @@ from statistics import median
 from zoneinfo import ZoneInfo
 
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 
 from .memory import normalize_name
@@ -152,10 +153,21 @@ def _suppressed_feedback(family, now):
 
 
 def _open_names(family):
+    """Names already open in the family-wide shopping contract.
+
+    Family prediction history is shared. Restricted lists must neither suppress
+    nor otherwise influence that shared output, because even absence can reveal
+    that a private item exists.
+    """
+    from .shopping_models import ShoppingListAccess
+
     names = ShoppingItem.objects.filter(
         shopping_list__family=family,
         shopping_list__archived=False,
         checked=False,
+    ).filter(
+        Q(shopping_list__access_settings__isnull=True)
+        | Q(shopping_list__access_settings__visibility=ShoppingListAccess.Visibility.FAMILY)
     ).values_list("name", flat=True)
     return {normalize_name(name) for name in names if normalize_name(name)}
 
@@ -248,8 +260,13 @@ def accept_shopping_prediction(family, key, user, list_id=None, now=None):
     if not normalized:
         raise ValueError("Ungültiger Prediction-Schlüssel.")
     suggestion = _suggestion_by_key(family, normalized, now=now)
+    from .shopping_access import visible_shopping_lists
+    visible_lists = visible_shopping_lists(
+        user,
+        ShoppingList.objects.filter(family=family, archived=False),
+    )
     existing = None
-    for item in ShoppingItem.objects.filter(shopping_list__family=family, shopping_list__archived=False, checked=False).select_related("shopping_list"):
+    for item in ShoppingItem.objects.filter(shopping_list__in=visible_lists, checked=False).select_related("shopping_list"):
         if normalize_name(item.name) == normalized:
             existing = item
             break
