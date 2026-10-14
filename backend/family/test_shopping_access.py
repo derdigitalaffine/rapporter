@@ -96,14 +96,16 @@ class ShoppingListAccessTests(TestCase):
     def test_restricting_family_list_scrubs_shared_learning(self):
         shopping = ShoppingList.objects.create(family=self.family, name="Was a family list")
         item = ShoppingItem.objects.create(shopping_list=shopping, name="Secret tea", quantity="2", added_by=self.owner)
-        EntryMemory.objects.create(
+        EntryMemory.objects.update_or_create(
             family=self.family,
             kind=EntryMemory.Kind.SHOPPING,
             normalized_name="secret tea",
-            name="Secret tea",
-            data={"quantity": "2"},
-            use_count=3,
-            last_used_at=timezone.now(),
+            defaults={
+                "name": "Secret tea",
+                "data": {"quantity": "2"},
+                "use_count": 3,
+                "last_used_at": timezone.now(),
+            },
         )
         ShoppingPurchaseEvent.objects.create(
             family=self.family,
