@@ -1,10 +1,10 @@
 name: statistics-regressions
 on:
   pull_request:
-    paths: ['backend/family_statistics/**', 'backend/family/**', 'backend/entitlements/**', 'backend/config/**', '.github/workflows/statistics-regressions.yml']
+    paths: ['backend/family_statistics/**', 'backend/family/**', 'backend/entitlements/**', 'backend/config/**', 'frontend/src/StatisticsHub.jsx', 'frontend/src/statistics*', 'frontend/src/feature-registry.js', 'frontend/src/navigation.js', 'frontend/src/App.jsx', 'frontend/e2e/statistics.spec.js', '.github/workflows/statistics-regressions.yml']
   push:
     branches: [main]
-    paths: ['backend/family_statistics/**', 'backend/family/**', 'backend/entitlements/**', 'backend/config/**', '.github/workflows/statistics-regressions.yml']
+    paths: ['backend/family_statistics/**', 'backend/family/**', 'backend/entitlements/**', 'backend/config/**', 'frontend/src/StatisticsHub.jsx', 'frontend/src/statistics*', 'frontend/src/feature-registry.js', 'frontend/src/navigation.js', 'frontend/src/App.jsx', 'frontend/e2e/statistics.spec.js', '.github/workflows/statistics-regressions.yml']
 permissions:
   contents: read
 concurrency:
@@ -43,3 +43,34 @@ jobs:
         run: python manage.py migrate && python manage.py check
       - working-directory: backend
         run: python manage.py test family_statistics family.test_unified_actions family.test_predictions entitlements
+
+  statistics-e2e:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        project: [mobile-chromium, desktop-chromium]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - working-directory: frontend
+        run: npm ci --prefer-offline --no-audit --no-fund
+      - working-directory: frontend
+        run: npm run build
+      - working-directory: frontend
+        run: npx playwright install --with-deps chromium
+      - working-directory: frontend
+        run: npx playwright test e2e/statistics.spec.js --project=${{ matrix.project }} --workers=2
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: statistics-visual-${{ matrix.project }}-${{ github.run_attempt }}
+          path: |
+            frontend/test-results/**/*.png
+            frontend/test-results/**/error-context.md
+            frontend/playwright-report
+          retention-days: 14
