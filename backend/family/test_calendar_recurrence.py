@@ -122,6 +122,8 @@ class CalendarRecurrenceTests(TestCase):
         occurrence = next(row for row in rows if row["id"] == str(master.id))
         self.assertEqual(occurrence["payload"]["date_start"], "2026-04-04")
         self.assertEqual(occurrence["payload"]["date_end_exclusive"], "2026-04-06")
+        self.assertEqual(occurrence["recurrence_master_date_start"], "2026-01-03")
+        self.assertEqual(occurrence["recurrence_master_date_end_exclusive"], "2026-01-05")
 
     def test_write_contract_accepts_structured_and_legacy_rules_and_rejects_invalid(self):
         base = {
