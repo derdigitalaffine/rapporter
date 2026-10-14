@@ -103,7 +103,7 @@ test('manual journey is explicit and reports download from the server',async({pa
  const state=await setup(page);await open(page);
  await page.getByRole('button',{name:'Fahrt nachtragen'}).click();
  await page.locator('.journey-editor #journey-kind').selectOption('business');
- await page.getByLabel('Kilometerstand bei Start (km)').fill('110');await page.getByLabel('Kilometerstand bei Ende (km)').fill('120');
+ await page.locator('.journey-editor #journey-start-km').fill('110');await page.locator('.journey-editor #journey-end-km').fill('120');
  await page.getByLabel('Ziel').fill('Hamburg');await page.getByLabel('Geschäftspartner / Kunde').fill('Kunde Nord');await page.getByLabel('Konkreter geschäftlicher Zweck').fill('Workshop');
  await page.getByLabel('Grund der Änderung').fill('Browser war nicht verfügbar');
  await page.getByRole('button',{name:'Speichern'}).click();
