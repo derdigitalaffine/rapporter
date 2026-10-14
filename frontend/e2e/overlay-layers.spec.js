@@ -24,10 +24,48 @@ async function pointHit(page,locator){
     return {
       buttonClass:node?.closest('button')?.className||'',
       insideBottomNav:Boolean(node?.closest('.bottom-nav')),
+      insideCreateControls:Boolean(node?.closest('.global-create-controls')),
       insideSheetBackdrop:Boolean(node?.closest('.sheet-backdrop')),
     };
   },point)};
 }
+
+test('global create stays clear of primary navigation across viewport offsets and breakpoints',async({page})=>{
+  await installApiMocks(page,{dismissOnboarding:true});
+  await routeDirectEventCreate(page);
+
+  for(const viewport of [{width:390,height:844},{width:820,height:900}]){
+    await page.setViewportSize(viewport);
+    await page.goto('/?page=home');
+    await page.waitForLoadState('networkidle');
+    await page.evaluate(()=>document.documentElement.style.setProperty('--app-viewport-bottom','52px'));
+
+    const nav=page.locator('.bottom-nav');
+    const controls=page.locator('.global-create-controls');
+    await expect(nav).toBeVisible();
+    await expect(controls).toBeVisible();
+
+    const navBox=await nav.boundingBox();
+    const controlsBox=await controls.boundingBox();
+    expect(navBox).not.toBeNull();
+    expect(controlsBox).not.toBeNull();
+    expect(controlsBox.y+controlsBox.height).toBeLessThanOrEqual(navBox.y-8);
+
+    const navHit=await pointHit(page,nav.locator('button').first());
+    expect(navHit.hit.insideBottomNav).toBe(true);
+    expect(navHit.hit.insideCreateControls).toBe(false);
+
+    const createHit=await pointHit(page,controls.locator('.global-create-fab'));
+    expect(createHit.hit.insideCreateControls).toBe(true);
+    expect(createHit.hit.insideBottomNav).toBe(false);
+
+    const layers=await page.evaluate(()=>({
+      navigation:Number(getComputedStyle(document.querySelector('.bottom-nav')).zIndex),
+      create:Number(getComputedStyle(document.querySelector('.global-create-controls')).zIndex),
+    }));
+    expect(layers.navigation).toBeLessThan(layers.create);
+  }
+});
 
 test('nested confirmation owns input above a modal sheet while app navigation stays inert',async({page})=>{
   await page.setViewportSize({width:390,height:844});
