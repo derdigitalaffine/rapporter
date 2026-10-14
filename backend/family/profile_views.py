@@ -12,6 +12,12 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 
+from .avatar_appearance import (
+    appearance_payload,
+    normalize_avatar_color,
+    normalize_avatar_icon,
+    normalize_avatar_mode,
+)
 from .birthday_age import age_is_enabled, set_age_enabled
 from .membership_calendar import CALENDAR_COLOR_PALETTE, get_calendar_color, normalize_calendar_color, set_calendar_color
 from .models import Family, Membership, UserProfile
@@ -54,6 +60,7 @@ def _payload(profile, membership):
         "email": profile.user.email or "",
         "avatar_url": _avatar_url(profile),
         "avatar_edit_url": _avatar_edit_url(profile),
+        **appearance_payload(profile),
         "birth_month": profile.birth_month,
         "birth_day": profile.birth_day,
         "birth_year": profile.birth_year,
@@ -88,6 +95,27 @@ def _validated_birthday(profile, data):
     return month, day, year
 
 
+def _update_appearance(profile, data):
+    update_fields = []
+    if "avatar_color" in data:
+        profile.avatar_color = normalize_avatar_color(data.get("avatar_color"))
+        update_fields.append("avatar_color")
+    if "avatar_icon_key" in data:
+        value = data.get("avatar_icon_key")
+        profile.avatar_icon_key = normalize_avatar_icon(value) if value else ""
+        update_fields.append("avatar_icon_key")
+    if "avatar_mode" in data:
+        mode = normalize_avatar_mode(data.get("avatar_mode"))
+        if mode == "photo" and not profile.avatar_key:
+            raise ValueError("Für die Foto-Darstellung muss zuerst ein Profilbild gewählt werden.")
+        if mode == "icon" and not profile.avatar_icon_key:
+            raise ValueError("Für die Symbol-Darstellung muss zuerst ein Symbol gewählt werden.")
+        profile.avatar_mode = mode
+        update_fields.append("avatar_mode")
+    if update_fields:
+        profile.save(update_fields=[*update_fields, "updated_at"])
+
+
 @api_view(["GET", "PATCH"])
 @permission_classes([permissions.IsAuthenticated])
 def profile_detail(request):
@@ -97,6 +125,7 @@ def profile_detail(request):
     if request.method == "PATCH":
         try:
             month, day, year = _validated_birthday(profile, request.data)
+            _update_appearance(profile, request.data)
         except (TypeError, ValueError) as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         visibility = request.data.get("birthday_visibility", membership.birthday_visibility if membership else Membership.BirthdayVisibility.HIDDEN)
@@ -174,26 +203,9 @@ def _save_avatar_master(image, key):
     image.save(_avatar_master_path(key), format="WEBP", quality=90, method=6)
 
 
-@api_view(["POST", "DELETE"])
-@permission_classes([permissions.IsAuthenticated])
-def profile_avatar(request):
-    profile = _profile(request.user)
-    if request.method == "DELETE":
-        old_key = profile.avatar_key
-        profile.avatar_key = ""
-        profile.avatar_version = uuid.uuid4()
-        profile.save(update_fields=["avatar_key", "avatar_version", "updated_at"])
-        _delete_avatar_files(old_key)
-        return Response(_payload(profile, _membership(request.user, request.query_params.get("family"))))
-    upload = request.FILES.get("avatar")
-    if not upload:
-        return Response({"detail": "Profilbild fehlt."}, status=status.HTTP_400_BAD_REQUEST)
-    source_upload = request.FILES.get("avatar_source")
-    try:
-        image = _decode_avatar(upload)
-        source_image = _decode_avatar_source(source_upload) if source_upload else image.copy()
-    except ValueError as exc:
-        return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+def _store_avatar(profile, upload, source_upload=None):
+    image = _decode_avatar(upload)
+    source_image = _decode_avatar_source(source_upload) if source_upload else image.copy()
     key = uuid.uuid4().hex
     try:
         _save_avatar_master(source_image, key)
@@ -202,12 +214,40 @@ def profile_avatar(request):
             rendition.save(_avatar_path(key, size), format="WEBP", quality=88, method=6)
     except OSError:
         _delete_avatar_files(key)
-        return Response({"detail": "Profilbild konnte nicht gespeichert werden."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        raise
     old_key = profile.avatar_key
     profile.avatar_key = key
+    profile.avatar_mode = "photo"
     profile.avatar_version = uuid.uuid4()
-    profile.save(update_fields=["avatar_key", "avatar_version", "updated_at"])
+    profile.save(update_fields=["avatar_key", "avatar_mode", "avatar_version", "updated_at"])
     _delete_avatar_files(old_key)
+
+
+def _remove_avatar(profile):
+    old_key = profile.avatar_key
+    profile.avatar_key = ""
+    profile.avatar_mode = "icon" if profile.avatar_icon_key else "initials"
+    profile.avatar_version = uuid.uuid4()
+    profile.save(update_fields=["avatar_key", "avatar_mode", "avatar_version", "updated_at"])
+    _delete_avatar_files(old_key)
+
+
+@api_view(["POST", "DELETE"])
+@permission_classes([permissions.IsAuthenticated])
+def profile_avatar(request):
+    profile = _profile(request.user)
+    if request.method == "DELETE":
+        _remove_avatar(profile)
+        return Response(_payload(profile, _membership(request.user, request.query_params.get("family"))))
+    upload = request.FILES.get("avatar")
+    if not upload:
+        return Response({"detail": "Profilbild fehlt."}, status=status.HTTP_400_BAD_REQUEST)
+    try:
+        _store_avatar(profile, upload, request.FILES.get("avatar_source"))
+    except ValueError as exc:
+        return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+    except OSError:
+        return Response({"detail": "Profilbild konnte nicht gespeichert werden."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     return Response(_payload(profile, _membership(request.user, request.query_params.get("family"))))
 
 
@@ -246,17 +286,15 @@ def profile_avatar_file(request, user_id, size):
 @api_view(["GET"])
 @permission_classes([permissions.IsAuthenticated])
 def profile_avatar_source(request, user_id):
-    # The source can contain pixels outside the visible crop and is therefore
-    # deliberately stricter than the family-readable avatar renditions.
     if not (request.user.is_superuser or request.user.id == user_id):
+        # Guardians use the managed-child endpoint to retrieve an editable source;
+        # the self-service source remains intentionally private.
         raise Http404()
     profile = UserProfile.objects.filter(user_id=user_id).first()
     if not profile or not profile.avatar_key:
         raise Http404()
     path = _avatar_master_path(profile.avatar_key)
     if not path.is_file():
-        # Avatars created before source retention remain editable, but only inside
-        # the previously saved square. New uploads retain the larger master.
         path = _avatar_path(profile.avatar_key, 256)
     if not path.is_file():
         raise Http404()
