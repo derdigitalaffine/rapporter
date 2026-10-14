@@ -2,103 +2,8 @@ import {useEffect,useState} from 'react';
 import {adminApi} from './superadmin-api';
 import {Icon} from './icons';
 import {toast} from './feedback';
+import {createSuperadminPasskey,reauthenticateSuperadminWithPasskey,superadminPasskeyError,superadminWebAuthnAvailable} from './superadmin-webauthn';
 import './superadmin-account-security.css';
-
-const webAuthnAvailable=()=>typeof window!=='undefined'&&Boolean(window.PublicKeyCredential)&&Boolean(navigator.credentials?.create)&&Boolean(navigator.credentials?.get);
-
-function decodeBase64Url(value){
- const normalized=String(value||'').replace(/-/g,'+').replace(/_/g,'/');
- const padded=normalized+'='.repeat((4-normalized.length%4)%4);
- const binary=atob(padded);
- return Uint8Array.from(binary,char=>char.charCodeAt(0));
-}
-
-function encodeBase64Url(value){
- if(value===null||value===undefined)return null;
- const bytes=value instanceof ArrayBuffer?new Uint8Array(value):new Uint8Array(value.buffer,value.byteOffset,value.byteLength);
- let binary='';
- for(const byte of bytes)binary+=String.fromCharCode(byte);
- return btoa(binary).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
-}
-
-function registrationOptions(options={}){
- return {
-  ...options,
-  challenge:decodeBase64Url(options.challenge),
-  user:{...options.user,id:decodeBase64Url(options.user?.id)},
-  excludeCredentials:(options.excludeCredentials||[]).map(item=>({...item,id:decodeBase64Url(item.id)})),
- };
-}
-
-function authenticationOptions(options={}){
- return {
-  ...options,
-  challenge:decodeBase64Url(options.challenge),
-  allowCredentials:(options.allowCredentials||[]).map(item=>({...item,id:decodeBase64Url(item.id)})),
- };
-}
-
-function registrationCredential(credential){
- const response=credential.response;
- return {
-  id:credential.id,
-  rawId:encodeBase64Url(credential.rawId),
-  type:credential.type,
-  authenticatorAttachment:credential.authenticatorAttachment||undefined,
-  clientExtensionResults:credential.getClientExtensionResults?.()||{},
-  response:{
-   clientDataJSON:encodeBase64Url(response.clientDataJSON),
-   attestationObject:encodeBase64Url(response.attestationObject),
-   transports:response.getTransports?.()||[],
-  },
- };
-}
-
-function authenticationCredential(credential){
- const response=credential.response;
- return {
-  id:credential.id,
-  rawId:encodeBase64Url(credential.rawId),
-  type:credential.type,
-  authenticatorAttachment:credential.authenticatorAttachment||undefined,
-  clientExtensionResults:credential.getClientExtensionResults?.()||{},
-  response:{
-   clientDataJSON:encodeBase64Url(response.clientDataJSON),
-   authenticatorData:encodeBase64Url(response.authenticatorData),
-   signature:encodeBase64Url(response.signature),
-   userHandle:encodeBase64Url(response.userHandle),
-  },
- };
-}
-
-function ceremonyError(error){
- if(error?.name==='NotAllowedError')return 'Der Passkey-Vorgang wurde abgebrochen oder ist abgelaufen.';
- if(error?.name==='InvalidStateError')return 'Dieser Passkey ist bereits für die Superadmin-App registriert.';
- if(error?.name==='SecurityError')return 'Passkeys sind für diese Origin nicht verfügbar.';
- return error?.message||'Passkey-Vorgang fehlgeschlagen.';
-}
-
-async function createPasskey(name){
- if(!webAuthnAvailable())throw new Error('Dieser Browser unterstützt die benötigte Passkey-Funktion nicht.');
- const start=await adminApi('/auth/passkeys/register/options/',{method:'POST',body:'{}'});
- const credential=await navigator.credentials.create({publicKey:registrationOptions(start.options)});
- if(!credential)throw new Error('Es wurde kein Passkey erstellt.');
- return adminApi('/auth/passkeys/register/verify/',{
-  method:'POST',
-  body:JSON.stringify({challenge_id:start.challenge_id,credential:registrationCredential(credential),name}),
- });
-}
-
-async function reauthenticateWithPasskey(){
- if(!webAuthnAvailable())throw new Error('Dieser Browser unterstützt die benötigte Passkey-Funktion nicht.');
- const start=await adminApi('/auth/reauth/passkey/options/',{method:'POST',body:'{}'});
- const credential=await navigator.credentials.get({publicKey:authenticationOptions(start.options)});
- if(!credential)throw new Error('Es wurde kein Passkey verwendet.');
- return adminApi('/auth/reauth/passkey/verify/',{
-  method:'POST',
-  body:JSON.stringify({challenge_id:start.challenge_id,credential:authenticationCredential(credential)}),
- });
-}
 
 function formatDate(value){
  if(!value)return 'Noch nie';
@@ -118,7 +23,7 @@ export default function SuperAdminAccountSecurity({fresh,onChanged}){
  const [reauthOpen,setReauthOpen]=useState(false);
  const [reauthPassword,setReauthPassword]=useState('');
  const [pendingAction,setPendingAction]=useState(null);
- const supportsPasskeys=webAuthnAvailable();
+ const supportsPasskeys=superadminWebAuthnAvailable();
 
  async function loadPasskeys(){
   setLoading(true);
@@ -172,10 +77,10 @@ export default function SuperAdminAccountSecurity({fresh,onChanged}){
  async function confirmPasskeyReauth(){
   setBusy('reauth-passkey');
   try{
-   await reauthenticateWithPasskey();
+   await reauthenticateSuperadminWithPasskey();
    toast('Superadmin-Identität mit Passkey bestätigt.',{type:'success'});
    await resumeAfterReauth();
-  }catch(error){toast(ceremonyError(error),{type:'error'})}
+  }catch(error){toast(superadminPasskeyError(error),{type:'error'})}
   finally{setBusy('')}
  }
 
@@ -191,13 +96,13 @@ export default function SuperAdminAccountSecurity({fresh,onChanged}){
   const action=async()=>{
    setBusy('register');
    try{
-    await createPasskey(name);
+    await createSuperadminPasskey(name);
     setRegisterName('');
     await refreshSecurity();
     toast('Superadmin-Passkey registriert.',{type:'success'});
    }finally{setBusy('')}
   };
-  try{await runSensitive(action)}catch(error){toast(ceremonyError(error),{type:'error'})}
+  try{await runSensitive(action)}catch(error){toast(superadminPasskeyError(error),{type:'error'})}
  }
 
  async function rename(item){
