@@ -73,20 +73,21 @@ export default function BudgetPlanner({familyId,ledger,summary,loading,onReload,
   });
  },[draft?.id,draft?.type,canManageParticipants,memberKey]);
  useEffect(()=>{
-  if(!draft?.id||draft.type==='overall'||!canManageParticipants)return;
+  if(!draft?.id||!canManageParticipants)return;
   let active=true;
-  const budgetId=String(draft.id);
-  setDraft(current=>current?.id===budgetId?{...current,participantLoading:true,participantError:''}:current);
-  api(`/expense-budgets/${encodeURIComponent(budgetId)}/participant-plans/`).then(data=>{
+  const scopeId=String(draft.id);
+  const endpoint=draft.type==='overall'?`/expense-ledgers/${encodeURIComponent(scopeId)}/participant-plans/`:`/expense-budgets/${encodeURIComponent(scopeId)}/participant-plans/`;
+  setDraft(current=>current?.id===scopeId?{...current,participantLoading:true,participantError:''}:current);
+  api(endpoint).then(data=>{
    if(!active)return;
    const configured=new Map((data?.plans||[]).map(row=>[String(row.member),row]));
    const participantPlans=blankParticipantPlans(familyContext.members).map(row=>{
     const saved=configured.get(row.member);
     return saved?{...row,spending_limit:saved.spending_limit??'',planned_share:saved.planned_share??''}:row;
    });
-   setDraft(current=>current?.id===budgetId?{...current,participantPlans,participantLoaded:true,participantLoading:false,participantError:''}:current);
+   setDraft(current=>current?.id===scopeId?{...current,participantPlans,participantLoaded:true,participantLoading:false,participantError:''}:current);
   }).catch(()=>{
-   if(active)setDraft(current=>current?.id===budgetId?{...current,participantLoading:false,participantLoaded:false,participantError:t('budgetPlanning.participantLoadFailed')}:current);
+   if(active)setDraft(current=>current?.id===scopeId?{...current,participantLoading:false,participantLoaded:false,participantError:t('budgetPlanning.participantLoadFailed')}:current);
   });
   return()=>{active=false};
  },[draft?.id,draft?.type,canManageParticipants,memberKey,familyId,t]);
@@ -105,7 +106,7 @@ export default function BudgetPlanner({familyId,ledger,summary,loading,onReload,
   setDraft({
    type,id:record?.id?String(record.id):null,name:record?.name||'',amount:String((type==='overall'?summary?.budget_amount:record?.amount)??''),estimate:String((type==='overall'?summary?.estimated_amount:record?.estimated_amount)??''),
    periodType:record?.period_type||'open',rolloverPolicy:record?.rollover_policy||'reset',startsOn:record?.starts_on||'',endsOn:record?.ends_on||'',
-   participantPlans:type==='overall'?[]:blankParticipantPlans(familyContext.members),participantLoaded:type==='overall'||!record?.id,participantLoading:false,participantError:'',
+   participantPlans:blankParticipantPlans(familyContext.members),participantLoaded:!record?.id,participantLoading:false,participantError:'',
    revision:type==='overall'?summary?.updated_at:record?.updated_at,requestId:crypto.randomUUID(),
   });
  }
@@ -131,7 +132,7 @@ export default function BudgetPlanner({familyId,ledger,summary,loading,onReload,
    if(!draft.startsOn||!draft.endsOn){next.startsOn=label('requiredDates');next.endsOn=label('requiredDates')}
    else if(draft.endsOn<draft.startsOn)next.endsOn=label('invalidDateRange');
   }
-  if(draft.type!=='overall'&&canManageParticipants&&draft.participantLoaded){
+  if(canManageParticipants&&draft.participantLoaded){
    for(const row of draft.participantPlans||[]){
     for(const key of ['spending_limit','planned_share']){
      const value=String(row[key]??'').trim();
@@ -153,16 +154,18 @@ export default function BudgetPlanner({familyId,ledger,summary,loading,onReload,
    }else if(draft.periodType!=='context'){
     payload.starts_on=null;payload.ends_on=null;
    }
-   if(canManageParticipants&&draft.participantLoaded){
-    payload.participant_plans=(draft.participantPlans||[]).filter(row=>String(row.spending_limit||'').trim()||String(row.planned_share||'').trim()).map(row=>({
-     member:row.member,
-     spending_limit:String(row.spending_limit||'').trim()||null,
-     planned_share:String(row.planned_share||'').trim()||null,
-    }));
-   }
+  }
+  if(canManageParticipants&&draft.participantLoaded){
+   payload.participant_plans=(draft.participantPlans||[]).filter(row=>String(row.spending_limit||'').trim()||String(row.planned_share||'').trim()).map(row=>({
+    member:row.member,
+    spending_limit:String(row.spending_limit||'').trim()||null,
+    planned_share:String(row.planned_share||'').trim()||null,
+   }));
   }
   try{
-   await api(overall?`/expense-ledgers/${ledger.id}/`:draft.id?`/expense-budgets/${draft.id}/`:'/expense-budgets/',{method:overall||draft.id?'PATCH':'POST',body:JSON.stringify(payload)});
+   const overallParticipantWrite=overall&&canManageParticipants&&draft.participantLoaded;
+   const url=overall?(overallParticipantWrite?`/expense-ledgers/${ledger.id}/participant-plans/`:`/expense-ledgers/${ledger.id}/`):draft.id?`/expense-budgets/${draft.id}/`:'/expense-budgets/';
+   await api(url,{method:overall||draft.id?'PATCH':'POST',body:JSON.stringify(payload)});
    if(!live.current)return;
    close();toast(label('saved'),{type:'success'});await onSaved();
   }catch(error){
@@ -217,7 +220,7 @@ export default function BudgetPlanner({familyId,ledger,summary,loading,onReload,
      {draft.periodType==='date_range'&&<FormRow><FormField id={`${titleId}-startsOn`} label={label('startsOn')} error={errors.startsOn} required><input type="date" value={draft.startsOn} onChange={event=>set('startsOn',event.target.value)}/></FormField><FormField id={`${titleId}-endsOn`} label={label('endsOn')} error={errors.endsOn} required><input type="date" value={draft.endsOn} onChange={event=>set('endsOn',event.target.value)}/></FormField></FormRow>}
      {draft.periodType==='context'&&<p className="budget-soft-hint"><Icon name="info"/>{label('contextManaged')}</p>}
     </div></details>}
-    {draft.type!=='overall'&&canManageParticipants&&<details className="finance-collapsible budget-participant-settings"><summary><span>{label('participantPlanning')}</span><small>{participantCount?t('budgetPlanning.participantCount',{count:participantCount}):label('participantOptional')}</small></summary><div className="budget-participant-fields">
+    {canManageParticipants&&<details className="finance-collapsible budget-participant-settings"><summary><span>{label('participantPlanning')}</span><small>{participantCount?t('budgetPlanning.participantCount',{count:participantCount}):label('participantOptional')}</small></summary><div className="budget-participant-fields">
      <p className="budget-soft-hint"><Icon name="info"/>{label('participantHint')}</p>
      {draft.participantLoading?<p role="status">{label('participantLoading')}</p>:draft.participantError?<p role="alert" className="budget-participant-error">{draft.participantError}</p>:draft.participantLoaded?<>{draft.participantPlans?.length?<div className="budget-participant-list">{draft.participantPlans.map(row=>{const limitKey=`participant-${row.member}-spending_limit`;const shareKey=`participant-${row.member}-planned_share`;return <div className="budget-participant-row" key={row.member}><strong>{row.name}</strong><div className="budget-participant-money"><FormField id={`${titleId}-${limitKey}`} label={`${label('personalLimit')} · ${row.name} (${currency})`} error={errors[limitKey]}><input type="text" inputMode="decimal" autoComplete="off" value={row.spending_limit} onChange={event=>setParticipant(row.member,'spending_limit',event.target.value)}/></FormField><FormField id={`${titleId}-${shareKey}`} label={`${label('plannedShare')} · ${row.name} (${currency})`} error={errors[shareKey]}><input type="text" inputMode="decimal" autoComplete="off" value={row.planned_share} onChange={event=>setParticipant(row.member,'planned_share',event.target.value)}/></FormField></div></div>})}</div>:<p>{label('noParticipants')}</p>}<div className="budget-participant-summary"><span><span>{label('plannedShareTotal')}</span><strong>{f(participantShareTotal)}</strong></span>{participantDifference!==null&&<span><span>{label('plannedShareDifference')}</span><strong>{f(participantDifference)}</strong></span>}<small className="budget-soft-hint">{label('plannedShareHint')}</small></div></>:null}
     </div></details>}
