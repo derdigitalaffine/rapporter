@@ -158,7 +158,7 @@ class SchedulingDependency(TimestampedModel):
         ]
         indexes = [
             models.Index(fields=["family", "anchor_type", "anchor_id"], name="schedule_dependency_anchor_idx"),
-            models.Index(fields=["family", "enabled"], name="schedule_dependency_enabled_idx"),
+            models.Index(fields=["family", "enabled"], name="schedule_dep_enabled_idx"),
         ]
 
 
