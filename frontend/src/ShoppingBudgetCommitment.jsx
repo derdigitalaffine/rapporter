@@ -8,6 +8,7 @@ import './budget-commitments-i18n';
 import './shopping-budget-commitment.css';
 
 const unwrap=value=>value?.results||value||[];
+const normalizedAmount=value=>String(value??'').trim().replace(/\s/g,'').replace(',','.');
 
 export default function ShoppingBudgetCommitment({family,onChanged}){
  const {t}=useTranslation();
@@ -60,7 +61,7 @@ export default function ShoppingBudgetCommitment({family,onChanged}){
   event.preventDefault();if(!itemId||!ledgerId||!amount||saving)return;
   setSaving(true);setError('');
   try{
-   const result=await api(`/budget-commitments/source/shopping_item/${encodeURIComponent(itemId)}/`,{method:'PUT',body:JSON.stringify({family:family.id,ledger:ledgerId,budget:budgetId||null,amount})});
+   const result=await api(`/budget-commitments/source/shopping_item/${encodeURIComponent(itemId)}/`,{method:'PUT',body:JSON.stringify({family:family.id,ledger:ledgerId,budget:budgetId||null,amount:normalizedAmount(amount)})});
    setCommitment(result.commitment);toast(t('budgetCommitments.saved'),{type:'success'});await onChanged?.();
   }catch(err){setError(err.message)}finally{setSaving(false)}
  }
