@@ -77,3 +77,52 @@
   .app-shell{--bottom-nav-height:66px}
   .bottom-nav button{min-height:52px;padding-block:2px}
 }
+
+/* Installed PWAs scroll the content, never the outer WebKit document. */
+html[data-app-standalone],
+html[data-app-standalone] body,
+html[data-app-standalone] #root{
+  height:100%;
+  overflow:hidden;
+  overscroll-behavior:none;
+}
+
+html[data-app-standalone] body{
+  position:fixed;
+  inset:0;
+}
+
+html[data-app-standalone] .app-shell:not(.messenger-shell){
+  height:var(--app-viewport-height,100dvh);
+  min-height:0;
+  display:flex;
+  flex-direction:column;
+  padding-bottom:0;
+}
+
+html[data-app-standalone] .app-shell[data-primary-nav=false]{--app-nav-space:0px}
+html[data-app-standalone] .app-shell>.topbar{flex:none;position:relative}
+
+html[data-app-standalone] .app-shell:not(.messenger-shell)>.content{
+  flex:1;
+  min-height:0;
+  overflow-x:hidden;
+  overflow-y:auto;
+  overscroll-behavior-y:contain;
+  -webkit-overflow-scrolling:touch;
+  padding-bottom:calc(var(--app-nav-space) + 24px);
+  scroll-padding-bottom:calc(var(--app-nav-space) + 24px);
+}
+
+html[data-app-standalone] .app-shell.global-create-enabled:not(.messenger-shell)>.content{
+  padding-bottom:calc(var(--app-nav-space) + 92px);
+}
+
+html[data-app-standalone] .bottom-nav{
+  left:0;
+  right:0;
+  margin-inline:auto;
+  transform:none;
+  backdrop-filter:none;
+  -webkit-backdrop-filter:none;
+}

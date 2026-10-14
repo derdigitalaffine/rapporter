@@ -12,6 +12,10 @@ Wenn FamilyOS dir unter **Mehr** eine Installationsaktion anbietet:
 
 Falls der Button nicht erscheint, schau im Browser-Menü nach **App installieren** oder **Zum Startbildschirm hinzufügen**.
 
+## Navigation in der installierten App
+
+Auf iPhone und iPad bleiben Kopfzeile und Hauptmenü beim Scrollen an ihrem Platz. Nur der Inhalt der geöffneten Ansicht scrollt. Auch am oberen oder unteren Ende der Ansicht bleibt das Hauptmenü erreichbar. Beim Öffnen der Tastatur passt sich der verfügbare Bereich an; Eingaben und Dialoge bleiben bedienbar.
+
 ## Online-Status
 
 Oben in FamilyOS siehst du, ob dein Gerät gerade online oder offline ist.

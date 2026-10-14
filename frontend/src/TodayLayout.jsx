@@ -1,4 +1,5 @@
 import {Children,cloneElement,isValidElement,useEffect,useRef,useState} from 'react';
+import {scrollAppNearEdge} from './app-scroll';
 import {api} from './api';
 import i18n from './i18n';
 import {Icon} from './icons';
@@ -172,9 +173,7 @@ export default function TodayLayout({family,header,onboarding,widgets}){
   const current=dragState.current;if(!current)return;const placed=placedRowsFrom(draftRef.current);const index=placed.findIndex(widget=>widget.id===current.id);const id=current.id;clearDrag();setAnnouncement(`${positionText(id,Math.max(0,index),placed.length)} · ${s.dropped}`);requestAnimationFrame(()=>dragHandles.current.get(id)?.focus());
  };
  const edgeAutoScroll=clientY=>{
-  const edge=Math.min(96,Math.max(56,window.innerHeight*.12));
-  if(clientY<edge)window.scrollBy(0,-Math.max(8,Math.ceil((edge-clientY)/4)));
-  else if(clientY>window.innerHeight-edge)window.scrollBy(0,Math.max(8,Math.ceil((clientY-(window.innerHeight-edge))/4)));
+  scrollAppNearEdge(clientY);
  };
  const pointerDragStart=(widget,index,event)=>{
   if(busy||dragState.current||event.button!==0)return;event.preventDefault();event.currentTarget.focus();try{event.currentTarget.setPointerCapture(event.pointerId)}catch{}
