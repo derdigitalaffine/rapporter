@@ -53,7 +53,7 @@ test('schedule editor shares server-authoritative recurrence UX with calendar ev
  await expect(dialog.getByLabel('Planungsmodus')).not.toBeVisible();
  await dialog.getByText('Mehr Optionen',{exact:true}).click();
  await expect(dialog.getByLabel('Planungsmodus')).toBeVisible();
- await dialog.getByLabel('In eigenen Worten').fill('immer am ersten Montag im Quartal');
+ await dialog.getByLabel('In eigenen Worten',{exact:true}).fill('immer am ersten Montag im Quartal');
  await dialog.getByRole('button',{name:'Erkennen',exact:true}).click();
  await expect(dialog.getByText(/erster Montag/)).toBeVisible();
  await expect(dialog.getByLabel('Wiederholung')).toHaveValue('quarterly');
@@ -67,7 +67,7 @@ test('lead and follow-up editor previews and creates a canonical dependency',asy
  await row.getByLabel('Schnellaktionen: Müll rausbringen').click();await row.getByRole('button',{name:'Zeitplan & Darstellung'}).click();
  const dialog=page.getByRole('dialog');await expect(dialog.getByText('Vor- & Nachgänge',{exact:true})).toBeVisible();
  await dialog.getByRole('button',{name:'3 Tage vorher',exact:true}).click();
- await dialog.getByLabel('Titel').fill('Tonnen rausstellen');
+ await dialog.getByRole('textbox',{name:'Titel',exact:true}).fill('Tonnen rausstellen');
  await expect(dialog.getByText(/30\.10\./)).toBeVisible();
  await dialog.getByRole('button',{name:'Regel speichern',exact:true}).click();
  await expect.poll(()=>requests.find(entry=>entry.dependency)?.dependency?.anchor_id).toBe('action-1');
