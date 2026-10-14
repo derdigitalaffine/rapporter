@@ -27,24 +27,26 @@ async function boot(page){
  return {requests};
 }
 
-test('Messenger is a fixed main destination with personal unread badge',async({page})=>{
+test('Messenger is the canonical header destination with personal unread badge',async({page})=>{
  await boot(page);
- const messenger=page.locator('.bottom-nav button').filter({hasText:'Nachrichten'});
+ const messenger=page.locator('.header-messenger-button');
  await expect(messenger).toBeVisible();
- await expect(messenger.locator('i')).toHaveText('5');
+ await expect(messenger.locator('.header-messenger-badge')).toHaveText('5');
  await messenger.click();
  await expect(page).toHaveURL(/page=inbox/);
- await expect(page.getByRole('heading',{name:'Nachrichten',exact:true})).toBeVisible();
+ await expect(page.locator('main').getByRole('heading',{name:'Nachrichten',exact:true})).toBeVisible();
  await expect(page.locator('.bottom-nav')).toBeVisible();
  await expect(messenger).toHaveAttribute('aria-current','page');
+ await page.locator('.messenger-page-head').getByRole('button',{name:'Zurück',exact:true}).click();
+ await expect(messenger).not.toHaveAttribute('aria-current','page');
 });
 
 test('own-family member opens direct chat without invitation or acceptance',async({page})=>{
  const state=await boot(page);
- await page.locator('.bottom-nav button').filter({hasText:'Nachrichten'}).click();
+ await page.locator('.header-messenger-button').click();
  await page.getByRole('button',{name:/Freunde/}).first().click();
- await expect(page.getByRole('heading',{name:'Familienmitglieder'})).toBeVisible();
- const familySection=page.getByRole('heading',{name:'Familienmitglieder'}).locator('..');
+ const familySection=page.locator('.messenger-contacts .card').filter({has:page.getByRole('heading',{name:'Freunde',exact:true})});
+ await expect(familySection).toContainText('Familienmitglieder erscheinen hier automatisch');
  await familySection.getByRole('button',{name:/Sam/}).click();
  await expect.poll(()=>state.requests.some(request=>request.path==='/api/chat/family-conversations/'&&request.method==='POST'&&request.body.user_id===2)).toBe(true);
  expect(state.requests.some(request=>request.path==='/api/chat/invitations/'&&request.method==='POST')).toBe(false);

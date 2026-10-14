@@ -40,8 +40,8 @@ async function boot(page,{language='de',familyless=false,failSend=false}={}){
 }
 async function openChat(page){await page.locator('.messenger-chat-row').click();await expect(page.locator('.messenger-bubble')).toContainText('Hallo aus der anderen Familie')}
 
-test('personal chat sends canonical retry-safe message and leaves family notices reachable',async({page})=>{
- const state=await boot(page);await openChat(page);await page.getByRole('textbox',{name:'Nachricht',exact:true}).fill('Hallo Kim');await page.getByRole('button',{name:'Senden',exact:true}).click();await expect(page.locator('.messenger-bubble.own')).toContainText('Hallo Kim');await expect(page.getByRole('textbox',{name:'Nachricht',exact:true})).toHaveValue('');expect(state.requests.some(r=>r.path==='/api/inbox/'&&r.method==='POST')).toBe(false);if(await page.locator('.messenger-mobile-back').isVisible())await page.locator('.messenger-mobile-back').click();await page.getByRole('button',{name:'Familien-Mitteilungen',exact:true}).click();await expect(page.getByRole('heading',{name:'Mitteilungen',exact:true})).toBeVisible();
+test('personal chat sends canonical retry-safe message without legacy family notices',async({page})=>{
+ const state=await boot(page);await openChat(page);await page.getByRole('textbox',{name:'Nachricht',exact:true}).fill('Hallo Kim');await page.getByRole('button',{name:'Senden',exact:true}).click();await expect(page.locator('.messenger-bubble.own')).toContainText('Hallo Kim');await expect(page.getByRole('textbox',{name:'Nachricht',exact:true})).toHaveValue('');expect(state.requests.some(r=>r.path==='/api/inbox/'&&r.method==='POST')).toBe(false);if(await page.locator('.messenger-mobile-back').isVisible())await page.locator('.messenger-mobile-back').click();await expect(page.getByRole('button',{name:'Familien-Mitteilungen',exact:true})).toHaveCount(0);
 });
 
 test('send failure retains draft and stable retry UUID',async({page})=>{
@@ -57,7 +57,7 @@ test('typing and read receipts render only inside chosen chat',async({page})=>{
 });
 
 test('friend duels reuse game cards and blocking removes further controls',async({page})=>{
- const state=await boot(page);await openChat(page);await page.locator('.messenger-chat-title').click();await expect(page.getByRole('heading',{name:'Freundesduelle'})).toBeVisible();await expect(page.getByText('Just for fun – ohne Familienaufgaben oder Einsatz.')).toBeVisible();await expect(page.getByText('Aufgaben-Einsatz')).toHaveCount(0);await page.getByRole('button',{name:'Kontakt blockieren',exact:true}).click();const dialog=page.getByRole('alertdialog');await dialog.getByRole('button',{name:'Kontakt blockieren',exact:true}).click();await expect(page.getByText('Dieser Chat ist nur noch lesbar.')).toBeVisible();await expect(page.getByRole('button',{name:'Senden',exact:true})).toHaveCount(0);expect(state.chat.can_send).toBe(false);
+ const state=await boot(page);await openChat(page);await page.locator('.messenger-chat-title').click();await expect(page.getByRole('heading',{name:'Freundesduelle'})).toBeVisible();await expect(page.getByText('Just for fun – ohne Familienaufgaben oder Einsatz.')).toBeVisible();await expect(page.getByText('Aufgaben-Einsatz')).toHaveCount(0);await page.getByRole('button',{name:'Kontakt blockieren',exact:true}).click();const dialog=page.getByRole('alertdialog');await dialog.getByRole('button',{name:'Kontakt blockieren',exact:true}).click();await expect(page.getByText('Dieser Chat ist nur lesbar.')).toBeVisible();await expect(page.getByRole('button',{name:'Senden',exact:true})).toHaveCount(0);expect(state.chat.can_send).toBe(false);
 });
 
 for(const width of [320,390,1440])test(`messenger remains responsive and keyboard accessible at ${width}px`,async({page})=>{

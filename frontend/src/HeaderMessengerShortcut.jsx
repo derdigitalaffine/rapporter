@@ -1,12 +1,14 @@
 import {useEffect,useState} from 'react';
 import {createPortal} from 'react-dom';
 import {api} from './api';
+import {useTranslation} from 'react-i18next';
 import {Icon} from './icons';
 import './header-messenger-shortcut.css';
 
 const unreadChats=rows=>(rows||[]).reduce((sum,row)=>sum+(Number(row?.unread)||0),0);
 
 export default function HeaderMessengerShortcut(){
+ const {t}=useTranslation();
  const [mount,setMount]=useState(null);
  const [unread,setUnread]=useState(0);
  const [active,setActive]=useState(false);
@@ -45,6 +47,7 @@ export default function HeaderMessengerShortcut(){
  }
 
  if(!mount)return null;
- const label=unread>0?`Nachrichten, ${unread} ungelesen`:'Nachrichten';
- return createPortal(<button type="button" className={`header-messenger-button ${active?'active':''}`} onClick={openMessenger} aria-label={label} aria-current={active?'page':undefined} title="Nachrichten"><Icon name="inbox" size={20}/>{unread>0&&<span className="header-messenger-badge" aria-hidden="true">{unread>99?'99+':unread}</span>}</button>,mount);
+ const title=t('messengerUi.title');
+ const label=unread>0?`${title}, ${t('messengerUi.unreadLabel',{count:unread})}`:title;
+ return createPortal(<button type="button" className={`header-messenger-button ${active?'active':''}`} onClick={openMessenger} aria-label={label} aria-current={active?'page':undefined} title={title}><Icon name="inbox" size={20}/>{unread>0&&<span className="header-messenger-badge" aria-hidden="true">{unread>99?'99+':unread}</span>}</button>,mount);
 }
