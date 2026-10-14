@@ -1,4 +1,5 @@
 """Versioned, bounded schedule evaluation using family wall time, never browser time."""
+from calendar import monthrange
 from copy import deepcopy
 from datetime import date, datetime, time, timedelta, timezone
 from hashlib import sha256
@@ -70,7 +71,7 @@ def normalize_schedule(value, family_timezone, today=None):
         if not isinstance(recurrence, dict) or set(recurrence) - {'frequency', 'date', 'interval', 'weekdays', 'month_days', 'nth_weekdays', 'months'}:
             raise ValueError('Invalid recurrence.')
         frequency = recurrence.get('frequency')
-        if frequency not in {'once', *FREQUENCIES}:
+        if frequency not in {'once', 'quarterly', *FREQUENCIES}:
             raise ValueError('Invalid frequency.')
         if frequency == 'once':
             date.fromisoformat(recurrence.get('date', ''))
@@ -131,6 +132,58 @@ def local_datetime(day, clock, zone):
     return value
 
 
+def _quarter_index(day):
+    return day.year * 4 + (day.month - 1) // 3
+
+
+def _quarter_bounds(index):
+    year, quarter = divmod(index, 4)
+    start = date(year, quarter * 3 + 1, 1)
+    if quarter == 3:
+        next_start = date(year + 1, 1, 1)
+    else:
+        next_start = date(year, (quarter + 1) * 3 + 1, 1)
+    return start, next_start - timedelta(days=1)
+
+
+def _nth_weekday_between(start, end, weekday, ordinal):
+    weekday_index = WEEKDAYS.index(weekday)
+    if ordinal > 0:
+        day = start + timedelta(days=(weekday_index - start.weekday()) % 7 + 7 * (ordinal - 1))
+        return day if day <= end else None
+    day = end - timedelta(days=(end.weekday() - weekday_index) % 7 + 7 * (abs(ordinal) - 1))
+    return day if day >= start else None
+
+
+def _quarterly_days(schedule, recurrence, after):
+    anchor = date.fromisoformat(schedule['anchor_date'])
+    anchor_index = _quarter_index(anchor)
+    index = max(anchor_index, _quarter_index(after))
+    interval = recurrence.get('interval', 1)
+    index += (interval - (index - anchor_index) % interval) % interval
+    anchor_month_offset = (anchor.month - 1) % 3
+    for _ in range(400):
+        start, end = _quarter_bounds(index)
+        candidates = []
+        if recurrence.get('nth_weekdays'):
+            candidates = [_nth_weekday_between(start, end, item['weekday'], item['ordinal']) for item in recurrence['nth_weekdays']]
+        elif recurrence.get('weekdays'):
+            allowed = {WEEKDAYS.index(item) for item in recurrence['weekdays']}
+            day = max(start, after)
+            while day <= end:
+                if day.weekday() in allowed:
+                    candidates.append(day)
+                day += timedelta(days=1)
+        else:
+            month = start.month + anchor_month_offset
+            target = date(start.year, month, min(anchor.day, monthrange(start.year, month)[1]))
+            candidates = [target]
+        for day in sorted({item for item in candidates if item is not None}):
+            if day >= after:
+                yield day
+        index += interval
+
+
 def _days(schedule, after):
     recurrence = schedule.get('recurrence')
     if not recurrence:
@@ -141,6 +194,9 @@ def _days(schedule, after):
         day = date.fromisoformat(recurrence['date'])
         if day >= after:
             yield day
+        return
+    if recurrence['frequency'] == 'quarterly':
+        yield from _quarterly_days(schedule, recurrence, after)
         return
     kwargs = {}
     if recurrence.get('weekdays'):
@@ -244,6 +300,15 @@ def parse_schedule(text, family_timezone, today=None):
         result['segments'] = [{'preferred_time': clock[1].zfill(5)}]
         value = value[:clock.start()].strip()
     names = {'montag': 'MO', 'monday': 'MO', 'dienstag': 'TU', 'tuesday': 'TU', 'mittwoch': 'WE', 'wednesday': 'WE', 'donnerstag': 'TH', 'thursday': 'TH', 'freitag': 'FR', 'friday': 'FR', 'samstag': 'SA', 'saturday': 'SA', 'sonntag': 'SU', 'sunday': 'SU'}
+    ordinals = {'ersten': 1, 'zweiten': 2, 'dritten': 3, 'vierten': 4, 'fünften': 5, 'letzten': -1, 'first': 1, 'second': 2, 'third': 3, 'fourth': 4, 'fifth': 5, 'last': -1}
+    weekend_ordinals = {'erste': 1, 'zweite': 2, 'dritte': 3, 'vierte': 4, 'fünfte': 5, 'letzte': -1, 'first': 1, 'second': 2, 'third': 3, 'fourth': 4, 'fifth': 5, 'last': -1}
+    months = {'januar': 1, 'january': 1, 'februar': 2, 'february': 2, 'märz': 3, 'maerz': 3, 'march': 3, 'april': 4, 'mai': 5, 'may': 5, 'juni': 6, 'june': 6, 'juli': 7, 'july': 7, 'august': 8, 'september': 9, 'oktober': 10, 'october': 10, 'november': 11, 'dezember': 12, 'december': 12}
+    period_nth_de = re.fullmatch(r'(?:immer |jeden )?(?:am )?(ersten|zweiten|dritten|vierten|fünften|letzten) (\w+) im (monat|quartal)', value)
+    period_nth_en = re.fullmatch(r'(?:always on |every )?(first|second|third|fourth|fifth|last) (\w+) (?:of|in) (?:the )?(month|quarter)', value)
+    month_nth_de = re.fullmatch(r'(?:immer )?(?:am )?(ersten|zweiten|dritten|vierten|fünften|letzten) (\w+) im (\w+)', value)
+    month_nth_en = re.fullmatch(r'(?:always on |every )?(first|second|third|fourth|fifth|last) (\w+) (?:in|of) (\w+)', value)
+    weekend_de = re.fullmatch(r'(?:immer )?(?:das )?(erste|zweite|dritte|vierte|fünfte|letzte) wochenende im (monat|quartal)', value)
+    weekend_en = re.fullmatch(r'(?:always |every )?(first|second|third|fourth|fifth|last) weekend (?:of|in) (?:the )?(month|quarter)', value)
     if value in {'täglich', 'daily', 'jeden tag'}:
         result['recurrence'] = {'frequency': 'daily', 'interval': 1}
     elif value in {'werktags', 'weekdays'}:
@@ -252,14 +317,26 @@ def parse_schedule(text, family_timezone, today=None):
         result['mode'] = 'learning'
     elif re.fullmatch(r'(?:jeden|immer|every) (\w+)', value) and value.split()[-1] in names:
         result['recurrence'] = {'frequency': 'weekly', 'weekdays': [names[value.split()[-1]]]}
+    elif period_nth_de and period_nth_de[2] in names:
+        result['recurrence'] = {'frequency': 'monthly' if period_nth_de[3] == 'monat' else 'quarterly', 'interval': 1, 'nth_weekdays': [{'weekday': names[period_nth_de[2]], 'ordinal': ordinals[period_nth_de[1]]}]}
+    elif period_nth_en and period_nth_en[2] in names:
+        result['recurrence'] = {'frequency': 'monthly' if period_nth_en[3] == 'month' else 'quarterly', 'interval': 1, 'nth_weekdays': [{'weekday': names[period_nth_en[2]], 'ordinal': ordinals[period_nth_en[1]]}]}
+    elif weekend_de:
+        result['recurrence'] = {'frequency': 'monthly' if weekend_de[2] == 'monat' else 'quarterly', 'interval': 1, 'nth_weekdays': [{'weekday': 'SA', 'ordinal': weekend_ordinals[weekend_de[1]]}]}
+    elif weekend_en:
+        result['recurrence'] = {'frequency': 'monthly' if weekend_en[2] == 'month' else 'quarterly', 'interval': 1, 'nth_weekdays': [{'weekday': 'SA', 'ordinal': weekend_ordinals[weekend_en[1]]}]}
+    elif month_nth_de and month_nth_de[2] in names and month_nth_de[3] in months:
+        result['recurrence'] = {'frequency': 'yearly', 'interval': 1, 'months': [months[month_nth_de[3]]], 'nth_weekdays': [{'weekday': names[month_nth_de[2]], 'ordinal': ordinals[month_nth_de[1]]}]}
+    elif month_nth_en and month_nth_en[2] in names and month_nth_en[3] in months:
+        result['recurrence'] = {'frequency': 'yearly', 'interval': 1, 'months': [months[month_nth_en[3]]], 'nth_weekdays': [{'weekday': names[month_nth_en[2]], 'ordinal': ordinals[month_nth_en[1]]}]}
     else:
-        interval = re.fullmatch(r'(?:alle|every) (\d+) (tage|days|wochen|weeks|monate|months|jahre|years)', value)
-        nth = re.fullmatch(r'alle (\d+) monate (?:am|an einem) (ersten|zweiten|dritten|vierten|letzten) (\w+)', value)
+        interval = re.fullmatch(r'(?:alle|every) (\d+) (tage|days|wochen|weeks|monate|months|quartale|quarters|jahre|years)', value)
+        nth = re.fullmatch(r'alle (\d+) monate (?:am|an einem) (ersten|zweiten|dritten|vierten|fünften|letzten) (\w+)', value)
         if interval:
-            unit = {'tage': 'daily', 'days': 'daily', 'wochen': 'weekly', 'weeks': 'weekly', 'monate': 'monthly', 'months': 'monthly', 'jahre': 'yearly', 'years': 'yearly'}
+            unit = {'tage': 'daily', 'days': 'daily', 'wochen': 'weekly', 'weeks': 'weekly', 'monate': 'monthly', 'months': 'monthly', 'quartale': 'quarterly', 'quarters': 'quarterly', 'jahre': 'yearly', 'years': 'yearly'}
             result['recurrence'] = {'frequency': unit[interval[2]], 'interval': int(interval[1])}
         elif nth and nth[3] in names:
-            result['recurrence'] = {'frequency': 'monthly', 'interval': int(nth[1]), 'nth_weekdays': [{'weekday': names[nth[3]], 'ordinal': {'ersten': 1, 'zweiten': 2, 'dritten': 3, 'vierten': 4, 'letzten': -1}[nth[2]]}]}
+            result['recurrence'] = {'frequency': 'monthly', 'interval': int(nth[1]), 'nth_weekdays': [{'weekday': names[nth[3]], 'ordinal': ordinals[nth[2]]}]}
         else:
             raise ValueError('Use a supported repeat phrase or the visual scheduler.')
     return normalize_schedule(result, family_timezone, today)

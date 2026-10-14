@@ -48,9 +48,16 @@ Im Optionenmenü einer Aufgabe und im Routine-Detail öffnet **Zeitplan & Darste
 den gemeinsamen Editor. Einfache Texte wie „jeden Montag um 18:00“ und der visuelle
 Scheduler speichern denselben Zeitplan. Unter **Mehr Optionen** findest du
 Wochentage, Ausschlüsse, individuelle Zeitfenster, lange Intervalle und den zweiten
-oder letzten Wochentag im Monat. **Statisch** hält deine Regel verbindlich,
-**Lernend** nutzt bisherige Ausführungen, **Adaptiv** schlägt bei stabiler Abweichung
-eine Änderung vor. **Nein** verhindert die sofortige Wiederholung desselben Vorschlags.
+oder letzten Wochentag im Monat. Zusätzlich sind kalenderbezogene Regeln möglich,
+zum Beispiel **„immer am ersten Montag im Monat“**, **„immer am ersten Montag im
+Quartal“**, **„immer am letzten Donnerstag im November“** oder **„immer das erste
+Wochenende im Quartal“**. Beim Wochenende wird die Aufgabe einmal am Samstag fällig,
+an dem das gewählte Wochenende beginnt. Im visuellen Scheduler kannst du dafür
+monatliche, quartalsweise oder jährliche Wiederholung mit Position, Wochentag und –
+bei jährlichen Regeln – den gewünschten Monaten kombinieren. **Statisch** hält deine
+Regel verbindlich, **Lernend** nutzt bisherige Ausführungen, **Adaptiv** schlägt bei
+stabiler Abweichung eine Änderung vor. **Nein** verhindert die sofortige Wiederholung
+desselben Vorschlags.
 
 Unter **To-dos → Mehr → Planung und Lernen** sind persönliche Einstellungen und
 Familienregeln getrennt. Kalenderplanung ist zunächst aus; eine aktive Einstellung
