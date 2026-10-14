@@ -308,10 +308,10 @@ def shopping_session_complete(request):
         }
         purchased_ids = [item.id for item in purchased]
         open_ids = [item.id for item in open_items]
-        ShoppingItem.objects.filter(id__in=purchased_ids).delete()
-        if open_items_policy == "remove" and open_ids:
-            ShoppingItem.objects.filter(id__in=open_ids).delete()
 
+        # Persist checkout truth before removing the mutable source rows. This keeps
+        # completion atomic and makes retries/history independent from ShoppingItem
+        # lifecycle or delete-time hooks.
         session.status = ShoppingSession.Status.COMPLETED
         session.completed_at = completed_at
         session.completed_by = request.user
@@ -319,4 +319,13 @@ def shopping_session_complete(request):
         session.snapshot = snapshot
         session.save(update_fields=["status", "completed_at", "completed_by", "last_activity_at", "snapshot", "updated_at"])
 
-    return Response(_completion_payload(session, request.user))
+        ShoppingItem.objects.filter(id__in=purchased_ids).delete()
+        if open_items_policy == "remove" and open_ids:
+            ShoppingItem.objects.filter(id__in=open_ids).delete()
+
+        # Build the response while all rows relevant to the completion are still
+        # under the same transaction/lock. The returned payload only references the
+        # immutable snapshot and session, never deleted ShoppingItem instances.
+        payload = _completion_payload(session, request.user)
+
+    return Response(payload)
