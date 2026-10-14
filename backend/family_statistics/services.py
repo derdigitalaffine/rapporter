@@ -1,5 +1,5 @@
 """Transactional recording/recomputation; no free-form metadata is accepted."""
-from datetime import timedelta
+from datetime import timedelta, timezone as datetime_timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from django.conf import settings
 from django.db import transaction
@@ -16,6 +16,15 @@ def zone_for(family):
         return ZoneInfo(family.timezone)
     except (ZoneInfoNotFoundError, ValueError):
         return ZoneInfo("Europe/Berlin")
+
+
+def task_effort(task):
+    value = task.estimate_minutes
+    return value if value is not None and 0 <= value <= 10080 else None
+
+
+def task_completion_key(task_id, when):
+    return f"task-completion:{task_id}:{when.astimezone(datetime_timezone.utc).isoformat()}"
 
 
 def retention_days():
@@ -54,7 +63,8 @@ def record(*, family, domain, action, entity_type, entity_id, occurred_at,
     event, created = Event.objects.get_or_create(family=family, idempotency_key=idempotency_key, defaults=dict(
         domain=domain, action=action, entity_type=entity_type, entity_id=entity_id,
         actor_user=actor if membership else None, actor_membership=membership,
-        occurred_at=occurred_at, effort_minutes=effort_minutes, source=source))
+        occurred_at=occurred_at, effort_minutes=effort_minutes, source=source,
+        attribution_finalized=bool(membership) or source != "ui"))
     if created:
         _increment(event, family)
     return event
