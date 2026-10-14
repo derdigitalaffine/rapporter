@@ -1,5 +1,6 @@
 from django.conf import settings
 from django.db import models
+from django.utils import timezone
 
 from .models import Family, Membership, ShoppingList, TimestampedModel
 
@@ -86,6 +87,96 @@ class ShoppingListAccess(TimestampedModel):
         blank=True,
         related_name="responsible_shopping_lists",
     )
+
+
+class ShoppingSession(TimestampedModel):
+    """One concrete collaborative in-store execution of a ShoppingList."""
+
+    class Status(models.TextChoices):
+        ACTIVE = "active", "Active"
+        COMPLETED = "completed", "Completed"
+        CANCELLED = "cancelled", "Cancelled"
+
+    family = models.ForeignKey(Family, on_delete=models.CASCADE, related_name="shopping_sessions")
+    shopping_list = models.ForeignKey(ShoppingList, on_delete=models.CASCADE, related_name="shopping_sessions")
+    status = models.CharField(max_length=16, choices=Status.choices, default=Status.ACTIVE, db_index=True)
+    started_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="started_shopping_sessions",
+    )
+    started_at = models.DateTimeField(default=timezone.now, db_index=True)
+    completed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="completed_shopping_sessions",
+    )
+    completed_at = models.DateTimeField(null=True, blank=True)
+    last_activity_at = models.DateTimeField(default=timezone.now, db_index=True)
+    activity_seq = models.PositiveBigIntegerField(default=0)
+
+    class Meta:
+        ordering = ["-started_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["shopping_list"],
+                condition=models.Q(status="active"),
+                name="shop_one_active_session",
+            )
+        ]
+        indexes = [
+            models.Index(fields=["family", "status", "last_activity_at"], name="shop_session_family_idx"),
+        ]
+
+
+class ShoppingSessionParticipant(TimestampedModel):
+    session = models.ForeignKey(ShoppingSession, on_delete=models.CASCADE, related_name="participants")
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="shopping_session_participations",
+    )
+    joined_at = models.DateTimeField(default=timezone.now)
+    last_seen_at = models.DateTimeField(default=timezone.now, db_index=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["session", "user"], name="shop_session_participant_uniq"),
+        ]
+        ordering = ["joined_at"]
+
+
+class ShoppingSessionActivity(TimestampedModel):
+    class Kind(models.TextChoices):
+        ITEM_ADDED = "item_added", "Item added"
+        ITEM_CHECKED = "item_checked", "Item checked"
+        ITEM_REOPENED = "item_reopened", "Item reopened"
+
+    session = models.ForeignKey(ShoppingSession, on_delete=models.CASCADE, related_name="activities")
+    sequence = models.PositiveBigIntegerField()
+    kind = models.CharField(max_length=24, choices=Kind.choices)
+    item_id = models.UUIDField(null=True, blank=True)
+    item_name = models.CharField(max_length=160, blank=True)
+    actor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="shopping_session_activities",
+    )
+
+    class Meta:
+        ordering = ["sequence"]
+        constraints = [
+            models.UniqueConstraint(fields=["session", "sequence"], name="shop_session_activity_seq_uniq"),
+        ]
+        indexes = [
+            models.Index(fields=["session", "sequence"], name="shop_session_cursor_idx"),
+        ]
 
 
 class ShoppingTemplate(TimestampedModel):
