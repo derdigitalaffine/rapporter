@@ -1,6 +1,6 @@
 from rest_framework import serializers, status
 from rest_framework.decorators import api_view
-from rest_framework.exceptions import NotFound, ValidationError
+from rest_framework.exceptions import NotFound
 from rest_framework.response import Response
 
 from auth_abuse.service import enforce
@@ -30,6 +30,10 @@ class ManagedChildInput(serializers.Serializer):
         if not value:
             raise serializers.ValidationError("Name must not be empty.")
         return value
+
+
+class GuardianSettingsQuery(serializers.Serializer):
+    family = serializers.UUIDField()
 
 
 class GuardianInput(serializers.Serializer):
@@ -98,11 +102,10 @@ def child_identity_detail(request, baby_id):
 
 @api_view(["GET"])
 def child_guardian_settings(request):
-    family_id = request.query_params.get("family")
-    if not family_id:
-        raise ValidationError({"family": "Family is required."})
+    serializer = GuardianSettingsQuery(data=request.query_params)
+    serializer.is_valid(raise_exception=True)
     family = Family.objects.filter(
-        pk=family_id,
+        pk=serializer.validated_data["family"],
         status=Family.Status.ACTIVE,
         memberships__user=request.user,
     ).first()
