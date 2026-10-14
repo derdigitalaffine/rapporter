@@ -71,6 +71,7 @@ class BudgetParticipantPlanTests(TestCase):
         )
         budget = ExpenseBudget.objects.get(id=response.data["id"])
         rows = {str(row.member_id): row for row in budget.participant_plans.all()}
+        self.assertEqual(rows[str(self.owner.id)].ledger_id, self.ledger.id)
         self.assertEqual(rows[str(self.owner.id)].spending_limit, Decimal("200.50"))
         self.assertEqual(rows[str(self.owner.id)].planned_share, Decimal("300.00"))
         self.assertIsNone(rows[str(self.adult.id)].spending_limit)
@@ -78,6 +79,57 @@ class BudgetParticipantPlanTests(TestCase):
         self.assertEqual(Expense.objects.count(), 0)
         self.assertEqual(ExpenseShare.objects.count(), 0)
         self.assertEqual(Settlement.objects.count(), 0)
+
+    def test_overall_ledger_budget_and_participant_plan_commit_atomically(self):
+        response = self.client.patch(
+            f"/api/expense-ledgers/{self.ledger.id}/participant-plans/",
+            {
+                "family": str(self.family.id),
+                "budget_amount": "900,50",
+                "estimated_amount": "850.00",
+                "expected_updated_at": self.ledger.updated_at.isoformat(),
+                "participant_plans": [
+                    {"member": str(self.owner.id), "spending_limit": "350.00", "planned_share": "450.25"},
+                    {"member": str(self.adult.id), "planned_share": "450.25"},
+                ],
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        self.ledger.refresh_from_db()
+        self.assertEqual(self.ledger.budget_amount, Decimal("900.50"))
+        self.assertEqual(self.ledger.estimated_amount, Decimal("850.00"))
+        root_rows = ExpenseBudgetParticipantPlan.objects.filter(ledger=self.ledger, budget__isnull=True)
+        self.assertEqual(root_rows.count(), 2)
+        self.assertEqual(root_rows.get(member=self.owner).spending_limit, Decimal("350.00"))
+        self.assertEqual(Expense.objects.count(), 0)
+        self.assertEqual(ExpenseShare.objects.count(), 0)
+        self.assertEqual(Settlement.objects.count(), 0)
+
+        projection = self.client.get(f"/api/expense-ledgers/{self.ledger.id}/participant-plans/")
+        self.assertEqual(projection.status_code, 200, projection.data)
+        self.assertEqual(projection.data["scope_type"], "ledger")
+        self.assertEqual(projection.data["scope_id"], str(self.ledger.id))
+        self.assertTrue(projection.data["can_manage"])
+
+    def test_foreign_member_rolls_back_overall_budget_change(self):
+        original_amount = self.ledger.budget_amount
+        response = self.client.patch(
+            f"/api/expense-ledgers/{self.ledger.id}/participant-plans/",
+            {
+                "family": str(self.family.id),
+                "budget_amount": "777.00",
+                "expected_updated_at": self.ledger.updated_at.isoformat(),
+                "participant_plans": [
+                    {"member": str(self.foreign_member.id), "spending_limit": "20.00"},
+                ],
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400, response.data)
+        self.ledger.refresh_from_db()
+        self.assertEqual(self.ledger.budget_amount, original_amount)
+        self.assertFalse(ExpenseBudgetParticipantPlan.objects.filter(ledger=self.ledger, budget__isnull=True).exists())
 
     def test_foreign_member_rejects_whole_budget_create(self):
         request_id = str(uuid4())
@@ -153,6 +205,25 @@ class BudgetParticipantPlanTests(TestCase):
         self.assertEqual(budget.amount, Decimal("600.00"))
         self.assertEqual(budget.participant_plans.count(), 0)
 
+    def test_teen_cannot_write_overall_participant_plans(self):
+        self.client.force_authenticate(self.teen_user)
+        response = self.client.patch(
+            f"/api/expense-ledgers/{self.ledger.id}/participant-plans/",
+            {
+                "family": str(self.family.id),
+                "budget_amount": "999.00",
+                "expected_updated_at": self.ledger.updated_at.isoformat(),
+                "participant_plans": [
+                    {"member": str(self.teen.id), "spending_limit": "40.00"}
+                ],
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400, response.data)
+        self.ledger.refresh_from_db()
+        self.assertIsNone(self.ledger.budget_amount)
+        self.assertFalse(ExpenseBudgetParticipantPlan.objects.filter(ledger=self.ledger, budget__isnull=True).exists())
+
     def test_read_projection_redacts_other_person_limits_for_teen_but_keeps_planned_shares(self):
         created = self.create_budget(
             participant_plans=[
@@ -165,6 +236,7 @@ class BudgetParticipantPlanTests(TestCase):
         manager = self.client.get(f"/api/expense-budgets/{budget_id}/participant-plans/")
         self.assertEqual(manager.status_code, 200, manager.data)
         self.assertTrue(manager.data["can_manage"])
+        self.assertEqual(manager.data["scope_type"], "budget")
         manager_rows = {row["member"]: row for row in manager.data["plans"]}
         self.assertEqual(manager_rows[str(self.owner.id)]["spending_limit"], "120.00")
         self.assertEqual(manager_rows[str(self.teen.id)]["spending_limit"], "50.00")
@@ -212,6 +284,18 @@ class BudgetParticipantPlanTests(TestCase):
         self.assertEqual(ExpenseBudgetParticipantPlan.objects.get().spending_limit, Decimal("75.00"))
 
     def test_budget_summary_does_not_expose_personal_participant_planning(self):
+        self.client.patch(
+            f"/api/expense-ledgers/{self.ledger.id}/participant-plans/",
+            {
+                "family": str(self.family.id),
+                "budget_amount": "900.00",
+                "expected_updated_at": self.ledger.updated_at.isoformat(),
+                "participant_plans": [
+                    {"member": str(self.owner.id), "spending_limit": "400.00", "planned_share": "450.00"}
+                ],
+            },
+            format="json",
+        )
         self.create_budget(
             participant_plans=[
                 {"member": str(self.owner.id), "spending_limit": "120.00", "planned_share": "300.00"}
