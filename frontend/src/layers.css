@@ -5,13 +5,14 @@
  * inside a component can stay local; anything that competes across app surfaces
  * belongs to one of these semantic layers.
  *
- * Order: page < sticky chrome < primary navigation < transient status < modal
- * sheet < toast < nested dialog < fullscreen viewer.
+ * Order: page < sticky chrome < primary navigation < floating actions < transient
+ * status < modal sheet < toast < nested dialog < fullscreen viewer.
  */
 :root{
   --layer-page:0;
   --layer-sticky:20;
   --layer-navigation:30;
+  --layer-floating-action:40;
   --layer-transient:50;
   --layer-modal:80;
   --layer-toast:120;
