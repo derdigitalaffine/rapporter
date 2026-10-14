@@ -10,6 +10,19 @@ async function boot(page,{count=8,categories=4,categoryNames=null,path='/?page=s
 for(const config of [{count:8,categories:4},{count:12,categories:2}])test(`store · ${config.count} items in ${config.categories} categories fit at 390×844`,async({page})=>{
  await page.setViewportSize({width:390,height:844});await boot(page,config);const rows=page.locator('.store-row');await expect(rows).toHaveCount(config.count);const footer=await page.locator('.store-footer').boundingBox();for(const row of await rows.all()){const box=await row.boundingBox();expect(box.height).toBeGreaterThanOrEqual(48);expect(box.y+box.height).toBeLessThanOrEqual(footer.y+1)}await expect(page.locator('.topbar')).toBeHidden();await expect(page.locator('.global-create-fab')).toBeHidden();
 });
+test('store · iOS standalone mode stays edge-to-edge at 390×844',async({page})=>{
+ await page.setViewportSize({width:390,height:844});
+ await boot(page,{beforeGoto:async({page})=>page.addInitScript(()=>Object.defineProperty(navigator,'standalone',{configurable:true,value:true}))});
+ await expect.poll(()=>page.evaluate(()=>document.documentElement.hasAttribute('data-app-standalone'))).toBe(true);
+ const layout=await page.evaluate(()=>{
+  const viewport=window.innerWidth;
+  const measure=selector=>{const box=document.querySelector(selector)?.getBoundingClientRect();return box?{left:box.left,right:viewport-box.right,width:box.width}:null};
+  return {viewport,scrollOverflow:document.documentElement.scrollWidth-viewport,shell:measure('.app-shell'),content:measure('.content[data-page="shopping"]'),store:measure('.store-focus'),footer:measure('.store-footer')};
+ });
+ for(const key of ['shell','content','store','footer']){expect(layout[key]).not.toBeNull();expect(Math.abs(layout[key].left)).toBeLessThanOrEqual(1);expect(Math.abs(layout[key].right)).toBeLessThanOrEqual(1);expect(Math.abs(layout[key].width-layout.viewport)).toBeLessThanOrEqual(2)}
+ expect(layout.scrollOverflow).toBeLessThanOrEqual(1);
+ const footer=page.locator('.store-footer');await expect(footer.getByRole('button',{name:'Artikel hinzufügen'})).toBeVisible();const footerBox=await footer.boundingBox();for(const button of await footer.getByRole('button').all()){const box=await button.boundingBox();expect(box.x).toBeGreaterThanOrEqual(footerBox.x-1);expect(box.x+box.width).toBeLessThanOrEqual(footerBox.x+footerBox.width+1)}
+});
 test('store · groups follow manual walking order instead of alphabet',async({page})=>{
  await boot(page,{count:4,categories:2,categoryNames:['Zuerst','Danach']});await expect.poll(()=>page.locator('.store-group h2').allTextContents()).toEqual(['Zuerst','Danach']);
 });
