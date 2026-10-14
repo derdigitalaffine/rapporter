@@ -15,8 +15,9 @@ AVATAR_ICON_KEYS = (
     "car", "recycle", "utensils", "water", "broom", "weather", "frost", "rain",
     "bolt", "light", "school", "transit", "route", "location", "calendar", "clock",
     "tasks", "shopping", "store", "lists", "inbox", "members", "link", "share",
-    "camera", "microphone", "play", "music", "gift", "cake", "rocket", "football",
-    "rainbow", "tree", "sun", "moon", "cat", "fish", "dragon", "gamepad",
+    "camera", "microphone", "play", "robot", "email", "receipt", "archive", "sliders",
+    "priority", "tags", "trend", "hot", "progress", "automation", "integrations", "waste",
+    "install", "settle", "euro", "send",
 )
 
 _HEX_COLOR = re.compile(r"^#[0-9a-fA-F]{6}$")
