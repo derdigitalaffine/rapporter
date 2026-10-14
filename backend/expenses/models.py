@@ -18,6 +18,7 @@ class ExpenseLedger(TimestampedModel):
     name = models.CharField(max_length=120)
     base_currency = models.CharField(max_length=3, default="EUR")
     budget_amount = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    estimated_amount = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
     is_default = models.BooleanField(default=False)
     archived = models.BooleanField(default=False)
     default_split_type = models.CharField(
@@ -43,6 +44,10 @@ class ExpenseLedger(TimestampedModel):
             models.CheckConstraint(
                 condition=models.Q(budget_amount__isnull=True) | models.Q(budget_amount__gte=0),
                 name="expense_ledger_budget_nonneg",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(estimated_amount__isnull=True) | models.Q(estimated_amount__gte=0),
+                name="expense_ledger_estimate_nonneg",
             ),
         ]
 
@@ -78,10 +83,12 @@ class ExpenseBudget(TimestampedModel):
     )
     name = models.CharField(max_length=120)
     amount = models.DecimalField(max_digits=12, decimal_places=2)
+    estimated_amount = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
     period_type = models.CharField(max_length=16, choices=PeriodType.choices, default=PeriodType.OPEN)
     starts_on = models.DateField(null=True, blank=True)
     ends_on = models.DateField(null=True, blank=True)
     archived = models.BooleanField(default=False)
+    client_request_id = models.UUIDField(null=True, blank=True)
 
     class Meta:
         ordering = ["created_at"]
@@ -92,6 +99,15 @@ class ExpenseBudget(TimestampedModel):
             models.CheckConstraint(
                 condition=models.Q(amount__gte=0),
                 name="expense_budget_amount_nonneg",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(estimated_amount__isnull=True) | models.Q(estimated_amount__gte=0),
+                name="expense_budget_estimate_nonneg",
+            ),
+            models.UniqueConstraint(
+                fields=["ledger", "client_request_id"],
+                condition=models.Q(client_request_id__isnull=False),
+                name="expense_budget_request_unique",
             ),
         ]
 

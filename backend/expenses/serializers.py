@@ -14,6 +14,7 @@ from .models import (
     get_default_expense_ledger,
 )
 from .money import balance_summary, build_split, money
+from .planning_serializers import RevisionCheckedPlanningSerializer
 
 
 class LocalizedDecimalField(serializers.DecimalField):
@@ -123,7 +124,10 @@ def _ledger_default_values(ledger):
     return {str(key): Decimal(str(value)) for key, value in (ledger.default_split_values or {}).items()}
 
 
-class ExpenseLedgerSerializer(serializers.ModelSerializer):
+class ExpenseLedgerSerializer(RevisionCheckedPlanningSerializer):
+    estimated_amount = LocalizedDecimalField(
+        max_digits=12, decimal_places=2, allow_null=True, required=False, min_value=Decimal("0.00"),
+    )
     budget_amount = LocalizedDecimalField(
         max_digits=12,
         decimal_places=2,
@@ -195,6 +199,8 @@ class ExpenseLedgerSerializer(serializers.ModelSerializer):
             "name",
             "base_currency",
             "budget_amount",
+            "estimated_amount",
+            "expected_updated_at",
             "is_default",
             "archived",
             "default_split_type",

@@ -1,7 +1,10 @@
 from decimal import Decimal
+from uuid import uuid4
 
 from django.contrib.auth import get_user_model
+from django.db import connection
 from django.test import TestCase
+from django.test.utils import CaptureQueriesContext
 from rest_framework.test import APIClient
 
 from family.models import Family, Membership
@@ -295,3 +298,134 @@ class ExpenseBudgetCoreTests(TestCase):
         self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(response.data["allocations"], [])
         self.assertEqual(ExpenseBudgetAllocation.objects.filter(expense=expense).count(), 0)
+
+    def test_estimates_and_plans_do_not_post_expenses_or_change_balances(self):
+        expense = self._expense("10.00")
+        shares = list(expense.shares.values_list("member_id", "amount"))
+        before = self.client.get(f"/api/expenses/balance/?family={self.family.id}").data
+        response = self.client.patch(
+            f"/api/expense-ledgers/{self.ledger.id}/",
+            {"budget_amount": "1200,50", "estimated_amount": "1350,75", "expected_updated_at": self.ledger.updated_at.isoformat()},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        budget = self.client.post(
+            "/api/expense-budgets/",
+            {"family": str(self.family.id), "ledger": str(self.ledger.id), "name": "Unterkunft", "amount": "800.25", "estimated_amount": "900.50"},
+            format="json",
+        )
+        self.assertEqual(budget.status_code, 201, budget.data)
+        summary = self.client.get(f"/api/expense-ledgers/{self.ledger.id}/budget-summary/").data
+        self.assertEqual(summary["estimated_amount"], "1350.75")
+        self.assertEqual(summary["budget_amount"], "1200.50")
+        self.assertEqual(summary["spent_amount"], "10.00")
+        self.assertEqual(summary["remaining_amount"], "1190.50")
+        self.assertEqual(summary["budgets"][0]["estimated_amount"], "900.50")
+        self.assertEqual(summary["budgets"][0]["spent_amount"], Decimal("0.00"))
+        self.assertEqual(Expense.objects.filter(family=self.family).count(), 1)
+        self.assertEqual(shares, list(expense.shares.values_list("member_id", "amount")))
+        self.assertEqual(before, self.client.get(f"/api/expenses/balance/?family={self.family.id}").data)
+
+    def test_estimate_is_nullable_zero_is_explicit_and_invalid_money_is_rejected(self):
+        budget = self._budget()
+        for url in [f"/api/expense-ledgers/{self.ledger.id}/", f"/api/expense-budgets/{budget.id}/"]:
+            for value in ["-0.01", "1.001", "10000000000", "NaN", "Infinity"]:
+                response = self.client.patch(url, {"estimated_amount": value}, format="json")
+                self.assertEqual(response.status_code, 400, response.data)
+            for value, expected in [("0.00", "0.00"), (None, None)]:
+                response = self.client.patch(url, {"estimated_amount": value}, format="json")
+                self.assertEqual(response.status_code, 200, response.data)
+                self.assertEqual(response.data["estimated_amount"], expected)
+
+    def test_stale_revision_cannot_overwrite_plan_or_archive_category(self):
+        budget = self._budget()
+        for obj, amount_field in [(self.ledger, "budget_amount"), (budget, "amount")]:
+            route = "expense-ledgers" if isinstance(obj, ExpenseLedger) else "expense-budgets"
+            url = f"/api/{route}/{obj.id}/"
+            revision = obj.updated_at.isoformat()
+            first = self.client.patch(url, {amount_field: "200.50", "expected_updated_at": revision}, format="json")
+            self.assertEqual(first.status_code, 200, first.data)
+            stale_payload = {amount_field: "700.00", "expected_updated_at": revision}
+            if isinstance(obj, ExpenseBudget):
+                stale_payload["archived"] = True
+            stale = self.client.patch(url, stale_payload, format="json")
+            self.assertEqual(stale.status_code, 409, stale.data)
+            obj.refresh_from_db()
+            self.assertEqual(getattr(obj, amount_field), Decimal("200.50"))
+            self.assertFalse(obj.archived)
+            current = self.client.patch(url, {amount_field: "250.75", "expected_updated_at": first.data["updated_at"]}, format="json")
+            self.assertEqual(current.status_code, 200, current.data)
+
+    def test_budget_create_retry_returns_same_canonical_category(self):
+        payload = {"family": str(self.family.id), "ledger": str(self.ledger.id), "name": "Transport", "amount": "400.00", "client_request_id": str(uuid4())}
+        first = self.client.post("/api/expense-budgets/", payload, format="json")
+        retry = self.client.post("/api/expense-budgets/", payload, format="json")
+        self.assertEqual(first.status_code, 201, first.data)
+        self.assertEqual(retry.status_code, 201, retry.data)
+        self.assertEqual(first.data["id"], retry.data["id"])
+        self.assertEqual(ExpenseBudget.objects.filter(ledger=self.ledger).count(), 1)
+        self.assertNotIn("client_request_id", first.data)
+        self.assertNotIn("expected_updated_at", first.data)
+
+    def test_budget_creation_key_is_ledger_scoped_and_immutable_on_update(self):
+        other = ExpenseLedger.objects.create(family=self.family, name="Projekt", base_currency="EUR")
+        request_id = str(uuid4())
+        created = []
+        for ledger in [self.ledger, other]:
+            response = self.client.post("/api/expense-budgets/", {"family": str(self.family.id), "ledger": str(ledger.id), "name": "Transport", "amount": "1.00", "client_request_id": request_id}, format="json")
+            self.assertEqual(response.status_code, 201, response.data)
+            created.append(response.data["id"])
+        self.assertNotEqual(*created)
+        response = self.client.patch(f"/api/expense-budgets/{created[0]}/", {"client_request_id": str(uuid4()), "name": "Anreise"}, format="json")
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(str(ExpenseBudget.objects.get(pk=created[0]).client_request_id), request_id)
+
+    def test_retry_key_with_changed_input_does_not_silently_discard_changes(self):
+        payload = {"family": str(self.family.id), "ledger": str(self.ledger.id), "name": "Transport", "amount": "100.00", "client_request_id": str(uuid4())}
+        first = self.client.post("/api/expense-budgets/", payload, format="json")
+        self.assertEqual(first.status_code, 201, first.data)
+        changed = self.client.post("/api/expense-budgets/", {**payload, "amount": "200.00"}, format="json")
+        self.assertEqual(changed.status_code, 409, changed.data)
+        self.assertEqual(ExpenseBudget.objects.get(pk=first.data["id"]).amount, Decimal("100.00"))
+        self.assertEqual(ExpenseBudget.objects.filter(ledger=self.ledger).count(), 1)
+
+    def test_foreign_or_revoked_membership_cannot_read_or_change_planning(self):
+        budget = ExpenseBudget.objects.create(family=self.foreign_family, ledger=self.foreign_ledger, name="Privater Bereich", amount=Decimal("100.00"))
+        for url in [f"/api/expense-ledgers/{self.foreign_ledger.id}/", f"/api/expense-budgets/{budget.id}/"]:
+            self.assertEqual(self.client.get(url).status_code, 404)
+            self.assertEqual(self.client.patch(url, {"estimated_amount": "42.00"}, format="json").status_code, 404)
+        self.assertEqual(self.client.get(f"/api/expense-ledgers/{self.foreign_ledger.id}/budget-summary/").status_code, 404)
+        own = self._budget()
+        self.owner.delete()
+        response = self.client.patch(f"/api/expense-budgets/{own.id}/", {"estimated_amount": "42.00"}, format="json")
+        self.assertEqual(response.status_code, 403)
+        own.refresh_from_db()
+        self.assertIsNone(own.estimated_amount)
+
+    def test_category_archive_keeps_expense_history_and_allocations(self):
+        budget = self._budget()
+        expense = self._expense()
+        ExpenseBudgetAllocation.objects.create(expense=expense, budget=budget, amount_in_budget_currency=Decimal("10.00"))
+        response = self.client.patch(f"/api/expense-budgets/{budget.id}/", {"archived": True, "expected_updated_at": budget.updated_at.isoformat()}, format="json")
+        self.assertEqual(response.status_code, 200, response.data)
+        summary = self.client.get(f"/api/expense-ledgers/{self.ledger.id}/budget-summary/").data
+        self.assertEqual(summary["budgets"], [])
+        self.assertEqual(summary["spent_amount"], "10.00")
+        self.assertTrue(ExpenseBudgetAllocation.objects.filter(expense=expense, budget=budget).exists())
+
+    def test_summary_and_list_query_count_does_not_grow_per_category(self):
+        self._budget()
+        urls = [f"/api/expense-ledgers/{self.ledger.id}/budget-summary/", f"/api/expense-budgets/?family={self.family.id}&ledger={self.ledger.id}"]
+        counts = []
+        for url in urls:
+            with CaptureQueriesContext(connection) as queries:
+                response = self.client.get(url)
+                self.assertEqual(response.status_code, 200, response.data)
+            counts.append(len(queries))
+        for index in range(5):
+            self._budget(name=f"Kostenbereich {index}")
+        for url, expected_count in zip(urls, counts):
+            with CaptureQueriesContext(connection) as queries:
+                response = self.client.get(url)
+                self.assertEqual(response.status_code, 200, response.data)
+            self.assertEqual(len(queries), expected_count)

@@ -1,3 +1,6 @@
+from decimal import Decimal
+
+from django.db.models import Q, Sum
 from rest_framework import viewsets
 from rest_framework.decorators import api_view
 from rest_framework.exceptions import NotFound, ValidationError
@@ -64,7 +67,13 @@ class ExpenseBudgetViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        queryset = ExpenseBudget.objects.select_related("family", "ledger", "parent")
+        queryset = ExpenseBudget.objects.select_related("family", "ledger", "parent").annotate(
+            _budget_spent_amount=Sum(
+                "allocations__amount_in_budget_currency",
+                filter=Q(allocations__expense__status=Expense.Status.POSTED),
+                default=Decimal("0.00"),
+            )
+        ).order_by("created_at", "id")
         if not user.is_superuser:
             queryset = queryset.filter(
                 family__memberships__user=user,
@@ -104,13 +113,21 @@ def expense_ledger_budget_summary(request, ledger_id):
     summary = ledger_budget_summary(ledger)
     budgets = ExpenseBudget.objects.filter(ledger=ledger, archived=False).select_related(
         "family", "ledger", "parent"
-    )
+    ).annotate(
+        _budget_spent_amount=Sum(
+            "allocations__amount_in_budget_currency",
+            filter=Q(allocations__expense__status=Expense.Status.POSTED),
+            default=Decimal("0.00"),
+        )
+    ).order_by("created_at", "id")
     return Response(
         {
             "family": str(ledger.family_id),
             "ledger": str(ledger.id),
             "currency": summary["currency"],
             "budget_amount": None if summary["budget_amount"] is None else str(summary["budget_amount"]),
+            "estimated_amount": None if ledger.estimated_amount is None else str(ledger.estimated_amount),
+            "updated_at": ledger.updated_at,
             "spent_amount": str(summary["spent_amount"]),
             "remaining_amount": None if summary["remaining_amount"] is None else str(summary["remaining_amount"]),
             "over_budget": summary["over_budget"],

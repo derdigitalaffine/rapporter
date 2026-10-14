@@ -22,11 +22,20 @@ async function installTravelExpenseApi(page){
    return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(store.tripLedger)});
   }
   if(url.pathname==='/api/expense-ledgers/for-trip/'&&request.method()==='POST'){
-   store.createCalls+=1;store.tripLedger={...tripLedger};
+   store.createCalls+=1;store.tripLedger={...tripLedger,estimated_amount:null,updated_at:'2026-10-14T10:00:00Z'};
    return route.fulfill({status:201,contentType:'application/json',body:JSON.stringify(store.tripLedger)});
   }
   if(url.pathname==='/api/expense-ledgers/'&&request.method()==='GET'){
    return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(store.tripLedger?[defaultLedger,store.tripLedger]:[defaultLedger])});
+  }
+  if(url.pathname==='/api/expense-ledgers/ledger-trip/budget-summary/'&&request.method()==='GET'&&store.tripLedger){
+   return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({...store.tripLedger,ledger:'ledger-trip',currency:'EUR',spent_amount:'0.00',remaining_amount:store.tripLedger.budget_amount,over_budget:false,unconverted_expense_count:0,budgets:[]})});
+  }
+  if(url.pathname==='/api/expense-ledgers/ledger-trip/'&&request.method()==='PATCH'){
+   const body=request.postDataJSON();
+   if(body.expected_updated_at!==store.tripLedger.updated_at)return route.fulfill({status:409,contentType:'application/json',body:JSON.stringify({detail:'Conflict'})});
+   Object.assign(store.tripLedger,body,{updated_at:'2026-10-14T10:01:00Z'});
+   return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(store.tripLedger)});
   }
   return route.fallback();
  });
@@ -66,5 +75,26 @@ test('travel · trip expenses create one canonical ledger and reopen the same le
  await page.getByRole('button',{name:'Reisekosten',exact:true}).click();
  await expect(page.getByRole('heading',{name:'Geld & Finanzen',exact:true})).toBeVisible();
  await expect(page).toHaveURL(/ledger=ledger-trip/);
+ expect(store.createCalls).toBe(1);
+});
+
+test('travel · budget plan is edited in global finance and reused when reopening the trip',async({page})=>{
+ const store=await installTravelExpenseApi(page);
+ await openTrip(page);
+ await page.getByRole('button',{name:'Reisekosten',exact:true}).click();
+ const planner=page.getByRole('region',{name:'Budget',exact:true});
+ await planner.getByRole('button',{name:'Budget planen',exact:true}).click();
+ const editor=page.getByRole('dialog',{name:'Gesamtbudget planen',exact:true});
+ await editor.getByLabel('Geplantes Gesamtbudget (EUR)',{exact:true}).fill('4500.00');
+ await editor.getByLabel('Schätzung (optional) (EUR)',{exact:true}).fill('5200.25');
+ await editor.getByRole('button',{name:'Budget speichern',exact:true}).click();
+ await expect(planner).toContainText('4.500,00');
+ expect(store.tripLedger.budget_amount).toBe('4500.00');
+ await page.goBack();
+ await page.getByRole('button',{name:'Öffnen',exact:true}).click();
+ await page.getByRole('button',{name:'Reisekosten',exact:true}).click();
+ await expect(page).toHaveURL(/ledger=ledger-trip/);
+ await expect(planner).toContainText('5.200,25');
+ await expect(planner).toContainText('4.500,00');
  expect(store.createCalls).toBe(1);
 });
