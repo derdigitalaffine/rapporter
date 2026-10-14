@@ -61,14 +61,14 @@ function accountDefaults(account,members){
 }
 function confidenceLabel(value,t){if(value>=.82)return['good',t('expensesUi.confidenceHigh')];if(value>=.55)return['warn',t('expensesUi.confidenceMedium')];return['low',t('expensesUi.confidenceLow')]}
 
-export default function ExpenseEditor({family,expense=null,onClose,onSaved,onUndo,initialMode='quick',initialLedger=''}){
+export default function ExpenseEditor({family,expense=null,onClose,onSaved,onUndo,initialMode='quick',initialLedger='',initialBudget=''}){
  const {t,i18n}=useTranslation();
  const members=family?.memberships||[];
  const {membership}=useFamilyPermissions(family);
  const isExisting=Boolean(expense?.id);
  const [stage,setStage]=useState(isExisting?'form':initialMode==='receipt'?'capture':initialMode==='details'?'form':'quick');
  const [draft,setDraft]=useState(expense);
- const [form,setForm]=useState(()=>({...formFrom(expense,members),ledger:expense?.ledger?String(expense.ledger):initialLedger}));
+ const [form,setForm]=useState(()=>({...formFrom(expense,members),ledger:expense?.ledger?String(expense.ledger):initialLedger,budget:isExisting?'':String(initialBudget||'')}));
  const [ledgers,setLedgers]=useState([]);
  const [budgets,setBudgets]=useState([]);
  const [contextError,setContextError]=useState('');
@@ -166,7 +166,7 @@ export default function ExpenseEditor({family,expense=null,onClose,onSaved,onUnd
   setBusy(true);setError('');
   const normalized=normalizeAmount(form.amount);
   const payload={family:family.id,ledger:form.ledger||undefined,category:form.category,title:form.title.trim(),total_amount:normalized,currency:form.currency,occurred_at:new Date().toISOString(),paid_by:form.paid_by||undefined,participants:form.participants,split_type:form.split_type,split_values:form.split_type==='equal'?undefined:form.split_values,client_request_id:quickRequestId.current};
-  try{const saved=await api('/expenses/',{method:'POST',body:JSON.stringify(payload)});toast(t('expensesUi.savedAmount',{amount:money(normalized,form.currency,i18n.language)}),{type:'success',actionLabel:t('expensesUi.undo'),onAction:()=>undoQuick(saved),duration:8000});await onSaved?.(saved)}catch(err){setError(err.message);setBusy(false)}
+  try{const saved=await api('/expenses/',{method:'POST',body:JSON.stringify(payload)});toast(t('expensesUi.savedAmount',{amount:money(normalized,form.currency,i18n.language)}),{type:'success',actionLabel:t('expensesUi.undo'),onAction:()=>undoQuick(saved),duration:8000});await onSaved?.(saved,{budget:form.budget})}catch(err){setError(err.message);setBusy(false)}
  }
  async function syncBudgetAllocation(saved){
   if(!saved?.id||form.budget==='__advanced__')return;
@@ -198,7 +198,7 @@ export default function ExpenseEditor({family,expense=null,onClose,onSaved,onUnd
    setDraft(saved);
    await syncBudgetAllocation(saved);
    toast(t('expensesUi.save'),{type:'success'});
-   await onSaved?.(saved);
+   await onSaved?.(saved,{budget:form.budget});
   }catch(err){setError(err.message);setBusy(false)}
  }
 
