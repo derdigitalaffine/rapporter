@@ -348,7 +348,15 @@ class ShoppingTemplateViewSet(BaseShoppingTemplateViewSet):
                 store=store.display_label if store else "",
                 icon="cart-shopping",
             )
-            set_shopping_access(target, actor=request.user, visibility="family", allow_initialize=True)
+            set_shopping_access(
+                target,
+                actor=request.user,
+                visibility=request.data.get("visibility", "family"),
+                visible_member_ids=request.data.get("visible_members", []),
+                responsible_member_ids=request.data.get("responsible_members", []),
+                audience_group=request.data.get("audience_group"),
+                allow_initialize=True,
+            )
             if store:
                 ShoppingListStoreProfile.objects.create(shopping_list=target, store=store)
             ShoppingItem.objects.bulk_create([
