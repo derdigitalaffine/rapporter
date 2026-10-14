@@ -34,9 +34,19 @@ Ein **Familientermin** ist eine eigene Kennzeichnung und unabhängig von der Per
 
 Ort, Notizen und Wiederholung findest du unter **Weitere Details**, damit die wichtigsten Angaben auf kleinen Displays zuerst erreichbar bleiben.
 
+### Erweiterte Wiederholung
+
+Unter **Weitere Details → Wiederholung** kannst du neben wöchentlich, monatlich und jährlich auch **quartalsweise** Serien anlegen. Bei monatlichen, quartalsweisen und jährlichen Serien lässt sich ein bestimmter Wochentag mit seiner Position auswählen, zum Beispiel **erster Montag** oder **letzter Donnerstag**.
+
+Für jährliche Serien kannst du zusätzlich einzelne Monate auswählen. Damit sind Regeln wie **immer am letzten Donnerstag im November** möglich. Quartalsweise Regeln richten sich an echten Kalenderquartalen aus, zum Beispiel **immer am ersten Montag im Quartal**.
+
+Für **das erste Wochenende im Quartal** wählst du quartalsweise, **Samstag** und **Erste**. Der Samstag markiert den Beginn des Wochenendes; über die Termindauer kann der Termin bis Sonntag reichen.
+
 ## Eigenen Termin bearbeiten
 
 Termine, die direkt in FamilyOS angelegt wurden, kannst du wieder öffnen und bearbeiten. Bestehende Termine starten mit **Start + Endzeit**, damit die bereits gespeicherten Uhrzeiten direkt sichtbar sind. Bereits zugeordnete Personen und die Familientermin-Kennzeichnung bleiben vorausgewählt.
+
+Bei einer wiederkehrenden Serie zeigt der Kalender die einzelnen Vorkommen im jeweiligen Zeitraum. Wenn du eines davon bearbeitest oder löschst, bearbeitest beziehungsweise löschst du in dieser Version die **gesamte Serie**; einzelne Ausnahmen pro Vorkommen gibt es noch nicht.
 
 ## Warum kann ich einen Termin nicht bearbeiten?
 

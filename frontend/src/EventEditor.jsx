@@ -5,6 +5,7 @@ import {Icon} from './icons';
 import {confirmAction,toast} from './feedback';
 import {useDirtyForm} from './dirty-state';
 import MemberAvatar from './MemberAvatar';
+import EventRecurrenceEditor from './EventRecurrenceEditor';
 import {eventParticipantIds,membershipCalendarColor,membershipDisplayName} from './calendar-members';
 import {ChoiceField,ErrorSummary,FormActions,FormField,FormRow,FormSection,FormShell,ProgressiveFieldGroup} from './form-primitives';
 import './event-editor.css';
@@ -27,11 +28,20 @@ function endFromDuration(start,minutes){
 function freshEvent(currentMembershipId=''){
   const start=new Date();start.setMinutes(Math.ceil(start.getMinutes()/30)*30,0,0);
   const end=new Date(start.getTime()+DEFAULT_DURATION*60000);
-  return{title:'',starts_at:localValue(start),ends_at:localValue(end),location:'',description:'',recurrence:'',participants:currentMembershipId?[String(currentMembershipId)]:[],is_family_event:false};
+  return{title:'',starts_at:localValue(start),ends_at:localValue(end),location:'',description:'',recurrence:'',payloadBase:{},participants:currentMembershipId?[String(currentMembershipId)]:[],is_family_event:false};
+}
+function editablePayload(event){
+  const payload={...(event?.payload||{})};
+  if(event?.recurrence_master_date_start!==undefined){if(event.recurrence_master_date_start)payload.date_start=event.recurrence_master_date_start;else delete payload.date_start}
+  if(event?.recurrence_master_date_end_exclusive!==undefined){if(event.recurrence_master_date_end_exclusive)payload.date_end_exclusive=event.recurrence_master_date_end_exclusive;else delete payload.date_end_exclusive}
+  return payload;
 }
 function eventForm(event,currentMembershipId=''){
   if(!event)return freshEvent(currentMembershipId);
-  return{id:event.id,title:event.title||'',starts_at:localValue(event.starts_at),ends_at:localValue(event.ends_at),location:event.payload?.location||'',description:event.payload?.description||'',recurrence:event.payload?.recurrence||'',participants:eventParticipantIds(event),is_family_event:Boolean(event.is_family_event)};
+  const payload=editablePayload(event);
+  const startsAt=event.recurrence_master_starts_at||event.starts_at;
+  const endsAt=event.recurrence_master_ends_at||event.ends_at;
+  return{id:event.id,title:event.title||'',starts_at:localValue(startsAt),ends_at:localValue(endsAt),location:payload.location||'',description:payload.description||'',recurrence:payload.recurrence||'',payloadBase:payload,participants:eventParticipantIds(event),is_family_event:Boolean(event.is_family_event)};
 }
 
 export default function EventEditor({family,event=null,currentUserId=null,onClose,onSaved}){
@@ -90,7 +100,8 @@ export default function EventEditor({family,event=null,currentUserId=null,onClos
     if(validation){setError(validation);return}
     setBusy(true);setError('');
     try{
-      const payload={family:family.id,type:'calendar.event',title:edit.title.trim(),starts_at:iso(edit.starts_at),ends_at:iso(edit.ends_at),actionable:false,participants:edit.participants,is_family_event:edit.is_family_event,payload:{location:edit.location,description:edit.description,recurrence:edit.recurrence,provider:'FamilyOS'}};
+      const eventPayload={...(edit.payloadBase||{}),location:edit.location,description:edit.description,recurrence:edit.recurrence,provider:'FamilyOS'};
+      const payload={family:family.id,type:'calendar.event',title:edit.title.trim(),starts_at:iso(edit.starts_at),ends_at:iso(edit.ends_at),actionable:false,participants:edit.participants,is_family_event:edit.is_family_event,payload:eventPayload};
       const saved=await api(isNew?'/events/':`/events/${event.id}/`,{method:isNew?'POST':'PATCH',body:JSON.stringify(payload)});
       toast(isNew?t('addEvent'):t('save'),{type:'success'});await onSaved(saved);
     }catch(err){setError(err.message);toast(err.message||t('saveFailed'),{type:'error'});setBusy(false)}
@@ -165,7 +176,7 @@ export default function EventEditor({family,event=null,currentUserId=null,onClos
         <ProgressiveFieldGroup label={t('eventEditor.moreDetails')} summary={t('eventEditor.moreDetailsHint')} defaultOpen={!isNew} className="event-editor-more">
           <FormField id="event-location" label={t('location')}><input value={edit.location} onChange={e=>setEdit(v=>({...v,location:e.target.value}))} placeholder={t('eventEditor.locationPlaceholder')} disabled={busy}/></FormField>
           <FormField id="event-notes" label={t('notes')}><textarea value={edit.description} onChange={e=>setEdit(v=>({...v,description:e.target.value}))} disabled={busy}/></FormField>
-          <FormField id="event-recurrence" label={t('recurrence')}><select value={edit.recurrence} onChange={e=>setEdit(v=>({...v,recurrence:e.target.value}))} disabled={busy}><option value="">{t('none')}</option><option value="weekly">{t('weekly')}</option><option value="monthly">{t('monthly')}</option><option value="yearly">{t('yearly')}</option></select></FormField>
+          <EventRecurrenceEditor value={edit.recurrence} onChange={recurrence=>setEdit(v=>({...v,recurrence}))} disabled={busy}/>
         </ProgressiveFieldGroup>
 
         <FormActions className="event-editor-actions"><button className="primary event-editor-save" disabled={busy||!edit.title.trim()}><Icon name="check"/>{busy?t('pleaseWait'):t('save')}</button>{!isNew&&<button type="button" className="ghost-danger destructive-wide" onClick={remove} disabled={busy}><Icon name="delete"/>{t('deleteEvent')}</button>}</FormActions>

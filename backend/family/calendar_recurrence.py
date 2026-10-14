@@ -103,6 +103,8 @@ def project_event(event, serialized, start, end):
         row["recurrence_master_id"] = str(event.id)
         row["recurrence_master_starts_at"] = serialized.get("starts_at")
         row["recurrence_master_ends_at"] = serialized.get("ends_at")
+        row["recurrence_master_date_start"] = base_payload.get("date_start")
+        row["recurrence_master_date_end_exclusive"] = base_payload.get("date_end_exclusive")
         row["recurrence_occurrence_date"] = day.isoformat()
         if civil_span is not None:
             row_payload = deepcopy(base_payload)
