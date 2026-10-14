@@ -9,6 +9,7 @@ from rest_framework.response import Response
 from .birthdays import project
 from .models import AutomationRule, Family, FamilyEvent, InboxItem, IntegrationSource, Routine, ShoppingList, Task, TaskList
 from .serializers import FamilyEventSerializer, RoutineSerializer, ShoppingListSerializer, TaskListSerializer, TaskSerializer
+from .shopping_access import visible_shopping_lists
 from .weather_service import weather_payload
 
 
@@ -77,7 +78,10 @@ def dashboard(request):
     events.sort(key=lambda event: event.starts_at or now)
 
     routines = Routine.objects.filter(family=family, active=True).prefetch_related("logs", "reminder_states__membership")
-    shopping = ShoppingList.objects.filter(family=family, archived=False).prefetch_related("items").order_by("sort_order", "created_at")[:8]
+    shopping = visible_shopping_lists(
+        request.user,
+        ShoppingList.objects.filter(family=family, archived=False).prefetch_related("items"),
+    ).order_by("sort_order", "created_at")[:8]
     task_lists = TaskList.objects.filter(family=family, archived=False).prefetch_related("tasks")[:12]
     integrations = IntegrationSource.objects.filter(family=family)
 
