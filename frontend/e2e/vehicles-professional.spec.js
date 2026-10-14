@@ -79,7 +79,7 @@ test('review inbox classifies a business journey with required details',async({p
  const state=await setup(page);await open(page);
  await expect(page.getByText('1 Fahrt(en) brauchen deine Zuordnung.')).toBeVisible();
  const details=await openFirstJourney(page);await details.getByRole('button',{name:'Fahrt zuordnen'}).click();
- await page.getByLabel('Fahrtart').selectOption('business');
+ await page.locator('.journey-editor #journey-kind').selectOption('business');
  await expect(page.getByRole('button',{name:'Speichern'})).toBeVisible();
  await page.getByLabel('Ziel').fill('Berlin');
  await page.getByLabel('Geschäftspartner / Kunde').fill('Beispiel GmbH');
@@ -102,7 +102,7 @@ test('later correction requires a reason and keeps the journal entry',async({pag
 test('manual journey is explicit and reports download from the server',async({page})=>{
  const state=await setup(page);await open(page);
  await page.getByRole('button',{name:'Fahrt nachtragen'}).click();
- await page.getByLabel('Fahrtart').selectOption('business');
+ await page.locator('.journey-editor #journey-kind').selectOption('business');
  await page.getByLabel('Kilometerstand bei Start (km)').fill('110');await page.getByLabel('Kilometerstand bei Ende (km)').fill('120');
  await page.getByLabel('Ziel').fill('Hamburg');await page.getByLabel('Geschäftspartner / Kunde').fill('Kunde Nord');await page.getByLabel('Konkreter geschäftlicher Zweck').fill('Workshop');
  await page.getByLabel('Grund der Änderung').fill('Browser war nicht verfügbar');
@@ -116,7 +116,7 @@ test('manual journey is explicit and reports download from the server',async({pa
 test('professional logbook stays usable at 320px and passes axe',async({page})=>{
  await setup(page);await page.setViewportSize({width:320,height:844});await open(page);
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
- const details=await openFirstJourney(page);await details.getByRole('button',{name:'Fahrt zuordnen'}).click();await page.getByLabel('Fahrtart').selectOption('business');
+ const details=await openFirstJourney(page);await details.getByRole('button',{name:'Fahrt zuordnen'}).click();await page.locator('.journey-editor #journey-kind').selectOption('business');
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
  const result=await new AxeBuilder({page}).include('.journey-editor').analyze();expect(result.violations).toEqual([]);
 });
