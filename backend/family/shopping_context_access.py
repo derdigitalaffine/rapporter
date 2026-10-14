@@ -11,6 +11,13 @@ def _visible_expenses(user, family):
     return finance_queryset(Expense.objects.filter(family=family), user)
 
 
+def _session_deep_link(session):
+    base = f"/?page=shopping&list={session.shopping_list_id}&mode=store"
+    if session.status == ShoppingSession.Status.COMPLETED:
+        return f"{base}&session={session.id}"
+    return base
+
+
 def install_shopping_context_access():
     """Install object-level Shopping adapters and checkout-to-expense context links.
 
@@ -40,7 +47,7 @@ def install_shopping_context_access():
             shopping_list__in=visible_shopping_lists(user).filter(family=family)
         ).select_related("shopping_list"),
         family_id=lambda obj: obj.family_id,
-        deep_link=lambda obj: f"/?page=shopping&list={obj.shopping_list_id}",
+        deep_link=_session_deep_link,
         lifecycle=lambda obj: "completed" if obj.status == ShoppingSession.Status.COMPLETED else "available",
     )
     registry._types["expense"] = ContextTypeAdapter(
