@@ -1,6 +1,7 @@
 from decimal import Decimal
 
-from rest_framework import serializers
+from django.db import transaction
+from rest_framework import serializers, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
 from rest_framework.permissions import IsAuthenticated
@@ -11,6 +12,7 @@ from family.models import Family
 from .commitment_models import BudgetCommitment
 from .commitment_services import consume_budget_commitment, release_budget_commitment, upsert_budget_commitment
 from .models import Expense
+from .serializers import ExpenseSerializer
 
 
 class CommitmentWriteSerializer(serializers.Serializer):
@@ -24,6 +26,12 @@ class CommitmentConsumeSerializer(serializers.Serializer):
     family = serializers.UUIDField()
     expense = serializers.UUIDField()
     budget = serializers.UUIDField(required=False, allow_null=True)
+
+
+class CommitmentPurchaseSerializer(serializers.Serializer):
+    family = serializers.UUIDField()
+    budget = serializers.UUIDField(required=False, allow_null=True)
+    expense = serializers.DictField()
 
 
 def _family(request, family_id):
@@ -120,3 +128,66 @@ def budget_commitment_consume(request, commitment_id):
     except ValueError as exc:
         raise ValidationError({"commitment": str(exc)}) from exc
     return Response({"commitment": _payload(row)})
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+@transaction.atomic
+def budget_commitment_purchase(request, commitment_id):
+    """Create the actual expense and consume its reservation in one DB transaction."""
+    serializer = CommitmentPurchaseSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+    family = _family(request, serializer.validated_data["family"])
+    row = (
+        BudgetCommitment.objects.select_for_update()
+        .select_related("family", "ledger", "consumed_by")
+        .filter(id=commitment_id, family=family)
+        .first()
+    )
+    if not row:
+        raise NotFound()
+
+    # The commitment itself is the idempotency boundary. A retried request
+    # after a lost response returns the already committed expense rather than
+    # posting a second purchase.
+    if row.status == BudgetCommitment.Status.CONSUMED:
+        if not row.consumed_by_id:
+            raise ValidationError({"commitment": "Die bereits verbrauchte Vormerkung hat keine zugehörige Ausgabe mehr."})
+        return Response(
+            {
+                "commitment": _payload(row),
+                "expense": ExpenseSerializer(row.consumed_by, context={"request": request}).data,
+            }
+        )
+    if row.status != BudgetCommitment.Status.ACTIVE:
+        raise ValidationError({"commitment": "Diese Vormerkung ist nicht mehr aktiv."})
+
+    expense_data = dict(serializer.validated_data["expense"])
+    supplied_family = expense_data.get("family")
+    if supplied_family and str(supplied_family) != str(family.id):
+        raise ValidationError({"expense": {"family": "Ausgabe und Vormerkung müssen derselben Familie gehören."}})
+    supplied_ledger = expense_data.get("ledger")
+    if supplied_ledger and str(supplied_ledger) != str(row.ledger_id):
+        raise ValidationError({"expense": {"ledger": "Ausgabe und Vormerkung müssen denselben Abrechnungskreis verwenden."}})
+    expense_data["family"] = str(family.id)
+    expense_data["ledger"] = str(row.ledger_id)
+
+    expense_serializer = ExpenseSerializer(data=expense_data, context={"request": request})
+    expense_serializer.is_valid(raise_exception=True)
+    expense = expense_serializer.save()
+    try:
+        row = consume_budget_commitment(
+            commitment=row,
+            expense=expense,
+            budget_id=serializer.validated_data.get("budget"),
+        )
+    except ValueError as exc:
+        raise ValidationError({"commitment": str(exc)}) from exc
+
+    return Response(
+        {
+            "commitment": _payload(row),
+            "expense": ExpenseSerializer(expense, context={"request": request}).data,
+        },
+        status=status.HTTP_201_CREATED,
+    )
