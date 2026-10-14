@@ -1,0 +1,31 @@
+/*
+ * FamilyOS global layer contract.
+ *
+ * Feature styles must not invent their own global z-index values. Local stacking
+ * inside a component can stay local; anything that competes across app surfaces
+ * belongs to one of these semantic layers.
+ *
+ * Order: page < sticky chrome < primary navigation < transient status < modal
+ * sheet < toast < nested dialog < fullscreen viewer.
+ */
+:root{
+  --layer-page:0;
+  --layer-sticky:20;
+  --layer-navigation:30;
+  --layer-transient:50;
+  --layer-modal:80;
+  --layer-toast:120;
+  --layer-dialog:160;
+  --layer-fullscreen:200;
+}
+
+/* App chrome */
+.topbar{z-index:var(--layer-sticky)}
+.bottom-nav{z-index:var(--layer-navigation)}
+.loading{z-index:var(--layer-transient)}
+
+/* Global overlays */
+.sheet-backdrop{z-index:var(--layer-modal)}
+.toast-region{z-index:var(--layer-toast)}
+.confirm-backdrop{z-index:var(--layer-dialog)}
+.image-viewer-layer{z-index:var(--layer-fullscreen)}
