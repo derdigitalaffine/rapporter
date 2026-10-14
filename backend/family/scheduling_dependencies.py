@@ -1,4 +1,4 @@
-from datetime import date, datetime, time, timedelta
+from datetime import date, time, timedelta
 from zoneinfo import ZoneInfo
 
 from django.core.exceptions import PermissionDenied, ValidationError
@@ -7,7 +7,7 @@ from django.utils import timezone
 
 from .action_schedule import WEEKDAYS, local_datetime
 from .models import FamilyEvent, Membership
-from .scheduling_models import SchedulingDependency, SchedulingMaterialization, SchedulingSeries
+from .scheduling_models import SchedulingDependency, SchedulingSeries
 from .scheduling_relative import (
     apply_relative_rule,
     describe_relative_rule,
@@ -66,7 +66,8 @@ def anchor_occurrences(anchor_type, anchor, family_timezone, *, after=None, limi
             return []
         recurrence = (anchor.payload or {}).get("recurrence") if isinstance(anchor.payload, dict) else None
         if not recurrence:
-            return [(anchor.starts_at.isoformat(), anchor.starts_at)] if anchor.starts_at >= after else []
+            # A single object keeps one identity when its date/time is edited.
+            return [("single", anchor.starts_at)] if anchor.starts_at >= after else []
         rule = from_event_recurrence(recurrence, anchor.starts_at, family_timezone)
         dates = preview_occurrence_dates(rule, family_timezone, after=after.astimezone(zone).date(), limit=limit)
         clock = anchor.starts_at.astimezone(zone).time().replace(tzinfo=None)
@@ -75,10 +76,10 @@ def anchor_occurrences(anchor_type, anchor, family_timezone, *, after=None, limi
     schedule = anchor.schedule or {}
     recurrence = schedule.get("recurrence")
     if not recurrence:
-        return [(anchor.due_at.isoformat(), anchor.due_at)] if anchor.due_at and anchor.due_at >= after else []
+        return [("single", anchor.due_at)] if anchor.due_at and anchor.due_at >= after else []
     if schedule.get("mode", "static") != "static":
         if anchor.due_at and anchor.due_at >= after:
-            return [(anchor.due_at.isoformat(), anchor.due_at)]
+            return [("single", anchor.due_at)]
         return []
     rule = from_action_schedule(schedule, family_timezone)
     dates = preview_occurrence_dates(rule, family_timezone, after=after.astimezone(zone).date(), limit=limit)
@@ -183,9 +184,8 @@ def refresh_dependency(dependency, *, horizon_days=HORIZON_DAYS):
         return []
     anchor = _anchor(dependency.anchor_type, dependency.anchor_id, dependency.family)
     after = timezone.now() - timedelta(minutes=1)
-    limit = MAX_OCCURRENCES
     materialized = []
-    for key, anchor_at in anchor_occurrences(dependency.anchor_type, anchor, dependency.family.timezone, after=after, limit=limit):
+    for key, anchor_at in anchor_occurrences(dependency.anchor_type, anchor, dependency.family.timezone, after=after, limit=MAX_OCCURRENCES):
         if anchor_at > timezone.now() + timedelta(days=horizon_days):
             break
         if dependency.anchor_scope == SchedulingDependency.AnchorScope.OCCURRENCE and key != dependency.anchor_occurrence_key:
