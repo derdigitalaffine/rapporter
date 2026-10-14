@@ -148,7 +148,7 @@ class Migration(migrations.Migration):
         ),
         migrations.AddIndex(
             model_name="schedulingdependency",
-            index=models.Index(fields=["family", "enabled"], name="schedule_dependency_enabled_idx"),
+            index=models.Index(fields=["family", "enabled"], name="schedule_dep_enabled_idx"),
         ),
         migrations.AddConstraint(
             model_name="schedulingtemplate",
