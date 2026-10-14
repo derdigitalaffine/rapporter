@@ -67,11 +67,12 @@ html[data-app-keyboard] .global-create-controls{
   pointer-events:none!important;
 }
 
-/* Once the keyboard hides persistent navigation, keyboard-aware surfaces must
-   not keep reserving its height. Keeping this gap was the opaque band that
-   appeared above iOS keyboards in Messenger and editors. */
+/* Once the keyboard hides persistent navigation/create controls, keyboard-
+   aware surfaces must stop reserving their space. Keeping either reservation
+   produced the opaque band above iOS keyboards. */
 html[data-app-keyboard] .app-shell{
   --app-nav-space:0px;
+  --app-floating-create-space:0px;
 }
 
 @media(max-width:380px){
@@ -143,6 +144,13 @@ html[data-app-standalone] .app-shell:not(.messenger-shell)>.content{
 html[data-app-standalone] .app-shell.global-create-enabled:not(.messenger-shell)>.content{
   padding-bottom:calc(var(--app-nav-space) + var(--app-floating-create-space));
   scroll-padding-bottom:calc(var(--app-nav-space) + var(--app-floating-create-space));
+}
+
+/* On ordinary pages the shell itself stays layout-stable. Only its scrollable
+   content yields the pixels genuinely occluded by the OS keyboard. This keeps
+   focused fields reachable without moving app chrome to the keyboard edge. */
+html[data-app-standalone][data-app-keyboard] .app-shell:not(.messenger-shell)>.content{
+  margin-bottom:var(--app-keyboard-occlusion,0px);
 }
 
 html[data-app-standalone] .bottom-nav{
