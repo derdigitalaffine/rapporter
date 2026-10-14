@@ -1,3 +1,6 @@
+from datetime import timedelta
+
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
@@ -7,7 +10,10 @@ from .models import Membership, ShoppingItem, ShoppingList
 from .serializers import ShoppingItemSerializer
 from .shopping_access import visible_shopping_lists
 from .shopping_models import ShoppingSession
-from .shopping_session_service import start_or_join_shopping_session
+from .shopping_session_service import start_or_join_shopping_session, touch_shopping_session_participant
+
+
+PRESENCE_WINDOW = timedelta(seconds=60)
 
 
 def _visible_list(user, list_id):
@@ -44,7 +50,12 @@ def _person(user, membership, request_user):
 
 
 def _session_payload(session, request_user):
-    participants = list(session.participants.select_related("user").order_by("joined_at"))
+    cutoff = timezone.now() - PRESENCE_WINDOW
+    participants = list(
+        session.participants.filter(last_seen_at__gte=cutoff)
+        .select_related("user")
+        .order_by("joined_at")
+    )
     users = [row.user for row in participants]
     if session.started_by:
         users.append(session.started_by)
@@ -106,6 +117,7 @@ def shopping_session_current(request):
     )
     if not session:
         return Response({"session": None, "cursor": 0, "activities": []})
+    touch_shopping_session_participant(session, request.user)
     try:
         after = max(0, int(request.query_params.get("after", "0")))
     except (TypeError, ValueError):
