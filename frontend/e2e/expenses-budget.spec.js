@@ -78,7 +78,7 @@ async function boot(page,configure){
  await installApiMocks(page,{dismissOnboarding:true});
  const store=await installBudgetMocks(page);
  configure?.(store);
- await page.goto('/?page=expenses');
+ await page.goto('/?page=expenses&finance=budgets');
  await page.waitForLoadState('networkidle');
  await expect(page.getByRole('heading',{name:'Geld & Finanzen',exact:true})).toBeVisible();
  return store;
