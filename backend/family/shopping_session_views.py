@@ -139,6 +139,11 @@ def shopping_session_current(request):
     serialized = []
     for row in activities:
         item = items.get(str(row.item_id)) if row.item_id else None
+        # Item-level privacy is re-evaluated at read time. If a previously visible
+        # item is now hidden (or was deleted), do not leak its stored snapshot name
+        # or actor through the append-only activity stream.
+        if row.item_id and not item:
+            continue
         serialized.append({
             "sequence": row.sequence,
             "kind": row.kind,
@@ -148,6 +153,8 @@ def shopping_session_current(request):
             "item": ShoppingItemSerializer(item, context={"request": request}).data if item else None,
             "created_at": row.created_at,
         })
+    # Advance over filtered rows as well, otherwise a client could refetch the same
+    # hidden activity forever and turn filtering into an existence side channel.
     cursor = activities[-1].sequence if activities else session.activity_seq
     return Response({
         "session": _session_payload(session, request.user),
