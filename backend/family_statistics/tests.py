@@ -207,3 +207,31 @@ class StatisticsTests(TestCase):
             self.read()
         self.assertLessEqual(len(queries), 14, [q["sql"] for q in queries])
         self.assertFalse(any('FROM "family_statistics_familycontributionevent"' in q["sql"] for q in queries))
+
+
+    def test_actor_finalization_cannot_relink_removed_member_after_rejoin(self):
+        self.client.force_authenticate(self.other)
+        task = Task.objects.create(family=self.family, title="Task")
+        response = self.client.post("/api/actions/execute/", {"action_id": f"task:{task.pk}", "request_id": str(uuid4())}, format="json")
+        self.assertEqual(response.status_code, 200)
+        from family.unified_action_models import ActionCompletion
+        completion = ActionCompletion.objects.get(pk=response.data["id"])
+        self.other_member.delete()
+        Membership.objects.create(family=self.family, user=self.other)
+        completion.duration_minutes = 30
+        completion.save()
+        event = Event.objects.get(entity_id=task.id, action="completed")
+        self.assertIsNone(event.actor_membership_id)
+        self.assertIsNone(event.actor_user_id)
+
+    def test_completion_key_normalizes_offsets(self):
+        from .services import task_completion_key
+        from zoneinfo import ZoneInfo
+        when = timezone.now()
+        self.assertEqual(task_completion_key("id", when), task_completion_key("id", when.astimezone(ZoneInfo("Europe/Berlin"))))
+
+    def test_large_legacy_estimate_never_blocks_completion(self):
+        task = Task.objects.create(family=self.family, title="Long project", estimate_minutes=20000)
+        result = self.client.post("/api/actions/execute/", {"action_id": f"task:{task.pk}", "request_id": str(uuid4())}, format="json")
+        self.assertEqual(result.status_code, 200)
+        self.assertIsNone(Event.objects.get(entity_id=task.pk, action="completed").effort_minutes)

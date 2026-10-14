@@ -1,11 +1,13 @@
 """Consume canonical successful mutation events, never derive actor from assignee."""
 from django.db.models.signals import post_save, pre_delete, pre_save
 from django.dispatch import receiver
+from django.utils import timezone
+from datetime import timedelta
 from family.models import Task, Routine, RoutineLog, ShoppingItem, ShoppingList, ShoppingPurchaseEvent, Membership, Family
 from family.request_context import current_actor
 from family.unified_action_models import ActionDomainEvent, ActionCompletion
 from .models import FamilyContributionEvent as Event
-from .services import record, remove_entity, recompute
+from .services import record, remove_entity, recompute, task_completion_key, task_effort
 
 
 def public_task(task):
@@ -16,7 +18,7 @@ def event_key(row):
     if row.completion_id:
         if row.completion.legacy_log_id:
             return f"routine-log:{row.completion.legacy_log_id}"
-        return f"task-completion:{row.action.legacy_task_id}:{row.completion.occurred_at.isoformat()}"
+        return task_completion_key(row.action.legacy_task_id, row.completion.occurred_at)
     return f"action-event:{row.id}"
 
 
@@ -33,7 +35,7 @@ def action_event(row):
     if verb == "created" and not actor and action.legacy_task_id:
         actor = obj.created_by
     when = completion.occurred_at if completion and verb == "completed" else row.created_at
-    effort = obj.estimate_minutes if action.legacy_task_id and verb == "completed" else None
+    effort = task_effort(obj) if action.legacy_task_id and verb == "completed" else None
     record(family=obj.family, domain=action.kind_hint, action=verb, entity_type=action.kind_hint,
         entity_id=obj.id, occurred_at=when, actor=actor, effort_minutes=effort,
         source="automation" if action.source.startswith("rule:") else "ui", idempotency_key=event_key(row))
@@ -55,7 +57,7 @@ def on_completion_update(sender, instance, created, raw=False, **kwargs):
             with transaction.atomic():
                 family = Family.objects.select_for_update().get(pk=instance.action.family_id)
                 membership = Membership.objects.filter(family=family, user=instance.actor).first() if instance.actor_id else None
-                changed = Event.objects.filter(family=family, idempotency_key=event_key(row)).exclude(actor_membership=membership).update(actor_user=instance.actor if membership else None, actor_membership=membership)
+                changed = Event.objects.filter(family=family, idempotency_key=event_key(row), attribution_finalized=False, created_at__gte=timezone.now()-timedelta(minutes=5)).exclude(actor_membership=membership).update(actor_user=instance.actor if membership else None, actor_membership=membership, attribution_finalized=True)
                 if changed:
                     recompute(family)
 
@@ -123,7 +125,7 @@ def on_log_delete(sender, instance, **kwargs):
 
 @receiver(pre_delete, sender=Membership)
 def on_member_delete(sender, instance, **kwargs):
-    Event.objects.filter(actor_membership=instance).update(actor_membership=None, actor_user=None)
+    Event.objects.filter(actor_membership=instance).update(actor_membership=None, actor_user=None, attribution_finalized=True)
     # Recompute before FK deletion so named daily buckets disappear immediately.
     recompute(instance.family)
 

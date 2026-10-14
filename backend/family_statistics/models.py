@@ -26,6 +26,7 @@ class FamilyContributionEvent(TimestampedModel):
     source = models.CharField(max_length=16, choices=[(s, s) for s in ("ui", "automation", "import", "system")])
     idempotency_key = models.CharField(max_length=160)
     schema_version = models.PositiveSmallIntegerField(default=1)
+    attribution_finalized = models.BooleanField(default=False)
 
     class Meta:
         constraints = [

@@ -7,7 +7,7 @@ Statistics is a tenant-private Premium/VIP read model, separate from #204 operat
 - **Completed**: task/routine execution records and purchased shopping items. The total is explicitly an activity mix, never a universal effort/fairness score.
 - **Organized**: task/routine creations, shopping items added and shopping lists created. Planning remains separate from execution.
 - **Reopened**: task reopening actions; prior successful executions remain historical activity, not a current completion ratio. A deleted routine log is a correction and removes its execution from statistics.
-- **Estimated effort**: task completion estimates only. Known-estimate completion count / all task completions is shown alongside minutes. Actual duration is not silently mixed with estimates.
+- **Estimated effort**: task completion estimates only. Known-estimate completion count / all task completions is shown alongside minutes. Legacy estimates above 10,080 minutes are excluded from effort coverage and never block canonical completion. Actual duration is not silently mixed with estimates.
 - **Actor coverage**: execution events with a valid actor membership / all executions. No task assignee or current TaskStatusEvent is interpreted as the completing actor.
 - **Overdue now**: current visible incomplete tasks with due_at before now, explicitly a snapshot rather than a period completion rate.
 - **Routine due/rate**: unavailable for historical periods without an immutable due/schedule basis. Never manufacture a denominator from today's adaptive interval. Routine executions and current schedule remain available.
@@ -21,7 +21,7 @@ Gift/birthday/hidden task and shopping rows are excluded altogether, rather than
 
 ## Attribution and retries
 
-ActionDomainEvent / ActionCompletion from #594/#606 is the task/routine event contract. Completion signals can initially precede command attribution; finalization updates the same stable completion bucket and recomputes rollups transactionally. Stable keys use task ID + completion timestamp, RoutineLog ID, ShoppingPurchaseEvent ID and canonical create event ID. Retries of the same successful mutation do not increment again. Historical task completion without a proven actor contributes only to the family total. Reopening and a new completion is a new successful execution.
+ActionDomainEvent / ActionCompletion from #594/#606 is the task/routine event contract. Completion signals can initially precede command attribution; one-time finalization within the command window updates the same stable completion bucket and recomputes rollups transactionally. Stable keys use task ID + completion timestamp, RoutineLog ID, ShoppingPurchaseEvent ID and canonical create event ID. Retries of the same successful mutation do not increment again. Historical task completion without a proven actor contributes only to the family total. Reopening and a new completion is a new successful execution.
 
 Backfill consumes retained canonical Action completion events, RoutineLog.done_by and ShoppingPurchaseEvent.purchased_by. Shopping events are imported only while their source item's non-private visibility can still be proved. Current completed tasks without canonical actor history are imported as unknown, not assigned to assignee. Backfill never imports historical planning from the migration-time Action mirror creation.
 
@@ -29,7 +29,7 @@ Backfill consumes retained canonical Action completion events, RoutineLog.done_b
 
 Collection and reads stop when statistics entitlement is revoked. Data already collected stays subject to the same retention/privacy rules; upgrading does not infer actors for the intervening period. `STATISTICS_RETENTION_DAYS` defaults to 730 days, with a minimum of 730 to support 365-day comparisons. Both raw events and rollups use this bound; no infinite aggregate retention.
 
-The existing `sync_integrations` scheduler prunes expired contributions and rebuilds affected families. `python manage.py rebuild_family_statistics` additionally performs an explicit deterministic repair. `--family=<uuid>` scopes maintenance; `--backfill` imports only the reviewed sources above. It is safe to rerun. Family timezone changes rebuild local-day buckets, including DST. Family deletion cascades all rows. Membership/account deletion clears both user and membership attribution, recomputes anonymous buckets, and rejoining never relinks the previous history. Stored IDs contain no content and API responses never reconstruct deleted content.
+The existing `sync_integrations` scheduler prunes expired contributions and rebuilds affected families. `python manage.py rebuild_family_statistics` additionally performs an explicit deterministic repair. `--family=<uuid>` scopes maintenance; `--backfill` imports only the reviewed sources above. It is safe to rerun. Family timezone changes rebuild local-day buckets, including DST. Family deletion cascades all rows. Membership/account deletion clears both user and membership attribution, recomputes anonymous buckets, and rejoining never relinks the previous history, including later canonical completion edits (a finalized-attribution privacy tombstone survives anonymization). Stored IDs contain no content and API responses never reconstruct deleted content.
 
 ## Performance and migrations
 
