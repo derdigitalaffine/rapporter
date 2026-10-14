@@ -10,6 +10,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.response import Response
 from entitlements.services import require_capability, resolve_entitlements
+from entitlements.models import CapabilityDefinition
 from family.models import Family, Membership, Task, Routine, RoutineLog
 from .models import FamilyContributionDaily as Daily, FamilyContributionEvent as Event
 from .services import zone_for
@@ -133,7 +134,7 @@ def overview(request):
         "generated_at": timezone.now(), "role": membership.role, "can_compare_members": adults,
         "can_export": adults, "scope": "self" if membership.role == "child" else "family",
         "actor_coverage": summary["actor_coverage"], "effort_coverage": summary["effort_coverage"],
-        "historical_attribution": "only_proven_actors", "routine_due_coverage": "unavailable",
+        "historical_attribution": "only_proven_actors", "attribution_since": CapabilityDefinition.objects.filter(key="statistics").values_list("created_at", flat=True).first(), "routine_due_coverage": "unavailable",
         "routine_rate": None, "available_domains": domains},
         "summary": {**summary, "overdue_now": overdue}, "previous": previous,
         "members": members, "domains": breakdown, "timeseries": timeseries, "insights": insights})
@@ -170,19 +171,24 @@ def detail(request, domain):
     extra = {"summary": totals(read_rows(family, domains, start, end, selected, key))}
     if key == "routine":
         # No due denominator is invented for adaptive/historically changing schedules.
-        routines = Routine.objects.filter(family=family).select_related("family").prefetch_related(Prefetch("logs", queryset=RoutineLog.objects.only("id", "routine_id", "done_at").order_by("-done_at")[:64])).order_by("created_at", "id")
+        routines = Routine.objects.filter(family=family).select_related("family").prefetch_related(Prefetch("logs", queryset=RoutineLog.objects.only("id", "routine_id", "done_at").order_by("-done_at")[:64], to_attr="_statistics_logs")).order_by("created_at", "id")
         if membership.role == "child" or selected:
             routines = routines.filter(pk__in=events.values("entity_id"))
         extra["active_routines"] = routines.filter(active=True).count()
         groups = {row["entity_id"]: row for row in events.filter(action="completed").values("entity_id").annotate(total=Count("id"), latest=Max("occurred_at"))}
-        from family.predictions import routine_prediction
         extra["routines"] = [{"id": str(row.id), "name": row.name, "active": row.active,
             "interval_days": row.suggested_interval_days,
             "completed": groups.get(row.pk, {}).get("total", 0),
             "last_completed": groups.get(row.pk, {}).get("latest"),
-            "next_due": routine_prediction(row).get("expected_at"), "due_basis": "canonical_routine_prediction",
+            "next_due": current_prediction(row).get("expected_at"), "due_basis": "canonical_routine_prediction",
             "href": f"?page=routines&family={family.id}&routine={row.id}"} for row in routines[:100]]
         extra["due_count"] = None
         extra["completion_rate"] = None
     return Response({"domain": key, "count": count, "page": page, "page_size": 50,
         "has_next": page * 50 < count, "results": result, **extra})
+
+
+def current_prediction(routine):
+    from family.predictions import routine_prediction
+    routine._prefetched_objects_cache["logs"] = routine._statistics_logs
+    return routine_prediction(routine)
