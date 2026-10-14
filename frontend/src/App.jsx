@@ -5,6 +5,8 @@ import {setCreateRankingIdentity} from './create-ranking-client';
 import RoutinesHub from './RoutinesHub';
 import TodoHub from './TodoHub';
 import {startTransition,useEffect,useRef,useState} from 'react';
+import {createPortal} from 'react-dom';
+import useAppViewport from './use-app-viewport';
 import {useTranslation} from 'react-i18next';
 import './session-i18n';
 import './prediction-i18n';
@@ -49,6 +51,7 @@ import SettingsHub from './SettingsHub';
 import {useFamilyPermissions} from './family-permissions';
 import {toast} from './feedback';
 import {APP_PAGES,pageFromLocation,pageHref} from './navigation';
+import {pageIcon,pageLabel,primaryNavCurrent,primaryNavItems,primaryNavLabel} from './app-navigation';
 import './family-context.css';
 import './create-fab.css';
 import './entitlements.css';
@@ -68,8 +71,9 @@ function Login({onDone,expired=false}){const {t,i18n}=useTranslation();const [us
 function DataState({t,error,onRetry}){if(error)return <div className="smart-empty app-load-state" role="alert"><Icon name="warning" size={34}/><strong>{t('sessionUi.loadFailed')}</strong><span>{error}</span><button className="secondary compact" onClick={onRetry}><Icon name="refresh"/>{t('sessionUi.retry')}</button></div>;return <div className="smart-empty app-load-state" role="status"><Icon name="refresh" size={34}/><strong>{t('sessionUi.loading')}</strong></div>}
 
 export default function App(){
- const {t,i18n}=useTranslation();const queryAtBoot=new URLSearchParams(location.search);const integrationCallbackAtBoot=queryAtBoot.has('integration_connected')||queryAtBoot.has('integration_error');const initial=pageFromLocation();const [authed,setAuthed]=useState(isAuthenticated());const [sessionExpired,setSessionExpired]=useState(false);const [sessionUser,setSessionUser]=useState(null);const [active,setActive]=useState(initial);const [data,setData]=useState(demo);const [families,setFamilies]=useState([]);const [activeFamilyId,setActiveFamilyId]=useState(()=>localStorage.getItem(ACTIVE_FAMILY_KEY)||'');const activeFamilyIdRef=useRef(activeFamilyId);const loadRevisionRef=useRef(0);const [loading,setLoading]=useState(false);const [loaded,setLoaded]=useState(false);const [loadError,setLoadError]=useState('');const [installPrompt,setInstallPrompt]=useState(null);const [createFlow,setCreateFlow]=useState(null);const [createRevision,setCreateRevision]=useState(0);const [babyModule,setBabyModule]=useState(null);const [petModule,setPetModule]=useState(null);const [entitlements,setEntitlements]=useState(null);const [messengerUnread,setMessengerUnread]=useState(0);const family=families.find(row=>String(row.id)===String(activeFamilyId))||families[0];const currentMember=family?.memberships?.find(row=>String(row.user)===String(sessionUser?.id));const {role}=useFamilyPermissions(family);const hasCapability=key=>!entitlements||entitlements.capabilities?.includes(key);
+ const {t,i18n}=useTranslation();const queryAtBoot=new URLSearchParams(location.search);const integrationCallbackAtBoot=queryAtBoot.has('integration_connected')||queryAtBoot.has('integration_error');const initial=pageFromLocation();const [authed,setAuthed]=useState(isAuthenticated());const [sessionExpired,setSessionExpired]=useState(false);const [sessionUser,setSessionUser]=useState(null);const [active,setActive]=useState(initial);const [data,setData]=useState(demo);const [families,setFamilies]=useState([]);const [activeFamilyId,setActiveFamilyId]=useState(()=>localStorage.getItem(ACTIVE_FAMILY_KEY)||'');const activeFamilyIdRef=useRef(activeFamilyId);const loadRevisionRef=useRef(0);const [loading,setLoading]=useState(false);const [loaded,setLoaded]=useState(false);const [loadError,setLoadError]=useState('');const [installPrompt,setInstallPrompt]=useState(null);const [createFlow,setCreateFlow]=useState(null);const [createRevision,setCreateRevision]=useState(0);const [babyModule,setBabyModule]=useState(null);const [petModule,setPetModule]=useState(null);const [entitlements,setEntitlements]=useState(null);const [,setMessengerUnread]=useState(0);const family=families.find(row=>String(row.id)===String(activeFamilyId))||families[0];const currentMember=family?.memberships?.find(row=>String(row.user)===String(sessionUser?.id));const {role}=useFamilyPermissions(family);
  const createActions=useCreateActions({userId:sessionUser?.id,page:active,family:authed&&loaded?family:null,role,entitlements});
+ useAppViewport(authed);
  function commitActiveFamilyId(nextId){const value=String(nextId||'');activeFamilyIdRef.current=value;setActiveFamilyId(value)}
  function invalidateLoads(){loadRevisionRef.current+=1}
  function canLeave(detail={}){const event=new CustomEvent('famuhle:before-navigation',{cancelable:true,detail});window.dispatchEvent(event);if(event.defaultPrevented){toast(t('notes:pendingNavigation'),{type:'info'});return false}return true}
@@ -93,9 +97,9 @@ export default function App(){
  async function refreshAfterCreate(){await load();setCreateRevision(value=>value+1)}
  const detail=['documents','board','birthdays','trips','decisions','wishlists','games','weather','expenses','statistics','contracts','integrations','members','profile','automations','notifications','loyalty'].includes(active);const familyKey=family?.id||'none';const contentKey=`${familyKey}-${createRevision}`;
  const pages={statistics:<StatisticsHub key={`statistics-${contentKey}`} family={family} role={role} entitlements={entitlements} onBack={()=>backTo('more')}/>,vehicles:<VehiclesHub key={`vehicles-${contentKey}`} family={family} userId={sessionUser?.id} onBack={()=>backTo('more')}/>,notes:<NotesHub key={`notes-${contentKey}`} family={family} onBack={()=>backTo('home')}/>,documents:<DocumentsHub key={`documents-${contentKey}`} family={family} onBack={()=>backTo('more')}/>,board:<BoardHub key={`board-${contentKey}`} family={family} onBack={()=>backTo('more')}/>,trips:<TravelHub key={`trips-${contentKey}`} family={family} onBack={()=>backTo('more')} onOpen={navigate}/>,decisions:<DecisionsHub key={`decisions-${contentKey}`} family={family} onBack={()=>backTo('more')}/>,games:<GamesHub key={`games-${contentKey}`} family={family} onBack={()=>backTo(new URLSearchParams(location.search).has('task')?'tasks':'more')}/>,wishlists:<WishlistsHub key={`wishlists-${contentKey}`} family={family} onBack={()=>backTo('more')} onCreate={openCreate}/>,home:<TodayHome createActions={createActions} createSuppressed={Boolean(createFlow)} key={`home-${contentKey}`} data={data} family={family} t={t} onTask={toggleTask} open={navigate} onCreate={openCreate}/>,todo:<TodoHub key={`todo-${contentKey}`} family={family} data={data} onCreate={openCreate}/>,tasks:<SmartTasks key={`tasks-${contentKey}`} family={family} currentUserId={sessionUser?.id} onChanged={load}/>,shopping:<SmartShoppingPredicted key={`shopping-${contentKey}`} family={family} onChanged={load}/>,routines:<RoutinesHub key={`routines-${contentKey}`} family={family} userId={sessionUser?.id} onChanged={load}/>,baby:<PregnancyBabyHub key={`baby-${contentKey}`} family={family} onBack={()=>backTo('more')} onModuleChange={setBabyModule}/>,pets:<PetCareHub key={`pets-${contentKey}`} family={family} onBack={()=>backTo('more')} onModuleChange={setPetModule}/>,more:<MorePage key={`more-${contentKey}`} family={family} families={families} role={role} data={data} t={t} i18n={i18n} open={navigate} babyModule={babyModule} petModule={petModule} entitlements={entitlements} onShowOnboarding={showOnboarding} onLogout={signOut} installable={!!installPrompt} onInstall={installApp} onSwitchFamily={switchFamily} loading={loading}/>,settings:<SettingsHub key={`settings-${contentKey}`} open={navigate}/>,calendar:<CalendarHub key={`calendar-${contentKey}`} family={family} t={t} onBack={()=>backTo('more')}/>,weather:<WeatherHub key={`weather-${contentKey}`} family={family} t={t} onBack={()=>backTo('home')}/>,birthdays:<BirthdaysHub key={`birthdays-${contentKey}`} family={family} onBack={()=>backTo('more')}/>,expenses:<ExpensesHub key={`expenses-${contentKey}`} entitlements={entitlements} family={family} onBack={()=>backTo('more')}/>,contracts:<ContractsHub key={`contracts-${contentKey}`} family={family} onBack={()=>backTo('more')} onCreate={openCreate}/>,inbox:<Messenger key={`messenger-${sessionUser?.id}-${familyKey}`} family={family} userId={sessionUser?.id} onBack={()=>backTo(family?'more':'inbox')} onChanged={load} onUnreadChange={setMessengerUnread} onLogout={signOut}/>,integrations:<IntegrationHub key={`integrations-${contentKey}`} family={family} onBack={()=>backTo('more')}/>,automations:<AutomationHub key={`automations-${contentKey}`} family={family} onBack={()=>backTo('more')}/>,members:<FamilyMembers key={`members-${contentKey}`} family={family} onBack={()=>backTo('more')}/>,profile:<ProfilePage key={`profile-${contentKey}`} family={family} onBack={()=>backTo('more')} onChanged={load}/>,notifications:<NotificationSettings key={`notifications-${contentKey}`} family={family} t={t} onBack={()=>backTo('more')}/>,loyalty:<LoyaltyCards key={`loyalty-${contentKey}`} family={family} onBack={()=>backTo('more')}/>};
- const babyInNav=babyModule?.enabled&&babyModule?.authorized&&babyModule?.show_in_main_navigation&&hasCapability('pregnancy_baby');const petInNav=petModule?.enabled&&petModule?.authorized&&petModule?.show_in_main_navigation&&hasCapability('pets');const nav=[['home','home',t('today')],['todo','tasks','To-dos'],['shopping','shopping',t('shopping')],['calendar','calendar',t('calendar')],['inbox','inbox',t('messengerUi.title')],...(babyInNav?[['baby','baby',t('babyUi.short')]]:[]),...(petInNav?[['pets','pet',t('petUi.short')]]:[]),['more','more',t('more')]];const createContext={taskListId:data.task_lists?.[0]?.id||'',shoppingListId:data.shopping_lists?.[0]?.id||''};
- const english=i18n.language.startsWith('en');const headerTitle=({home:t('today'),todo:'To-dos',shopping:t('shopping'),calendar:t('calendar'),inbox:t('messengerUi.title'),more:t('more'),settings:english?'Settings':'Einstellungen',profile:t('profileUi.title'),notifications:t('notifications'),integrations:t('integrations'),automations:t('ifThen'),members:t('members'),routines:t('routineUi.title'),birthdays:t('birthdayUi.title'),baby:t('babyUi.title'),pets:t('petUi.title'),contracts:t('contractUi.title'),loyalty:t('loyaltyUi.title'),vehicles:t('vehiclesUi.title'),trips:english?'Trips':'Reisen',decisions:english?'Decisions':'Entscheidungen',games:english?'Games':'Spiele',wishlists:english?'Wishlists':'Wunschlisten',documents:english?'Documents':'Dokumente',board:english?'Pinboard':'Pinnwand',weather:english?'Weather':'Wetter',expenses:t('createUi.expense'),statistics:t('statisticsUi.title'),tasks:english?'Tasks':'Aufgaben',notes:english?'Notes':'Notizen'})[active]||'FamilyOS';
- return <div className={`app-shell ${active==='inbox'?'messenger-shell':''} ${loaded&&family&&role?'global-create-enabled':''}`}><header className="topbar"><div className="brand-mini" role="heading" aria-level="1"><span>{headerTitle}</span></div><div className="topbar-context">{currentMember&&<button className="profile-shortcut" onClick={()=>navigate('profile')} aria-label={t('profileUi.title')}><MemberAvatar person={currentMember} size={34} decorative/></button>}</div></header><main key={`${familyKey}-${active}`} className="content page-transition" data-page={active}>{loading&&loaded&&<div className="loading" role="status"><Icon name="refresh"/> {t('syncing')}</div>}{!loaded?<DataState t={t} error={loadError} onRetry={()=>load()}/>:family?pages[active]:pages.inbox}</main>{loaded&&family&&!detail&&<nav className="bottom-nav" aria-label="Hauptnavigation" style={{gridTemplateColumns:`repeat(${nav.length},minmax(0,1fr))`}}>{nav.map(([id,icon,label])=><button key={id} className={active===id?'active':''} onClick={()=>navigate(id)} aria-current={active===id?'page':undefined}><Icon name={icon} size={21}/><span>{label}</span>{id==='inbox'&&messengerUnread>0&&<i aria-label={`${messengerUnread} ungelesene Nachrichten`}>{messengerUnread>99?'99+':messengerUnread}</i>}</button>)}</nav>}{loaded&&family&&<GlobalCreate createActions={createActions} page={active} family={family} role={role} context={createContext} onCreate={openCreate} suppressed={Boolean(createFlow)||active==='inbox'||active==='settings'}/>}<CreateFlowHost userId={sessionUser?.id} action={createFlow?.id} family={family} data={data} context={createFlow?.context} onClose={closeCreate} onRefresh={refreshAfterCreate}/></div>
+ const babyInNav=babyModule?.enabled&&babyModule?.authorized&&babyModule?.show_in_main_navigation&&(!entitlements||entitlements.capabilities?.includes('pregnancy_baby'));const petInNav=petModule?.enabled&&petModule?.authorized&&petModule?.show_in_main_navigation&&(!entitlements||entitlements.capabilities?.includes('pets'));const nav=primaryNavItems(t,i18n,{baby:babyInNav,pet:petInNav});const currentNav=primaryNavCurrent(active,nav);const createContext={taskListId:data.task_lists?.[0]?.id||'',shoppingListId:data.shopping_lists?.[0]?.id||''};
+ const headerTitle=pageLabel(active,t,i18n);
+ return <div className={`app-shell ${active==='inbox'?'messenger-shell':''} ${loaded&&family&&role&&active!=='inbox'&&active!=='settings'?'global-create-enabled':''}`} data-primary-nav={loaded&&family&&!detail?'true':'false'}><header className="topbar"><div className="brand-mini" role="heading" aria-level="1"><span>{headerTitle}</span></div><div className="topbar-context">{currentMember&&<button className="profile-shortcut" onClick={()=>navigate('profile')} aria-label={t('profileUi.title')}><MemberAvatar person={currentMember} size={34} decorative/></button>}</div></header><main key={`${familyKey}-${active}`} className="content page-transition" data-page={active}>{loading&&loaded&&<div className="loading" role="status"><Icon name="refresh"/> {t('syncing')}</div>}{!loaded?<DataState t={t} error={loadError} onRetry={()=>load()}/>:family?pages[active]:pages.inbox}</main>{loaded&&family&&!detail&&createPortal(<nav className={`bottom-nav ${nav.length>6?'bottom-nav--dense':''}`} aria-label={primaryNavLabel(i18n)} style={{'--bottom-nav-items':nav.length}}>{nav.map(({id,icon,label})=><button key={id} className={currentNav===id?'active':''} onClick={()=>navigate(id)} aria-current={currentNav===id?'page':undefined} title={label}><Icon name={icon} size={21}/><span>{label}</span></button>)}</nav>,document.body)}{loaded&&family&&<GlobalCreate createActions={createActions} page={active} family={family} role={role} context={createContext} onCreate={openCreate} suppressed={Boolean(createFlow)||active==='inbox'||active==='settings'}/>}<CreateFlowHost userId={sessionUser?.id} action={createFlow?.id} family={family} data={data} context={createFlow?.context} onClose={closeCreate} onRefresh={refreshAfterCreate}/></div>
 }
 
 const MORE_SECTION_IDS=['family','organisation','administration'];
@@ -112,6 +116,7 @@ function MorePage({family,families,role,data,t,i18n,open,babyModule,petModule,en
  const collapsedKey=`famuhle-more-section-collapsed:v1:${familyId}`;
  const [sectionOrder,setSectionOrder]=useState(()=>normalizeMoreSectionOrder(readStoredList(orderKey)));
  const [collapsedSections,setCollapsedSections]=useState(()=>new Set(readStoredList(collapsedKey).filter(id=>MORE_SECTION_IDS.includes(id))));
+ const [announcement,setAnnouncement]=useState('');
  const dragRef=useRef('');
  const [dragging,setDragging]=useState('');
  const [dropTarget,setDropTarget]=useState('');
@@ -120,31 +125,31 @@ function MorePage({family,families,role,data,t,i18n,open,babyModule,petModule,en
  const babyInMainNav=babyModule?.enabled&&babyModule?.authorized&&babyModule?.show_in_main_navigation&&hasCapability('pregnancy_baby');
  const petInMainNav=petModule?.enabled&&petModule?.authorized&&petModule?.show_in_main_navigation&&hasCapability('pets');
  const familyItems=[
-  ['board',english?'Pinboard':'Pinnwand','inbox','',null],
-  ['routines',t('routineUi.title'),'history','',null],
-  ['birthdays',t('birthdayUi.title'),'calendar','',null],
-  ...(babyAvailable&&!babyInMainNav?[['baby',t('babyUi.title'),'baby','','pregnancy_baby']]:[]),
-  ...(petAvailable&&!petInMainNav?[['pets',t('petUi.title'),'pet','','pets']]:[]),
-  ['trips',english?'Trips':'Reisen','route','','travel'],
-  ['decisions',english?'Decisions':'Entscheidungen','check','',null],
-  ['wishlists',english?'Wishlists':'Wunschlisten','heart','',null],
-  ['games',english?'Games':'Spiele','members','',null],
+  ['board',pageLabel('board',t,i18n),pageIcon('board'),'',null],
+  ['routines',pageLabel('routines',t,i18n),pageIcon('routines'),'',null],
+  ['birthdays',pageLabel('birthdays',t,i18n),pageIcon('birthdays'),'',null],
+  ...(babyAvailable&&!babyInMainNav?[['baby',pageLabel('baby',t,i18n),pageIcon('baby'),'','pregnancy_baby']]:[]),
+  ...(petAvailable&&!petInMainNav?[['pets',pageLabel('pets',t,i18n),pageIcon('pets'),'','pets']]:[]),
+  ['trips',pageLabel('trips',t,i18n),pageIcon('trips'),'','travel'],
+  ['decisions',pageLabel('decisions',t,i18n),pageIcon('decisions'),'',null],
+  ['wishlists',pageLabel('wishlists',t,i18n),pageIcon('wishlists'),'',null],
+  ['games',pageLabel('games',t,i18n),pageIcon('games'),'',null],
  ];
  const organisationItems=[
-  ['expenses',t('createUi.expense'),'receipt','','expenses'],
-  ...(role!=='guest'?[['statistics',t('statisticsUi.title'),'trend','','statistics']]:[]),
-  ['contracts',t('contractUi.title'),'receipt','',null],
-  ['documents',english?'Documents':'Dokumente','receipt','',null],
-  ['loyalty',t('loyaltyUi.title'),'store','',null],
-  ...(['owner','adult'].includes(role)?[['vehicles',t('vehiclesUi.title'),'route','','vehicles']]:[]),
+  ['expenses',pageLabel('expenses',t,i18n),pageIcon('expenses'),'','expenses'],
+  ...(role!=='guest'?[['statistics',pageLabel('statistics',t,i18n),pageIcon('statistics'),'','statistics']]:[]),
+  ['contracts',pageLabel('contracts',t,i18n),pageIcon('contracts'),'',null],
+  ['documents',pageLabel('documents',t,i18n),pageIcon('documents'),'',null],
+  ['loyalty',pageLabel('loyalty',t,i18n),pageIcon('loyalty'),'',null],
+  ...(['owner','adult'].includes(role)?[['vehicles',pageLabel('vehicles',t,i18n),pageIcon('vehicles'),'','vehicles']]:[]),
  ];
  const administrationItems=[
-  ['profile',t('profileUi.title'),'user','',null],
-  ['settings',english?'Settings':'Einstellungen','settings','',null],
-  ['members',t('members'),'members','',null],
-  ['notifications',t('notifications'),'warning','',null],
-  ['integrations',t('integrations'),'integrations','',null],
-  ['automations',t('ifThen'),'automation',data.automation_count||'',null],
+  ['profile',pageLabel('profile',t,i18n),pageIcon('profile'),'',null],
+  ['settings',pageLabel('settings',t,i18n),pageIcon('settings'),'',null],
+  ['members',pageLabel('members',t,i18n),pageIcon('members'),'',null],
+  ['notifications',pageLabel('notifications',t,i18n),pageIcon('notifications'),'',null],
+  ['integrations',pageLabel('integrations',t,i18n),pageIcon('integrations'),'',null],
+  ['automations',pageLabel('automations',t,i18n),pageIcon('automations'),data.automation_count||'',null],
  ];
  const tier=entitlements?.display_name||entitlements?.tier||'';
  const lockedAction=label=>toast(t('entitlementsUi.lockedMessage',{feature:label,tier:tier||'Light'}),{type:'info'});
@@ -152,7 +157,8 @@ function MorePage({family,families,role,data,t,i18n,open,babyModule,petModule,en
  const titles={family:english?'Family & everyday life':'Familie & Alltag',organisation:english?'Organisation':'Organisation',administration:english?'Settings & administration':'Einstellungen & Verwaltung'};
  const content={family:familyItems.map(renderItem),organisation:organisationItems.map(renderItem),administration:<><button className="menu-row" onClick={onShowOnboarding}><Icon name="progress"/><span><strong>{t('onboarding.setupMenu')}</strong><small>{t('onboarding.setupMenuHint')}</small></span><Icon name="next"/></button>{administrationItems.map(renderItem)}</>};
  function saveOrder(next){localStorage.setItem(orderKey,JSON.stringify(next));return next}
- function reorderSection(source,target){if(!source||!target||source===target)return;setSectionOrder(current=>{const from=current.indexOf(source);const to=current.indexOf(target);if(from<0||to<0)return current;const next=current.slice();next.splice(from,1);next.splice(to,0,source);return saveOrder(next)})}
+ function announcePosition(id,order){const position=order.indexOf(id)+1;setAnnouncement(english?`${titles[id]} moved to position ${position} of ${order.length}.`:`${titles[id]} auf Position ${position} von ${order.length} verschoben.`)}
+ function reorderSection(source,target){if(!source||!target||source===target)return;setSectionOrder(current=>{const from=current.indexOf(source);const to=current.indexOf(target);if(from<0||to<0)return current;const next=current.slice();next.splice(from,1);next.splice(to,0,source);saveOrder(next);announcePosition(source,next);return next})}
  function toggleSection(id){setCollapsedSections(current=>{const next=new Set(current);if(next.has(id))next.delete(id);else next.add(id);localStorage.setItem(collapsedKey,JSON.stringify([...next]));return next})}
  function finishDrag(){dragRef.current='';setDragging('');setDropTarget('')}
  function startDrag(event,id){dragRef.current=id;setDragging(id);event.dataTransfer.effectAllowed='move';event.dataTransfer.setData('text/plain',id)}
@@ -161,11 +167,12 @@ function MorePage({family,families,role,data,t,i18n,open,babyModule,petModule,en
  function pointerDown(event,id){if(event.pointerType==='mouse'&&event.button!==0)return;dragRef.current=id;setDragging(id);event.currentTarget.setPointerCapture?.(event.pointerId)}
  function pointerMove(event,id){if(dragRef.current!==id)return;const target=document.elementFromPoint(event.clientX,event.clientY)?.closest?.('[data-more-section]')?.dataset.moreSection;if(target&&target!==id){setDropTarget(target);reorderSection(id,target)}}
  function pointerUp(event){if(event.currentTarget.hasPointerCapture?.(event.pointerId))event.currentTarget.releasePointerCapture(event.pointerId);finishDrag()}
- function keyboardMove(event,id){if(event.key!=='ArrowUp'&&event.key!=='ArrowDown')return;event.preventDefault();setSectionOrder(current=>{const index=current.indexOf(id);const nextIndex=index+(event.key==='ArrowUp'?-1:1);if(index<0||nextIndex<0||nextIndex>=current.length)return current;const next=current.slice();[next[index],next[nextIndex]]=[next[nextIndex],next[index]];return saveOrder(next)})}
+ function keyboardMove(event,id){if(event.key!=='ArrowUp'&&event.key!=='ArrowDown')return;event.preventDefault();setSectionOrder(current=>{const index=current.indexOf(id);const nextIndex=index+(event.key==='ArrowUp'?-1:1);if(index<0||nextIndex<0||nextIndex>=current.length)return current;const next=current.slice();[next[index],next[nextIndex]]=[next[nextIndex],next[index]];saveOrder(next);announcePosition(id,next);return next})}
  return <>
   {families.length>1&&<Card><label className="family-switcher" style={{maxWidth:'100%'}}><span className="sr-only">{t('members')}</span><Icon name="members" size={15}/><select value={family?.id||''} onChange={event=>onSwitchFamily(event.target.value)} disabled={loading}>{families.map(item=><option value={item.id} key={item.id}>{item.name}</option>)}</select></label></Card>}
   {entitlements&&<Card><div className="entitlement-summary"><div className="entitlement-summary-main"><Icon name={entitlements.tier==='light'?'lock':'check'}/><span><small>{t('entitlementsUi.access')}</small><strong>{tier}</strong></span></div><span className={`entitlement-tier ${entitlements.tier==='vip'?'vip':''}`}>{tier}</span></div><p className="entitlement-summary-hint">{t('entitlementsUi.tierHint')}</p></Card>}
   {installable&&<Card><button className="menu-row install-row" onClick={onInstall}><Icon name="install"/><span><strong>{t('installApp')}</strong><small>{t('pwaHint')}</small></span><Icon name="next"/></button></Card>}
+  <span className="sr-only" role="status" aria-live="polite">{announcement}</span>
   {sectionOrder.map(id=><MoreSection key={id} id={id} title={titles[id]} collapsed={collapsedSections.has(id)} dragging={dragging===id} dropTarget={dropTarget===id} onToggle={toggleSection} onDragStart={startDrag} onDragOver={dragOver} onDrop={drop} onDragEnd={finishDrag} onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={pointerUp} onKeyDown={keyboardMove} dragLabel={english?`${titles[id]} reorder. Drag or use up/down arrow keys.`:`${titles[id]} verschieben. Ziehen oder Pfeiltasten hoch/runter verwenden.`}>{content[id]}</MoreSection>)}
   <Card><button className="menu-row" onClick={()=>switchLanguage(i18n)}><Icon name="language"/><span>{t('language')}</span><strong>{i18n.language.toUpperCase()}</strong></button><button className="menu-row danger-text" onClick={onLogout}><Icon name="logout"/><span>{t('logout')}</span></button></Card>
   <ProgramInfo/>
