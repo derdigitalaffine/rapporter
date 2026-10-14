@@ -16,6 +16,7 @@ urlpatterns = [
     path("baby/pregnancy-utilities/<uuid:session_id>/", views.pregnancy_utility_detail),
     path("baby/pregnancies/<uuid:pregnancy_id>/journal/", views.pregnancy_journal),
     path("baby/managed-children/", child_identity_views.managed_children),
+    path("baby/guardian-settings/", child_identity_views.child_guardian_settings),
     path("baby/profiles/", secure_views.baby_profiles),
     path("baby/profiles/<uuid:baby_id>/", profile_views.baby_profile_detail),
     path("baby/profiles/<uuid:baby_id>/family-profile/", profile_views.child_family_profile),
