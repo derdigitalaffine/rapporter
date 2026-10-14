@@ -6,6 +6,7 @@ import {Icon} from './icons';
 import {toast} from './feedback';
 import {requestCreate} from './create-request';
 import SmartShopping from './SmartShopping';
+import ShoppingBudgetCommitment from './ShoppingBudgetCommitment';
 import {SHOPPING_BUDGET_PURCHASE_EVENT} from './shopping-offline';
 import './shopping-predictions.css';
 
@@ -50,5 +51,5 @@ export default function SmartShoppingPredicted({family,onChanged,...props}){
   window.addEventListener(SHOPPING_BUDGET_PURCHASE_EVENT,openExpense);
   return()=>window.removeEventListener(SHOPPING_BUDGET_PURCHASE_EVENT,openExpense);
  },[family?.id]);
- return <div className="shopping-prediction-shell"><PredictionPanel family={family} onAccepted={accepted}/><SmartShopping key={`${family?.id||'none'}-${revision}`} family={family} onChanged={onChanged} {...props}/></div>
+ return <div className="shopping-prediction-shell"><PredictionPanel family={family} onAccepted={accepted}/><ShoppingBudgetCommitment key={`budget-${family?.id||'none'}-${revision}`} family={family} onChanged={accepted}/><SmartShopping key={`${family?.id||'none'}-${revision}`} family={family} onChanged={onChanged} {...props}/></div>
 }
