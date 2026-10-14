@@ -82,8 +82,10 @@ class ExpenseBudgetSerializer(RevisionCheckedPlanningSerializer):
 
     def get_over_budget(self, obj):
         state = self._state(obj)
-        capacity = money(state["planned_amount"] + state["carryover_amount"])
-        return state["spent_amount"] > capacity
+        # Compatibility: this keeps the established "actual spend exceeded the
+        # planned amount" signal. Carryover/reservations belong to availability
+        # and its separate over_available state.
+        return state["spent_amount"] > state["planned_amount"]
 
     def validate_amount(self, value):
         if value < 0:
