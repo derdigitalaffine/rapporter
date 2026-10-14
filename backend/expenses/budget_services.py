@@ -85,6 +85,8 @@ def replace_budget_allocations(expense, rows):
 
 
 def ledger_budget_summary(ledger):
+    from .commitment_models import BudgetCommitment
+
     expenses = Expense.objects.filter(
         _ledger_scope(ledger),
         family=ledger.family,
@@ -97,15 +99,26 @@ def ledger_budget_summary(ledger):
     )
     spent = money(spent)
     unconverted_count = expenses.exclude(currency__iexact=ledger.base_currency).count()
+    reserved = BudgetCommitment.objects.filter(
+        family=ledger.family,
+        ledger=ledger,
+        status=BudgetCommitment.Status.ACTIVE,
+        currency__iexact=ledger.base_currency,
+    ).aggregate(total=Sum("amount"))["total"] or Decimal("0.00")
+    reserved = money(reserved)
 
     overall_budget = money(ledger.budget_amount) if ledger.budget_amount is not None else None
     remaining = money(overall_budget - spent) if overall_budget is not None else None
+    available = money(overall_budget - spent - reserved) if overall_budget is not None else None
 
     return {
         "currency": ledger.base_currency.upper(),
         "budget_amount": overall_budget,
         "spent_amount": spent,
+        "reserved_amount": reserved,
         "remaining_amount": remaining,
+        "available_amount": available,
         "over_budget": bool(overall_budget is not None and spent > overall_budget),
+        "over_available": bool(overall_budget is not None and spent + reserved > overall_budget),
         "unconverted_expense_count": unconverted_count,
     }
