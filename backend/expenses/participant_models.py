@@ -1,16 +1,23 @@
 from django.db import models
 
 from family.models import Membership, TimestampedModel
-from .models import ExpenseBudget
+from .models import ExpenseBudget, ExpenseLedger
 
 
 class ExpenseBudgetParticipantPlan(TimestampedModel):
     """Optional participant planning facts; never an ExpenseShare or debt."""
 
+    ledger = models.ForeignKey(
+        ExpenseLedger,
+        on_delete=models.CASCADE,
+        related_name="participant_plans",
+    )
     budget = models.ForeignKey(
         ExpenseBudget,
         on_delete=models.CASCADE,
         related_name="participant_plans",
+        null=True,
+        blank=True,
     )
     member = models.ForeignKey(
         Membership,
@@ -25,7 +32,13 @@ class ExpenseBudgetParticipantPlan(TimestampedModel):
         constraints = [
             models.UniqueConstraint(
                 fields=["budget", "member"],
+                condition=models.Q(budget__isnull=False),
                 name="expense_budget_participant_unique",
+            ),
+            models.UniqueConstraint(
+                fields=["ledger", "member"],
+                condition=models.Q(budget__isnull=True),
+                name="expense_ledger_participant_unique",
             ),
             models.CheckConstraint(
                 condition=models.Q(spending_limit__isnull=True) | models.Q(spending_limit__gte=0),
