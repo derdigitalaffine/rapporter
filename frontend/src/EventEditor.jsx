@@ -1,4 +1,4 @@
-import {useMemo,useRef,useState} from 'react';
+import {useEffect,useMemo,useRef,useState} from 'react';
 import {useTranslation} from 'react-i18next';
 import {api} from './api';
 import {Icon} from './icons';
@@ -12,6 +12,7 @@ import './event-editor.css';
 
 const DEFAULT_DURATION=60;
 const DURATION_PRESETS=[30,60,90,120];
+const unwrap=value=>value?.results||value||[];
 const localValue=value=>value?new Date(new Date(value).getTime()-new Date(value).getTimezoneOffset()*60000).toISOString().slice(0,16):'';
 const iso=value=>value?new Date(value).toISOString():null;
 const parseLocal=value=>value?new Date(value):null;
@@ -56,9 +57,26 @@ export default function EventEditor({family,event=null,currentUserId=null,onClos
   const [timeMode,setTimeMode]=useState(isNew?'duration':'end');
   const [durationMinutes,setDurationMinutes]=useState(()=>isNew?DEFAULT_DURATION:durationBetween(initial.current.starts_at,initial.current.ends_at));
   const [memberQuery,setMemberQuery]=useState('');
+  const [memberDetails,setMemberDetails]=useState([]);
   useDirtyForm(JSON.stringify(edit)!==JSON.stringify(initial.current));
 
-  const members=family?.memberships||[];
+  useEffect(()=>{
+    let live=true;
+    if(!family?.id)return()=>{live=false};
+    api('/memberships/').then(rows=>{
+      if(live)setMemberDetails(unwrap(rows).filter(member=>String(member.family)===String(family.id)));
+    }).catch(()=>{});
+    return()=>{live=false};
+  },[family?.id]);
+
+  const members=useMemo(()=>{
+    const base=family?.memberships||[];
+    if(!memberDetails.length)return base;
+    const details=new Map(memberDetails.map(member=>[String(member.id),member]));
+    const merged=base.map(member=>({...member,...details.get(String(member.id))}));
+    for(const member of memberDetails)if(!merged.some(row=>String(row.id)===String(member.id)))merged.push(member);
+    return merged;
+  },[family?.memberships,memberDetails]);
   const normalizedQuery=memberQuery.trim().toLocaleLowerCase();
   const filteredMembers=useMemo(()=>members.filter(member=>{
     if(!normalizedQuery)return true;

@@ -12,6 +12,7 @@ test('native calendar event shows, edits and persists multiple participant avata
  const state=await installApiMocks(page);
  state.memberships[0].calendar_color='#2F855A';
  state.memberships[1].calendar_color='#2563EB';
+ state.family.memberships=state.memberships.map(({calendar_color,...member})=>({...member}));
  const day=addCivilDay(berlinDayKey(),1);
  const event=state.events.find(item=>item.id==='event-1');
  Object.assign(event,{
@@ -45,6 +46,10 @@ test('native calendar event shows, edits and persists multiple participant avata
  const alex=page.getByRole('checkbox',{name:'Alex',exact:true});
  await expect(sam).toBeChecked();
  await expect(alex).toBeChecked();
+ const samAvatar=page.locator('.event-editor-participant-card').filter({hasText:'Sam'}).locator('.member-avatar-ui');
+ const alexAvatar=page.locator('.event-editor-participant-card').filter({hasText:'Alex'}).locator('.member-avatar-ui');
+ await expect.poll(()=>samAvatar.evaluate(node=>node.style.getPropertyValue('--member-avatar-color'))).toBe('#2563EB');
+ await expect.poll(()=>alexAvatar.evaluate(node=>node.style.getPropertyValue('--member-avatar-color'))).toBe('#2F855A');
  await sam.uncheck();
  await page.locator('.quick-form button.primary').click();
 
