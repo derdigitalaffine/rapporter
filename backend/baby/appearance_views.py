@@ -6,8 +6,9 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 
+from family.membership_calendar import CALENDAR_COLOR_PALETTE, get_calendar_color
 from family.models import Family, Membership
-from family.profile_views import AVATAR_SIZES, _avatar_path, _decode_avatar, _delete_avatar_files, _payload, _profile
+from family.profile_views import AVATAR_SIZES, _avatar_path, _avatar_url, _decode_avatar, _delete_avatar_files, _profile
 
 
 def _managed_child_membership(request_user, membership_id):
@@ -24,6 +25,15 @@ def _managed_child_membership(request_user, membership_id):
     if target.role != Membership.Role.CHILD:
         raise PermissionDenied('Nur Kinderprofile können hier gestaltet werden.')
     return target
+
+
+def _appearance_payload(profile, membership):
+    return {
+        'membership_id': str(membership.id),
+        'avatar_url': _avatar_url(profile),
+        'calendar_color': get_calendar_color(membership),
+        'calendar_color_palette': list(CALENDAR_COLOR_PALETTE),
+    }
 
 
 def _store_avatar(profile, upload):
@@ -58,7 +68,7 @@ def managed_child_avatar(request, membership_id):
     profile = _profile(membership.user)
     if request.method == 'DELETE':
         _remove_avatar(profile)
-        return Response(_payload(profile, membership))
+        return Response(_appearance_payload(profile, membership))
 
     upload = request.FILES.get('avatar')
     if not upload:
@@ -69,4 +79,4 @@ def managed_child_avatar(request, membership_id):
         return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
     except OSError:
         return Response({'detail': 'Profilbild konnte nicht gespeichert werden.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-    return Response(_payload(profile, membership))
+    return Response(_appearance_payload(profile, membership))
