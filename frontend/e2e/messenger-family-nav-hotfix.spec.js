@@ -35,7 +35,7 @@ test('Messenger is the canonical header destination with personal unread badge',
  await messenger.click();
  await expect(page).toHaveURL(/page=inbox/);
  await expect(page.locator('main').getByRole('heading',{name:'Nachrichten',exact:true})).toBeVisible();
- await expect(page.locator('.bottom-nav')).toBeHidden();
+ await expect(page.locator('.bottom-nav')).toBeVisible();
  await expect(messenger).toHaveAttribute('aria-current','page');
  await page.locator('.messenger-page-head').getByRole('button',{name:'Zurück',exact:true}).click();
  await expect(messenger).not.toHaveAttribute('aria-current','page');

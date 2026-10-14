@@ -7,6 +7,7 @@ export async function expectActiveFamily(page,id){
 export async function openFamilySwitcher(page){
  // Detail pages hide primary navigation. Use their visible back action before
  // opening More, including while an old-family request is still in flight.
+ await expect(page.locator('.bottom-nav:visible, main .page-head:visible').first()).toBeVisible();
  if(!await page.locator('.bottom-nav').isVisible()){
   await page.locator('main .page-head').getByRole('button',{name:/^(Zurück|Back)$/}).click();
  }
