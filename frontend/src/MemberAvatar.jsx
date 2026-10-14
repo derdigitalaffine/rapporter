@@ -1,5 +1,6 @@
 import {useEffect,useState} from 'react';
 import {Icon} from './icons';
+import AvatarSymbol from './AvatarSymbol';
 import './member-avatar.css';
 
 function initials(person){
@@ -21,6 +22,6 @@ export default function MemberAvatar({person,size=44,className='',decorative=fal
  const showIcon=mode==='icon'&&person?.avatar_icon_key;
  const style={'--avatar-size':`${size}px`,...(tone?{'--member-avatar-color':tone}:{})};
  return <span className={`member-avatar-ui mode-${showPhoto?'photo':showIcon?'icon':'initials'} ${tone?'has-member-color':''} ${className}`} style={style} aria-label={decorative?undefined:label} aria-hidden={decorative?'true':undefined}>
-  {showPhoto?<img src={src} alt={decorative?'':label} width={size} height={size} loading="lazy" onError={()=>setFailed(true)}/>:showIcon?<Icon name={person.avatar_icon_key} size={Math.round(size*.42)}/>:fallback?<span aria-hidden="true">{fallback}</span>:<Icon name="user" size={Math.round(size*.42)}/>} 
+  {showPhoto?<img src={src} alt={decorative?'':label} width={size} height={size} loading="lazy" onError={()=>setFailed(true)}/>:showIcon?<AvatarSymbol name={person.avatar_icon_key} size={Math.round(size*.42)}/>:fallback?<span aria-hidden="true">{fallback}</span>:<Icon name="user" size={Math.round(size*.42)}/>} 
  </span>;
 }
