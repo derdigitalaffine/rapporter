@@ -17,6 +17,7 @@ import './feedback.css';
 import './accessibility.css';
 import './today-home.css';
 import './responsive.css';
+import './app-navigation.css';
 import './mobile-safety.css';
 import LoginGate from './LoginGate';
 import InviteFlow from './InviteFlow';
