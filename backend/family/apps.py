@@ -61,6 +61,7 @@ class FamilyConfig(AppConfig):
         from . import invitation_signals  # noqa: F401
         from . import prediction_signals  # noqa: F401
         from . import scheduling_models  # noqa: F401
+        from . import scheduling_dependency_signals  # noqa: F401
         from . import signals  # noqa: F401
         from . import unified_action_models  # noqa: F401
         from . import unified_action_signals  # noqa: F401
