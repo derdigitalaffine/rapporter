@@ -1,6 +1,10 @@
 # Persönliche Nachrichten und Freundesduelle
 
-Unter **Nachrichten** gibt es persönliche Chats, Freunde und separat die bisherigen Familien-Mitteilungen. Die persönliche Freundschaft ist kein Familienbeitritt: Aufgaben, Kalender, Dokumente, Familien-Mitteilungen und Familien-Spiele behalten ihre bisherigen Berechtigungen.
+Das **Nachrichten-Symbol im globalen Header** öffnet persönliche Chats, Freunde sowie die nativen Kanäle **Familie** und **System**. Der Familienchat ist für berechtigte Mitglieder beschreibbar; Systemhinweise bleiben nur lesbar. Die fünf sichtbaren Hauptziele bleiben Heute, To-dos, Einkauf, Kalender und Mehr.
+
+Unter **Hinzufügen → Alle Aktionen → Mitteilung** öffnet sich der beschreibbare Familienchat der aktuell ausgewählten Familie mit fokussierter Nachrichteneingabe. Gesendet wird erst ausdrücklich. Ein fehlender beschreibbarer Familienchat führt nie zu einem persönlichen Chat oder einer anderen Familie.
+
+Die persönliche Freundschaft ist kein Familienbeitritt: Aufgaben, Kalender, Dokumente und Familien-Spiele behalten ihre bisherigen Berechtigungen. Der interne Familienchat braucht keine externe Freundschaftseinladung; der persönliche Kontakt- und Zustimmungsvertrag bleibt davon getrennt.
 
 ## Freunde und Einladungen
 
@@ -14,7 +18,7 @@ Einzelchats entstehen nur zwischen bestätigten Freunden. Gruppen laden Freunde 
 
 Text, Emoji, Antworten, Bearbeiten, Löschen für alle, Reaktionen, Suche, ältere Nachrichten und Lesebestätigungen stehen im Chat zur Verfügung. Lesebestätigungen und Push können in den Chat-Einstellungen abgeschaltet werden; einzelne Chats lassen sich stummschalten. Tippanzeige läuft nach acht Sekunden ab und wird nur für berechtigte aktive Teilnehmer gezeigt.
 
-Bilder und PDFs sind private Anhänge (höchstens fünf Dateien zu je 10 MB); Bilder werden über den vorhandenen Dokument-Validator neu kodiert und von Metadaten bereinigt. PDFs werden als Download ausgeliefert. Sprachnachrichten brauchen eine ausdrückliche Mikrofonfreigabe; die Aufnahme endet spätestens nach zwei Minuten. App-Wechsel und Verlassen beenden die Aufnahme. Audio wird vor dem Senden als Entwurf angezeigt. Es gibt keine Aufnahme im Hintergrund.
+Bilder und PDFs sind private Anhänge (höchstens fünf Dateien zu je 30 MB); Bilder werden über den vorhandenen Dokument-Validator neu kodiert und von Metadaten bereinigt. PDFs werden als Download ausgeliefert. Sprachnachrichten brauchen eine ausdrückliche Mikrofonfreigabe; die Aufnahme endet spätestens nach zwei Minuten. App-Wechsel und Verlassen beenden die Aufnahme. Audio wird vor dem Senden als Entwurf angezeigt. Es gibt keine Aufnahme im Hintergrund.
 
 Nachrichten werden auf dem FamilyOS-Server gespeichert. Es wird keine Ende-zu-Ende-Verschlüsselung zugesagt. Chattexte, Anhänge und Einladungstokens werden nicht für Offline-Caches oder Analytics verwendet. Offline bleiben Eingaben nur im aktuell geöffneten Chat; beim Verlassen oder Abmelden werden sie verworfen. Push enthält nur generische Hinweise, keine Chattexte. Bestehende Ruhezeiten werden berücksichtigt.
 
