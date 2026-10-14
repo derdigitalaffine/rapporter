@@ -11,13 +11,16 @@ function initials(person){
 
 export default function MemberAvatar({person,size=44,className='',decorative=false,color=null}){
  const src=person?.avatar_url||person?.avatar||'';
- const tone=color||person?.calendar_color||null;
+ const mode=person?.avatar_mode||(src?'photo':person?.avatar_icon_key?'icon':'initials');
+ const tone=color||person?.avatar_color||person?.calendar_color||null;
  const [failed,setFailed]=useState(false);
  useEffect(()=>setFailed(false),[src]);
  const label=person?.display_name||person?.username||'Person';
  const fallback=initials(person);
+ const showPhoto=mode==='photo'&&src&&!failed;
+ const showIcon=mode==='icon'&&person?.avatar_icon_key;
  const style={'--avatar-size':`${size}px`,...(tone?{'--member-avatar-color':tone}:{})};
- return <span className={`member-avatar-ui ${tone?'has-member-color':''} ${className}`} style={style} aria-label={decorative?undefined:label} aria-hidden={decorative?'true':undefined}>
-  {src&&!failed?<img src={src} alt={decorative?'':label} width={size} height={size} loading="lazy" onError={()=>setFailed(true)}/>:fallback?<span aria-hidden="true">{fallback}</span>:<Icon name="user" size={Math.round(size*.42)}/>} 
+ return <span className={`member-avatar-ui mode-${showPhoto?'photo':showIcon?'icon':'initials'} ${tone?'has-member-color':''} ${className}`} style={style} aria-label={decorative?undefined:label} aria-hidden={decorative?'true':undefined}>
+  {showPhoto?<img src={src} alt={decorative?'':label} width={size} height={size} loading="lazy" onError={()=>setFailed(true)}/>:showIcon?<Icon name={person.avatar_icon_key} size={Math.round(size*.42)}/>:fallback?<span aria-hidden="true">{fallback}</span>:<Icon name="user" size={Math.round(size*.42)}/>} 
  </span>;
 }
