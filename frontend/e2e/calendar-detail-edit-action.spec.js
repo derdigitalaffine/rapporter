@@ -15,8 +15,9 @@ async function routeDirectEventCreate(page){
   });
 }
 
-test('new FamilyOS event keeps edit action visible without scrolling the sheet',async({page})=>{
+test('new FamilyOS event keeps edit action visible in standalone calendar overlays',async({page})=>{
   await page.setViewportSize({width:390,height:640});
+  await page.addInitScript(()=>document.documentElement.setAttribute('data-app-standalone','true'));
   await installApiMocks(page,{dismissOnboarding:true});
   await routeDirectEventCreate(page);
   await page.goto('/?page=calendar&view=list');
@@ -39,6 +40,9 @@ test('new FamilyOS event keeps edit action visible without scrolling the sheet',
 
   const detail=page.getByRole('dialog').filter({hasText:'Eigener neuer Termin'});
   await expect(detail).toBeVisible();
+  expect(await detail.evaluate(node=>Boolean(node.closest('.content')))).toBe(false);
+  await expect(page.locator('body > .sheet-backdrop').filter({has:detail})).toBeVisible();
+
   const editButton=detail.getByRole('button',{name:'Termin bearbeiten',exact:true});
   await expect(editButton).toBeVisible();
   await expect.poll(async()=>detail.locator('.event-detail-body').evaluate(node=>node.scrollHeight>node.clientHeight)).toBe(true);
@@ -48,5 +52,8 @@ test('new FamilyOS event keeps edit action visible without scrolling the sheet',
   expect(box.y+box.height).toBeLessThanOrEqual(640);
 
   await editButton.click();
-  await expect(page.getByRole('dialog',{name:'Termin bearbeiten'})).toBeVisible();
+  const editDialog=page.getByRole('dialog',{name:'Termin bearbeiten'});
+  await expect(editDialog).toBeVisible();
+  expect(await editDialog.evaluate(node=>Boolean(node.closest('.content')))).toBe(false);
+  await expect(page.locator('body > .sheet-backdrop').filter({has:editDialog})).toBeVisible();
 });
