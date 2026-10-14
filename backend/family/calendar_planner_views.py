@@ -1,3 +1,5 @@
+from uuid import UUID
+
 from rest_framework import permissions, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
@@ -48,9 +50,13 @@ def _validated_lane_order(value, family_id):
 @api_view(["GET", "PATCH"])
 @permission_classes([permissions.IsAuthenticated])
 def calendar_planner_preferences(request):
-    family_id = request.query_params.get("family") or request.data.get("family")
-    if not family_id:
+    raw_family_id = request.query_params.get("family") or request.data.get("family")
+    if not raw_family_id:
         return Response({"detail": "Familie fehlt."}, status=status.HTTP_400_BAD_REQUEST)
+    try:
+        family_id = UUID(str(raw_family_id))
+    except (TypeError, ValueError, AttributeError):
+        return Response({"detail": "Ungültige Familie."}, status=status.HTTP_400_BAD_REQUEST)
     membership = _membership(request, family_id)
     if not membership:
         return Response({"detail": "Familie ist für diesen Benutzer nicht verfügbar."}, status=status.HTTP_403_FORBIDDEN)
