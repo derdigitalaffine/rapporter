@@ -21,6 +21,7 @@ urlpatterns = [
     path("baby/profiles/<uuid:baby_id>/family-profile/", profile_views.child_family_profile),
     path("baby/memberships/<uuid:membership_id>/identity/", child_identity_views.child_identity_by_membership),
     path("baby/memberships/<uuid:membership_id>/avatar/", appearance_views.managed_child_avatar),
+    path("baby/memberships/<uuid:membership_id>/avatar/source/", appearance_views.managed_child_avatar_source),
     path("baby/profiles/<uuid:baby_id>/identity/", child_identity_views.child_identity_detail),
     path("baby/profiles/<uuid:baby_id>/guardians/", child_identity_views.child_guardians),
     path("baby/profiles/<uuid:baby_id>/activate-login/", child_identity_views.child_login_activation),

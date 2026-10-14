@@ -12,12 +12,19 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 
+from .avatar_appearance import (
+    appearance_payload,
+    normalize_avatar_color,
+    normalize_avatar_icon,
+    normalize_avatar_mode,
+)
 from .birthday_age import age_is_enabled, set_age_enabled
 from .membership_calendar import CALENDAR_COLOR_PALETTE, get_calendar_color, normalize_calendar_color, set_calendar_color
 from .models import Family, Membership, UserProfile
 
 
 AVATAR_SIZES = (64, 128, 256)
+AVATAR_MASTER_MAX_DIMENSION = 2048
 
 
 def _profile(user):
@@ -40,12 +47,20 @@ def _avatar_url(profile, size=256):
     return f"/api/profile/avatar/{profile.user_id}/{size}/?v={profile.avatar_version}"
 
 
+def _avatar_edit_url(profile):
+    if not profile.avatar_key:
+        return ""
+    return f"/api/profile/avatar/{profile.user_id}/source/?v={profile.avatar_version}"
+
+
 def _payload(profile, membership):
     return {
         "user_id": profile.user_id,
         "username": profile.user.username,
         "email": profile.user.email or "",
         "avatar_url": _avatar_url(profile),
+        "avatar_edit_url": _avatar_edit_url(profile),
+        **appearance_payload(profile),
         "birth_month": profile.birth_month,
         "birth_day": profile.birth_day,
         "birth_year": profile.birth_year,
@@ -80,6 +95,27 @@ def _validated_birthday(profile, data):
     return month, day, year
 
 
+def _update_appearance(profile, data):
+    update_fields = []
+    if "avatar_color" in data:
+        profile.avatar_color = normalize_avatar_color(data.get("avatar_color"))
+        update_fields.append("avatar_color")
+    if "avatar_icon_key" in data:
+        value = data.get("avatar_icon_key")
+        profile.avatar_icon_key = normalize_avatar_icon(value) if value else ""
+        update_fields.append("avatar_icon_key")
+    if "avatar_mode" in data:
+        mode = normalize_avatar_mode(data.get("avatar_mode"))
+        if mode == "photo" and not profile.avatar_key:
+            raise ValueError("Für die Foto-Darstellung muss zuerst ein Profilbild gewählt werden.")
+        if mode == "icon" and not profile.avatar_icon_key:
+            raise ValueError("Für die Symbol-Darstellung muss zuerst ein Symbol gewählt werden.")
+        profile.avatar_mode = mode
+        update_fields.append("avatar_mode")
+    if update_fields:
+        profile.save(update_fields=[*update_fields, "updated_at"])
+
+
 @api_view(["GET", "PATCH"])
 @permission_classes([permissions.IsAuthenticated])
 def profile_detail(request):
@@ -89,6 +125,7 @@ def profile_detail(request):
     if request.method == "PATCH":
         try:
             month, day, year = _validated_birthday(profile, request.data)
+            _update_appearance(profile, request.data)
         except (TypeError, ValueError) as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         visibility = request.data.get("birthday_visibility", membership.birthday_visibility if membership else Membership.BirthdayVisibility.HIDDEN)
@@ -130,22 +167,69 @@ def _avatar_path(key, size):
     return _avatar_directory() / f"{key}-{size}.webp"
 
 
+def _avatar_master_path(key):
+    return _avatar_directory() / f"{key}-source.webp"
+
+
 def _delete_avatar_files(key):
     if not key:
         return
-    for size in AVATAR_SIZES:
+    for path in [*(_avatar_path(key, size) for size in AVATAR_SIZES), _avatar_master_path(key)]:
         try:
-            _avatar_path(key, size).unlink(missing_ok=True)
+            path.unlink(missing_ok=True)
         except OSError:
             pass
 
 
-def _decode_avatar(upload):
+def _decode_image_upload(upload):
     from documents.images import decode_image, read_image_upload
-    image = decode_image(read_image_upload(upload))
+    return decode_image(read_image_upload(upload))
+
+
+def _decode_avatar(upload):
+    image = _decode_image_upload(upload)
     side = min(image.width, image.height)
     left, top = (image.width - side) // 2, (image.height - side) // 2
     return image.crop((left, top, left + side, top + side))
+
+
+def _decode_avatar_source(upload):
+    image = _decode_image_upload(upload)
+    image.thumbnail((AVATAR_MASTER_MAX_DIMENSION, AVATAR_MASTER_MAX_DIMENSION), Image.Resampling.LANCZOS)
+    return image
+
+
+def _save_avatar_master(image, key):
+    image.save(_avatar_master_path(key), format="WEBP", quality=90, method=6)
+
+
+def _store_avatar(profile, upload, source_upload=None):
+    image = _decode_avatar(upload)
+    source_image = _decode_avatar_source(source_upload) if source_upload else image.copy()
+    key = uuid.uuid4().hex
+    try:
+        _save_avatar_master(source_image, key)
+        for size in AVATAR_SIZES:
+            rendition = image.resize((size, size), Image.Resampling.LANCZOS)
+            rendition.save(_avatar_path(key, size), format="WEBP", quality=88, method=6)
+    except OSError:
+        _delete_avatar_files(key)
+        raise
+    old_key = profile.avatar_key
+    profile.avatar_key = key
+    profile.avatar_mode = "photo"
+    profile.avatar_version = uuid.uuid4()
+    profile.save(update_fields=["avatar_key", "avatar_mode", "avatar_version", "updated_at"])
+    _delete_avatar_files(old_key)
+
+
+def _remove_avatar(profile):
+    old_key = profile.avatar_key
+    profile.avatar_key = ""
+    profile.avatar_mode = "icon" if profile.avatar_icon_key else "initials"
+    profile.avatar_version = uuid.uuid4()
+    profile.save(update_fields=["avatar_key", "avatar_mode", "avatar_version", "updated_at"])
+    _delete_avatar_files(old_key)
 
 
 @api_view(["POST", "DELETE"])
@@ -153,32 +237,17 @@ def _decode_avatar(upload):
 def profile_avatar(request):
     profile = _profile(request.user)
     if request.method == "DELETE":
-        old_key = profile.avatar_key
-        profile.avatar_key = ""
-        profile.avatar_version = uuid.uuid4()
-        profile.save(update_fields=["avatar_key", "avatar_version", "updated_at"])
-        _delete_avatar_files(old_key)
+        _remove_avatar(profile)
         return Response(_payload(profile, _membership(request.user, request.query_params.get("family"))))
     upload = request.FILES.get("avatar")
     if not upload:
         return Response({"detail": "Profilbild fehlt."}, status=status.HTTP_400_BAD_REQUEST)
     try:
-        image = _decode_avatar(upload)
+        _store_avatar(profile, upload, request.FILES.get("avatar_source"))
     except ValueError as exc:
         return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
-    key = uuid.uuid4().hex
-    try:
-        for size in AVATAR_SIZES:
-            rendition = image.resize((size, size), Image.Resampling.LANCZOS)
-            rendition.save(_avatar_path(key, size), format="WEBP", quality=88, method=6)
     except OSError:
-        _delete_avatar_files(key)
         return Response({"detail": "Profilbild konnte nicht gespeichert werden."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-    old_key = profile.avatar_key
-    profile.avatar_key = key
-    profile.avatar_version = uuid.uuid4()
-    profile.save(update_fields=["avatar_key", "avatar_version", "updated_at"])
-    _delete_avatar_files(old_key)
     return Response(_payload(profile, _membership(request.user, request.query_params.get("family"))))
 
 
@@ -192,6 +261,14 @@ def _can_read_avatar(request_user, target_user_id):
     ).exists()
 
 
+def _avatar_file_response(path, profile, variant):
+    response = FileResponse(path.open("rb"), content_type="image/webp")
+    response["Cache-Control"] = "private, max-age=31536000, immutable"
+    response["ETag"] = f'"{profile.avatar_version}-{variant}"'
+    response["X-Content-Type-Options"] = "nosniff"
+    return response
+
+
 @api_view(["GET"])
 @permission_classes([permissions.IsAuthenticated])
 def profile_avatar_file(request, user_id, size):
@@ -203,8 +280,22 @@ def profile_avatar_file(request, user_id, size):
     path = _avatar_path(profile.avatar_key, size)
     if not path.is_file():
         raise Http404()
-    response = FileResponse(path.open("rb"), content_type="image/webp")
-    response["Cache-Control"] = "private, max-age=31536000, immutable"
-    response["ETag"] = f'"{profile.avatar_version}-{size}"'
-    response["X-Content-Type-Options"] = "nosniff"
-    return response
+    return _avatar_file_response(path, profile, size)
+
+
+@api_view(["GET"])
+@permission_classes([permissions.IsAuthenticated])
+def profile_avatar_source(request, user_id):
+    if not (request.user.is_superuser or request.user.id == user_id):
+        # Guardians use the managed-child endpoint to retrieve an editable source;
+        # the self-service source remains intentionally private.
+        raise Http404()
+    profile = UserProfile.objects.filter(user_id=user_id).first()
+    if not profile or not profile.avatar_key:
+        raise Http404()
+    path = _avatar_master_path(profile.avatar_key)
+    if not path.is_file():
+        path = _avatar_path(profile.avatar_key, 256)
+    if not path.is_file():
+        raise Http404()
+    return _avatar_file_response(path, profile, "source")

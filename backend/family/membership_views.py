@@ -2,6 +2,7 @@ from rest_framework import permissions, serializers, status, viewsets
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.response import Response
 
+from .avatar_appearance import appearance_payload
 from .membership_calendar import CALENDAR_COLOR_PALETTE, get_calendar_color, set_calendar_color
 from .models import Membership
 from .serializers import MembershipSerializer
@@ -10,6 +11,11 @@ from .serializers import MembershipSerializer
 class CalendarMembershipSerializer(MembershipSerializer):
     calendar_color = serializers.SerializerMethodField()
     calendar_color_palette = serializers.SerializerMethodField()
+    avatar_mode = serializers.SerializerMethodField()
+    avatar_icon_key = serializers.SerializerMethodField()
+    avatar_color = serializers.SerializerMethodField()
+    avatar_color_palette = serializers.SerializerMethodField()
+    avatar_icon_options = serializers.SerializerMethodField()
 
     def get_calendar_color(self, obj):
         return get_calendar_color(obj)
@@ -17,8 +23,35 @@ class CalendarMembershipSerializer(MembershipSerializer):
     def get_calendar_color_palette(self, obj):
         return CALENDAR_COLOR_PALETTE
 
+    def _appearance(self, obj):
+        try:
+            profile = obj.user.familyos_profile
+        except Exception:
+            from .profile_views import _profile
+            profile = _profile(obj.user)
+        return appearance_payload(profile)
+
+    def get_avatar_mode(self, obj):
+        return self._appearance(obj)["avatar_mode"]
+
+    def get_avatar_icon_key(self, obj):
+        return self._appearance(obj)["avatar_icon_key"]
+
+    def get_avatar_color(self, obj):
+        return self._appearance(obj)["avatar_color"]
+
+    def get_avatar_color_palette(self, obj):
+        return self._appearance(obj)["avatar_color_palette"]
+
+    def get_avatar_icon_options(self, obj):
+        return self._appearance(obj)["avatar_icon_options"]
+
     class Meta(MembershipSerializer.Meta):
-        fields = MembershipSerializer.Meta.fields + ["calendar_color", "calendar_color_palette"]
+        fields = MembershipSerializer.Meta.fields + [
+            "calendar_color", "calendar_color_palette",
+            "avatar_mode", "avatar_icon_key", "avatar_color",
+            "avatar_color_palette", "avatar_icon_options",
+        ]
 
 
 class MembershipViewSet(viewsets.ModelViewSet):
