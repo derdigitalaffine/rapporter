@@ -59,21 +59,22 @@ test('checkout · explicit finish keeps open items and reload reopens immutable 
  await expect.poll(()=>run.startCalls).toBeGreaterThan(startsBeforeReload);
 });
 
-test('checkout · amount handoff keeps finance participants explicit and linked expense survives reload',async({page})=>{
- let linked=null;let expensePayload=null;let savedExpense=null;
+test('checkout · amount handoff retries context linking without duplicating the expense request identity',async({page})=>{
+ let linked=null;let expensePayload=null;let savedExpense=null;let linkAttempts=0;const expensePayloads=[];
  const run=await bootCheckout(page,{count:1,onRoutes:async({page,state})=>{
   await page.route('**/api/families/family-1/',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(state.family)}));
   await page.route('**/api/shopping-lists/shop-1/',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(state.shoppingLists[0])}));
   await page.route('**/api/expenses/',async route=>{
    if(route.request().method()!=='POST')return route.fallback();
-   expensePayload=route.request().postDataJSON();
+   expensePayload=route.request().postDataJSON();expensePayloads.push(expensePayload);
    savedExpense={id:expenseId,...expensePayload,total_amount:expensePayload.total_amount,currency:expensePayload.currency||'EUR',source:'manual',status:'posted'};
    return route.fulfill({status:201,contentType:'application/json',body:JSON.stringify(savedExpense)});
   });
   await page.route(new RegExp(`/api/expenses/${expenseId}/(?:\\?.*)?$`),route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(savedExpense)}));
   await page.route(/\/api\/context-links\/(?:\?.*)?$/,async route=>{
    if(route.request().method()==='POST'){
-    linked=route.request().postDataJSON();
+    linkAttempts+=1;linked=route.request().postDataJSON();
+    if(linkAttempts===1)return route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({detail:'Context link unavailable'})});
     return route.fulfill({status:201,contentType:'application/json',body:JSON.stringify({created:true,link:{id:linkId}})});
    }
    return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({count:savedExpense?1:0,results:savedExpense?[{id:linkId,relation:'context',source:{type:'expense',id:expenseId,lifecycle:'available',deep_link:`/?page=expenses&expense=${expenseId}`},context:{type:'shopping_session',id:sessionId,lifecycle:'completed',deep_link:`/?page=shopping&list=shop-1&mode=store&session=${sessionId}`}}]:[]})});
@@ -89,10 +90,17 @@ test('checkout · amount handoff keeps finance participants explicit and linked 
  await expect(expenseDialog.getByLabel('Optionaler Titel')).toHaveValue('Markt');
  await expenseDialog.getByLabel('Betrag').fill('43,27');
  await expenseDialog.getByRole('button',{name:/Speichern/}).click();
+ await expect(expenseDialog).toBeVisible();
+ expect(linkAttempts).toBe(1);
+ expect(expensePayloads).toHaveLength(1);
+ await expenseDialog.getByRole('button',{name:/Speichern/}).click();
  await expect(page.getByRole('heading',{name:'Einkauf abgeschlossen'})).toBeVisible();
  await expect(page.getByText(/43,27/)).toBeVisible();
  expect(expensePayload.title).toBe('Markt');
  expect(expensePayload.participants.map(String).sort()).toEqual(['member-1','member-2'].sort());
+ expect(expensePayloads).toHaveLength(2);
+ expect(expensePayloads[1].client_request_id).toBe(expensePayloads[0].client_request_id);
+ expect(linkAttempts).toBe(2);
  expect(linked).toEqual({family:'family-1',source:{type:'expense',id:expenseId},context:{type:'shopping_session',id:sessionId},relation:'context'});
  expect(run.completeCalls).toHaveLength(1);
 
