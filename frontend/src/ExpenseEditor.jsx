@@ -61,7 +61,7 @@ function accountDefaults(account,members){
 }
 function confidenceLabel(value,t){if(value>=.82)return['good',t('expensesUi.confidenceHigh')];if(value>=.55)return['warn',t('expensesUi.confidenceMedium')];return['low',t('expensesUi.confidenceLow')]}
 
-export default function ExpenseEditor({family,expense=null,onClose,onSaved,onUndo,initialMode='quick',initialLedger='',initialBudget=''}){
+export default function ExpenseEditor({family,expense=null,onClose,onSaved,onUndo,initialMode='quick',initialLedger='',initialBudget='',createExpense=null}){
  const {t,i18n}=useTranslation();
  const members=family?.memberships||[];
  const {membership}=useFamilyPermissions(family);
@@ -191,12 +191,13 @@ export default function ExpenseEditor({family,expense=null,onClose,onSaved,onUnd
   const payload={family:family.id,category:form.category,title:form.title.trim(),merchant:form.title.trim(),total_amount:normalizeAmount(form.amount),currency:form.currency,occurred_at:localMidday(form.date),funding_source:form.funding_source,ledger:form.ledger||undefined};
   if(!isShared){payload.paid_by=form.paid_by||undefined;payload.participants=form.participants;payload.split_type=form.split_type;payload.split_values=form.split_type==='equal'?undefined:form.split_values}
   try{
-   let saved;
+   let saved;let customCreated=false;
    if(draft?.id&&draft?.status==='draft')saved=await api(`/expenses/${draft.id}/`,{method:'PATCH',body:JSON.stringify({...payload,finalize:true})});
    else if(isExisting)saved=await api(`/expenses/${expense.id}/`,{method:'PATCH',body:JSON.stringify(payload)});
+   else if(createExpense){saved=await createExpense({...payload,client_request_id:quickRequestId.current},{budget:form.budget});customCreated=true}
    else saved=await api('/expenses/',{method:'POST',body:JSON.stringify({...payload,client_request_id:quickRequestId.current})});
    setDraft(saved);
-   await syncBudgetAllocation(saved);
+   if(!customCreated)await syncBudgetAllocation(saved);
    toast(t('expensesUi.save'),{type:'success'});
    await onSaved?.(saved,{budget:form.budget});
   }catch(err){setError(err.message);setBusy(false)}
