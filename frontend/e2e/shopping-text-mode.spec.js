@@ -10,6 +10,17 @@ async function bootShopping(page){
   await expect(page.getByRole('heading',{name:'Einkauf',exact:true})).toBeVisible();
 }
 
+async function openTextMode(page){
+  await page.getByRole('group',{name:'Mehr'}).click().catch(async()=>{
+    await page.locator('.shopping-overflow > summary').click();
+  });
+  const toggle=page.getByRole('button',{name:'Textmodus'});
+  await expect(toggle).toBeVisible();
+  await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-pressed','true');
+  return toggle;
+}
+
 async function pasteLines(textarea,text){
   await textarea.evaluate((element,value)=>{
     const data=new DataTransfer();
@@ -20,9 +31,7 @@ async function pasteLines(textarea,text){
 
 test('Textmodus splits pasted lines, ignores blanks and keeps keyboard entry fast',async({page})=>{
   await bootShopping(page);
-  const toggle=page.getByRole('button',{name:'Textmodus'});
-  await toggle.click();
-  await expect(toggle).toHaveAttribute('aria-pressed','true');
+  await openTextMode(page);
 
   const textarea=page.getByLabel('Artikel zeilenweise hinzufügen');
   await expect(textarea).toBeFocused();
@@ -44,7 +53,7 @@ test('Textmodus renames and removes existing rows without losing shopping metada
   const requests=[];
   page.on('request',request=>{if(request.url().includes('/api/shopping-items/'))requests.push({method:request.method(),url:request.url(),body:request.postData()})});
   await bootShopping(page);
-  await page.getByRole('button',{name:'Textmodus'}).click();
+  await openTextMode(page);
 
   const milk=page.getByLabel('Milch bearbeiten');
   await milk.fill('Hafermilch');
