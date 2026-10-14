@@ -246,7 +246,9 @@ def profile_avatar_file(request, user_id, size):
 @api_view(["GET"])
 @permission_classes([permissions.IsAuthenticated])
 def profile_avatar_source(request, user_id):
-    if not _can_read_avatar(request.user, user_id):
+    # The source can contain pixels outside the visible crop and is therefore
+    # deliberately stricter than the family-readable avatar renditions.
+    if not (request.user.is_superuser or request.user.id == user_id):
         raise Http404()
     profile = UserProfile.objects.filter(user_id=user_id).first()
     if not profile or not profile.avatar_key:
