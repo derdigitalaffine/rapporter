@@ -128,7 +128,7 @@ class ExpenseBudgetSerializer(RevisionCheckedPlanningSerializer):
             return
         try:
             replace_participant_plans(
-                budget=budget,
+                scope=budget,
                 rows=participant_plans,
                 user=self.context["request"].user,
             )
