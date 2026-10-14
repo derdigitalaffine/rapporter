@@ -5,6 +5,8 @@ import {toast} from './feedback';
 import {useTranslation} from 'react-i18next';
 import './superadmin-cockpit-i18n';
 import SuperAdminUserCrud from './SuperAdminUserCrud';
+import SuperAdminAccountSecurity from './SuperAdminAccountSecurity';
+import {reauthenticateSuperadminWithPasskey,superadminPasskeyError,superadminWebAuthnAvailable} from './superadmin-webauthn';
 import {CockpitToolbar,InternalOverview,OnboardingInsights,SecurityInsights,DeliveryInsights,OperationsInsights,AuditInsights,OperationalDirectory,supportedAdminPeriod} from './SuperAdminInsights';
 
 const blank={name:'',owner_name:'',owner_email:'',locale:'de',timezone:'Europe/Berlin'};
@@ -63,6 +65,7 @@ function SuperAdminCockpit({user,onLogout}){
  const [reauthOpen,setReauthOpen]=useState(false);
  const [reauthPassword,setReauthPassword]=useState('');
  const [reauthBusy,setReauthBusy]=useState(false);
+ const [reauthPasskeyAvailable,setReauthPasskeyAvailable]=useState(false);
  const pendingSensitive=useRef(null);
 
  const load=async()=>{
@@ -84,6 +87,12 @@ function SuperAdminCockpit({user,onLogout}){
  };
  useEffect(()=>{load()},[]);
  useEffect(()=>{const pop=()=>{setSection(sectionFromLocation());setPeriod(supportedAdminPeriod())};window.addEventListener('popstate',pop);return()=>window.removeEventListener('popstate',pop)},[]);
+ useEffect(()=>{
+  if(!reauthOpen||!superadminWebAuthnAvailable()){setReauthPasskeyAvailable(false);return undefined}
+  let active=true;
+  adminApi('/auth/passkeys/').then(data=>{if(active)setReauthPasskeyAvailable(Boolean(data?.results?.length))}).catch(()=>{if(active)setReauthPasskeyAvailable(false)});
+  return()=>{active=false};
+ },[reauthOpen]);
  const set=(key,value)=>setForm(current=>({...current,[key]:value}));
  const setMail=(key,value)=>setSmtp(current=>({...current,[key]:value}));
  const setEmailDraft=(id,value)=>setEmailDrafts(current=>({...current,[id]:value}));
@@ -95,22 +104,34 @@ function SuperAdminCockpit({user,onLogout}){
   window.history[replace?'replaceState':'pushState']({section:next},'',`${url.pathname}${url.search}`);setSection(next);window.scrollTo({top:0,behavior:'smooth'});
  }
 
-
  async function runSensitive(action){
   try{return await action()}catch(error){
-   if(error.status===403){pendingSensitive.current=action;setReauthOpen(true);return null}
+   if(error.status===403&&error.code==='reauth_required'){pendingSensitive.current=action;setReauthOpen(true);return null}
    throw error;
   }
+ }
+ function completeReauth(){
+  const action=pendingSensitive.current;
+  pendingSensitive.current=null;setReauthOpen(false);setReauthPassword('');setReauthPasskeyAvailable(false);setSessionsFresh(true);
+  return action;
  }
  async function confirmReauth(event){
   event.preventDefault();if(!reauthPassword)return;setReauthBusy(true);
   try{
    await adminApi('/auth/reauth/password/',{method:'POST',body:JSON.stringify({password:reauthPassword})});
-   const action=pendingSensitive.current;pendingSensitive.current=null;setReauthOpen(false);setReauthPassword('');setSessionsFresh(true);
+   const action=completeReauth();
    toast('Admin-Identität bestätigt.',{type:'success'});if(action)await action();
   }catch(error){toast(error.message||'Bestätigung fehlgeschlagen.',{type:'error'})}finally{setReauthBusy(false)}
  }
- function cancelReauth(){pendingSensitive.current=null;setReauthOpen(false);setReauthPassword('')}
+ async function confirmPasskeyReauth(){
+  setReauthBusy(true);
+  try{
+   await reauthenticateSuperadminWithPasskey();
+   const action=completeReauth();
+   toast('Admin-Identität mit Passkey bestätigt.',{type:'success'});if(action)await action();
+  }catch(error){toast(superadminPasskeyError(error),{type:'error'})}finally{setReauthBusy(false)}
+ }
+ function cancelReauth(){pendingSensitive.current=null;setReauthOpen(false);setReauthPassword('');setReauthPasskeyAvailable(false)}
  async function saveSmtp(event){event.preventDefault();setSmtpBusy(true);try{await runSensitive(async()=>{const payload={enabled:smtp.enabled,host:smtp.host,port:Number(smtp.port),username:smtp.username,password:smtp.password,security:smtp.security,timeout:Number(smtp.timeout),from_email:smtp.from_email,reply_to:smtp.reply_to};const result=await adminApi('/smtp/',{method:'PUT',body:JSON.stringify(payload)});setSmtp({...blankSmtp,...result,password:''});await refreshMailHealth();toast('SMTP-Konfiguration gespeichert.',{type:'success'})})}catch(error){toast(error.message||'SMTP konnte nicht gespeichert werden.',{type:'error'})}finally{setSmtpBusy(false)}}
  async function sendTest(){if(!testEmail.trim())return;setSmtpBusy(true);try{await runSensitive(async()=>{await adminApi('/smtp/test/',{method:'POST',body:JSON.stringify({recipient:testEmail.trim()})});await refreshMailHealth();toast('Testmail wurde vom Backend angenommen.',{type:'success'})})}catch(error){toast(error.message||'SMTP-Test fehlgeschlagen.',{type:'error'})}finally{setSmtpBusy(false)}}
  async function refreshMailHealth(){try{const value=await adminApi('/mail-health/');setMailHealth({...blankMailHealth,...value,latency_seconds:{...blankMailHealth.latency_seconds,...value?.latency_seconds}})}catch{}}
@@ -129,11 +150,11 @@ function SuperAdminCockpit({user,onLogout}){
  return <div className="superadmin-shell">
   <header className="superadmin-top"><button className="superadmin-brand" type="button" onClick={()=>navigate('overview')} aria-label="Superadmin Übersicht"><img src="/brand/icon.svg" alt=""/><div><strong>FamilyOS</strong><span>Superadmin</span></div></button><div className="superadmin-user"><div><strong>{user?.username}</strong><span>Admin-PWA</span></div><button className="secondary compact" onClick={onLogout}><Icon name="logout"/>Abmelden</button></div></header>
   <div className="superadmin-layout">
-   <aside className="superadmin-sidebar" aria-label="Superadmin Navigation"><div className="superadmin-nav-title"><small>Plattform</small><strong>{activeLabel}</strong></div><nav className="superadmin-nav">{SECTIONS.map(([key,label,description])=><button key={key} type="button" className={section===key?'active':''} aria-current={section===key?'page':undefined} onClick={()=>navigate(key)}><span>{t(`adminCockpit.${key==='analytics'?'matomo':key}`)}</span></button>)}</nav><div className="superadmin-sidebar-foot"><span className={`health-dot ${mailHealth.configured?'healthy':'unknown'}`} aria-hidden="true"/><span>Admin-Sitzung getrennt von FamilyOS</span></div></aside>
+   <aside className="superadmin-sidebar" aria-label="Superadmin Navigation"><div className="superadmin-nav-title"><small>Plattform</small><strong>{activeLabel}</strong></div><nav className="superadmin-nav">{SECTIONS.map(([key])=><button key={key} type="button" className={section===key?'active':''} aria-current={section===key?'page':undefined} onClick={()=>navigate(key)}><span>{t(`adminCockpit.${key==='analytics'?'matomo':key}`)}</span></button>)}</nav><div className="superadmin-sidebar-foot"><span className={`health-dot ${mailHealth.configured?'healthy':'unknown'}`} aria-hidden="true"/><span>Admin-Sitzung getrennt von FamilyOS</span></div></aside>
    <main className="superadmin-main">
-    <div className="superadmin-mobile-nav" aria-label="Superadmin Bereiche">{SECTIONS.map(([key,label])=><button key={key} type="button" className={section===key?'active':''} aria-current={section===key?'page':undefined} onClick={()=>navigate(key)}>{t(`adminCockpit.${key==='analytics'?'matomo':key}`)}</button>)}</div>
+    <div className="superadmin-mobile-nav" aria-label="Superadmin Bereiche">{SECTIONS.map(([key])=><button key={key} type="button" className={section===key?'active':''} aria-current={section===key?'page':undefined} onClick={()=>navigate(key)}>{t(`adminCockpit.${key==='analytics'?'matomo':key}`)}</button>)}</div>
     {loadWarnings.length>0&&<div className="admin-notice warning" role="status"><Icon name="info"/><div><strong>Teilweise Daten nicht verfügbar</strong><span>{loadWarnings.join(', ')} konnte nicht geladen werden. Andere Bereiche bleiben benutzbar.</span></div><button className="secondary compact" onClick={load}>Erneut laden</button></div>}
-    {reauthOpen&&<section className="card superadmin-reauth" role="region" aria-labelledby="superadmin-reauth-title"><div><small>Sicherheitsbestätigung</small><h2 id="superadmin-reauth-title">Admin-Identität erneut bestätigen</h2><p>Diese Änderung ist sensibel. Die Bestätigung erneuert nur die getrennte Admin-Sitzung.</p></div><form onSubmit={confirmReauth}><label>Aktuelles Passwort<input type="password" autoComplete="current-password" value={reauthPassword} onChange={event=>setReauthPassword(event.target.value)} required autoFocus/></label><div className="superadmin-actions"><button className="primary" disabled={reauthBusy}><Icon name="lock"/>{reauthBusy?'Wird bestätigt …':'Bestätigen'}</button><button className="secondary" type="button" onClick={cancelReauth} disabled={reauthBusy}>Abbrechen</button></div></form></section>}
+    {reauthOpen&&<section className="card superadmin-reauth" role="region" aria-labelledby="superadmin-reauth-title"><div><small>Sicherheitsbestätigung</small><h2 id="superadmin-reauth-title">Admin-Identität erneut bestätigen</h2><p>Diese Änderung ist sensibel. Die Bestätigung erneuert nur die getrennte Admin-Sitzung.</p></div><form onSubmit={confirmReauth}><label>Aktuelles Passwort<input type="password" autoComplete="current-password" value={reauthPassword} onChange={event=>setReauthPassword(event.target.value)} required autoFocus/></label><div className="superadmin-actions"><button className="primary" disabled={reauthBusy}><Icon name="lock"/>{reauthBusy?'Wird bestätigt …':'Mit Passwort bestätigen'}</button>{reauthPasskeyAvailable&&<button className="secondary" type="button" onClick={confirmPasskeyReauth} disabled={reauthBusy}><Icon name="lock"/>{reauthBusy?'Bitte warten …':'Mit Passkey bestätigen'}</button>}<button className="secondary" type="button" onClick={cancelReauth} disabled={reauthBusy}>Abbrechen</button></div></form></section>}
     <CockpitToolbar period={period} onPeriod={changePeriod} onRefresh={()=>{refreshInsights();load()}}/>
     {section==='overview'&&<InternalOverview period={period} refresh={insightRefresh} onLookup={lookup}/>}
     {section==='users'&&crudMode&&<SuperAdminUserCrud embedded user={user} onLogout={onLogout} initialQuery={lookupQuery}/>}
@@ -144,7 +165,6 @@ function SuperAdminCockpit({user,onLogout}){
     {section==='delivery'&&<><DeliveryInsights period={period} refresh={insightRefresh} onRetry={refreshInsights}/><DeliverySection smtp={smtp} setMail={setMail} smtpBusy={smtpBusy} saveSmtp={saveSmtp} testEmail={testEmail} setTestEmail={setTestEmail} sendTest={sendTest} mailJournal={mailJournal} mailJournalCount={mailJournalCount} loading={loading}/></>}
     {section==='operations'&&<><OperationsInsights refresh={insightRefresh} onRetry={refreshInsights}/><OperationsSection mailHealth={mailHealth} loading={loading} onRefresh={load}/></>}
     {section==='security'&&<><SecurityInsights period={period} refresh={insightRefresh} onRetry={refreshInsights}/><SecuritySection user={user} sessions={sessions} fresh={sessionsFresh} loading={loading} onRefresh={load}/></>}
-
    </main>
   </div>
  </div>;
@@ -172,7 +192,7 @@ function OperationsSection({mailHealth,loading,onRefresh}){
 }
 
 function SecuritySection({user,sessions,fresh,loading,onRefresh}){
- return <><SectionHead eyebrow="Auth & Security" title="Admin-Sicherheit" description="Nur Sitzungsmetadaten der angemeldeten Admin-Identität. Tokens, IP-Historien und Credential-Daten werden nicht dargestellt." actions={<button className="secondary compact" onClick={onRefresh} disabled={loading}><Icon name="refresh"/>Aktualisieren</button>}/><section className="admin-metrics"><Metric label="Admin" value={user?.username||'—'} detail={user?.email||'Keine E-Mail'}/><Metric label="Aktive Sitzungen" value={sessions.length} detail="Kanonische, nicht widerrufene Sessions"/><Metric label="Fresh Session" value={fresh?'Ja':'Nein'} detail={fresh?'Sensible Aktionen aktuell freigegeben':'Bei Bedarf erneute Bestätigung'} tone={fresh?'healthy':'attention'}/></section><section className="card admin-session-list"><div className="superadmin-list-head"><div><small>Session Inventory</small><h2>Aktive Sitzungen</h2></div><span className="superadmin-count">{sessions.length}</span></div>{sessions.map(item=><article key={item.id} className="admin-session-row"><div><strong>{item.client||'Browser'} {item.current&&<span className="tenant-status active">Aktuell</span>}</strong><span>{authMethodLabel(item.auth_method)} · zuletzt {mailDate(item.last_seen_at)}</span></div><dl><div><dt>Erstellt</dt><dd>{mailDate(item.created_at)}</dd></div><div><dt>Fresh bis</dt><dd>{mailDate(item.fresh_until)}</dd></div><div><dt>Maximal gültig bis</dt><dd>{mailDate(item.absolute_expires_at)}</dd></div></dl></article>)}{!loading&&!sessions.length&&<div className="smart-empty"><strong>Keine Sitzungsdaten</strong><span>Aktualisiere den Bereich, um die aktuelle Admin-Sitzung zu prüfen.</span></div>}</section><div className="admin-notice"><Icon name="lock"/><div><strong>Sensitive Actions bleiben geschützt</strong><span>E-Mail-Änderungen, Recovery, Tenant-Status und SMTP-Schreibzugriffe verwenden weiterhin Fresh-Reauth und die bestehende Abuse-Protection.</span></div></div></>;
+ return <><SectionHead eyebrow="Auth & Security" title="Admin-Sicherheit" description="Sitzungs- und Credential-Metadaten der angemeldeten Admin-Identität. Tokens, Secrets und kryptografische Credential-Daten werden nicht dargestellt." actions={<button className="secondary compact" onClick={onRefresh} disabled={loading}><Icon name="refresh"/>Aktualisieren</button>}/><section className="admin-metrics"><Metric label="Admin" value={user?.username||'—'} detail={user?.email||'Keine E-Mail'}/><Metric label="Aktive Sitzungen" value={sessions.length} detail="Kanonische, nicht widerrufene Sessions"/><Metric label="Fresh Session" value={fresh?'Ja':'Nein'} detail={fresh?'Sensible Aktionen aktuell freigegeben':'Bei Bedarf erneute Bestätigung'} tone={fresh?'healthy':'attention'}/></section><SuperAdminAccountSecurity fresh={fresh} onChanged={onRefresh}/><section className="card admin-session-list"><div className="superadmin-list-head"><div><small>Session Inventory</small><h2>Aktive Sitzungen</h2></div><span className="superadmin-count">{sessions.length}</span></div>{sessions.map(item=><article key={item.id} className="admin-session-row"><div><strong>{item.client||'Browser'} {item.current&&<span className="tenant-status active">Aktuell</span>}</strong><span>{authMethodLabel(item.auth_method)} · zuletzt {mailDate(item.last_seen_at)}</span></div><dl><div><dt>Erstellt</dt><dd>{mailDate(item.created_at)}</dd></div><div><dt>Fresh bis</dt><dd>{mailDate(item.fresh_until)}</dd></div><div><dt>Maximal gültig bis</dt><dd>{mailDate(item.absolute_expires_at)}</dd></div></dl></article>)}{!loading&&!sessions.length&&<div className="smart-empty"><strong>Keine Sitzungsdaten</strong><span>Aktualisiere den Bereich, um die aktuelle Admin-Sitzung zu prüfen.</span></div>}</section><div className="admin-notice"><Icon name="lock"/><div><strong>Sensitive Actions bleiben geschützt</strong><span>E-Mail-Änderungen, Recovery, Tenant-Status, SMTP- und Credential-Schreibzugriffe verwenden Fresh-Reauth und die getrennte Superadmin-Session.</span></div></div></>;
 }
 
 function ownerDeliveryLabel(status){return status==='sent'?'Versendet':status==='retrying'?'Zustellung wird erneut versucht':status==='failed'?'Versand fehlgeschlagen':'Versand wird vorbereitet'}

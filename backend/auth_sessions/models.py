@@ -10,9 +10,14 @@ class AuthSession(models.Model):
         PASSKEY = "passkey", "Passkey"
         RECOVERY = "recovery", "Recovery"
 
+    class Surface(models.TextChoices):
+        APP = "app", "App"
+        SUPERADMIN = "superadmin", "Superadmin"
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="auth_sessions")
     auth_method = models.CharField(max_length=24, choices=AuthMethod.choices, default=AuthMethod.PASSWORD)
+    surface = models.CharField(max_length=24, choices=Surface.choices, default=Surface.APP, db_index=True)
     client_label = models.CharField(max_length=120, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     last_seen_at = models.DateTimeField()
