@@ -6,7 +6,14 @@ from rest_framework import serializers
 from .models import ExpenseBudget, ExpenseLedger
 from .money import money
 from .period_models import ExpenseBudgetPeriod
-from .period_services import configure_current_period, period_state, validate_period_type_change, RECURRING_PERIOD_TYPES
+from .period_services import (
+    RECURRING_PERIOD_TYPES,
+    close_current_period,
+    configure_current_period,
+    ensure_budget_period,
+    period_state,
+    validate_period_type_change,
+)
 from .serializers import LocalizedDecimalField, _request_can_access_family
 from .planning_serializers import BudgetPlanningConflict, RevisionCheckedPlanningSerializer
 
@@ -114,8 +121,23 @@ class ExpenseBudgetSerializer(RevisionCheckedPlanningSerializer):
             validate_period_type_change(instance, next_period_type)
         except ValueError as exc:
             raise serializers.ValidationError({"period_type": str(exc)}) from exc
+
+        will_archive = validated_data.get("archived", instance.archived)
+        # Roll expired periods while the old plan value is still present. This
+        # prevents a plan edit from retroactively rewriting skipped history.
+        if (
+            instance.period_type in RECURRING_PERIOD_TYPES
+            and next_period_type == instance.period_type
+            and not instance.archived
+            and not will_archive
+        ):
+            ensure_budget_period(instance)
+
         updated = super().update(instance, validated_data)
-        configure_current_period(updated, rollover_policy=rollover_policy)
+        if updated.archived:
+            close_current_period(updated)
+        else:
+            configure_current_period(updated, rollover_policy=rollover_policy)
         return updated
 
     def validate(self, attrs):
