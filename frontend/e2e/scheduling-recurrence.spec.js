@@ -31,7 +31,7 @@ test('calendar recurrence uses the same natural-language rule and preview as tod
  await dialog.getByRole('button',{name:'Weitere Details'}).click();
  await dialog.getByLabel('In eigenen Worten').fill('immer am ersten Montag im Quartal');
  await dialog.getByRole('button',{name:'Erkennen',exact:true}).click();
- await expect(dialog.getByLabel('Wiederholung')).toHaveValue('quarterly');
+ await expect(dialog.getByLabel('Wiederholung',{exact:true})).toHaveValue('quarterly');
  await expect(dialog.getByText(/erster Montag/)).toBeVisible();
  await expect(dialog.locator('.scheduling-recurrence-preview li')).toHaveCount(5);
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=document.documentElement.clientWidth+1)).toBe(true);
