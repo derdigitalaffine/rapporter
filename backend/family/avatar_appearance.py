@@ -3,9 +3,8 @@ import re
 
 AVATAR_MODES = ("initials", "icon", "photo")
 AVATAR_COLOR_PALETTE = (
-    "#2F6F73", "#3F6FA8", "#6B5FA7", "#8A5E8D",
-    "#A65353", "#A86E35", "#8A7A32", "#4F7B45",
-    "#357A68", "#426E8A", "#755B45", "#626A73",
+    "#2F855A", "#2563EB", "#7C3AED", "#DB2777", "#C2410C", "#0F766E",
+    "#B91C1C", "#4F46E5", "#A65353", "#8A7A32", "#357A68", "#626A73",
 )
 
 # Stable keys only. They map to a curated frontend avatar symbol registry; no
@@ -53,9 +52,20 @@ def normalize_avatar_icon(value):
     return key
 
 
+def ensure_avatar_color(profile, preferred_color=None):
+    stored = str(getattr(profile, "avatar_color", "") or "").strip()
+    if _HEX_COLOR.fullmatch(stored):
+        return stored.upper()
+    preferred = str(preferred_color or "").strip()
+    color = preferred.upper() if _HEX_COLOR.fullmatch(preferred) else deterministic_avatar_color(profile.user_id)
+    profile.avatar_color = color
+    profile.save(update_fields=["avatar_color", "updated_at"])
+    return color
+
+
 def avatar_color(profile):
     stored = str(getattr(profile, "avatar_color", "") or "").strip()
-    return stored if _HEX_COLOR.fullmatch(stored) else deterministic_avatar_color(profile.user_id)
+    return stored.upper() if _HEX_COLOR.fullmatch(stored) else deterministic_avatar_color(profile.user_id)
 
 
 def avatar_mode(profile):
@@ -71,11 +81,11 @@ def avatar_mode(profile):
     return "icon" if getattr(profile, "avatar_icon_key", "") else "initials"
 
 
-def appearance_payload(profile):
+def appearance_payload(profile, preferred_color=None):
     return {
         "avatar_mode": avatar_mode(profile),
         "avatar_icon_key": getattr(profile, "avatar_icon_key", "") or "",
-        "avatar_color": avatar_color(profile),
+        "avatar_color": ensure_avatar_color(profile, preferred_color),
         "avatar_color_palette": list(AVATAR_COLOR_PALETTE),
         "avatar_icon_options": list(AVATAR_ICON_KEYS),
     }
