@@ -11,14 +11,15 @@ async function openCalendarEvent(page,title){
   return detail;
 }
 
-test('legacy source-less FamilyOS calendar events keep the edit button',async({page})=>{
+test('source-less legacy events keep the edit button even without a FamilyOS provider marker',async({page})=>{
   await page.setViewportSize({width:390,height:844});
   const state=await installApiMocks(page,{dismissOnboarding:true});
   state.events[1]={
     ...state.events[1],
     type:'calendar.legacy',
     source:null,
-    payload:{...state.events[1].payload,provider:'FamilyOS'},
+    source_meta:null,
+    payload:{location:'Praxis',description:'Altbestand',recurrence:''},
   };
 
   const detail=await openCalendarEvent(page,'Kinderarzt');
@@ -36,6 +37,21 @@ test('source-backed calendar events stay read-only even with a FamilyOS-looking 
     source:'integration-1',
     source_meta:{id:'integration-1',name:'Importierter Kalender',kind:'ics'},
     payload:{...state.events[1].payload,provider:'FamilyOS'},
+  };
+
+  const detail=await openCalendarEvent(page,'Kinderarzt');
+  await expect(detail.getByRole('button',{name:'Termin bearbeiten',exact:true})).toHaveCount(0);
+});
+
+test('source-less domain-owned events stay read-only',async({page})=>{
+  await page.setViewportSize({width:390,height:844});
+  const state=await installApiMocks(page,{dismissOnboarding:true});
+  state.events[1]={
+    ...state.events[1],
+    type:'travel.trip',
+    source:null,
+    source_meta:null,
+    payload:{location:'Praxis',description:'Domain-owned',recurrence:''},
   };
 
   const detail=await openCalendarEvent(page,'Kinderarzt');
