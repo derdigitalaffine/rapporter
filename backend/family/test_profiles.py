@@ -168,16 +168,16 @@ class ProfileTests(TestCase):
         response = self.client.post("/api/profile/avatar/", {"avatar": huge}, format="multipart")
         self.assertEqual(response.status_code, 400)
 
-    def test_avatar_is_only_available_to_self_or_shared_family(self):
+    def test_avatar_rendition_is_shared_with_family_but_edit_source_is_owner_private(self):
         response = self.client.post("/api/profile/avatar/", {"avatar": self._image()}, format="multipart")
         self.assertEqual(response.status_code, 200)
         shared = APIClient(); shared.force_authenticate(self.member)
         outsider = APIClient(); outsider.force_authenticate(self.outsider)
-        for url in (response.data["avatar_url"], response.data["avatar_edit_url"]):
-            allowed = shared.get(url)
-            self.assertEqual(allowed.status_code, 200)
-            blocked = outsider.get(url)
-            self.assertEqual(blocked.status_code, 404)
+        allowed = shared.get(response.data["avatar_url"])
+        self.assertEqual(allowed.status_code, 200)
+        self.assertEqual(shared.get(response.data["avatar_edit_url"]).status_code, 404)
+        self.assertEqual(outsider.get(response.data["avatar_url"]).status_code, 404)
+        self.assertEqual(outsider.get(response.data["avatar_edit_url"]).status_code, 404)
 
     def test_pre_master_avatar_edit_source_falls_back_to_existing_rendition(self):
         response = self.client.post("/api/profile/avatar/", {"avatar": self._image()}, format="multipart")
@@ -190,7 +190,7 @@ class ProfileTests(TestCase):
         self.assertEqual(fallback["Content-Type"], "image/webp")
 
     def test_avatar_delete_restores_initials_fallback_contract(self):
-        uploaded = self.client.post("/api/profile/avatar/", {"avatar": self._image()}, format="multipart")
+        self.client.post("/api/profile/avatar/", {"avatar": self._image()}, format="multipart")
         profile = UserProfile.objects.get(user=self.owner)
         old_key = profile.avatar_key
         self.assertTrue((Path(self.media.name) / "avatars" / f"{old_key}-source.webp").is_file())
