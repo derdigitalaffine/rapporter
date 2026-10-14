@@ -1,3 +1,5 @@
+import uuid
+
 from django.db import migrations, models
 import django.db.models.deletion
 
@@ -12,7 +14,7 @@ class Migration(migrations.Migration):
         migrations.CreateModel(
             name="ExpenseBudgetPeriod",
             fields=[
-                ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
+                ("id", models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
                 ("created_at", models.DateTimeField(auto_now_add=True)),
                 ("updated_at", models.DateTimeField(auto_now=True)),
                 ("period_type", models.CharField(choices=[("open", "Open"), ("month", "Month"), ("year", "Year"), ("date_range", "Date range"), ("context", "Context")], max_length=16)),
@@ -38,10 +40,10 @@ class Migration(migrations.Migration):
         ),
         migrations.AddConstraint(
             model_name="expensebudgetperiod",
-            constraint=models.CheckConstraint(condition=models.Q(("planned_amount__gte", 0)), name="expense_budget_period_plan_nonneg"),
+            constraint=models.CheckConstraint(condition=models.Q(planned_amount__gte=0), name="expense_budget_period_plan_nonneg"),
         ),
         migrations.AddConstraint(
             model_name="expensebudgetperiod",
-            constraint=models.CheckConstraint(condition=models.Q(("carryover_amount__gte", 0)), name="expense_budget_period_carry_nonneg"),
+            constraint=models.CheckConstraint(condition=models.Q(carryover_amount__gte=0), name="expense_budget_period_carry_nonneg"),
         ),
     ]
