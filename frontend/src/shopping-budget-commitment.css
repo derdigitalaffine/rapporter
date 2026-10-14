@@ -1,0 +1,5 @@
+.shopping-budget-commitment{margin-bottom:var(--space-4,16px)}
+.shopping-budget-commitment>summary{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:44px;cursor:pointer;font-weight:800}
+.shopping-budget-commitment>summary>span{display:flex;align-items:center;gap:8px}.shopping-budget-commitment>summary small{color:var(--muted);font-weight:700}
+.shopping-budget-commitment-body{display:grid;gap:12px;padding-top:12px}.shopping-budget-commitment-body>p{margin:0;color:var(--muted);font-size:.86rem}.shopping-budget-purchase-hint{display:flex;align-items:flex-start;gap:7px}.shopping-budget-purchase-hint svg{flex:0 0 auto;margin-top:2px;color:var(--green)}
+@media(max-width:520px){.shopping-budget-commitment>summary{align-items:flex-start;flex-direction:column}.shopping-budget-commitment>summary small{padding-left:26px}}
