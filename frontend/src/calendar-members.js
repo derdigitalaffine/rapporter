@@ -5,8 +5,16 @@ export function membershipDisplayName(member){
  return member.display_name||member.username||member.user_name||member.name||'';
 }
 
+function fallbackColorIndex(value){
+ const text=String(value||'');
+ let hash=0;
+ for(let index=0;index<text.length;index+=1)hash=(hash*31+text.charCodeAt(index))>>>0;
+ return hash%DEFAULT_CALENDAR_COLORS.length;
+}
+
 export function membershipCalendarColor(member){
- return member?.calendar_color||DEFAULT_CALENDAR_COLORS[0];
+ if(member?.calendar_color)return member.calendar_color;
+ return DEFAULT_CALENDAR_COLORS[fallbackColorIndex(member?.id||member?.user||membershipDisplayName(member))];
 }
 
 export function eventParticipantIds(event){
