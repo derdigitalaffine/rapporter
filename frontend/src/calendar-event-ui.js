@@ -3,27 +3,7 @@ import {isWasteEvent,wasteClass} from './waste-ui';
 export const isHolidayEvent=event=>event?.type==='school.holiday';
 export const isWarningEvent=event=>Boolean(event?.type?.includes('warning'));
 export const isBirthdayEvent=event=>event?.type==='birthday';
-const familyOsProviders=new Set(['familyos','fam-uh-le']);
-const calendarReadOnlyTypes=new Set(['school.holiday','travel.trip']);
-const externalSourceKinds=new Set(['ics','waste','weather','warning','messenger','transit','home','school']);
-const isExternallyManagedEvent=event=>{
- const hasSource=Boolean(event?.source||event?.source_meta?.id);
- if(!hasSource)return false;
- if(String(event?.external_id||'').trim())return true;
- const sourceKind=String(event?.source_meta?.kind||'').trim().toLowerCase();
- return externalSourceKinds.has(sourceKind);
-};
-const isFamilyCalendarSource=event=>{
- if(isExternallyManagedEvent(event))return false;
- if(event?.type==='calendar.event')return true;
- const provider=String(event?.payload?.provider||'').trim().toLowerCase();
- return familyOsProviders.has(provider);
-};
-export const isNativeCalendarEvent=event=>{
- if(!event?.id||isExternallyManagedEvent(event))return false;
- if(isBirthdayEvent(event)||calendarReadOnlyTypes.has(event?.type))return false;
- return true;
-};
+export const isNativeCalendarEvent=event=>!event?.source&&event?.type==='calendar.event';
 
 export const calendarSourceRegistry={
  birthday:{icon:'calendar',labelKey:null,tone:'violet'},
@@ -47,12 +27,12 @@ const sourceToneStyles={
 
 export function eventSourceKey(event){
  if(isBirthdayEvent(event))return 'birthday';
+ if(isNativeCalendarEvent(event))return 'family';
  if(isWarningEvent(event))return 'warning';
  if(isWasteEvent(event))return 'waste';
  if(event?.type?.includes('weather'))return 'weather';
  if(event?.type?.includes('transit'))return 'transit';
  if(event?.type?.includes('school'))return 'school';
- if(isFamilyCalendarSource(event))return 'family';
  return 'calendar';
 }
 

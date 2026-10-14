@@ -13,16 +13,6 @@ from .views import FamilyEventViewSet as BaseFamilyEventViewSet
 
 
 READ_ONLY_EVENT_TYPES = {"school.holiday", "travel.trip"}
-EXTERNAL_SOURCE_KINDS = {
-    "ics",
-    "waste",
-    "weather",
-    "warning",
-    "messenger",
-    "transit",
-    "home",
-    "school",
-}
 MAX_CALENDAR_RANGE_DAYS = 732
 
 
@@ -66,28 +56,6 @@ def _effective_source(serializer):
     if "source" in serializer.validated_data:
         return serializer.validated_data.get("source")
     return getattr(serializer.instance, "source", None)
-
-
-def _is_externally_managed_event(event):
-    """Return whether a source link represents a real external integration.
-
-    Current integration projections always carry an external_id. Very old
-    FamilyOS-created events can retain a source FK without an external identity;
-    those rows must stay app-owned unless the source kind is a known integration.
-    """
-    if not getattr(event, "source_id", None):
-        return False
-    if str(getattr(event, "external_id", "") or "").strip():
-        return True
-    source = getattr(event, "source", None)
-    kind = str(getattr(source, "kind", "") or "").strip().lower()
-    return kind in EXTERNAL_SOURCE_KINDS
-
-
-def _detach_legacy_app_source(serializer):
-    event = serializer.instance
-    if event and event.source_id and not _is_externally_managed_event(event):
-        serializer.validated_data["source"] = None
 
 
 def _validate_guardian(target, family, request):
@@ -269,16 +237,10 @@ class FamilyEventViewSet(BaseFamilyEventViewSet):
             serializer.instance.participants.set(legacy_selection)
 
     def perform_update(self, serializer):
-        if _is_externally_managed_event(serializer.instance):
-            raise PermissionDenied("Externe Kalendertermine sind schreibgeschützt.")
-        requested_source = serializer.validated_data.get("source")
-        if requested_source and (
-            not serializer.instance.source_id or requested_source.id != serializer.instance.source_id
-        ):
+        if serializer.instance.source_id or serializer.validated_data.get("source"):
             raise PermissionDenied("Externe Kalendertermine sind schreibgeschützt.")
         if serializer.instance.type in READ_ONLY_EVENT_TYPES or serializer.validated_data.get("type") in READ_ONLY_EVENT_TYPES:
             raise PermissionDenied("Dieser Termin ist hier schreibgeschützt.")
-        _detach_legacy_app_source(serializer)
         _validate_native_recurrence(serializer)
         legacy_selection = _validate_event_people(serializer, self.request)
         super().perform_update(serializer)
@@ -286,7 +248,7 @@ class FamilyEventViewSet(BaseFamilyEventViewSet):
             serializer.instance.participants.set(legacy_selection)
 
     def perform_destroy(self, instance):
-        if _is_externally_managed_event(instance):
+        if instance.source_id:
             raise PermissionDenied("Externe Kalendertermine sind schreibgeschützt.")
         if instance.type in READ_ONLY_EVENT_TYPES:
             raise PermissionDenied("Dieser Termin muss in seinem Fachbereich gelöscht werden.")
