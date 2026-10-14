@@ -153,7 +153,8 @@ class BudgetPeriodTests(TestCase):
         self.assertEqual(ExpenseBudgetPeriod.objects.filter(budget=budget).count(), 0)
 
     def test_api_accepts_rollover_policy_and_exposes_current_period(self):
-        today = timezone.localdate()
+        family_tz = ZoneInfo(self.family.timezone)
+        today = timezone.localtime(timezone.now(), family_tz).date()
         response = self.client.post(
             "/api/expense-budgets/",
             {
