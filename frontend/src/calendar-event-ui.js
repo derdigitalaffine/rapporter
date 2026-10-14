@@ -5,14 +5,22 @@ export const isWarningEvent=event=>Boolean(event?.type?.includes('warning'));
 export const isBirthdayEvent=event=>event?.type==='birthday';
 const familyOsProviders=new Set(['familyos','fam-uh-le']);
 const calendarReadOnlyTypes=new Set(['school.holiday','travel.trip']);
+const externalSourceKinds=new Set(['ics','waste','weather','warning','messenger','transit','home','school']);
+const isExternallyManagedEvent=event=>{
+ const hasSource=Boolean(event?.source||event?.source_meta?.id);
+ if(!hasSource)return false;
+ if(String(event?.external_id||'').trim())return true;
+ const sourceKind=String(event?.source_meta?.kind||'').trim().toLowerCase();
+ return externalSourceKinds.has(sourceKind);
+};
 const isFamilyCalendarSource=event=>{
- if(event?.source||event?.source_meta?.id)return false;
+ if(isExternallyManagedEvent(event))return false;
  if(event?.type==='calendar.event')return true;
  const provider=String(event?.payload?.provider||'').trim().toLowerCase();
  return familyOsProviders.has(provider);
 };
 export const isNativeCalendarEvent=event=>{
- if(!event?.id||event?.source||event?.source_meta?.id)return false;
+ if(!event?.id||isExternallyManagedEvent(event))return false;
  if(isBirthdayEvent(event)||calendarReadOnlyTypes.has(event?.type))return false;
  return true;
 };
