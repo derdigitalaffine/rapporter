@@ -1,3 +1,4 @@
+import {selectFamily} from './family-ui.js';
 import {test,expect} from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import {installApiMocks} from './mock-api.js';
@@ -76,7 +77,7 @@ test('family switch discards a delayed previous family ranking',async({page})=>{
   if(family==='family-1')await pending;
   return route.fulfill({json:{preferences:{pinned_action_ids:[family==='family-1'?'expense':'shoppingItem']},stats:[]}});
  });
- await open(page);await page.locator('.family-switcher select').selectOption('family-2');
+ await open(page);await selectFamily(page,'family-2');
  await expect.poll(async()=>(await ids(page))[0]).toBe('shoppingItem');
  release();await page.waitForLoadState('networkidle');await expect.poll(async()=>(await ids(page))[0]).toBe('shoppingItem');
  await page.locator('.global-create-fab').click();await expect(page.locator('.create-action-card').first()).toContainText('Einkaufsartikel');
