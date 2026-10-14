@@ -1,0 +1,6 @@
+.calendar-detail{display:flex;flex-direction:column;overflow:hidden}
+.calendar-detail .sheet-handle,.calendar-detail .sheet-head{flex:none}
+.calendar-detail .event-detail-body{min-height:0;overflow-y:auto;overscroll-behavior:contain;margin-bottom:0;padding-bottom:12px}
+.calendar-detail>.primary,.calendar-detail>.readonly-event-note{flex:none;margin-top:12px}
+.calendar-detail>.primary{width:100%;min-height:50px;justify-content:center}
+@media(max-width:480px){.calendar-detail>.primary,.calendar-detail>.readonly-event-note{margin-left:-2px;margin-right:-2px}}
