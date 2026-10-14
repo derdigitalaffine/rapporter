@@ -321,7 +321,10 @@ class ExpenseSerializer(serializers.ModelSerializer):
 
         participants = attrs.get("participants")
         has_existing_shares = bool(self.instance and self.instance.shares.exists())
-        if funding_source == Expense.FundingSource.MEMBER and participants is None and not has_existing_shares:
+        # Defaults accelerate new capture; a posted shared booking must not
+        # acquire personal debts through an implicit update.
+        can_apply_defaults = self.instance is None or self.instance.status == Expense.Status.DRAFT
+        if can_apply_defaults and funding_source == Expense.FundingSource.MEMBER and participants is None and not has_existing_shares:
             participants = _ledger_default_participants(ledger, family)
             attrs["participants"] = participants
             attrs.setdefault("split_type", ledger.default_split_type or ExpenseShare.SplitType.EQUAL)

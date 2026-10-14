@@ -64,6 +64,8 @@ test('expenses hub uses canonical action hierarchy on mobile and desktop',async(
   await expectMinTarget(settle);
   const history=page.locator('.finance-history-card');
   await expect(history).not.toHaveAttribute('open','');
+  await history.locator('summary').click();
+  await expect(history).toHaveAttribute('open','');
   const undo=history.getByRole('button',{name:/Abrechnung stornieren|Void settlement/i});
   await expect(undo).toHaveClass(/\btext-button\b/);
 
