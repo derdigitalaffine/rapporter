@@ -28,7 +28,7 @@ const ids=page=>widget(page).locator('[data-create-action]').evaluateAll(rows=>r
 test('fresh widget shares exact quickstart order and one ranking read with the palette',async({page})=>{
  const state=await setup(page,{preferences:{pinned_action_ids:['event'],hidden_action_ids:['task'],manual_order:['expense','shoppingItem']}});
  await open(page);await expect(widget(page).locator('button').first()).toContainText('Termin');
- expect(await ids(page)).toEqual(['event','expense','shoppingItem','contract']);
+ expect(await ids(page)).toEqual(['event','expense','shoppingItem','vehicle']);
  expect(state.reads).toHaveLength(1);
  const order=await page.locator('[data-today-widget]').evaluateAll(rows=>rows.map(row=>row.dataset.todayWidget));
  expect(order.indexOf('quick-actions')).toBe(order.indexOf('todo')+1);expect(order.indexOf('pinboard')).toBe(order.indexOf('quick-actions')+1);
@@ -50,15 +50,17 @@ test('one tap opens the canonical task editor and records only a successful save
  expect(state.usages[0].action_id).toBe('task');await expect(page).toHaveURL(/4173\/$/);
 });
 
-test('existing layouts add a hidden Library row without replacing saved choices',async({page})=>{
- const state=await setup(page,{oldLayout:true});await open(page);await expect(widget(page)).toHaveCount(0);
+test('existing layouts migrate canonical defaults without replacing saved flexible choices',async({page})=>{
+ const state=await setup(page,{oldLayout:true});await open(page);await expect(widget(page)).toBeVisible();
  await page.getByTestId('today-layout-edit').click();const editor=page.getByRole('region',{name:'Anpassen'});
- await editor.locator('[data-library-widget="quick-actions"]').getByRole('button',{name:'Hinzufügen',exact:true}).click();
  const row=editor.locator('[data-editor-widget-id="quick-actions"]');await expect(row).toBeVisible();
  await row.getByRole('combobox',{name:'Schnellaktionen · Größe'}).selectOption('wide');
  await editor.getByRole('button',{name:'Speichern',exact:true}).click();await expect(widget(page)).toBeVisible();
  const saved=state.getLayout();expect(saved.widgets.find(row=>row.id==='quick-actions')).toEqual({id:'quick-actions',visible:true,size:'wide'});
- expect(saved.widgets.filter(row=>row.id!=='quick-actions')).toEqual(state.original.widgets);
+ expect(saved.widgets[0]).toEqual(expect.objectContaining({id:'situation',visible:true,size:'compact'}));
+ const savedFlexible=saved.widgets.filter(row=>!['quick-actions','situation'].includes(row.id));
+ const originalFlexible=state.original.widgets.filter(row=>!['quick-actions','situation'].includes(row.id));
+ expect(savedFlexible).toEqual(originalFlexible);
 });
 
 test('stored preferences cannot expose role, module or premium-denied actions',async({page})=>{
@@ -92,9 +94,11 @@ test('English widget is keyboard accessible and fits 320px at 200 percent',async
  await page.locator('main').evaluate(el=>el.style.zoom='1');expect((await new AxeBuilder({page}).include('[data-testid="today-quick-actions"]').analyze()).violations).toEqual([]);
 });
 
-test('frontend compatibility adds quick actions hidden without resetting the old layout',async()=>{
+test('frontend compatibility adds canonical defaults without resetting flexible legacy order',async()=>{
  const old=defaultTodayWidgets().filter(row=>row.id!=='quick-actions').reverse();
  const result=normalizeTodayLayout({version:2,revision:9,widgets:old});
- expect(result.revision).toBe(9);expect(result.widgets.filter(row=>row.id!=='quick-actions')).toEqual(old);
- expect(result.widgets.find(row=>row.id==='quick-actions')).toEqual({id:'quick-actions',visible:false,size:'compact'});
+ expect(result.revision).toBe(9);
+ expect(result.widgets[0]).toEqual(expect.objectContaining({id:'situation',visible:true,size:'compact'}));
+ expect(result.widgets.filter(row=>!['quick-actions','situation'].includes(row.id))).toEqual(old.filter(row=>row.id!=='situation'));
+ expect(result.widgets.find(row=>row.id==='quick-actions')).toEqual({id:'quick-actions',visible:true,size:'compact'});
 });

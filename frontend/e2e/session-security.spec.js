@@ -7,6 +7,12 @@ const earlier=new Date(Date.now()-3600000).toISOString();
 async function json(route,body,status=200){return route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)})}
 async function expectMinTarget(locator){const box=await locator.boundingBox();expect(box?.width||0).toBeGreaterThanOrEqual(44);expect(box?.height||0).toBeGreaterThanOrEqual(44)}
 async function expectClasses(locator,...classes){const classList=await locator.evaluate(element=>[...element.classList]);expect(classList).toEqual(expect.arrayContaining(classes))}
+async function openSecurity(page){
+ const disclosure=page.locator('details.profile-disclosure').filter({hasText:'Sicherheit & Sitzungen'});
+ await expect(disclosure).toBeVisible();
+ if(!(await disclosure.evaluate(node=>node.open)))await disclosure.locator('summary').click();
+ return disclosure.getByTestId('security-sessions');
+}
 
 test('security center revokes sessions and gates revoke-all behind reauth',async({page})=>{
  await page.setViewportSize({width:390,height:844});
@@ -31,7 +37,7 @@ test('security center revokes sessions and gates revoke-all behind reauth',async
  });
  await page.route('**/api/auth/reauth/password/',async route=>{fresh=true;return json(route,{reauthenticated:true,session:sessions[0]})});
  await page.goto('/?page=profile');await page.waitForLoadState('networkidle');
- const card=page.getByTestId('security-sessions');
+ const card=await openSecurity(page);
  await expect(card.getByRole('heading',{name:'Aktive Sitzungen'})).toBeVisible();
  await expect(card.getByText('Chrome · macOS')).toBeVisible();
  await expect(card.getByText('Dieses Gerät')).toBeVisible();
@@ -88,7 +94,7 @@ test('revoking a second browser context makes its next auth request fail',async(
  });
  try{
   await Promise.all([pageA.goto('/?page=profile'),pageB.goto('/')]);await Promise.all([pageA.waitForLoadState('networkidle'),pageB.waitForLoadState('networkidle')]);
-  const card=pageA.getByTestId('security-sessions');await expect(card.getByText('Chrome · Desktop B')).toBeVisible();
+  const card=await openSecurity(pageA);await expect(card.getByText('Chrome · Desktop B')).toBeVisible();
   await card.locator('.security-session-row').filter({hasText:'Chrome · Desktop B'}).getByRole('button',{name:'Abmelden'}).click();
   await expect(card.getByText('Chrome · Desktop B')).toHaveCount(0);
   await pageB.reload();await pageB.waitForLoadState('networkidle');

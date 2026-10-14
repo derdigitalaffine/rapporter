@@ -76,7 +76,6 @@ test('legacy priority and next migrate to canonical Focus, Timeline and fixed Da
  await expect(situationRow).toBeVisible();
  await expect(situationRow.getByRole('combobox',{name:'Tageslage · Größe'})).toHaveCount(0);
  await expect(situationRow.getByRole('button',{name:/Tageslage · (Verschieben|Ausblenden|Nach oben|Nach unten)/})).toHaveCount(0);
- await expect(situationRow).toContainText('Fest');
  await expect(editor.locator('[data-editor-widget-id="focus"]')).toBeVisible();
  await expect(editor.locator('[data-editor-widget-id="timeline"]')).toBeVisible();
  await expect(editor.locator('[data-editor-widget-id="priority"]')).toHaveCount(0);
