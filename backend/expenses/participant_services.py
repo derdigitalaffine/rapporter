@@ -3,7 +3,7 @@ from decimal import Decimal
 from django.db import transaction
 
 from family.models import Membership
-from .models import ExpenseBudget
+from .models import ExpenseBudget, ExpenseLedger
 from .money import money
 from .participant_models import ExpenseBudgetParticipantPlan
 
@@ -24,6 +24,28 @@ def can_manage_participant_plans(user, family):
     return bool(membership and membership.role in MANAGER_ROLES)
 
 
+def _scope(scope):
+    if isinstance(scope, ExpenseBudget):
+        return {
+            "family": scope.family,
+            "ledger": scope.ledger,
+            "budget": scope,
+            "query": {"ledger": scope.ledger, "budget": scope},
+            "scope_type": "budget",
+            "scope_id": str(scope.id),
+        }
+    if isinstance(scope, ExpenseLedger):
+        return {
+            "family": scope.family,
+            "ledger": scope,
+            "budget": None,
+            "query": {"ledger": scope, "budget__isnull": True},
+            "scope_type": "ledger",
+            "scope_id": str(scope.id),
+        }
+    raise TypeError("Unsupported participant-plan scope")
+
+
 def _normalized(value):
     return None if value is None else money(Decimal(value))
 
@@ -39,20 +61,22 @@ def requested_plan_signature(rows):
     }
 
 
-def current_plan_signature(budget):
+def current_plan_signature(scope):
+    meta = _scope(scope)
     return {
         str(row.member_id): (
             _normalized(row.spending_limit),
             _normalized(row.planned_share),
         )
-        for row in budget.participant_plans.all()
+        for row in ExpenseBudgetParticipantPlan.objects.filter(**meta["query"])
     }
 
 
 @transaction.atomic
-def replace_participant_plans(*, budget, rows, user):
-    """Atomically replace current planning rows without touching actual shares/debt."""
-    if not can_manage_participant_plans(user, budget.family):
+def replace_participant_plans(*, scope, rows, user):
+    """Atomically replace planning rows for a ledger/budget without accounting side effects."""
+    meta = _scope(scope)
+    if not can_manage_participant_plans(user, meta["family"]):
         raise PermissionError("Teilnehmerplanung darf nur von Erwachsenen verwaltet werden.")
 
     requested = requested_plan_signature(rows)
@@ -60,7 +84,7 @@ def replace_participant_plans(*, budget, rows, user):
     members = {
         str(member.id): member
         for member in Membership.objects.select_for_update().filter(
-            family=budget.family,
+            family=meta["family"],
             id__in=member_ids,
         )
     }
@@ -69,7 +93,7 @@ def replace_participant_plans(*, budget, rows, user):
 
     existing = {
         str(row.member_id): row
-        for row in ExpenseBudgetParticipantPlan.objects.select_for_update().filter(budget=budget)
+        for row in ExpenseBudgetParticipantPlan.objects.select_for_update().filter(**meta["query"])
     }
 
     for member_id, row in list(existing.items()):
@@ -90,7 +114,8 @@ def replace_participant_plans(*, budget, rows, user):
                 current.save(update_fields=["spending_limit", "planned_share", "updated_at"])
         else:
             ExpenseBudgetParticipantPlan.objects.create(
-                budget=budget,
+                ledger=meta["ledger"],
+                budget=meta["budget"],
                 member=members[member_id],
                 spending_limit=spending_limit,
                 planned_share=planned_share,
@@ -98,18 +123,19 @@ def replace_participant_plans(*, budget, rows, user):
 
     return list(
         ExpenseBudgetParticipantPlan.objects.select_related("member", "member__user")
-        .filter(budget=budget)
+        .filter(**meta["query"])
         .order_by("created_at", "id")
     )
 
 
-def participant_plan_payload(*, budget, user):
-    membership = requester_membership(user, budget.family)
-    can_manage = can_manage_participant_plans(user, budget.family)
+def participant_plan_payload(*, scope, user):
+    meta = _scope(scope)
+    membership = requester_membership(user, meta["family"])
+    can_manage = can_manage_participant_plans(user, meta["family"])
     rows = []
     for row in (
         ExpenseBudgetParticipantPlan.objects.select_related("member", "member__user")
-        .filter(budget=budget)
+        .filter(**meta["query"])
         .order_by("created_at", "id")
     ):
         can_view_limit = can_manage or bool(membership and membership.id == row.member_id)
@@ -123,8 +149,9 @@ def participant_plan_payload(*, budget, user):
             }
         )
     return {
-        "budget": str(budget.id),
-        "currency": budget.ledger.base_currency.upper(),
+        "scope_type": meta["scope_type"],
+        "scope_id": meta["scope_id"],
+        "currency": meta["ledger"].base_currency.upper(),
         "can_manage": can_manage,
         "plans": rows,
     }
