@@ -49,7 +49,10 @@ export default function ShoppingCheckoutFlow({list,sessionId,openCount,onClose,o
   if(!expense?.id||!completion?.session?.id)return;
   try{
    await api('/context-links/',{method:'POST',body:JSON.stringify({family:list.family,source:{type:'expense',id:expense.id},context:{type:'shopping_session',id:completion.session.id},relation:'context'})});
-  }catch(err){toast(t('shoppingCheckout.linkFailed'),{type:'error'})}
+  }catch(err){
+   toast(t('shoppingCheckout.linkFailed'),{type:'error'});
+   throw err;
+  }
   setExpenseMode('');setLinkedExpense(expense);setStage('summary');
  }
  const expensePrefill={title:completion?.completion?.shopping_list?.store||list?.store||'',occurred_at:completion?.session?.completed_at||completion?.completion?.completed_at||''};
