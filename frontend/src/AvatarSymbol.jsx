@@ -1,6 +1,6 @@
 import {FontAwesomeIcon} from '@fortawesome/react-fontawesome';
 import {
- faCakeCandles,faCat,faDragon,faFish,faFootball,faGamepad,faGift,faMoon,
+ faCakeCandles,faCat,faDragon,faFish,faFutbol,faGamepad,faGift,faMoon,
  faMusic,faRainbow,faRocket,faSun,faTree
 } from '@fortawesome/free-solid-svg-icons';
 import {Icon} from './icons';
@@ -10,7 +10,7 @@ const EXTRA={
  cat:faCat,
  dragon:faDragon,
  fish:faFish,
- football:faFootball,
+ football:faFutbol,
  gamepad:faGamepad,
  gift:faGift,
  moon:faMoon,
