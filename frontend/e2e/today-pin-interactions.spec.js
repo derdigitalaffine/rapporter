@@ -1,3 +1,4 @@
+import {expectActiveFamily,selectFamily} from './family-ui.js';
 import {test,expect} from '@playwright/test';
 import {installApiMocks} from './mock-api.js';
 
@@ -41,7 +42,7 @@ test('transient reload retains rows with retry, denied retry clears previews and
 });
 
 test('late previous-family read cannot restore pin preview or interaction state',async({page})=>{
- const {state,widget}=await boot(page,{multipleFamilies:true});let release;state.gates.push(new Promise(resolve=>release=resolve));const baseline=state.reads;await page.evaluate(()=>window.dispatchEvent(new Event('focus')));await expect.poll(()=>state.reads).toBeGreaterThan(baseline);await page.locator('.family-switcher select').selectOption('family-2');await expect(page.locator('.family-switcher select')).toHaveValue('family-2');await expect(page.getByTestId('today-pinboard')).toContainText('Ersten wichtigen Punkt anpinnen');release();await expect(page.getByTestId('today-pinboard').locator('[data-today-pin]')).toHaveCount(0);await expect(page.getByTestId('today-pinboard')).not.toContainText('Punkt pin-a');
+ const {state,widget}=await boot(page,{multipleFamilies:true});let release;state.gates.push(new Promise(resolve=>release=resolve));const baseline=state.reads;await page.evaluate(()=>window.dispatchEvent(new Event('focus')));await expect.poll(()=>state.reads).toBeGreaterThan(baseline);await selectFamily(page,'family-2');await expectActiveFamily(page,'family-2');await expect(page.getByTestId('today-pinboard')).toContainText('Ersten wichtigen Punkt anpinnen');release();await expect(page.getByTestId('today-pinboard').locator('[data-today-pin]')).toHaveCount(0);await expect(page.getByTestId('today-pinboard')).not.toContainText('Punkt pin-a');
 });
 
 test('a delayed board read cannot restore an old summary after a confirmed reaction',async({page})=>{

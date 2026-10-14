@@ -1,3 +1,4 @@
+import {selectFamily} from './family-ui.js';
 import {test,expect} from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import {installApiMocks} from './mock-api.js';
@@ -128,7 +129,7 @@ test('family switch fences a late create result and does not learn in either fam
  await page.route('**/api/families/',route=>route.fulfill({json:[state.fixture.family,other]}));
  await page.reload();await openExisting(page);
  await sourceButton(page,'task').click();await form(page).getByRole('button',{name:'Anpinnen',exact:true}).click();await expect.poll(()=>state.posts.length).toBe(1);
- await page.locator('.family-switcher select').selectOption('family-2');
+ await selectFamily(page,'family-2');
  const settled=page.waitForResponse(response=>response.url().endsWith('/api/board/')&&response.request().method()==='POST');release();await settled;await page.waitForLoadState('networkidle');
  expect(await prefs(page)).toBeNull();expect(await prefs(page,storageKey('1','member-other','family-2'))).toBeNull();
 });

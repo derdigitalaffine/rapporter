@@ -48,7 +48,8 @@ export default function TodoActionRow({item,language,busy=false,onPrimary,onSeco
   return <article className={`todo-row urgency-${item.urgency||'normal'}`} data-action-id={item.id} data-accent={item.accent_token||''}>
     <button className="todo-complete" type="button" onClick={()=>onPrimary?.(item)} disabled={busy||!canRunPrimary(item)} aria-label={`${actionLabel}: ${item.title}`} title={actionLabel}><Icon name={item.kind==='routine'?(item.primary_action?.id==='reactivate'?'refresh':'history'):'check'} size={18}/></button>
     <a className="todo-row-main" href={item.deep_link||fallbackHref(item)}>
-      <strong className="todo-row-icon"><Icon name={item.icon||'tasks'} size={16}/>{item.title}{item.assignee&&<MemberAvatar person={item.assignee} size={22}/>}</strong>
+      <strong className="todo-row-icon"><Icon name={item.icon||'tasks'} size={16}/>{item.title}</strong>{item.assignee&&<MemberAvatar person={item.assignee} size={22}/>}
+
       {metadata.length>0&&<span>{metadata.slice(0,2).join(' · ')}</span>}
     </a>
     {item.contexts?.length>0&&<div className="action-context-chips">{item.contexts.map(context=><a key={`${context.type}:${context.id}`} href={context.deep_link}><Icon name="link" size={12}/>{context.type}</a>)}</div>}

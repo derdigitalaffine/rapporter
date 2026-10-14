@@ -76,7 +76,7 @@ async function restoreLegacyCalendarVisual(page){
   await page.locator('.page-intro').evaluate(element=>{element.textContent='Familientermine, Schule, Müllabfuhr, Mobilität, Wetter und Warnungen an einem Ort.'});
 }
 
-test('visual · Today',async({page})=>{await bootVisual(page);await expect(page.getByRole('heading',{name:/Musterfamilie/})).toBeVisible();await snapshot(page,'today')});
+test('visual · Today',async({page})=>{await bootVisual(page);await expect(page.getByRole('main').getByRole('heading',{name:/Musterfamilie/})).toBeVisible();await snapshot(page,'today')});
 test('visual · Tasks',async({page})=>{await bootVisual(page,'/?page=tasks');await expect(page.getByRole('heading',{name:'Aufgaben',exact:true})).toBeVisible();await snapshot(page,'tasks')});
 test('visual · Shopping planning',async({page})=>{await bootVisual(page);await bottom(page,'Einkauf');await expect(page.getByText('Milch',{exact:true})).toBeVisible();await snapshot(page,'shopping-planning')});
 test('visual · Shopping store mode',async({page})=>{await bootVisual(page);await bottom(page,'Einkauf');await page.getByRole('button',{name:/Im Laden/i}).click();await expect(page.locator('.store-focus')).toBeVisible();await snapshot(page,'shopping-store')});

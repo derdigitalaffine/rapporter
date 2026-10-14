@@ -1,3 +1,4 @@
+import {expectActiveFamily,selectFamily} from './family-ui.js';
 import {test,expect} from '@playwright/test';
 import {installApiMocks} from './mock-api.js';
 
@@ -47,7 +48,7 @@ test('Today retains confirmed rows on transient failure and removes them on deni
 });
 
 test('widget retry and delayed results cannot restore a previous family',async({page})=>{
- const {state}=await boot(page,{home:true,multipleFamilies:true});const widget=page.getByTestId('today-games');state.errors=503;await page.evaluate(()=>window.dispatchEvent(new Event('focus')));await expect(widget.getByRole('alert')).toBeVisible();state.errors=0;let release;state.gates.push(new Promise(resolve=>release=resolve));await widget.getByRole('button',{name:'Erneut laden',exact:true}).click();await expect.poll(()=>state.active).toBe(1);await page.locator('.family-switcher select').selectOption('family-2');await expect(page.locator('.family-switcher select')).toHaveValue('family-2');await expect(page.getByTestId('today-games').getByText('Keine offenen Spiele',{exact:true})).toBeVisible();release();await expect.poll(()=>state.active).toBe(0);await expect(page.getByTestId('today-games')).not.toContainText('Sam');
+ const {state}=await boot(page,{home:true,multipleFamilies:true});const widget=page.getByTestId('today-games');state.errors=503;await page.evaluate(()=>window.dispatchEvent(new Event('focus')));await expect(widget.getByRole('alert')).toBeVisible();state.errors=0;let release;state.gates.push(new Promise(resolve=>release=resolve));await widget.getByRole('button',{name:'Erneut laden',exact:true}).click();await expect.poll(()=>state.active).toBe(1);await selectFamily(page,'family-2');await expectActiveFamily(page,'family-2');await expect(page.getByTestId('today-games').getByText('Keine offenen Spiele',{exact:true})).toBeVisible();release();await expect.poll(()=>state.active).toBe(0);await expect(page.getByTestId('today-games')).not.toContainText('Sam');
 });
 
 test('auth false discards a delayed game mutation, while true refresh preserves a valid draft',async({page})=>{

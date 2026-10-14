@@ -1,0 +1,91 @@
+name: unified-actions-regressions
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: unified-actions-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  compatibility:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: public.ecr.aws/docker/library/postgres:17-alpine
+        env:
+          POSTGRES_DB: famuhle
+          POSTGRES_USER: famuhle
+          POSTGRES_PASSWORD: test-password
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd="pg_isready -U famuhle"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+    env:
+      POSTGRES_HOST: 127.0.0.1
+      POSTGRES_DB: famuhle
+      POSTGRES_USER: famuhle
+      POSTGRES_PASSWORD: test-password
+      DJANGO_SECRET_KEY: ci-only-secret
+      DJANGO_DEBUG: "true"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - run: pip install -r backend/requirements.txt
+      - working-directory: backend
+        run: python manage.py makemigrations --check --dry-run && python manage.py migrate && python manage.py check
+      - working-directory: backend
+        run: >-
+          python manage.py test family.test_unified_actions family.test_action_projection
+          family.test_routines family.test_task_workflow family.test_smart_todo
+          family.test_context_links family.test_action_schedule_recurrence
+
+  browser:
+    name: actions / ${{ matrix.project }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        project: [mobile-chromium, desktop-chromium]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - working-directory: frontend
+        run: npm ci --prefer-offline --no-audit --no-fund
+      - working-directory: frontend
+        run: npm run build
+      - working-directory: frontend
+        run: npx playwright install --with-deps chromium
+      - working-directory: frontend
+        run: >-
+          npm run e2e -- --project=${{ matrix.project }}
+          e2e/unified-actions.spec.js e2e/todo-hub.spec.js e2e/family-context.spec.js
+          e2e/games-live.spec.js e2e/task-games.spec.js e2e/pin-board-card.spec.js
+          e2e/pin-interactions.spec.js e2e/pin-type-suggestions.spec.js
+          e2e/today-context-widgets.spec.js e2e/today-pin-interactions.spec.js
+          e2e/today-quick-actions.spec.js e2e/today-reference-home.spec.js
+      - working-directory: frontend
+        run: npm run e2e -- --project=${{ matrix.project }} e2e/today-create-widget.spec.js --grep "family switch"
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: unified-actions-${{ matrix.project }}-${{ github.run_attempt }}
+          path: |
+            frontend/playwright-report
+            frontend/test-results
+          retention-days: 14

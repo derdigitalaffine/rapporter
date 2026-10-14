@@ -1,3 +1,4 @@
+import {expectActiveFamily,selectFamily} from './family-ui.js';
 import {test,expect} from '@playwright/test';
 import {installApiMocks} from './mock-api.js';
 
@@ -56,15 +57,15 @@ test('family switcher isolates dashboard data and persists selection',async({pag
   await page.goto('/');
   await page.waitForLoadState('networkidle');
 
-  const switcher=page.locator('.family-switcher select');
-  await expect(switcher).toHaveValue('family-1');
+
+  await expectActiveFamily(page,'family-1');
   await expect(todo(page).getByText('Wäsche aufhängen',{exact:true})).toBeVisible();
   await expect(timeline(page).getByText('Arzt Musterfamilie',{exact:true})).toBeVisible();
   await expect(todo(page).getByText('Hund füttern',{exact:true})).toHaveCount(0);
   await expect(timeline(page).getByText('Training Nebenfamilie',{exact:true})).toHaveCount(0);
 
-  await switcher.selectOption('family-2');
-  await expect(switcher).toHaveValue('family-2');
+  await selectFamily(page,'family-2');
+  await expectActiveFamily(page,'family-2');
   await expect(todo(page).getByText('Hund füttern',{exact:true})).toBeVisible();
   await expect(timeline(page).getByText('Training Nebenfamilie',{exact:true})).toBeVisible();
   await expect(todo(page).getByText('Wäsche aufhängen',{exact:true})).toHaveCount(0);
@@ -72,7 +73,7 @@ test('family switcher isolates dashboard data and persists selection',async({pag
 
   await page.reload();
   await page.waitForLoadState('networkidle');
-  await expect(page.locator('.family-switcher select')).toHaveValue('family-2');
+  await expectActiveFamily(page,'family-2');
   await expect(todo(page).getByText('Hund füttern',{exact:true})).toBeVisible();
   await expect(timeline(page).getByText('Training Nebenfamilie',{exact:true})).toBeVisible();
   await expect(todo(page).getByText('Wäsche aufhängen',{exact:true})).toHaveCount(0);

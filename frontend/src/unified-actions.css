@@ -2,3 +2,4 @@
 .action-duration-chips{display:flex;gap:.35rem;flex-wrap:wrap}.action-duration-chips button{min-height:44px}
 .action-context-chips{display:flex;gap:.3rem;flex-wrap:wrap;grid-column:2}.action-context-chips a{display:flex;gap:.3rem;align-items:center;min-height:44px;font-size:.8rem;overflow-wrap:anywhere}
 .todo-row .todo-actions-menu,.todo-row .todo-overflow{grid-column:3;grid-row:1}.todo-row .todo-complete{grid-column:1;grid-row:1}.todo-row .todo-row-main{grid-column:2;grid-row:1}
+.today-waste-event>.today-check{color:var(--ink,#183b3a)}.today-waste-event>.today-check[aria-pressed=true]{color:var(--green,#176b4a);background:var(--green-soft,#e6f2ea)}
