@@ -8,13 +8,14 @@ AVATAR_COLOR_PALETTE = (
     "#357A68", "#426E8A", "#755B45", "#626A73",
 )
 
-# Stable keys only. They map to the existing central frontend Icon registry; no
-# arbitrary Font Awesome class names or SVG/HTML strings are persisted.
+# Stable keys only. They map to a curated frontend avatar symbol registry; no
+# arbitrary Font Awesome class names, SVG data or HTML strings are persisted.
 AVATAR_ICON_KEYS = (
-    "user", "heart", "favorite", "pet", "dog", "baby", "home", "bed",
-    "car", "recycle", "utensils", "water", "broom", "weather", "frost", "rain",
-    "bolt", "light", "school", "transit", "route", "location", "calendar", "clock",
-    "tasks", "shopping", "store", "lists", "inbox", "members", "link", "share",
+    "user", "heart", "favorite", "pet", "dog", "cat", "fish", "dragon", "baby",
+    "home", "bed", "tree", "sun", "moon", "rainbow", "rocket", "football", "gamepad",
+    "music", "cake", "gift", "car", "recycle", "utensils", "water", "broom", "weather",
+    "frost", "rain", "bolt", "light", "school", "transit", "route", "location", "calendar",
+    "clock", "tasks", "shopping", "store", "lists", "inbox", "members", "link", "share",
     "camera", "microphone", "play", "robot", "email", "receipt", "archive", "sliders",
     "priority", "tags", "trend", "hot", "progress", "automation", "integrations", "waste",
     "install", "settle", "euro", "send",
