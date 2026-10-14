@@ -12,7 +12,7 @@ function icsEvent(state,id,title,start,end,participants=[]){return event(state,i
 
 async function expectNoHorizontalPageOverflow(page){const dimensions=await page.evaluate(()=>({scroll:document.documentElement.scrollWidth,width:window.innerWidth}));expect(dimensions.scroll).toBeLessThanOrEqual(dimensions.width+1)}
 
-test('family plan supports people lanes, ICS imports, hiding, rotation and seamless time zoom',async({page})=>{
+test('family plan supports people lanes, ICS imports, hiding, rotation, extended zoom and lane height',async({page})=>{
  const state=await installApiMocks(page);
  state.memberships[0].calendar_color='#2F855A';
  state.memberships[1].calendar_color='#2563EB';
@@ -47,9 +47,22 @@ test('family plan supports people lanes, ICS imports, hiding, rotation and seaml
  expect(await alex.evaluate(node=>node.style.getPropertyValue('--lane-color'))).toBe('#2F855A');
  expect(await sam.evaluate(node=>node.style.getPropertyValue('--lane-color'))).toBe('#2563EB');
  const scroll=page.locator('.family-timeline-scroll');
+ const zoom=page.getByRole('slider',{name:/Zeitbereich/});
+ await expect(zoom).toHaveAttribute('max','200');
  const beforeZoom=await scroll.evaluate(node=>node.scrollWidth);
- await page.getByRole('slider',{name:/Zeitbereich/}).fill('90');
- await expect.poll(()=>scroll.evaluate(node=>node.scrollWidth)).toBeGreaterThan(beforeZoom);
+ await zoom.fill('200');
+ await expect.poll(()=>scroll.evaluate(node=>node.scrollWidth)).toBeGreaterThan(beforeZoom*1.5);
+ await zoom.fill('0');
+ const minimumZoom=await scroll.evaluate(node=>node.scrollWidth);
+ expect(minimumZoom).toBeLessThan(beforeZoom);
+ const rowHeight=page.getByRole('slider',{name:/Zeilenhöhe/});
+ const defaultHeight=Number(await family.evaluate(node=>parseFloat(node.style.getPropertyValue('--timeline-lane-height'))));
+ await rowHeight.fill('0');
+ const compactHeight=Number(await family.evaluate(node=>parseFloat(node.style.getPropertyValue('--timeline-lane-height'))));
+ expect(compactHeight).toBeLessThan(defaultHeight);
+ await rowHeight.fill('100');
+ const roomyHeight=Number(await family.evaluate(node=>parseFloat(node.style.getPropertyValue('--timeline-lane-height'))));
+ expect(roomyHeight).toBeGreaterThan(defaultHeight);
  await page.locator('.family-timeline-lane-picker summary').click();
  await page.getByRole('checkbox',{name:'Sam',exact:true}).uncheck();
  await expect(page.locator('.family-timeline-lane[data-lane-id="member-2"]')).toHaveCount(0);
@@ -72,8 +85,11 @@ test('family plan scrolls internally in both orientations on a 320px viewport wi
  await expect(page.locator('.family-timeline')).toBeVisible();
  await expectNoHorizontalPageOverflow(page);
  const scroll=page.locator('.family-timeline-scroll');
+ await page.getByRole('slider',{name:/Zeitbereich/}).fill('200');
  const dimensions=await scroll.evaluate(node=>({scrollWidth:node.scrollWidth,clientWidth:node.clientWidth}));
  expect(dimensions.scrollWidth).toBeGreaterThan(dimensions.clientWidth);
+ await page.getByRole('slider',{name:/Zeilenhöhe/}).fill('0');
+ await expectNoHorizontalPageOverflow(page);
  await page.getByRole('button',{name:'Personen als Spalten',exact:true}).click();
  await expect(page.locator('.family-timeline-columns')).toBeVisible();
  await expectNoHorizontalPageOverflow(page);
