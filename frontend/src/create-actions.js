@@ -19,7 +19,7 @@ export const CREATE_ACTIONS=[
   {id:'taskList',labelKey:'createUi.taskList',icon:'lists',group:'secondary',permission:'createContent',contextMatcher:nowhere,open:({open,context})=>open('taskList',context)},
   {id:'shoppingList',labelKey:'createUi.shoppingList',icon:'shopping',group:'secondary',permission:'createContent',contextMatcher:nowhere,open:({open,context})=>open('shoppingList',context)},
   {id:'routine',labelKey:'createUi.routine',icon:'history',group:'secondary',permission:'createContent',contextMatcher:matches('routines'),open:({open,context})=>open('routine',context)},
-  {id:'message',labelKey:'createUi.message',icon:'inbox',group:'secondary',permission:'createMessages',contextMatcher:matches('inbox'),capability:'messages',open:({open,context})=>open('message',context)},
+  {id:'message',labelKey:'createUi.message',icon:'inbox',group:'secondary',permission:'createMessages',contextMatcher:matches('inbox'),open:({open,context})=>open('message',context)},
   {id:'loyalty',labelKey:'createUi.loyalty',icon:'store',group:'secondary',permission:'createContent',contextMatcher:matches('loyalty'),capability:'loyalty',open:({open,context})=>open('loyalty',context)},
 ];
 
