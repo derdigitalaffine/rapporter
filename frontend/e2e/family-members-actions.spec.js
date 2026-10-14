@@ -33,6 +33,12 @@ test('family members supports managed children and preserves invite actions on m
   const childProfile={id:'baby-1',membership:'member-child-1',display_name:'Mia',birth_date:'2021-05-06'};
 
   await page.route('**/api/memberships/',route=>json(route,memberships));
+  await page.route('**/api/memberships/member-child-1/',route=>{
+    const body=route.request().postDataJSON();
+    const child=memberships.find(member=>member.id==='member-child-1');
+    if(child)Object.assign(child,body);
+    return json(route,child||{id:'member-child-1',...body});
+  });
   await page.route('**/api/invitations/',route=>{
     if(route.request().method()==='POST'){
       const body=route.request().postDataJSON();
