@@ -194,7 +194,7 @@ export default function EventEditor({family,event=null,currentUserId=null,onClos
         <ProgressiveFieldGroup label={t('eventEditor.moreDetails')} summary={t('eventEditor.moreDetailsHint')} defaultOpen={!isNew} className="event-editor-more">
           <FormField id="event-location" label={t('location')}><input value={edit.location} onChange={e=>setEdit(v=>({...v,location:e.target.value}))} placeholder={t('eventEditor.locationPlaceholder')} disabled={busy}/></FormField>
           <FormField id="event-notes" label={t('notes')}><textarea value={edit.description} onChange={e=>setEdit(v=>({...v,description:e.target.value}))} disabled={busy}/></FormField>
-          <EventRecurrenceEditor value={edit.recurrence} onChange={recurrence=>setEdit(v=>({...v,recurrence}))} disabled={busy}/>
+          <EventRecurrenceEditor value={edit.recurrence} onChange={recurrence=>setEdit(v=>({...v,recurrence}))} disabled={busy} familyId={family?.id} anchor={edit.starts_at}/>
         </ProgressiveFieldGroup>
 
         <FormActions className="event-editor-actions"><button className="primary event-editor-save" disabled={busy||!edit.title.trim()}><Icon name="check"/>{busy?t('pleaseWait'):t('save')}</button>{!isNew&&<button type="button" className="ghost-danger destructive-wide" onClick={remove} disabled={busy}><Icon name="delete"/>{t('deleteEvent')}</button>}</FormActions>

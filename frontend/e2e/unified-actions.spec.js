@@ -4,6 +4,12 @@ import AxeBuilder from '@axe-core/playwright';
 
 async function boot(page){
  await installApiMocks(page);
+ await page.route('**/api/scheduling/preview/**',async route=>{
+  const body=route.request().postDataJSON()||{};
+  const recurrence=body.text?{frequency:'quarterly',interval:1,nth_weekdays:[{weekday:'MO',ordinal:1}]}:body.rule?.recurrence;
+  const anchor=body.anchor_date||body.rule?.anchor_date||'2026-01-01';
+  return route.fulfill({json:{rule:{version:'scheduling-rule-v1',timezone:'Europe/Berlin',time_mode:'wall_clock',anchor_date:anchor,recurrence},summary:'Jedes Quartal · erster Montag',occurrences:['2026-01-05','2026-04-06','2026-07-06','2026-10-05','2027-01-04'],timezone:'Europe/Berlin'}});
+ });
  const requests=[];let done=false;const item={id:'task:task-1',family:'family-1',kind:'task',title:'Müll rausbringen',state:'due',urgency:'normal',assignee:null,icon:'waste',context:{},primary_action:{id:'complete',method:'POST',href:'/api/tasks/task-1/toggle/'},allowed_actions:[{id:'complete',method:'POST',href:'/api/tasks/task-1/toggle/'},{id:'edit',method:'PATCH',href:'/api/tasks/task-1/'}],completion_command:{href:'/api/actions/execute/',version:'action-completion-v1'}};
  await page.route('**/api/actions/**',async route=>{const req=route.request();const url=new URL(req.url());const body=req.postDataJSON()||{};
   if(url.pathname==='/api/actions/'&&req.method()==='GET')return route.fulfill({json:{actions:done?[]:[item],focus:[],preferences:{smart_ranking_enabled:true,today_sort:'smart'}}});
@@ -34,12 +40,20 @@ test('new capture requires explicit create and retains original title',async({pa
  await expect.poll(()=>requests.at(-1)?.create_new).toBe(true);expect(requests.at(-1).title).toBe('Betten gemacht');expect(requests.at(-1).request_id).toMatch(/^[0-9a-f-]{36}$/);
 });
 
-test('schedule editor uses progressive fields and a versioned contract',async({page})=>{
+test('schedule editor shares server-authoritative recurrence UX with calendar events',async({page})=>{
  const requests=await boot(page);const row=page.locator('[data-action-id="task:task-1"]');
  await row.getByLabel('Schnellaktionen: Müll rausbringen').click();await row.getByRole('button',{name:'Zeitplan & Darstellung'}).click();
- const dialog=page.getByRole('dialog');await dialog.getByLabel('Wann?',{exact:true}).fill('jeden Montag um 18:00');
- await expect(dialog.getByLabel('Planungsmodus')).not.toBeVisible();await dialog.getByText('Mehr Optionen',{exact:true}).click();await expect(dialog.getByLabel('Planungsmodus')).toBeVisible();
- await dialog.getByRole('button',{name:'Speichern',exact:true}).click();await expect.poll(()=>requests.at(-1)?.schedule_text).toBe('jeden Montag um 18:00');
+ const dialog=page.getByRole('dialog');
+ await expect(dialog.getByLabel('Planungsmodus')).not.toBeVisible();
+ await dialog.getByText('Mehr Optionen',{exact:true}).click();
+ await expect(dialog.getByLabel('Planungsmodus')).toBeVisible();
+ await dialog.getByLabel('In eigenen Worten').fill('immer am ersten Montag im Quartal');
+ await dialog.getByRole('button',{name:'Erkennen',exact:true}).click();
+ await expect(dialog.getByText(/erster Montag/)).toBeVisible();
+ await expect(dialog.getByLabel('Wiederholung')).toHaveValue('quarterly');
+ await dialog.getByRole('button',{name:'Speichern',exact:true}).click();
+ await expect.poll(()=>requests.at(-1)?.schedule?.recurrence?.frequency).toBe('quarterly');
+ expect(requests.at(-1).schedule.recurrence.nth_weekdays).toEqual([{weekday:'MO',ordinal:1}]);
 });
 
 for(const width of [320,390,1024,1440])test(`capture and action rows fit ${width}px and remain accessible`,async({page})=>{
