@@ -58,5 +58,6 @@ test('finance · reserved shopping item opens the existing expense flow instead 
  await expect(dialog.getByLabel('Betrag')).toHaveValue('75.50');
  await expect(dialog.getByLabel('Händler / Titel')).toHaveValue('Milch');
  await expect(dialog.getByLabel('Konto')).toHaveValue('ledger-home');
+ await expect(dialog.getByLabel('Budgettopf (optional)')).toHaveValue('budget-food');
  expect(checkedWrites).toBe(0);
 });
