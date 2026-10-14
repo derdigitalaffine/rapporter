@@ -57,6 +57,13 @@ def ensure_avatar_color(profile, preferred_color=None):
     if _HEX_COLOR.fullmatch(stored):
         return stored.upper()
     preferred = str(preferred_color or "").strip()
+    if not _HEX_COLOR.fullmatch(preferred):
+        try:
+            from .membership_calendar import get_calendar_color
+            membership = profile.user.family_memberships.select_related("family").order_by("created_at").first()
+            preferred = get_calendar_color(membership) if membership else ""
+        except Exception:
+            preferred = ""
     color = preferred.upper() if _HEX_COLOR.fullmatch(preferred) else deterministic_avatar_color(profile.user_id)
     profile.avatar_color = color
     profile.save(update_fields=["avatar_color", "updated_at"])
