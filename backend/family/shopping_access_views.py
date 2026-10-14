@@ -462,11 +462,8 @@ def shopping_reorder(request, list_id):
         return Response({"item_ids": "Artikel dürfen nur einmal vorkommen."}, status=status.HTTP_400_BAD_REQUEST)
 
     with transaction.atomic():
-        shopping_list = visible_shopping_lists(
-            request.user,
-            ShoppingList.objects.select_for_update(),
-        ).filter(id=list_id).first()
-        if not shopping_list:
+        shopping_list = ShoppingList.objects.select_for_update().filter(id=list_id).first()
+        if not shopping_list or not can_access_shopping_list(request.user, shopping_list):
             return Response({"detail": "Einkaufsliste nicht gefunden."}, status=status.HTTP_404_NOT_FOUND)
 
         all_rows = list(shopping_list.items.select_for_update().order_by("position", "created_at", "id"))
