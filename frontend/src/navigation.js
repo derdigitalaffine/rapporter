@@ -12,7 +12,7 @@ export function pageFromLocation(search=location.search){
 export function pageHref(page,current=location.href){
  const next=APP_PAGES.has(page)?page:'home';
  const url=new URL(current,location.origin);
- if(url.searchParams.get('page')!==next){for(const key of ['routine','birthday','mode','list','task','item','wishlist','family','todo','ledger','game','vehicle'])url.searchParams.delete(key)}
+ if(url.searchParams.get('page')!==next){for(const key of ['routine','birthday','mode','list','task','item','wishlist','family','todo','ledger','game','vehicle','stats_range','stats_view','stats_member','stats_domain','stats_from','stats_to'])url.searchParams.delete(key)}
  if(next!=='notes')url.searchParams.delete('note');
  if(next!=='games')url.searchParams.delete('game');
  url.searchParams.delete('integration_connected');

@@ -1,0 +1,76 @@
+name: statistics-regressions
+on:
+  pull_request:
+    paths: ['backend/family_statistics/**', 'backend/family/**', 'backend/entitlements/**', 'backend/config/**', 'frontend/src/StatisticsHub.jsx', 'frontend/src/statistics*', 'frontend/src/feature-registry.js', 'frontend/src/navigation.js', 'frontend/src/App.jsx', 'frontend/e2e/statistics.spec.js', '.github/workflows/statistics-regressions.yml']
+  push:
+    branches: [main]
+    paths: ['backend/family_statistics/**', 'backend/family/**', 'backend/entitlements/**', 'backend/config/**', 'frontend/src/StatisticsHub.jsx', 'frontend/src/statistics*', 'frontend/src/feature-registry.js', 'frontend/src/navigation.js', 'frontend/src/App.jsx', 'frontend/e2e/statistics.spec.js', '.github/workflows/statistics-regressions.yml']
+permissions:
+  contents: read
+concurrency:
+  group: statistics-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  statistics-backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: famuhle
+          POSTGRES_USER: famuhle
+          POSTGRES_PASSWORD: test-password
+        ports: ['5432:5432']
+        options: --health-cmd="pg_isready -U famuhle" --health-interval=5s --health-timeout=5s --health-retries=10
+    env:
+      POSTGRES_HOST: 127.0.0.1
+      POSTGRES_DB: famuhle
+      POSTGRES_USER: famuhle
+      POSTGRES_PASSWORD: test-password
+      DJANGO_SECRET_KEY: ci-only-secret
+      DJANGO_DEBUG: 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - run: pip install -r backend/requirements.txt
+      - working-directory: backend
+        run: python manage.py makemigrations --check --dry-run
+      - working-directory: backend
+        run: python manage.py migrate && python manage.py check
+      - working-directory: backend
+        run: python manage.py test family_statistics family.test_unified_actions family.test_predictions entitlements
+
+  statistics-e2e:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        project: [mobile-chromium, desktop-chromium]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - working-directory: frontend
+        run: npm ci --prefer-offline --no-audit --no-fund
+      - working-directory: frontend
+        run: npm run build
+      - working-directory: frontend
+        run: npx playwright install --with-deps chromium
+      - working-directory: frontend
+        run: npx playwright test e2e/statistics.spec.js --project=${{ matrix.project }} --workers=2
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: statistics-visual-${{ matrix.project }}-${{ github.run_attempt }}
+          path: |
+            frontend/test-results/**/*.png
+            frontend/test-results/**/error-context.md
+            frontend/playwright-report
+          retention-days: 14
