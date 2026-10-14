@@ -3,12 +3,14 @@ import {installApiMocks} from './mock-api.js';
 
 const json=(route,body,status=200)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)});
 
-test('finance · reserved shopping item opens the existing expense flow instead of auto-posting',async({page})=>{
+test('finance · reserved shopping item opens and finalizes through the atomic expense flow',async({page})=>{
  const state=await installApiMocks(page,{dismissOnboarding:true,language:'de'});
  const ledger={id:'ledger-home',family:'family-1',name:'Familie',base_currency:'EUR',budget_amount:'500.00',estimated_amount:null,is_default:true,archived:false};
  const budget={id:'budget-food',family:'family-1',ledger:'ledger-home',name:'Lebensmittel',amount:'300.00',estimated_amount:null,spent_amount:'0.00',remaining_amount:'300.00',archived:false};
  let commitment=null;
  let checkedWrites=0;
+ let directExpensePosts=0;
+ const purchaseBodies=[];
 
  await page.route(/\/api\/expense-ledgers\/(?:\?.*)?$/,async route=>{
   if(route.request().method()==='GET')return json(route,[ledger]);
@@ -29,6 +31,13 @@ test('finance · reserved shopping item opens the existing expense flow instead 
   if(method==='DELETE'){commitment=null;return json(route,{commitment:null})}
   return route.fallback();
  });
+ await page.route(/\/api\/budget-commitments\/commitment-1\/purchase\/(?:\?.*)?$/,async route=>{
+  if(route.request().method()!=='POST')return route.fallback();
+  const body=route.request().postDataJSON();purchaseBodies.push(body);
+  const expense={id:'expense-1',...body.expense,status:'posted',source:'manual',receipt_status:'',receipt_available:false,shares:[]};
+  commitment={...commitment,status:'consumed',consumed_by:expense.id};
+  return json(route,{commitment,expense},201);
+ });
  await page.route(/\/api\/shopping-items\/item-1\/(?:\?.*)?$/,async route=>{
   const method=route.request().method();
   const item=state.shoppingLists[0].items.find(row=>row.id==='item-1');
@@ -38,6 +47,10 @@ test('finance · reserved shopping item opens the existing expense flow instead 
    if(body.checked===true)checkedWrites+=1;
    Object.assign(item,body);return json(route,item);
   }
+  return route.fallback();
+ });
+ await page.route(/\/api\/expenses\/(?:\?.*)?$/,async route=>{
+  if(route.request().method()==='POST')directExpensePosts+=1;
   return route.fallback();
  });
 
@@ -60,4 +73,13 @@ test('finance · reserved shopping item opens the existing expense flow instead 
  await expect(dialog.getByLabel('Konto')).toHaveValue('ledger-home');
  await expect(dialog.getByLabel('Budgettopf (optional)')).toHaveValue('budget-food');
  expect(checkedWrites).toBe(0);
+
+ await dialog.getByLabel('Betrag').fill('83');
+ await dialog.getByRole('button',{name:'Ausgabe speichern',exact:true}).click();
+ await expect(dialog).toHaveCount(0);
+ expect(purchaseBodies).toHaveLength(1);
+ expect(purchaseBodies[0].budget).toBe('budget-food');
+ expect(purchaseBodies[0].expense.total_amount).toBe('83');
+ expect(directExpensePosts).toBe(0);
+ expect(checkedWrites).toBe(1);
 });
