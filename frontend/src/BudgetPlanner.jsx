@@ -12,6 +12,8 @@ const hasAmount=value=>value!==null&&value!==undefined;
 const format=(value,currency,locale)=>new Intl.NumberFormat(locale,{style:'currency',currency}).format(Number(value||0));
 const maximum=value=>Math.max(Number(value||0),.01);
 const progress=(spent,total)=>Math.min(Math.max(Number(spent||0),0),maximum(total));
+const periodKeys={open:'periodOpen',month:'periodMonth',year:'periodYear',date_range:'periodDateRange',context:'periodContext'};
+const displayDate=(value,locale)=>value?new Intl.DateTimeFormat(locale,{dateStyle:'medium'}).format(new Date(`${value}T12:00:00`)):'';
 
 export default function BudgetPlanner({familyId,ledger,summary,loading,onReload,onSaved}){
  const {t,i18n}=useTranslation();
@@ -43,7 +45,11 @@ export default function BudgetPlanner({familyId,ledger,summary,loading,onReload,
  function open(event,record,type){
   triggerRef.current=event.currentTarget.dataset.budgetAction;
   setErrors({});setFailure('');setConflict(false);
-  setDraft({type,id:record?.id||null,name:record?.name||'',amount:String((type==='overall'?summary?.budget_amount:record?.amount)??''),estimate:String((type==='overall'?summary?.estimated_amount:record?.estimated_amount)??''),revision:type==='overall'?summary?.updated_at:record?.updated_at,requestId:crypto.randomUUID()});
+  setDraft({
+   type,id:record?.id||null,name:record?.name||'',amount:String((type==='overall'?summary?.budget_amount:record?.amount)??''),estimate:String((type==='overall'?summary?.estimated_amount:record?.estimated_amount)??''),
+   periodType:record?.period_type||'open',rolloverPolicy:record?.rollover_policy||'reset',startsOn:record?.starts_on||'',endsOn:record?.ends_on||'',
+   revision:type==='overall'?summary?.updated_at:record?.updated_at,requestId:crypto.randomUUID(),
+  });
  }
  function close(){restoreFocus.current=true;setDraft(null);setErrors({});setFailure('');setConflict(false)}
  function set(key,value){setDraft(current=>({...current,[key]:value}));setErrors(current=>({...current,[key]:''}));if(!conflict)setFailure('')}
@@ -53,13 +59,25 @@ export default function BudgetPlanner({familyId,ledger,summary,loading,onReload,
   for(const key of ['amount','estimate'])if(draft[key].trim()&&!/^\d{1,10}([,.]\d{1,2})?$/.test(draft[key].trim()))next[key]=label('invalidMoney');
   if(draft.type!=='overall'&&!draft.amount.trim())next.amount=label('requiredPlan');
   if(draft.type!=='overall'&&!draft.name.trim())next.name=label('requiredName');
+  if(draft.type!=='overall'&&draft.periodType==='date_range'){
+   if(!draft.startsOn||!draft.endsOn){next.startsOn=label('requiredDates');next.endsOn=label('requiredDates')}
+   else if(draft.endsOn<draft.startsOn)next.endsOn=label('invalidDateRange');
+  }
   setErrors(next);if(Object.keys(next).length)return;
   if(!navigator.onLine){setFailure(label('offline'));return}
   setBusy(true);setFailure('');
   const overall=draft.type==='overall';
   const payload={family:familyId,estimated_amount:draft.estimate.trim()||null,expected_updated_at:draft.revision||undefined};
   if(overall)payload.budget_amount=draft.amount.trim()||null;
-  else Object.assign(payload,{ledger:ledger.id,name:draft.name.trim(),amount:draft.amount.trim(),...(!draft.id?{client_request_id:draft.requestId}:{})});
+  else{
+   Object.assign(payload,{ledger:ledger.id,name:draft.name.trim(),amount:draft.amount.trim(),period_type:draft.periodType,...(!draft.id?{client_request_id:draft.requestId}:{})});
+   if(draft.periodType==='month'||draft.periodType==='year')payload.rollover_policy=draft.rolloverPolicy;
+   if(draft.periodType==='date_range'||draft.periodType==='context'){
+    payload.starts_on=draft.startsOn||null;payload.ends_on=draft.endsOn||null;
+   }else{
+    payload.starts_on=null;payload.ends_on=null;
+   }
+  }
   try{
    await api(overall?`/expense-ledgers/${ledger.id}/`:draft.id?`/expense-budgets/${draft.id}/`:'/expense-budgets/',{method:overall||draft.id?'PATCH':'POST',body:JSON.stringify(payload)});
    if(!live.current)return;
@@ -69,7 +87,7 @@ export default function BudgetPlanner({familyId,ledger,summary,loading,onReload,
    if(error.status===409){setConflict(true);setFailure(label('conflict'))}
    else{
     const fieldErrors={};
-    for(const [server,local] of [[overall?'budget_amount':'amount','amount'],['estimated_amount','estimate'],['name','name']]){
+    for(const [server,local] of [[overall?'budget_amount':'amount','amount'],['estimated_amount','estimate'],['name','name'],['period_type','periodType'],['rollover_policy','rolloverPolicy'],['starts_on','startsOn'],['ends_on','endsOn']]){
      const messages=error.payload?.[server];if(messages)fieldErrors[local]=Array.isArray(messages)?messages.join(' '):String(messages);
     }
     setErrors(fieldErrors);setFailure(Object.keys(fieldErrors).length?'':error.status?error.message||label('saveFailed'):label('saveFailed'));
@@ -93,7 +111,7 @@ export default function BudgetPlanner({familyId,ledger,summary,loading,onReload,
   {summary&&<>
    {(hasOverall||hasAmount(summary.estimated_amount))?<dl className="budget-planning-facts">{hasAmount(summary.estimated_amount)&&<div><dt>{label('estimated')}</dt><dd>{f(summary.estimated_amount)}</dd></div>}<div><dt>{label('planned')}</dt><dd>{hasOverall?f(summary.budget_amount):label('notPlanned')}</dd></div><div><dt>{label('reserved')}</dt><dd>{f(summary.reserved_amount||0)}</dd></div><div><dt>{label('actual')}</dt><dd>{f(summary.spent_amount)}</dd></div>{hasOverall&&<div><dt>{label('available')}</dt><dd>{f(summary.available_amount)}</dd></div>}</dl>:<p className="budget-planning-empty">{label('empty')}</p>}
    {hasOverall&&<><strong className="budget-planning-used">{t('expensesUi.budgetUsed',{spent:f(summary.spent_amount),budget:f(summary.budget_amount)})}</strong><progress max={maximum(summary.budget_amount)} value={progress(summary.spent_amount,summary.budget_amount)} aria-label={t('expensesUi.budgetProgress')}/><p className="budget-status">{summary.over_available?t('expensesUi.budgetExceeded',{amount:f(Math.abs(Number(summary.available_amount||0)))}):t('expensesUi.budgetRemaining',{amount:f(summary.available_amount)})}</p></>}
-   <details className="finance-collapsible"><summary><span>{t('expensesUi.subBudgets')}</span><small>{budgets.length}</small></summary><div className="subbudget-list">{budgets.map(item=><div className="budget-planning-row" key={item.id}><div><strong>{item.name}</strong><small>{label('actual')}: {f(item.spent_amount)} · {label('reserved')}: {f(item.reserved_amount||0)}</small>{hasAmount(item.estimated_amount)&&<small>{label('estimated')}: {f(item.estimated_amount)}</small>}<progress max={maximum(item.amount)} value={progress(item.spent_amount,item.amount)} aria-label={item.name}/><small>{label('available')}: {f(item.available_amount??item.remaining_amount)}</small></div><div className="budget-planning-row-actions"><button type="button" data-budget-action={item.id} className="ghost icon-button" disabled={busy} aria-label={`${label('editCategory')}: ${item.name}`} title={label('editCategory')} onClick={event=>open(event,item,'category')}><Icon name="edit"/></button><button type="button" className="ghost icon-button" disabled={busy} aria-label={`${label('archive')}: ${item.name}`} title={label('archive')} onClick={event=>archive(event,item)}><Icon name="archive"/></button></div></div>)}</div><button type="button" data-budget-action="new-category" className="text-button budget-planning-add" disabled={busy||loading} onClick={event=>open(event,null,'category')}><Icon name="plus"/>{label('newCategory')}</button></details>
+   <details className="finance-collapsible"><summary><span>{t('expensesUi.subBudgets')}</span><small>{budgets.length}</small></summary><div className="subbudget-list">{budgets.map(item=>{const period=item.period_starts_on&&item.period_ends_on?`${displayDate(item.period_starts_on,i18n.language)} – ${displayDate(item.period_ends_on,i18n.language)}`:'';return <div className="budget-planning-row" key={item.id}><div><strong>{item.name}</strong><small>{label('actual')}: {f(item.spent_amount)} · {label('reserved')}: {f(item.reserved_amount||0)}</small>{Number(item.carryover_amount||0)>0&&<small>{label('carryover')}: {f(item.carryover_amount)}</small>}{period&&<small>{label('periodCurrent')}: {period} · {label(periodKeys[item.period_type]||'periodOpen')}</small>}{hasAmount(item.estimated_amount)&&<small>{label('estimated')}: {f(item.estimated_amount)}</small>}<progress max={maximum(Number(item.amount||0)+Number(item.carryover_amount||0))} value={progress(item.spent_amount,Number(item.amount||0)+Number(item.carryover_amount||0))} aria-label={item.name}/><small>{label('available')}: {f(item.available_amount??item.remaining_amount)}</small></div><div className="budget-planning-row-actions"><button type="button" data-budget-action={item.id} className="ghost icon-button" disabled={busy} aria-label={`${label('editCategory')}: ${item.name}`} title={label('editCategory')} onClick={event=>open(event,item,'category')}><Icon name="edit"/></button><button type="button" className="ghost icon-button" disabled={busy} aria-label={`${label('archive')}: ${item.name}`} title={label('archive')} onClick={event=>archive(event,item)}><Icon name="archive"/></button></div></div>})}</div><button type="button" data-budget-action="new-category" className="text-button budget-planning-add" disabled={busy||loading} onClick={event=>open(event,null,'category')}><Icon name="plus"/>{label('newCategory')}</button></details>
    {Number(summary.unconverted_expense_count)>0&&<p className="budget-unconverted"><Icon name="info"/>{t('expensesUi.budgetUnconverted',{count:Number(summary.unconverted_expense_count)})}</p>}
    <p className="budget-soft-hint"><Icon name="info"/>{t('expensesUi.budgetSoftHint')}</p>
   </>}
@@ -102,13 +120,18 @@ export default function BudgetPlanner({familyId,ledger,summary,loading,onReload,
   <div className="sheet-head"><div><small>{ledger?.name}</small><h2 id={`${titleId}-editor`}>{label(draft.type==='overall'?'editOverall':draft.id?'editCategory':'newCategory')}</h2></div><button type="button" className="sheet-close" disabled={busy} onClick={close} aria-label={t('dismiss')}><Icon name="close"/></button></div>
   {failure&&<p role="alert" className="error">{failure}</p>}
   <FormShell onSubmit={save} noValidate className="budget-planner-editor">
-   <ErrorSummary title={label('checkFields')} errors={Object.entries(errors).filter(([,message])=>message).map(([key,message])=>({id:`${titleId}-${key}`,message,label:label(key==='name'?'name':key==='amount'?'planned':'estimated')}))}/>
+   <ErrorSummary title={label('checkFields')} errors={Object.entries(errors).filter(([,message])=>message).map(([key,message])=>({id:`${titleId}-${key}`,message,label:label(key==='name'?'name':key==='amount'?'planned':key==='estimate'?'estimated':key==='periodType'?'periodType':key==='rolloverPolicy'?'rolloverPolicy':key==='startsOn'?'startsOn':'endsOn')}))}/>
    <fieldset disabled={busy} className="budget-planner-fields">
     {draft.type!=='overall'&&<FormField id={`${titleId}-name`} label={label('name')} error={errors.name} required><input maxLength={120} value={draft.name} onChange={event=>set('name',event.target.value)}/></FormField>}
     <FormRow>
      <FormField id={`${titleId}-amount`} label={`${label(draft.type==='overall'?'overallPlanned':'planned')} (${currency})`} error={errors.amount} required={draft.type!=='overall'}><input type="text" inputMode="decimal" autoComplete="off" value={draft.amount} onChange={event=>set('amount',event.target.value)}/></FormField>
      <FormField id={`${titleId}-estimate`} label={`${label('estimated')} (${currency})`} error={errors.estimate}><input type="text" inputMode="decimal" autoComplete="off" value={draft.estimate} onChange={event=>set('estimate',event.target.value)}/></FormField>
     </FormRow>
+    {draft.type!=='overall'&&<details className="finance-collapsible budget-period-settings"><summary><span>{label('periodSettings')}</span><small>{label(periodKeys[draft.periodType]||'periodOpen')}</small></summary><div className="budget-period-fields">
+     <FormField id={`${titleId}-periodType`} label={label('periodType')} error={errors.periodType}><select value={draft.periodType} onChange={event=>set('periodType',event.target.value)}><option value="open">{label('periodOpen')}</option><option value="month">{label('periodMonth')}</option><option value="year">{label('periodYear')}</option><option value="date_range">{label('periodDateRange')}</option><option value="context">{label('periodContext')}</option></select></FormField>
+     {(draft.periodType==='month'||draft.periodType==='year')&&<><FormField id={`${titleId}-rolloverPolicy`} label={label('rolloverPolicy')} error={errors.rolloverPolicy}><select value={draft.rolloverPolicy} onChange={event=>set('rolloverPolicy',event.target.value)}><option value="reset">{label('rolloverReset')}</option><option value="carry_positive">{label('rolloverCarry')}</option></select></FormField><small className="budget-soft-hint"><Icon name="info"/>{label('rolloverHint')}</small></>}
+     {(draft.periodType==='date_range'||draft.periodType==='context')&&<FormRow><FormField id={`${titleId}-startsOn`} label={label('startsOn')} error={errors.startsOn} required={draft.periodType==='date_range'}><input type="date" value={draft.startsOn} onChange={event=>set('startsOn',event.target.value)}/></FormField><FormField id={`${titleId}-endsOn`} label={label('endsOn')} error={errors.endsOn} required={draft.periodType==='date_range'}><input type="date" value={draft.endsOn} onChange={event=>set('endsOn',event.target.value)}/></FormField></FormRow>}
+    </div></details>}
    </fieldset>
    <FormActions><button type="button" className="secondary" disabled={busy} onClick={close}>{t('expensesUi.close')}</button>{conflict?<button type="button" className="primary" disabled={busy} onClick={reload}><Icon name="refresh"/>{label('reload')}</button>:<button type="submit" className="primary" disabled={busy}><Icon name="check"/>{busy?t('expensesUi.saving'):label('save')}</button>}</FormActions>
   </FormShell></section></div>,document.body)}
