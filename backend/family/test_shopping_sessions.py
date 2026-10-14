@@ -106,6 +106,24 @@ class ShoppingSessionTests(TestCase):
         session = ShoppingSession.objects.get(shopping_list_id=self.list_id, status="active")
         self.assertFalse(session.activities.filter(item_name="Surprise").exists())
 
+    def test_item_hidden_after_activity_does_not_leak_snapshot_name(self):
+        self.start()
+        created = self.owner_client.post(
+            "/api/shopping-items/",
+            {"shopping_list": self.list_id, "name": "Later secret"},
+            format="json",
+        )
+        self.assertEqual(created.status_code, 201)
+        item = ShoppingItem.objects.get(id=created.data["id"])
+        item.hidden_from_user = self.partner
+        item.save(update_fields=["hidden_from_user"])
+
+        delta = self.partner_client.get(f"/api/shopping-sessions/current/?shopping_list={self.list_id}&after=0")
+        self.assertEqual(delta.status_code, 200)
+        self.assertEqual(delta.data["activities"], [])
+        self.assertGreaterEqual(delta.data["cursor"], 1)
+        self.assertNotIn("Later secret", str(delta.data))
+
 
 def first_session_id(list_id):
     return ShoppingSession.objects.get(shopping_list_id=list_id, status="active").id
