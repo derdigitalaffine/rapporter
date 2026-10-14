@@ -5,5 +5,12 @@
 .shopping-checkout-actions button{min-height:48px;justify-content:center}
 .shopping-checkout-summary,.shopping-checkout-status{display:flex;min-height:9rem;flex-direction:column;align-items:center;justify-content:center;gap:.65rem;text-align:center}
 .shopping-checkout-summary svg{opacity:.9}
+.shopping-completion-summary small{color:var(--muted)}
+.shopping-completion-expense{display:inline-flex;align-items:center;gap:.4rem;font-weight:650}
+.shopping-completion-items{margin:0 0 1rem;border:1px solid var(--line);border-radius:14px;padding:.7rem .85rem}
+.shopping-completion-items summary{cursor:pointer;font-weight:650;min-height:44px;display:flex;align-items:center}
+.shopping-completion-items ul{list-style:none;margin:.35rem 0 0;padding:0;display:grid;gap:.35rem}
+.shopping-completion-items li{display:flex;justify-content:space-between;gap:1rem;padding:.35rem 0;border-top:1px solid var(--line)}
+.shopping-completion-items li small{color:var(--muted)}
 .store-footer .store-finish{font-weight:700}
 @media(max-width:420px){.shopping-checkout-sheet{width:calc(100vw - 1rem)}.store-footer{gap:.35rem}.store-footer button{min-width:0;padding-inline:.55rem}}
