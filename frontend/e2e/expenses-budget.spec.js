@@ -96,6 +96,7 @@ test('expenses budget · shared spend appears in soft overall and sub-budget pro
  await expect(card).toContainText('40,00');
  await expect(card).toContainText('2,50');
  await expect(card).toContainText('über Budget');
+ await card.locator('summary').click();
  await expect(card.getByText('Haushalt',{exact:true})).toBeVisible();
  await expect(card).toContainText('12,50');
  await expect(card).toContainText('Budgetüberschreitungen blockieren keine Ausgabe.');
@@ -109,11 +110,12 @@ test('expenses budget · ledger switch refreshes progress and reports unconverte
   store.expenses.push(expense({id:'trip-usd',ledger:'ledger-trip',amount:'50.00',currency:'USD',title:'Taxi'}));
   Object.assign(store.budgets[1],{spent_amount:'120.00',remaining_amount:'680.00',over_budget:false});
  });
- await page.getByLabel('Konto').selectOption('ledger-trip');
+ await page.locator('.expenses-toolbar').getByRole('combobox',{name:'Konto',exact:true}).selectOption('ledger-trip');
  const card=page.locator('.budget-progress-card');
  await expect(card).toContainText('Urlaub');
  await expect(card).toContainText('120,00');
  await expect(card).toContainText('800,00');
+ await card.locator('summary').click();
  await expect(card.getByText('Reisebudget',{exact:true})).toBeVisible();
  await expect(card).toContainText('680,00');
  await expect(card).toContainText('1 Fremdwährungs-Ausgabe ist noch nicht im Budget enthalten.');
@@ -122,7 +124,7 @@ test('expenses budget · ledger switch refreshes progress and reports unconverte
  const dimensions=await page.evaluate(()=>({scrollWidth:document.documentElement.scrollWidth,innerWidth:window.innerWidth}));
  expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.innerWidth+1);
 
- await page.getByLabel('Konto').selectOption('ledger-default');
+ await page.locator('.expenses-toolbar').getByRole('combobox',{name:'Konto',exact:true}).selectOption('ledger-default');
  await expect(card).toContainText('Familie – laufend');
  await expect(card).not.toContainText('Fremdwährungs-Ausgabe');
 });

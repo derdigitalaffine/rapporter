@@ -183,6 +183,10 @@ class SharedFundingTests(TestCase):
         )
         self.assertEqual(invalid_member.status_code, 400, invalid_member.data)
         self.assertIn("participants", invalid_member.data)
+        unchanged = self.client.get(f"/api/expenses/{expense_id}/")
+        self.assertEqual(unchanged.data["funding_source"], Expense.FundingSource.SHARED)
+        self.assertIsNone(unchanged.data["paid_by"])
+        self.assertEqual(unchanged.data["shares"], [])
 
         member = self.client.patch(
             f"/api/expenses/{expense_id}/",

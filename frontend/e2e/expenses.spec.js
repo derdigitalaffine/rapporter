@@ -134,7 +134,7 @@ test('expenses · two-tap quick add uses visible safe defaults and updates balan
   await expect(dialog.getByRole('heading',{name:'Neue Ausgabe'})).toBeVisible();
   const amount=dialog.getByLabel('Betrag');
   await expect(amount).toBeFocused();
-  await expect(dialog.getByText(/Du hast bezahlt · gleichmäßig für/)).toBeVisible();
+  await expect(dialog.getByText(/Gleichmäßig · für/)).toBeVisible();
   await expect(dialog.getByText(/Alex/)).toBeVisible();
   await expect(dialog.getByText(/Sam/)).toBeVisible();
   await amount.fill('12,50');
@@ -147,9 +147,9 @@ test('expenses · two-tap quick add uses visible safe defaults and updates balan
   expect(store.expenses[0].ledger).toBe('ledger-default');
   expect(store.expenses[0].paid_by).toBe('member-1');
   expect(store.expenses[0].shares).toHaveLength(2);
-  await expect(page.getByText('Sam → Alex',{exact:true})).toBeVisible();
+  await expect(page.locator('.settlement-plan').getByText('Sam schuldet Alex',{exact:true})).toBeVisible();
   await page.getByRole('button',{name:'Als abgerechnet markieren'}).click();
-  await expect(page.locator('.balance-total')).toContainText('Alles ausgeglichen');
+  await expect(page.locator('.smart-balance-card .balance-total')).toContainText('Alles ausgeglichen');
   expect(store.settlements[0].ledger).toBe('ledger-default');
   await expect(page.getByText('Rapporter dokumentiert die Abrechnung nur. Es wird kein Geld übertragen.')).toBeVisible();
 });
@@ -159,7 +159,7 @@ test('expenses · details expose shared funding, ledger and one standard budget 
   await page.locator('.expenses-toolbar').getByRole('button',{name:'Ausgabe',exact:true}).click();
   const dialog=page.getByRole('dialog');
   await dialog.getByLabel('Betrag').fill('42,50');
-  await dialog.getByLabel(/Du hast bezahlt/).click();
+  await dialog.getByRole('button',{name:/Details ändern/}).click();
   await expect(dialog.getByText('Zahlungsart',{exact:true})).toBeVisible();
   await dialog.getByRole('button',{name:'Gemeinsam bezahlt',exact:true}).click();
   await expect(dialog.getByText(/verändert keinen Personensaldo/)).toBeVisible();
@@ -177,18 +177,18 @@ test('expenses · details expose shared funding, ledger and one standard budget 
   await expect.poll(()=>store.allocations.get(store.expenses[0]?.id)).toEqual([{budget:'budget-home',budget_name:'Haushalt',amount_in_budget_currency:'42.50'}]);
   await expect(page.locator('.transaction-description small').first()).toContainText('gemeinsam bezahlt');
   await expect(page.locator('.transaction-description small').first()).toHaveText('gemeinsam bezahlt');
-  await expect(page.locator('.balance-total')).toContainText('Alles ausgeglichen');
+  await expect(page.locator('.smart-balance-card .balance-total')).toContainText('Alles ausgeglichen');
   await expect(page.getByRole('button',{name:'Als abgerechnet markieren'})).toHaveCount(0);
 });
 
 test('expenses · ledger selector scopes list and balances to one ledger',async({page})=>{
   const store=await boot(page,'/?page=expenses');
   store.expenses.push(expenseFrom({family:'family-1',ledger:'ledger-trip',title:'Hotel',total_amount:'120.00',currency:'EUR',paid_by:'member-1',participants:['member-1','member-2']},'trip-expense'));
-  await page.getByLabel('Konto').selectOption('ledger-trip');
+  await page.locator('.expenses-toolbar').getByRole('combobox',{name:'Konto',exact:true}).selectOption('ledger-trip');
   await expect(page.getByText('Hotel',{exact:true})).toBeVisible();
-  await expect(page.locator('.balance-card-head').getByText('Urlaub',{exact:true})).toBeVisible();
-  await expect(page.getByText('Sam → Alex',{exact:true})).toBeVisible();
-  await page.getByLabel('Konto').selectOption('ledger-default');
+  await expect(page.locator('.balance-card .balance-card-head').getByText('Urlaub',{exact:true})).toBeVisible();
+  await expect(page.locator('.settlement-plan').getByText('Sam schuldet Alex',{exact:true})).toBeVisible();
+  await page.locator('.expenses-toolbar').getByRole('combobox',{name:'Konto',exact:true}).selectOption('ledger-default');
   await expect(page.getByText('Hotel',{exact:true})).toHaveCount(0);
 });
 
@@ -197,7 +197,7 @@ test('expenses · quick add opens advanced #114 split options without losing inp
   await page.locator('.expenses-toolbar').getByRole('button',{name:'Ausgabe',exact:true}).click();
   const dialog=page.getByRole('dialog');
   await dialog.getByLabel('Betrag').fill('10.00');
-  await dialog.getByLabel(/Du hast bezahlt/).click();
+  await dialog.getByRole('button',{name:/Details ändern/}).click();
   await expect(dialog.getByLabel('Bezahlt von')).toBeVisible();
   await expect(dialog.getByLabel('Betrag')).toHaveValue('10.00');
   await expect(dialog.getByRole('button',{name:'Gleichmäßig'})).toBeVisible();
@@ -239,7 +239,7 @@ test('expenses · shared funding controls are keyboard reachable and available i
   await page.locator('.expenses-toolbar').getByRole('button',{name:'Expense',exact:true}).click();
   const dialog=page.getByRole('dialog');
   await dialog.getByLabel('Amount').fill('15.00');
-  await dialog.getByLabel(/You paid/).press('Enter');
+  await dialog.getByRole('button',{name:/Change details/}).press('Enter');
   const shared=dialog.getByRole('button',{name:'Paid jointly',exact:true});
   await shared.focus();
   await expect(shared).toBeFocused();
@@ -259,7 +259,7 @@ test('expenses · no horizontal overflow on phone, tablet landscape and desktop'
   await page.setViewportSize({width:390,height:844});
   await page.locator('.expenses-toolbar').getByRole('button',{name:'Ausgabe',exact:true}).click();
   await expect(page.getByRole('dialog').getByLabel('Betrag')).toBeFocused();
-  await page.getByRole('dialog').getByLabel(/Du hast bezahlt/).click();
+  await page.getByRole('dialog').getByRole('button',{name:/Details ändern/}).click();
   const dialogDimensions=await page.evaluate(()=>({scrollWidth:document.documentElement.scrollWidth,innerWidth:window.innerWidth}));
   expect(dialogDimensions.scrollWidth).toBeLessThanOrEqual(dialogDimensions.innerWidth+1);
 });
@@ -299,10 +299,13 @@ test('finance · semantic transactions, category search, receipts and responsive
  await page.reload();
  const table=page.getByRole('table');
  await expect(table.getByRole('columnheader',{name:'Kategorie',exact:true})).toBeAttached();
+ await expect(table.getByRole('columnheader',{name:'Konto',exact:true})).toBeAttached();
+ await expect(table.locator('.transaction-account').first()).toHaveText('Familie – laufend');
  await expect(table.getByRole('rowheader',{name:/Supermarkt/})).toBeVisible();
  await expect(table.getByRole('link',{name:'Beleg öffnen: Supermarkt'})).toHaveAttribute('href',/receipt-file/);
  const accessibility=await new AxeBuilder({page}).include('.expenses-page').withTags(['wcag2a','wcag2aa','wcag22aa']).analyze();
  expect(accessibility.violations).toEqual([]);
+ await page.getByRole('button',{name:'Filter',exact:true}).click();
  await page.getByLabel('Buchungen suchen').fill('Parken');
  await expect(table.getByRole('rowheader')).toHaveCount(1);
  await page.getByLabel('Buchungen suchen').fill('');

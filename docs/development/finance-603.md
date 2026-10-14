@@ -23,3 +23,11 @@ Apply entitlement 0003 and expenses 0009. Neither migration rewrites or drops ex
 ## Review gates
 
 Backend tests cover Light denial, plan/grant revocation, cross-family account IDs, multiple accounts, categories and PDF content/URL behavior. Shared decoder tests use real HEIC, >10 MiB JPEG, EXIF, old PNG/WebP formats, spoofed types and byte/pixel/dimension bounds. E2E covers navigation/deep-link denial, account creation, quick capture account context, accessible transaction headers/actions, real filters, PDF UI and 320/390/768/1024/1440/1920 widths. Main CI and passkey gates remain required before merge.
+
+## Final regression guard after account defaults
+
+Ledger defaults may populate a new or draft entry. A posted shared booking still requires an explicit personal participant selection before it creates person-to-person debt. Rejecting a bare shared-to-personal update leaves funding, payer and shares unchanged. Transaction rows retain a named account column on desktop and the same context in the adaptive mobile row.
+
+The `finance-regression` workflow independently exercises all Expense tests, smartphone decoding/entitlements, and the finance/travel-account browser flows on mobile and desktop. It complements the complete `ci` workflow; it does not replace or skip any global checks. Its screenshot artifacts include the transaction view at 320, 390, 768, 1024, 1440 and 1920 pixels for visual review.
+
+The profile cropper preserves #603's HEIC/HEIF admission when a browser cannot decode a preview: an explicit Save without preview action sends the original file to the same bounded, content-validated server avatar normalizer and square crop. Browser-native formats still use the adjustable cropper. No file is uploaded before user confirmation, and unsupported/malformed content remains subject to the existing server rejection rules.

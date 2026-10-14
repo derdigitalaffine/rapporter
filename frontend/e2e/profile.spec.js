@@ -80,3 +80,22 @@ test('non-owner sees family master data read-only on family management page',asy
 test('profile and family management have no horizontal overflow on phone tablet and desktop',async({page})=>{
  const state=await installApiMocks(page);await installProfileMock(page);await installFamilyMasterMock(page,state);for(const size of [{width:390,height:844},{width:1024,height:768},{width:1440,height:900}]){await page.setViewportSize(size);for(const target of ['profile','members']){await page.goto(`/?page=${target}`);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=document.documentElement.clientWidth)).toBe(true)}}
 });
+
+test('profile · HEIC original can be uploaded when crop preview is unsupported',async({page})=>{
+ await installApiMocks(page);await installProfileMock(page);
+ // Model an unsupported browser decoder while retaining a real HEIC payload
+ // for the upload. HEIC decoding/validation is exercised by backend tests.
+ await page.addInitScript(()=>{const create=URL.createObjectURL.bind(URL);URL.createObjectURL=blob=>blob instanceof File&&/\.(heic|heif)$/i.test(blob.name)?'data:image/heic;base64,AA==':create(blob)});
+ const heic=Buffer.from('AAAAHGZ0eXBoZWljAAAAAG1pZjFoZWljbWlhZgAAAX1tZXRhAAAAAAAAACFoZGxyAAAAAAAAAABwaWN0AAAAAAAAAAAAAAAAAAAAACJpbG9jAAAAAERAAAEAAQAAAAABoQABAAAAAAAAABcAAAAjaWluZgAAAAAAAQAAABVpbmZlAgAAAAABAABodmMxAAAAAA5waXRtAAAAAAABAAAA/WlwcnAAAADdaXBjbwAAAHZodmNDAQNwAAAAkAAAAAAAHvAA/P34+AAADwNgAAEAGEABDAH//wNwAAADAJAAAAMAAAMAHroCQGEAAQAqQgEBA3AAAAMAkAAAAwAAAwAeoCCBBZbq5Ka5uAhoMCAAAAMDIAAAAwAhYgABAAZEAcFzwIkAAAATY29scm5jbHgAAQANAAaAAAAAFGlzcGUAAAAAAAAAQAAAAEAAAAAoY2xhcAAAACAAAAABAAAAMAAAAAH////gAAAAAv////AAAAACAAAAEHBpeGkAAAAAAwgICAAAABhpcG1hAAAAAAAAAAEAAQWBAgMFhAAAAB9tZGF0AAAAEygBrxOA+FDQp9Q/dMzsZilTV4A=','base64');
+ let originalUploaded=false;
+ await page.route('**/api/profile/avatar/**',async route=>{if(route.request().method()==='POST')originalUploaded=route.request().postDataBuffer().includes(heic);await route.fallback()});
+ await page.goto('/?page=profile');
+ await page.locator('.profile-hero input[type=file]').first().setInputFiles({name:'phone.heic',mimeType:'image/heic',buffer:heic});
+ const cropper=page.locator('.profile-cropper-sheet');
+ await expect(cropper.getByRole('alert')).toContainText('HEIC/HEIF');
+ await expect(cropper.locator('input[type=range]')).toBeDisabled();
+ const save=cropper.getByRole('button',{name:'Ohne Vorschau speichern',exact:true});
+ await expect(save).toBeEnabled();await save.click();
+ await expect(cropper).toHaveCount(0);expect(originalUploaded).toBe(true);
+ await expect(page.locator('.profile-hero img')).toBeVisible();
+});
