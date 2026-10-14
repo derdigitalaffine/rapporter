@@ -2,6 +2,15 @@ from django.contrib import admin
 from django.urls import include, path
 
 from auth_identity.password_reset_views import password_reset_confirm, password_reset_request
+from auth_sessions.admin_security_views import (
+    superadmin_passkey_detail,
+    superadmin_passkey_reauthentication_options,
+    superadmin_passkey_reauthentication_verify,
+    superadmin_passkey_registration_options,
+    superadmin_passkey_registration_verify,
+    superadmin_passkeys,
+    superadmin_password_change,
+)
 from auth_sessions.admin_views import (
     superadmin_login,
     superadmin_logout,
@@ -47,6 +56,13 @@ urlpatterns = [
     path("api/superadmin/auth/session/", superadmin_session, name="superadmin_auth_session"),
     path("api/superadmin/auth/sessions/", superadmin_sessions, name="superadmin_auth_sessions"),
     path("api/superadmin/auth/reauth/password/", superadmin_reauthenticate_password, name="superadmin_auth_reauth_password"),
+    path("api/superadmin/auth/reauth/passkey/options/", superadmin_passkey_reauthentication_options, name="superadmin_auth_reauth_passkey_options"),
+    path("api/superadmin/auth/reauth/passkey/verify/", superadmin_passkey_reauthentication_verify, name="superadmin_auth_reauth_passkey_verify"),
+    path("api/superadmin/auth/passkeys/", superadmin_passkeys, name="superadmin_auth_passkeys"),
+    path("api/superadmin/auth/passkeys/register/options/", superadmin_passkey_registration_options, name="superadmin_auth_passkey_register_options"),
+    path("api/superadmin/auth/passkeys/register/verify/", superadmin_passkey_registration_verify, name="superadmin_auth_passkey_register_verify"),
+    path("api/superadmin/auth/passkeys/<uuid:credential_id>/", superadmin_passkey_detail, name="superadmin_auth_passkey_detail"),
+    path("api/superadmin/auth/password/", superadmin_password_change, name="superadmin_auth_password_change"),
     path("api/superadmin/analytics/overview/", superadmin_analytics_overview, name="superadmin_analytics_overview"),
     path("api/superadmin/analytics/matomo/status/", superadmin_matomo_status, name="superadmin_matomo_status"),
     path("api/superadmin/analytics/matomo/report/", superadmin_matomo_report, name="superadmin_matomo_report"),

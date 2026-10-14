@@ -22,7 +22,10 @@ class SessionUnavailable(APIException):
 
 class FreshAuthenticationRequired(APIException):
     status_code = 403
-    default_detail = "Bitte bestätige deine Identität erneut."
+    default_detail = {
+        "detail": "Bitte bestätige deine Identität erneut.",
+        "code": "reauth_required",
+    }
     default_code = "reauth_required"
 
 

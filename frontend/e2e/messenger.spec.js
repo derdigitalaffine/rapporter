@@ -38,7 +38,7 @@ async function boot(page,{language='de',familyless=false,failSend=false}={}){
  await page.goto('/?page=inbox');await expect(page.getByRole('heading',{name:language==='en'?'Messages':'Nachrichten',exact:true})).toBeVisible();
  return state;
 }
-async function openChat(page){await page.locator('.messenger-chat-row').click();await expect(page.locator('.messenger-bubble')).toContainText('Hallo aus der anderen Familie')}
+async function openChat(page){await page.locator('.messenger-chat-row').click();await expect(page.locator('.messenger-bubble').first()).toContainText('Hallo aus der anderen Familie')}
 
 test('personal chat sends canonical retry-safe message without legacy family notices',async({page})=>{
  const state=await boot(page);await openChat(page);await page.getByRole('textbox',{name:'Nachricht',exact:true}).fill('Hallo Kim');await page.getByRole('button',{name:'Senden',exact:true}).click();await expect(page.locator('.messenger-bubble.own')).toContainText('Hallo Kim');await expect(page.getByRole('textbox',{name:'Nachricht',exact:true})).toHaveValue('');expect(state.requests.some(r=>r.path==='/api/inbox/'&&r.method==='POST')).toBe(false);if(await page.locator('.messenger-mobile-back').isVisible())await page.locator('.messenger-mobile-back').click();await expect(page.getByRole('button',{name:'Familien-Mitteilungen',exact:true})).toHaveCount(0);
@@ -89,4 +89,98 @@ test('microphone is explicit and switching away stops all tracks',async({page})=
   };
  });
  await boot(page);await openChat(page);expect(await page.evaluate(()=>window.chatMic.requests)).toBe(0);await page.getByRole('button',{name:'Sprachnachricht aufnehmen',exact:true}).click();await expect(page.getByRole('button',{name:'Aufnahme beenden',exact:true})).toBeVisible();expect(await page.evaluate(()=>window.chatMic.requests)).toBe(1);await page.locator('.messenger-chat-title').click();if(await page.locator('.messenger-mobile-back').isVisible())await page.locator('.messenger-mobile-back').click();else await page.getByRole('button',{name:'Freunde',exact:false}).first().click();await expect.poll(()=>page.evaluate(()=>window.chatMic.stops)).toBeGreaterThan(0);
+});
+
+test('chat history scrolls independently and the composer stays above navigation after resize',async({page},testInfo)=>{
+ const state=await boot(page);
+ const first=state.rows[0];
+ state.rows.push(...Array.from({length:50},(_,index)=>({...first,id:`history-${index}`,sequence:index+2,event_sequence:index+2,sender_id:index%2?1:9,body:`Nachricht ${index+2}: Wir treffen uns morgen am Spielplatz.`,created_at:new Date(Date.now()-((50-index)*60_000)).toISOString()})));
+ state.chat.revision=51;
+ await openChat(page);
+ const history=page.locator('.messenger-history'),composer=page.locator('.messenger-composer'),nav=page.locator('.bottom-nav');
+ await expect.poll(()=>history.evaluate(el=>el.scrollHeight-el.clientHeight)).toBeGreaterThan(300);
+ const before=await composer.boundingBox();
+ await history.evaluate(el=>el.scrollTop=0);
+ await history.hover();await page.mouse.wheel(0,-700);
+ expect(await page.evaluate(()=>window.scrollY)).toBe(0);
+ expect((await composer.boundingBox()).y).toBeCloseTo(before.y,0);
+ expect((await composer.boundingBox()).y+before.height).toBeLessThanOrEqual((await nav.boundingBox()).y+1);
+ expect((await nav.boundingBox()).y-before.y-before.height).toBeLessThanOrEqual(14);
+ await page.screenshot({path:`/tmp/familyos-messenger-${testInfo.project.name}.png`});
+ const field=page.getByRole('textbox',{name:'Nachricht',exact:true});
+ await field.fill('Eine Nachricht\nmit mehreren Zeilen\nund etwas mehr Platz.');
+ expect((await field.boundingBox()).height).toBeGreaterThan(60);
+ await page.setViewportSize({width:390,height:440});
+ await expect(field).toBeVisible();
+ await expect.poll(async()=>{const box=await composer.boundingBox(),navBox=await nav.boundingBox();return box.y+box.height-navBox.y}).toBeLessThanOrEqual(1);
+ expect((await history.boundingBox()).height).toBeGreaterThan(30);
+ expect(await page.evaluate(()=>document.documentElement.scrollHeight-window.innerHeight)).toBeLessThanOrEqual(1);
+});
+
+test('visual viewport keyboard resize and panning keep app chrome in the visible area',async({page})=>{
+ await page.setViewportSize({width:390,height:844});
+ await page.addInitScript(()=>{
+  const viewport=new EventTarget();
+  Object.assign(viewport,{height:844,width:390,offsetTop:0,offsetLeft:0,scale:1});
+  Object.defineProperty(window,'visualViewport',{configurable:true,value:viewport});
+ });
+ await boot(page);await openChat(page);
+ await page.getByRole('textbox',{name:'Nachricht',exact:true}).focus();
+ await page.evaluate(()=>{Object.assign(window.visualViewport,{height:440,offsetTop:20});window.visualViewport.dispatchEvent(new Event('resize'));window.visualViewport.dispatchEvent(new Event('scroll'))});
+ const nav=page.locator('.bottom-nav'),composer=page.locator('.messenger-composer');
+ await expect.poll(async()=>{const box=await nav.boundingBox();return box.y+box.height}).toBeCloseTo(460,0);
+ expect((await page.locator('.messenger-shell').boundingBox()).y).toBeCloseTo(20,0);
+ const box=await composer.boundingBox();expect(box.y+box.height).toBeLessThanOrEqual((await nav.boundingBox()).y+1);
+ await page.evaluate(()=>{Object.assign(window.visualViewport,{height:844,offsetTop:0});window.visualViewport.dispatchEvent(new Event('resize'))});
+ await expect.poll(async()=>{const box=await nav.boundingBox();return box.y+box.height}).toBeCloseTo(844,0);
+ await page.evaluate(()=>{Object.assign(window.visualViewport,{height:422,offsetTop:80,scale:2});window.visualViewport.dispatchEvent(new Event('resize'))});
+ await expect.poll(()=>page.locator('.messenger-shell').evaluate(el=>el.getBoundingClientRect().height)).toBe(844);
+});
+
+test('main navigation remains pinned while transformed page content scrolls',async({page})=>{
+ await boot(page);
+ await page.locator('.bottom-nav').getByRole('button',{name:'Heute',exact:true}).click();
+ await expect(page.locator('main[data-page="home"]')).toBeVisible();
+ const nav=page.locator('.bottom-nav'),before=await nav.boundingBox();
+ await page.locator('.app-shell').evaluate(el=>{el.style.transform='translateZ(0)';el.style.minHeight='2500px'});
+ await page.evaluate(()=>window.scrollTo(0,900));
+ await expect.poll(()=>page.evaluate(()=>window.scrollY)).toBeGreaterThan(500);
+ const after=await nav.boundingBox();
+ expect(after.y).toBeCloseTo(before.y,0);
+ expect(after.y+after.height).toBeCloseTo(page.viewportSize().height,0);
+ await nav.getByRole('button',{name:'To-dos',exact:true}).click();
+ await expect(page.locator('main[data-page="todo"]')).toBeVisible();
+});
+
+test('message dates and empty search results are readable without losing the draft',async({page})=>{
+ await boot(page);await openChat(page);
+ await expect(page.locator('.messenger-day')).toHaveCount(1);
+ const field=page.getByRole('textbox',{name:'Nachricht',exact:true});await field.fill('Mein Entwurf');
+ await page.getByRole('searchbox',{name:'Nachrichten durchsuchen',exact:true}).fill('not-in-chat');
+ await page.getByRole('button',{name:'Nachrichten durchsuchen',exact:true}).click();
+ await expect(page.getByText('Keine passenden Nachrichten.',{exact:true})).toBeVisible();
+ await expect(field).toHaveValue('Mein Entwurf');
+ await page.getByRole('searchbox',{name:'Nachrichten durchsuchen',exact:true}).fill('');
+ await expect(page.locator('.messenger-bubble')).toContainText('Hallo aus der anderen Familie');
+ await expect(field).toHaveValue('Mein Entwurf');
+});
+
+test('landscape messenger preserves composer space and long contact titles stay bounded',async({page})=>{
+ await page.setViewportSize({width:844,height:390});
+ const state=await boot(page);state.chat.title='Kim mit einem sehr langen Namen und weiteren Familienmitgliedern';
+ await openChat(page);
+ const nav=await page.locator('.bottom-nav').boundingBox(),composer=await page.locator('.messenger-composer').boundingBox();
+ expect(composer.y+composer.height).toBeLessThanOrEqual(nav.y+1);
+ expect((await page.locator('.messenger-history').boundingBox()).height).toBeGreaterThan(80);
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth-window.innerWidth)).toBeLessThanOrEqual(1);
+ await expect(page.locator('.messenger-chat-title strong')).toContainText(state.chat.title);
+});
+
+test('dark messenger and main navigation use the current surface colors accessibly',async({page},testInfo)=>{
+ await boot(page);await openChat(page);
+ await page.evaluate(()=>{document.documentElement.dataset.colorProfile='green-dark';document.documentElement.style.colorScheme='dark'});
+ await expect.poll(()=>page.locator('.bottom-nav').evaluate(el=>getComputedStyle(el).backgroundColor)).toBe('rgb(13, 24, 22)');
+ const axe=await new AxeBuilder({page}).include('.messenger-page').include('.bottom-nav').analyze();
+ expect(axe.violations.filter(x=>['critical','serious'].includes(x.impact))).toEqual([]);
+ await page.screenshot({path:`/tmp/familyos-messenger-dark-${testInfo.project.name}.png`});
 });

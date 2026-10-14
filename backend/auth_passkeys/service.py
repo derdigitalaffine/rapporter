@@ -89,23 +89,30 @@ def _options_payload(options, challenge_record: WebAuthnChallenge) -> dict:
     }
 
 
-def _new_challenge(*, ceremony: str, user=None) -> WebAuthnChallenge:
+def _new_challenge(*, ceremony: str, user=None, context=WebAuthnChallenge.Context.APP) -> WebAuthnChallenge:
     cfg = passkey_config()
     now = timezone.now()
     return WebAuthnChallenge.objects.create(
         user=user,
         ceremony=ceremony,
+        context=context,
         challenge=os.urandom(32),
         expires_at=now + timedelta(seconds=cfg.challenge_ttl_seconds),
     )
 
 
-def _consume_challenge(challenge_id, *, ceremony: str, user=None) -> WebAuthnChallenge:
+def _consume_challenge(
+    challenge_id,
+    *,
+    ceremony: str,
+    user=None,
+    context=WebAuthnChallenge.Context.APP,
+) -> WebAuthnChallenge:
     now = timezone.now()
     with transaction.atomic():
         challenge = (
             WebAuthnChallenge.objects.select_for_update()
-            .filter(pk=challenge_id, ceremony=ceremony)
+            .filter(pk=challenge_id, ceremony=ceremony, context=context)
             .first()
         )
         if (
@@ -121,17 +128,25 @@ def _consume_challenge(challenge_id, *, ceremony: str, user=None) -> WebAuthnCha
     return challenge
 
 
-def _active_credentials(user):
-    return WebAuthnCredential.objects.filter(user=user, revoked_at__isnull=True)
+def _active_credentials(user, *, context=WebAuthnChallenge.Context.APP):
+    return WebAuthnCredential.objects.filter(
+        user=user,
+        surface=context,
+        revoked_at__isnull=True,
+    )
 
 
-def registration_options(user) -> dict:
+def registration_options(user, *, context=WebAuthnChallenge.Context.APP) -> dict:
     cfg = passkey_config()
-    challenge = _new_challenge(ceremony=WebAuthnChallenge.Ceremony.REGISTER, user=user)
+    challenge = _new_challenge(
+        ceremony=WebAuthnChallenge.Ceremony.REGISTER,
+        user=user,
+        context=context,
+    )
     identity = identity_summary(user)
     descriptors = [
         PublicKeyCredentialDescriptor(id=bytes(value))
-        for value in _active_credentials(user).values_list("credential_id", flat=True)
+        for value in _active_credentials(user, context=context).values_list("credential_id", flat=True)
     ]
     options = generate_registration_options(
         rp_id=cfg.rp_id,
@@ -150,12 +165,20 @@ def registration_options(user) -> dict:
     return _options_payload(options, challenge)
 
 
-def complete_registration(user, *, challenge_id, credential: dict, name: str) -> WebAuthnCredential:
+def complete_registration(
+    user,
+    *,
+    challenge_id,
+    credential: dict,
+    name: str,
+    context=WebAuthnChallenge.Context.APP,
+) -> WebAuthnCredential:
     cfg = passkey_config()
     challenge = _consume_challenge(
         challenge_id,
         ceremony=WebAuthnChallenge.Ceremony.REGISTER,
         user=user,
+        context=context,
     )
     try:
         verification = verify_registration_response(
@@ -181,6 +204,7 @@ def complete_registration(user, *, challenge_id, credential: dict, name: str) ->
         with transaction.atomic():
             return WebAuthnCredential.objects.create(
                 user=user,
+                surface=context,
                 credential_id=verification.credential_id,
                 public_key=verification.credential_public_key,
                 sign_count=max(0, int(verification.sign_count)),
@@ -193,14 +217,19 @@ def complete_registration(user, *, challenge_id, credential: dict, name: str) ->
         raise PasskeyCeremonyError() from exc
 
 
-def authentication_options(*, user=None, ceremony=WebAuthnChallenge.Ceremony.AUTHENTICATE) -> dict:
+def authentication_options(
+    *,
+    user=None,
+    ceremony=WebAuthnChallenge.Ceremony.AUTHENTICATE,
+    context=WebAuthnChallenge.Context.APP,
+) -> dict:
     cfg = passkey_config()
-    challenge = _new_challenge(ceremony=ceremony, user=user)
+    challenge = _new_challenge(ceremony=ceremony, user=user, context=context)
     allow_credentials = None
     if user is not None:
         allow_credentials = [
             PublicKeyCredentialDescriptor(id=bytes(value))
-            for value in _active_credentials(user).values_list("credential_id", flat=True)
+            for value in _active_credentials(user, context=context).values_list("credential_id", flat=True)
         ]
     option_kwargs = {
         "rp_id": cfg.rp_id,
@@ -223,11 +252,18 @@ def _credential_id_from_response(credential: dict) -> bytes:
         raise PasskeyCeremonyError() from exc
 
 
-def _verify_authentication(*, challenge, credential_payload: dict, expected_user=None) -> WebAuthnCredential:
+def _verify_authentication(
+    *,
+    challenge,
+    credential_payload: dict,
+    expected_user=None,
+    context=WebAuthnChallenge.Context.APP,
+) -> WebAuthnCredential:
     cfg = passkey_config()
     credential_id = _credential_id_from_response(credential_payload)
     query = WebAuthnCredential.objects.select_related("user").filter(
         credential_id=credential_id,
+        surface=context,
         revoked_at__isnull=True,
         user__is_active=True,
     )
@@ -261,13 +297,24 @@ def _verify_authentication(*, challenge, credential_payload: dict, expected_user
     return stored
 
 
-def complete_authentication(request, *, challenge_id, credential: dict):
+def complete_authentication(
+    request,
+    *,
+    challenge_id,
+    credential: dict,
+    context=WebAuthnChallenge.Context.APP,
+):
     challenge = _consume_challenge(
         challenge_id,
         ceremony=WebAuthnChallenge.Ceremony.AUTHENTICATE,
         user=None,
+        context=context,
     )
-    stored = _verify_authentication(challenge=challenge, credential_payload=credential)
+    stored = _verify_authentication(
+        challenge=challenge,
+        credential_payload=credential,
+        context=context,
+    )
     session, access, refresh = create_session(
         stored.user,
         request,
@@ -276,16 +323,24 @@ def complete_authentication(request, *, challenge_id, credential: dict):
     return stored, session, access, refresh
 
 
-def complete_reauthentication(request, *, challenge_id, credential: dict) -> WebAuthnCredential:
+def complete_reauthentication(
+    request,
+    *,
+    challenge_id,
+    credential: dict,
+    context=WebAuthnChallenge.Context.APP,
+) -> WebAuthnCredential:
     challenge = _consume_challenge(
         challenge_id,
         ceremony=WebAuthnChallenge.Ceremony.REAUTHENTICATE,
         user=request.user,
+        context=context,
     )
     stored = _verify_authentication(
         challenge=challenge,
         credential_payload=credential,
         expected_user=request.user,
+        context=context,
     )
     session = getattr(request, "auth_session", None)
     if session is None:
@@ -306,11 +361,17 @@ def serialize_credential(credential: WebAuthnCredential) -> dict:
     }
 
 
-def rename_credential(user, credential_id, *, name: str) -> WebAuthnCredential:
+def rename_credential(
+    user,
+    credential_id,
+    *,
+    name: str,
+    context=WebAuthnChallenge.Context.APP,
+) -> WebAuthnCredential:
     display_name = str(name or "").strip()
     if not display_name:
         raise PasskeyCeremonyError("Passkey-Name darf nicht leer sein.")
-    credential = _active_credentials(user).filter(pk=credential_id).first()
+    credential = _active_credentials(user, context=context).filter(pk=credential_id).first()
     if credential is None:
         raise PasskeyCeremonyError()
     credential.name = display_name[:120]
@@ -318,16 +379,26 @@ def rename_credential(user, credential_id, *, name: str) -> WebAuthnCredential:
     return credential
 
 
-def revoke_credential(user, credential_id) -> None:
+def revoke_credential(
+    user,
+    credential_id,
+    *,
+    context=WebAuthnChallenge.Context.APP,
+) -> None:
     with transaction.atomic():
         credential = (
             WebAuthnCredential.objects.select_for_update()
-            .filter(pk=credential_id, user=user, revoked_at__isnull=True)
+            .filter(
+                pk=credential_id,
+                user=user,
+                surface=context,
+                revoked_at__isnull=True,
+            )
             .first()
         )
         if credential is None:
             raise PasskeyCeremonyError()
-        active_count = WebAuthnCredential.objects.filter(user=user, revoked_at__isnull=True).count()
+        active_count = _active_credentials(user, context=context).count()
         if active_count <= 1 and not user.has_usable_password():
             raise PasskeyCeremonyError("Der letzte Anmeldeweg kann nicht entfernt werden.")
         credential.revoked_at = timezone.now()

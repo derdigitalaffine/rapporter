@@ -1,3 +1,0 @@
-.messenger-family-hint{margin:-4px 0 8px;color:var(--muted,#52645b);font-size:.9rem;line-height:1.45}
-.messenger-shell{padding-bottom:calc(var(--bottom-nav-height,76px) + 34px + env(safe-area-inset-bottom))}
-@media(max-width:759px),(orientation:landscape) and (max-width:950px) and (max-height:620px){.messenger-shell{padding-bottom:calc(94px + env(safe-area-inset-bottom))}.messenger-page.has-selection .messenger-layout{height:calc(100dvh - 171px)}}

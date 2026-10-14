@@ -3,6 +3,8 @@ import logging
 from rest_framework import permissions, status
 from rest_framework.decorators import api_view, authentication_classes, permission_classes
 from rest_framework.response import Response
+from rest_framework_simplejwt.exceptions import TokenError
+from rest_framework_simplejwt.tokens import RefreshToken
 
 from auth_abuse.service import enforce, forgive
 from auth_identity.service import authenticate_identifier, identity_summary
@@ -33,7 +35,14 @@ logger = logging.getLogger("security.superadmin_auth")
 
 class IsSuperAdminSession(permissions.BasePermission):
     def has_permission(self, request, view):
-        return bool(request.user and request.user.is_authenticated and request.user.is_superuser)
+        session = getattr(request, "auth_session", None)
+        return bool(
+            request.user
+            and request.user.is_authenticated
+            and request.user.is_superuser
+            and session is not None
+            and session.surface == AuthSession.Surface.SUPERADMIN
+        )
 
 
 def _rate_limited(decision, detail):
@@ -54,6 +63,23 @@ def _user_payload(user):
         "email_verified": identity["email_verified"],
         "is_superadmin": True,
     }
+
+
+def _is_superadmin_refresh(raw_refresh):
+    if not raw_refresh:
+        return False
+    try:
+        token = RefreshToken(raw_refresh)
+        sid = token.get("sid")
+    except TokenError:
+        return False
+    if not sid:
+        return False
+    return AuthSession.objects.filter(
+        pk=sid,
+        surface=AuthSession.Surface.SUPERADMIN,
+        revoked_at__isnull=True,
+    ).exists()
 
 
 @api_view(["POST"])
@@ -79,6 +105,8 @@ def superadmin_login(request):
 
     forgive("login.password", request=request, identifier=identifier)
     session, access, refresh = create_session(user, request, auth_method=AuthSession.AuthMethod.PASSWORD)
+    session.surface = AuthSession.Surface.SUPERADMIN
+    session.save(update_fields=["surface"])
     response = Response(
         {
             "authenticated": True,
@@ -95,8 +123,9 @@ def superadmin_login(request):
 @permission_classes([permissions.AllowAny])
 def superadmin_refresh(request):
     raw_refresh = request.COOKIES.get(ADMIN_REFRESH_COOKIE)
-    if not raw_refresh:
-        return Response({"detail": "Keine aktive Admin-Sitzung."}, status=status.HTTP_401_UNAUTHORIZED)
+    if not _is_superadmin_refresh(raw_refresh):
+        response = Response({"detail": "Keine aktive Admin-Sitzung."}, status=status.HTTP_401_UNAUTHORIZED)
+        return clear_admin_token_cookies(response)
     try:
         result = rotate_refresh(raw_refresh)
     except SessionUnavailable as exc:
@@ -106,6 +135,9 @@ def superadmin_refresh(request):
         )
         return clear_admin_token_cookies(response)
 
+    if result.session.surface != AuthSession.Surface.SUPERADMIN:
+        response = Response({"detail": "Keine aktive Admin-Sitzung."}, status=status.HTTP_401_UNAUTHORIZED)
+        return clear_admin_token_cookies(response)
     if result.parallel_conflict:
         return Response({"authenticated": True, "parallel_refresh": True})
     response = Response({"authenticated": True})
@@ -116,7 +148,9 @@ def superadmin_refresh(request):
 @authentication_classes([])
 @permission_classes([permissions.AllowAny])
 def superadmin_logout(request):
-    revoke_from_refresh(request.COOKIES.get(ADMIN_REFRESH_COOKIE), reason="admin_logout")
+    raw_refresh = request.COOKIES.get(ADMIN_REFRESH_COOKIE)
+    if _is_superadmin_refresh(raw_refresh):
+        revoke_from_refresh(raw_refresh, reason="admin_logout")
     response = Response({"authenticated": False})
     return clear_admin_token_cookies(response)
 
@@ -140,7 +174,10 @@ def superadmin_session(request):
 def superadmin_sessions(request):
     current = getattr(request, "auth_session", None)
     current_sid = current.pk if current else None
-    rows = [serialize_session(item, current_sid=current_sid) for item in active_sessions_for_user(request.user)]
+    rows = [
+        serialize_session(item, current_sid=current_sid)
+        for item in active_sessions_for_user(request.user).filter(surface=AuthSession.Surface.SUPERADMIN)
+    ]
     return Response({"sessions": rows, "fresh": bool(current and is_fresh(current))})
 
 
@@ -158,7 +195,7 @@ def superadmin_reauthenticate_password(request):
             {"detail": REAUTH_FAILURE_DETAIL, "code": "reauth_failed"},
             status=status.HTTP_400_BAD_REQUEST,
         )
-    if current is None:
+    if current is None or current.surface != AuthSession.Surface.SUPERADMIN:
         return Response({"detail": "Keine aktive Admin-Sitzung."}, status=status.HTTP_401_UNAUTHORIZED)
 
     current = mark_reauthenticated(current, auth_method=AuthSession.AuthMethod.PASSWORD)
