@@ -2,13 +2,21 @@
 
 Die Seite **Mehr** bündelt Ziele, die nicht in der primären Hauptnavigation liegen. Sie ist nach Nutzungskontext statt nach technischer Modulreihenfolge gegliedert.
 
-## Reihenfolge
+## Standardreihenfolge
 
 1. **Familie & Alltag** – häufige familienbezogene Funktionen wie Pinnwand, Routinen, Geburtstage, Reisen, Entscheidungen, Wunschlisten und Spiele.
 2. **Organisation** – strukturierende Bereiche wie Ausgaben, Statistik, Verträge, Dokumente, Karten und Fahrzeuge, soweit Rolle und Entitlement sie erlauben.
 3. **Einstellungen & Verwaltung** – Einrichtung, Profil, Einstellungen, Familienverwaltung, Benachrichtigungen, Integrationen und Automationen.
 
 Familienwechsel, Tarif-/Zugriffsinformation und ein gegebenenfalls verfügbarer App-Installationshinweis bleiben als eigener Kontext oberhalb dieser Gruppen. Sprache, Abmelden und Programminformation bleiben als sekundäre Systemaktionen am Ende.
+
+## Persönliche Anordnung
+
+Alle drei Hauptbereiche sind einklappbar. Der Zustand wird lokal pro Familie gespeichert und nach einem Reload wiederhergestellt.
+
+Die Bereiche können außerdem über den Griff per Drag & Drop neu sortiert werden. Die Pointer-Interaktion funktioniert mit Maus und Touch. Für Keyboard-Nutzung kann der Griff fokussiert und mit den Pfeiltasten **hoch/runter** verschoben werden. Auch diese Reihenfolge wird lokal pro Familie gespeichert.
+
+Die lokale Persistenz ist absichtlich ein UI-Detail dieses fokussierten Slices. Eine geräteübergreifende oder serverseitig abgeleitete Navigationspräferenz gehört nicht in #657 und würde separat modelliert werden.
 
 ## Keine Duplikate zur Hauptnavigation
 
@@ -18,7 +26,7 @@ Die Einrichtbarkeit bleibt dabei erhalten: Ist ein optionales Modul noch nicht a
 
 ## UI-Vertrag
 
-Die Seite verwendet weiterhin die bestehenden `Card`, `menu-row`- und `section-title`-Primitives. Dadurch bleiben Touchziele, Keyboard-Navigation, Fokusdarstellung und die visuelle Sprache konsistent mit dem restlichen FamilyOS.
+Die Seite verwendet weiterhin die bestehenden `Card`, `menu-row`- und `section-title`-Primitives. Für die Bereichssteuerung kommen ein fokussierbarer Drag-Griff und ein `aria-expanded`-Collapse-Button hinzu. Dadurch bleiben Touchziele, Keyboard-Navigation, Fokusdarstellung und die visuelle Sprache konsistent mit dem restlichen FamilyOS.
 
 Diese Ordnung ist der fokussierte Consumer-Slice aus #657. Die geplante zentrale Ableitung der Navigation aus der Feature Registry bleibt Eigentum von #577; hier wird keine zweite Registry eingeführt.
 
