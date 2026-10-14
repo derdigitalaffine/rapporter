@@ -4,11 +4,17 @@ export const isHolidayEvent=event=>event?.type==='school.holiday';
 export const isWarningEvent=event=>Boolean(event?.type?.includes('warning'));
 export const isBirthdayEvent=event=>event?.type==='birthday';
 const familyOsProviders=new Set(['familyos','fam-uh-le']);
-export const isNativeCalendarEvent=event=>{
- if(event?.source)return false;
+const calendarReadOnlyTypes=new Set(['school.holiday','travel.trip']);
+const isFamilyCalendarSource=event=>{
+ if(event?.source||event?.source_meta?.id)return false;
  if(event?.type==='calendar.event')return true;
  const provider=String(event?.payload?.provider||'').trim().toLowerCase();
  return familyOsProviders.has(provider);
+};
+export const isNativeCalendarEvent=event=>{
+ if(!event?.id||event?.source||event?.source_meta?.id)return false;
+ if(isBirthdayEvent(event)||calendarReadOnlyTypes.has(event?.type))return false;
+ return true;
 };
 
 export const calendarSourceRegistry={
@@ -33,12 +39,12 @@ const sourceToneStyles={
 
 export function eventSourceKey(event){
  if(isBirthdayEvent(event))return 'birthday';
- if(isNativeCalendarEvent(event))return 'family';
  if(isWarningEvent(event))return 'warning';
  if(isWasteEvent(event))return 'waste';
  if(event?.type?.includes('weather'))return 'weather';
  if(event?.type?.includes('transit'))return 'transit';
  if(event?.type?.includes('school'))return 'school';
+ if(isFamilyCalendarSource(event))return 'family';
  return 'calendar';
 }
 
