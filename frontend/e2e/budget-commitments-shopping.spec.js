@@ -3,7 +3,7 @@ import {installApiMocks} from './mock-api.js';
 
 const json=(route,body,status=200)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)});
 
-test('reserved shopping item opens the existing expense flow instead of auto-posting',async({page})=>{
+test('finance · reserved shopping item opens the existing expense flow instead of auto-posting',async({page})=>{
  const state=await installApiMocks(page,{dismissOnboarding:true,language:'de'});
  const ledger={id:'ledger-home',family:'family-1',name:'Familie',base_currency:'EUR',budget_amount:'500.00',estimated_amount:null,is_default:true,archived:false};
  const budget={id:'budget-food',family:'family-1',ledger:'ledger-home',name:'Lebensmittel',amount:'300.00',estimated_amount:null,spent_amount:'0.00',remaining_amount:'300.00',archived:false};
