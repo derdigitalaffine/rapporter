@@ -57,8 +57,7 @@
 }
 
 /* True modal surfaces own the screen. Likewise, while the OS keyboard is
-   visible, persistent app chrome must not be lifted to the keyboard edge or
-   become a solid obstruction above it. */
+   visible, persistent app chrome stays out of the interaction surface. */
 html[data-app-modal] .bottom-nav,
 html[data-app-keyboard] .bottom-nav,
 html[data-app-modal] .global-create-controls,
@@ -67,9 +66,20 @@ html[data-app-keyboard] .global-create-controls{
   pointer-events:none!important;
 }
 
-/* Once the keyboard hides persistent navigation, keyboard-aware surfaces must
-   not keep reserving its height. Keeping this gap was the opaque band that
-   appeared above iOS keyboards in Messenger and editors. */
+/* Modal mounting and MutationObserver reconciliation are not the same browser
+   frame. :has() is the synchronous CSS safety net: app chrome disappears in
+   the very frame an ARIA modal sheet enters the DOM, including on iOS. */
+@supports selector(body:has(*)){
+  body:has(.sheet-backdrop [aria-modal="true"]) .bottom-nav,
+  body:has(.sheet-backdrop [aria-modal="true"]) .global-create-controls{
+    visibility:hidden!important;
+    pointer-events:none!important;
+  }
+}
+
+/* Keyboard-aware page surfaces may use the space normally reserved for hidden
+   navigation. This changes content padding only; navigation itself always
+   remains anchored to the layout viewport. */
 html[data-app-keyboard] .app-shell{
   --app-nav-space:0px;
 }
