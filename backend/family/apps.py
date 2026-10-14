@@ -25,7 +25,16 @@ class FamilyConfig(AppConfig):
         from .family_master_models import FamilyMasterData
         from .family_relationship_models import FamilyRelationship
         from .notes_models import Note, NoteRevision, NoteShare
-        from .shopping_models import ShoppingListAccess, ShoppingListStoreProfile, ShoppingStore, ShoppingTemplate, ShoppingTemplateItem
+        from .shopping_models import (
+            ShoppingListAccess,
+            ShoppingListStoreProfile,
+            ShoppingSession,
+            ShoppingSessionActivity,
+            ShoppingSessionParticipant,
+            ShoppingStore,
+            ShoppingTemplate,
+            ShoppingTemplateItem,
+        )
         from .today_models import TodayLayout
         from .todo_models import TodoActionPreference, TodoPreference
         from .travel_models import Trip, TripPhoto
@@ -51,6 +60,9 @@ class FamilyConfig(AppConfig):
         core_models.ShoppingStore = ShoppingStore
         core_models.ShoppingListAccess = ShoppingListAccess
         core_models.ShoppingListStoreProfile = ShoppingListStoreProfile
+        core_models.ShoppingSession = ShoppingSession
+        core_models.ShoppingSessionActivity = ShoppingSessionActivity
+        core_models.ShoppingSessionParticipant = ShoppingSessionParticipant
         core_models.ShoppingTemplate = ShoppingTemplate
         core_models.ShoppingTemplateItem = ShoppingTemplateItem
         core_models.TodayLayout = TodayLayout
@@ -66,6 +78,7 @@ class FamilyConfig(AppConfig):
         from . import scheduling_models  # noqa: F401
         from . import scheduling_dependency_signals  # noqa: F401
         from . import signals  # noqa: F401
+        from . import shopping_session_signals  # noqa: F401
         from . import unified_action_models  # noqa: F401
         from . import unified_action_signals  # noqa: F401
         from . import travel_signals  # noqa: F401
