@@ -11,14 +11,11 @@ async function bootShopping(page){
 }
 
 async function openTextMode(page){
-  await page.getByRole('group',{name:'Mehr'}).click().catch(async()=>{
-    await page.locator('.shopping-overflow > summary').click();
-  });
+  await page.locator('.shopping-overflow > summary').click();
   const toggle=page.getByRole('button',{name:'Textmodus'});
   await expect(toggle).toBeVisible();
   await toggle.click();
   await expect(toggle).toHaveAttribute('aria-pressed','true');
-  return toggle;
 }
 
 async function pasteLines(textarea,text){
