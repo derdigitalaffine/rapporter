@@ -37,6 +37,16 @@ class CalendarRecurrenceTests(TestCase):
             payload={"provider": "FamilyOS", "recurrence": recurrence, **(payload or {})},
         )
 
+    def test_first_monday_of_month_projects_calendar_occurrences(self):
+        master = self.event(
+            {"frequency": "monthly", "interval": 1, "nth_weekdays": [{"weekday": "MO", "ordinal": 1}]},
+            datetime(2026, 10, 14, 10, 0, tzinfo=BERLIN),
+            datetime(2026, 10, 14, 11, 0, tzinfo=BERLIN),
+        )
+        rows = self.rows(self.client.get(f"/api/events/?family={self.family.id}&start=2026-11-01&end=2026-12-31&birthdays=0"))
+        series = [row for row in rows if row["id"] == str(master.id)]
+        self.assertEqual([as_local(row["starts_at"]).date().isoformat() for row in series], ["2026-11-02", "2026-12-07"])
+
     def test_first_monday_of_calendar_quarter_projects_master_into_range(self):
         master = self.event(
             {"frequency": "quarterly", "interval": 1, "nth_weekdays": [{"weekday": "MO", "ordinal": 1}]},
@@ -68,6 +78,27 @@ class CalendarRecurrenceTests(TestCase):
             [as_local(row["starts_at"]).date().isoformat() for row in weekend_rows],
             ["2026-04-04", "2026-07-04", "2026-10-03"],
         )
+
+    def test_yearly_ordinal_without_month_uses_series_start_month(self):
+        base = {
+            "family": str(self.family.id),
+            "type": "calendar.event",
+            "title": "November default",
+            "starts_at": "2026-11-10T09:00:00+01:00",
+            "ends_at": "2026-11-10T10:00:00+01:00",
+            "actionable": False,
+            "payload": {
+                "provider": "FamilyOS",
+                "recurrence": {
+                    "frequency": "yearly",
+                    "interval": 1,
+                    "nth_weekdays": [{"weekday": "TH", "ordinal": -1}],
+                },
+            },
+        }
+        response = self.client.post("/api/events/", base, format="json")
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertEqual(response.data["payload"]["recurrence"]["months"], [11])
 
     def test_legacy_weekly_string_preserves_wall_time_across_dst(self):
         master = self.event(
