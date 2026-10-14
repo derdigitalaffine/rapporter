@@ -51,6 +51,13 @@ async function boot(page,{ledger='ledger-home',standalone=false,language='de'}={
  return {store,planner};
 }
 
+async function openCategories(planner){
+ await expect(planner.getByRole('button',{name:'Budget planen',exact:true})).toBeEnabled();
+ const details=planner.locator('details');
+ if(await details.getAttribute('open')===null)await details.locator('summary').click();
+ await expect(details).toHaveAttribute('open','');
+}
+
 test('budget planning · estimate, plan and actual stay distinct without expense writes',async({page})=>{
  const {store,planner}=await boot(page);
  await planner.getByRole('button',{name:'Budget planen',exact:true}).click();
@@ -84,7 +91,7 @@ test('budget planning · English labels use the same canonical money editor',asy
 
 test('budget planning · category lost-response retry is idempotent, then edit and archive',async({page})=>{
  const {store,planner}=await boot(page,{ledger:'ledger-trip'});
- await planner.locator('summary').click();
+ await openCategories(planner);
  await planner.getByRole('button',{name:'Kostenbereich hinzufügen',exact:true}).click();
  await planner.getByRole('textbox',{name:'Kostenbereich',exact:true}).fill('Unterkunft');
  await planner.getByRole('textbox',{name:'Geplant (EUR)',exact:true}).fill('800');
@@ -98,11 +105,11 @@ test('budget planning · category lost-response retry is idempotent, then edit a
  expect(store.budgets).toHaveLength(1);
  expect(store.writes[0].body.client_request_id).toBe(store.writes[1].body.client_request_id);
  expect(store.budgets[0].ledger).toBe('ledger-trip');
- if(!await planner.getByRole('button',{name:'Kostenbereich bearbeiten: Unterkunft',exact:true}).isVisible())await planner.locator('summary').click();
+ await openCategories(planner);
  await planner.getByRole('button',{name:'Kostenbereich bearbeiten: Unterkunft',exact:true}).click();
  await planner.getByRole('textbox',{name:'Geplant (EUR)',exact:true}).fill('850,25');
  await planner.getByRole('button',{name:'Budget speichern',exact:true}).click();
- if(!await planner.getByRole('button',{name:'Archivieren: Unterkunft',exact:true}).isVisible())await planner.locator('summary').click();
+ await openCategories(planner);
  await expect(planner).toContainText('850,25');
  await planner.getByRole('button',{name:'Archivieren: Unterkunft',exact:true}).click();
  await page.getByRole('alertdialog').getByRole('button',{name:'Archivieren',exact:true}).click();
