@@ -6,7 +6,8 @@
 .family-timeline-empty-toggle:hover{background:var(--soft)}
 .family-timeline-empty-toggle input{width:18px;height:18px;accent-color:var(--brand)}
 .family-timeline-reorder-hint{display:flex;align-items:center;gap:6px;margin:0;padding:8px 6px 4px;color:var(--muted);font-size:.65rem;line-height:1.35}
-.family-timeline-lane-order-item{grid-template-columns:24px 32px minmax(0,1fr) auto;gap:7px;cursor:grab;transition:background .16s ease,opacity .16s ease,transform .16s ease}
+.family-timeline-lane-order-item{position:relative;isolation:isolate;overflow:hidden;grid-template-columns:24px 32px minmax(0,1fr) auto;gap:7px;cursor:grab;transition:background .16s ease,opacity .16s ease,transform .16s ease}
+.family-timeline-lane-order-item>*{min-width:0}
 .family-timeline-lane-order-item:active{cursor:grabbing}
 .family-timeline-lane-order-item.is-dragging{opacity:.52;background:var(--soft);transform:scale(.99)}
 .family-timeline-lane-drag{width:24px;height:36px;display:grid;place-items:center;color:var(--muted)}
@@ -16,6 +17,7 @@
 .family-timeline-lane-order-actions>button:disabled{opacity:.35;cursor:default}
 .family-timeline-lane-visible{width:36px;height:36px;display:grid;place-items:center;border-radius:9px}
 .family-timeline-lane-visible:hover{background:var(--soft)}
+.family-timeline-lane-visible .sr-only{pointer-events:none}
 .family-timeline-lane-visible input{width:20px;height:20px;accent-color:var(--brand)}
 .family-timeline-day-head.is-weekend{background:color-mix(in srgb,var(--soft) 68%,var(--surface))}
 .family-timeline-day-head.is-weekend.is-today{background:color-mix(in srgb,var(--brand) 6%,var(--soft))}
