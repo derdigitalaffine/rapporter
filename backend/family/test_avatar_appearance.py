@@ -113,10 +113,10 @@ class AvatarAppearanceTests(TestCase):
             {
                 "family": str(self.family.id),
                 "avatar_color": "#123ABC",
-                "calendar_color": "#2f6f73",
+                "calendar_color": "#0F766E",
             },
             format="json",
         )
         self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(response.data["avatar_color"], "#123ABC")
-        self.assertEqual(response.data["calendar_color"].lower(), "#2f6f73")
+        self.assertEqual(response.data["calendar_color"], "#0F766E")
