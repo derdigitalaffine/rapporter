@@ -1,4 +1,5 @@
 import {useEffect,useMemo,useRef,useState} from 'react';
+import {api} from './api';
 import {Icon} from './icons';
 import {formatDateTime} from './locale';
 import MemberAvatar from './MemberAvatar';
@@ -29,6 +30,7 @@ export default function CalendarFamilyTimeline({days,events,family,t,language,on
  const [activeSettingsKey,setActiveSettingsKey]=useState('');
  const [viewport,setViewport]=useState({width:0,height:0});
  const scrollRef=useRef(null);
+ const laneOrderTouchedRef=useRef(false);
  const lanes=useMemo(()=>buildLanes(days,events,family,timeZone,t),[days,events,family,timeZone,t]);
  const laneIdsKey=useMemo(()=>lanes.map(lane=>lane.id).join('\u001f'),[lanes]);
  const orderedLanes=useMemo(()=>orderLanes(lanes,laneOrder),[lanes,laneOrder]);
@@ -61,6 +63,18 @@ export default function CalendarFamilyTimeline({days,events,family,t,language,on
  },[activeSettingsKey,orientation,zoom,laneDensity,hiddenLaneIds,laneOrder,hideEmptyLanes]);
  useEffect(()=>{setLaneOrder(current=>{const next=normalizeLaneOrder(current,lanes.map(lane=>lane.id));return arraysEqual(next,current)?current:next})},[laneIdsKey]);
  useEffect(()=>{
+  laneOrderTouchedRef.current=false;
+  let live=true;
+  if(!family?.id)return()=>{live=false};
+  api(`/calendar-planner-preferences/?family=${encodeURIComponent(family.id)}`).then(value=>{
+   if(!live||laneOrderTouchedRef.current)return;
+   const serverOrder=Array.isArray(value?.lane_order)?value.lane_order.map(String):[];
+   if(serverOrder.length){setLaneOrder(serverOrder);return}
+   if(laneOrder.length)persistLaneOrder(laneOrder);
+  }).catch(()=>{});
+  return()=>{live=false};
+ },[family?.id]);
+ useEffect(()=>{
   const node=scrollRef.current;if(!node)return;
   const update=()=>setViewport({width:node.clientWidth,height:node.clientHeight});update();
   if(typeof ResizeObserver==='undefined')return;
@@ -68,8 +82,9 @@ export default function CalendarFamilyTimeline({days,events,family,t,language,on
  },[orientation]);
  function toggleLane(id){setHiddenLaneIds(current=>{const next=new Set(current);if(next.has(id))next.delete(id);else next.add(id);return next})}
  function showAll(){setHiddenLaneIds(new Set());setHideEmptyLanes(false)}
- function moveLane(id,direction){setLaneOrder(current=>moveLaneOrder(current,lanes.map(lane=>lane.id),id,direction))}
- function dropLane(targetId){if(!draggedLaneId||draggedLaneId===targetId){setDraggedLaneId('');return}setLaneOrder(current=>dropLaneOrder(current,lanes.map(lane=>lane.id),draggedLaneId,targetId));setDraggedLaneId('')}
+ function persistLaneOrder(next){if(!family?.id)return;api(`/calendar-planner-preferences/?family=${encodeURIComponent(family.id)}`,{method:'PATCH',body:JSON.stringify({family:String(family.id),lane_order:next})}).catch(()=>{})}
+ function moveLane(id,direction){const next=moveLaneOrder(laneOrder,lanes.map(lane=>lane.id),id,direction);laneOrderTouchedRef.current=true;setLaneOrder(next);persistLaneOrder(next)}
+ function dropLane(targetId){if(!draggedLaneId||draggedLaneId===targetId){setDraggedLaneId('');return}const next=dropLaneOrder(laneOrder,lanes.map(lane=>lane.id),draggedLaneId,targetId);laneOrderTouchedRef.current=true;setLaneOrder(next);persistLaneOrder(next);setDraggedLaneId('')}
  return <section className={`calendar-view family-timeline orientation-${orientation}`} aria-label={t('calendarUi.viewTimeline')}>
   <div className="family-timeline-intro"><div><strong>{t('calendarUi.timelineTitle')}</strong><span>{t('calendarUi.timelineHint')}</span></div><span className="family-timeline-week-badge"><Icon name="members"/>{t('calendarUi.timelinePeople',{count:peopleCount})}</span></div>
   <div className="family-timeline-controls" role="toolbar" aria-label={t('calendarUi.timelineControls')}>
@@ -83,12 +98,12 @@ export default function CalendarFamilyTimeline({days,events,family,t,language,on
     <div className="family-timeline-lane-controls-head"><span>{t('calendarUi.timelineLanesHint')}</span>{(hiddenLaneIds.size>0||hideEmptyLanes)&&<button type="button" className="text-link" onClick={showAll}>{t('calendarUi.timelineShowAll')}</button>}</div>
     <div className="family-timeline-lane-tools"><label className="family-timeline-lane-search"><Icon name="search"/><span className="sr-only">{t('calendarUi.timelineLaneSearch')}</span><input type="search" value={laneQuery} onChange={event=>setLaneQuery(event.target.value)} placeholder={t('calendarUi.timelineLaneSearch')}/></label><label className="family-timeline-empty-toggle"><input type="checkbox" checked={hideEmptyLanes} onChange={event=>setHideEmptyLanes(event.target.checked)}/><span>{t('calendarUi.timelineHideEmpty')}</span></label></div>
     <p className="family-timeline-reorder-hint"><Icon name="drag"/>{t('calendarUi.timelineReorderHint')}</p>
-    {laneControls.map((lane,index)=><div key={lane.id} className={`family-timeline-lane-toggle family-timeline-lane-order-item ${draggedLaneId===lane.id?'is-dragging':''}`} draggable onDragStart={event=>{setDraggedLaneId(lane.id);event.dataTransfer.effectAllowed='move';event.dataTransfer.setData('text/plain',lane.id)}} onDragOver={event=>{event.preventDefault();event.dataTransfer.dropEffect='move'}} onDrop={event=>{event.preventDefault();dropLane(lane.id)}} onDragEnd={()=>setDraggedLaneId('')}>
+    {laneControls.map(lane=>{const orderIndex=orderedLanes.findIndex(item=>item.id===lane.id);return <div key={lane.id} className={`family-timeline-lane-toggle family-timeline-lane-order-item ${draggedLaneId===lane.id?'is-dragging':''}`} draggable onDragStart={event=>{setDraggedLaneId(lane.id);event.dataTransfer.effectAllowed='move';event.dataTransfer.setData('text/plain',lane.id)}} onDragOver={event=>{event.preventDefault();event.dataTransfer.dropEffect='move'}} onDrop={event=>{event.preventDefault();dropLane(lane.id)}} onDragEnd={()=>setDraggedLaneId('')}>
      <span className="family-timeline-lane-drag" aria-hidden="true"><Icon name="drag"/></span>
      {lane.kind==='member'?<MemberAvatar person={lane.member} color={lane.color} size={28}/>:<span className={`family-timeline-control-icon is-${lane.kind}`}><Icon name={lane.kind==='ics'?'calendar':'members'}/></span>}
      <span className="grow"><strong>{lane.name}</strong><small>{lane.subtitle}</small></span>
-     <span className="family-timeline-lane-order-actions"><button type="button" disabled={index===0} onClick={()=>moveLane(lane.id,-1)} aria-label={t('calendarUi.timelineMoveUp',{name:lane.name})}>↑</button><button type="button" disabled={index===orderedLanes.length-1} onClick={()=>moveLane(lane.id,1)} aria-label={t('calendarUi.timelineMoveDown',{name:lane.name})}>↓</button><label className="family-timeline-lane-visible"><span className="sr-only">{t('calendarUi.timelineToggleLane',{name:lane.name})}</span><input type="checkbox" checked={!hiddenLaneIds.has(lane.id)} onChange={()=>toggleLane(lane.id)} aria-label={lane.name}/></label></span>
-    </div>)}
+     <span className="family-timeline-lane-order-actions"><button type="button" disabled={orderIndex===0} onClick={()=>moveLane(lane.id,-1)} aria-label={t('calendarUi.timelineMoveUp',{name:lane.name})}>↑</button><button type="button" disabled={orderIndex===orderedLanes.length-1} onClick={()=>moveLane(lane.id,1)} aria-label={t('calendarUi.timelineMoveDown',{name:lane.name})}>↓</button><label className="family-timeline-lane-visible"><span className="sr-only">{t('calendarUi.timelineToggleLane',{name:lane.name})}</span><input type="checkbox" checked={!hiddenLaneIds.has(lane.id)} onChange={()=>toggleLane(lane.id)} aria-label={lane.name}/></label></span>
+    </div>})}
    </div></details>
   </div>
   {visibleLanes.length?<div ref={scrollRef} className="family-timeline-scroll" tabIndex="0" aria-label={t(orientation==='rows'?'calendarUi.timelineScrollHint':'calendarUi.timelineScrollHintVertical')}>
