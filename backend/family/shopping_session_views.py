@@ -1,3 +1,4 @@
+import logging
 from copy import deepcopy
 from datetime import timedelta
 
@@ -15,6 +16,7 @@ from .shopping_models import ShoppingSession
 from .shopping_session_service import start_or_join_shopping_session, touch_shopping_session_participant
 
 
+logger = logging.getLogger(__name__)
 PRESENCE_WINDOW = timedelta(seconds=60)
 
 
@@ -131,6 +133,43 @@ def _completion_payload(session, request_user):
         "completion": _snapshot_for_user(session.snapshot, request_user),
         "context_ref": {"type": "shopping_session", "id": str(session.id)},
     }
+
+
+def _completed_cleanup_item_ids(snapshot):
+    snapshot = snapshot or {}
+    item_ids = [row.get("id") for row in snapshot.get("purchased_items") or [] if row.get("id")]
+    if snapshot.get("open_items_policy") == "remove":
+        item_ids.extend(row.get("id") for row in snapshot.get("open_items") or [] if row.get("id"))
+    return item_ids
+
+
+def _cleanup_completed_session_items(session):
+    item_ids = _completed_cleanup_item_ids(session.snapshot)
+    if not item_ids:
+        return
+    ShoppingItem.objects.filter(
+        shopping_list_id=session.shopping_list_id,
+        id__in=item_ids,
+    ).delete()
+
+
+def _try_cleanup_completed_session_items(session):
+    try:
+        # Cleanup is deliberately a second transaction. The completed session and
+        # its immutable snapshot are the checkout truth and must not be rolled back
+        # because a delete hook or transient database error rejects source cleanup.
+        with transaction.atomic():
+            _cleanup_completed_session_items(session)
+        return True
+    except Exception:
+        logger.exception(
+            "Shopping checkout item cleanup failed",
+            extra={
+                "shopping_session_id": str(session.id),
+                "shopping_list_id": str(session.shopping_list_id),
+            },
+        )
+        return False
 
 
 @api_view(["POST"])
@@ -267,65 +306,52 @@ def shopping_session_complete(request):
         session = sessions.first()
         if not session:
             return Response({"detail": "Einkaufssession nicht gefunden."}, status=status.HTTP_404_NOT_FOUND)
-        if session.status == ShoppingSession.Status.COMPLETED:
-            return Response(_completion_payload(session, request.user))
-        if session.status != ShoppingSession.Status.ACTIVE:
-            return Response({"detail": "Einkaufssession ist nicht mehr aktiv."}, status=status.HTTP_409_CONFLICT)
+        if session.status != ShoppingSession.Status.COMPLETED:
+            if session.status != ShoppingSession.Status.ACTIVE:
+                return Response({"detail": "Einkaufssession ist nicht mehr aktiv."}, status=status.HTTP_409_CONFLICT)
 
-        visible_items = list(
-            ShoppingItem.objects.select_for_update()
-            .filter(shopping_list=shopping_list)
-            .exclude(hidden_from_user=request.user)
-            .order_by("position", "created_at", "id")
-        )
-        purchased = [item for item in visible_items if item.checked]
-        open_items = [item for item in visible_items if not item.checked]
-        if not purchased:
-            return Response({"code": "nothing_purchased", "detail": "Noch keine Artikel im Wagen."}, status=status.HTTP_400_BAD_REQUEST)
-        if open_items and open_items_policy not in {"keep", "remove"}:
-            return Response(
-                {"code": "open_items_choice_required", "open_count": len(open_items)},
-                status=status.HTTP_409_CONFLICT,
+            visible_items = list(
+                ShoppingItem.objects.select_for_update()
+                .filter(shopping_list=shopping_list)
+                .exclude(hidden_from_user=request.user)
+                .order_by("position", "created_at", "id")
             )
-        if not open_items:
-            open_items_policy = "keep"
+            purchased = [item for item in visible_items if item.checked]
+            open_items = [item for item in visible_items if not item.checked]
+            if not purchased:
+                return Response({"code": "nothing_purchased", "detail": "Noch keine Artikel im Wagen."}, status=status.HTTP_400_BAD_REQUEST)
+            if open_items and open_items_policy not in {"keep", "remove"}:
+                return Response(
+                    {"code": "open_items_choice_required", "open_count": len(open_items)},
+                    status=status.HTTP_409_CONFLICT,
+                )
+            if not open_items:
+                open_items_policy = "keep"
 
-        completed_at = timezone.now()
-        snapshot = {
-            "version": 1,
-            "shopping_list": {
-                "id": str(shopping_list.id),
-                "name": shopping_list.name,
-                "store": shopping_list.store,
-            },
-            "purchased_items": [_item_snapshot(item) for item in purchased],
-            "open_items": [_item_snapshot(item) for item in open_items],
-            "purchased_count": len(purchased),
-            "open_count": len(open_items),
-            "open_items_policy": open_items_policy,
-            "completed_at": completed_at.isoformat(),
-            "completed_by": request.user.id,
-        }
-        purchased_ids = [item.id for item in purchased]
-        open_ids = [item.id for item in open_items]
+            completed_at = timezone.now()
+            session.status = ShoppingSession.Status.COMPLETED
+            session.completed_at = completed_at
+            session.completed_by = request.user
+            session.last_activity_at = completed_at
+            session.snapshot = {
+                "version": 1,
+                "shopping_list": {
+                    "id": str(shopping_list.id),
+                    "name": shopping_list.name,
+                    "store": shopping_list.store,
+                },
+                "purchased_items": [_item_snapshot(item) for item in purchased],
+                "open_items": [_item_snapshot(item) for item in open_items],
+                "purchased_count": len(purchased),
+                "open_count": len(open_items),
+                "open_items_policy": open_items_policy,
+                "completed_at": completed_at.isoformat(),
+                "completed_by": request.user.id,
+            }
+            session.save(update_fields=["status", "completed_at", "completed_by", "last_activity_at", "snapshot", "updated_at"])
 
-        # Persist checkout truth before removing the mutable source rows. This keeps
-        # completion atomic and makes retries/history independent from ShoppingItem
-        # lifecycle or delete-time hooks.
-        session.status = ShoppingSession.Status.COMPLETED
-        session.completed_at = completed_at
-        session.completed_by = request.user
-        session.last_activity_at = completed_at
-        session.snapshot = snapshot
-        session.save(update_fields=["status", "completed_at", "completed_by", "last_activity_at", "snapshot", "updated_at"])
-
-        ShoppingItem.objects.filter(id__in=purchased_ids).delete()
-        if open_items_policy == "remove" and open_ids:
-            ShoppingItem.objects.filter(id__in=open_ids).delete()
-
-        # Build the response while all rows relevant to the completion are still
-        # under the same transaction/lock. The returned payload only references the
-        # immutable snapshot and session, never deleted ShoppingItem instances.
-        payload = _completion_payload(session, request.user)
-
-    return Response(payload)
+    # Do mutable source cleanup only after the completed session transaction has
+    # committed. Retries enter here as well, so a prior cleanup failure is repaired
+    # idempotently from the immutable snapshot instead of turning checkout into 500.
+    _try_cleanup_completed_session_items(session)
+    return Response(_completion_payload(session, request.user))
