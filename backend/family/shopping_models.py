@@ -116,6 +116,7 @@ class ShoppingSession(TimestampedModel):
         related_name="completed_shopping_sessions",
     )
     completed_at = models.DateTimeField(null=True, blank=True)
+    snapshot = models.JSONField(default=dict, blank=True)
     last_activity_at = models.DateTimeField(default=timezone.now, db_index=True)
     activity_seq = models.PositiveBigIntegerField(default=0)
 
