@@ -27,33 +27,22 @@ function CreatePageRedirect({page,params,openModule}){
 
 function ExpenseCreateFlow({family,context,onClose,saved,onRefresh}){
   const prefill=context.prefill||null;
-  async function finish(record,financeContext={}){
-    if(context.commitment){
-      try{
-        // `budget` deliberately preserves an explicit empty selection. The
-        // user may turn a reserved purchase into an unbudgeted Expense; do not
-        // silently restore the originally reserved category afterwards.
-        const selectedBudget=financeContext.budget==='__advanced__'?null:(financeContext.budget??context.commitmentBudget??null);
-        await api(`/budget-commitments/${encodeURIComponent(context.commitment)}/consume/`,{
-          method:'POST',
-          body:JSON.stringify({family:family.id,expense:record.id,budget:selectedBudget||null}),
-        });
-        if(context.shoppingItem){
-          try{await api(`/shopping-items/${encodeURIComponent(context.shoppingItem)}/`,{method:'PATCH',body:JSON.stringify({checked:true})})}
-          catch(error){toast(error.message,{type:'error'})}
-        }
-      }catch(error){
-        // The Expense and commitment form one product transaction. If the
-        // second server step rejects, remove the just-created Expense so a
-        // retry cannot double count actual spending while the reservation is
-        // still active.
-        try{await api(`/expenses/${record.id}/`,{method:'DELETE'})}catch{}
-        throw error;
-      }
+  async function createReservedExpense(expensePayload,financeContext={}){
+    const selectedBudget=financeContext.budget==='__advanced__'?null:(financeContext.budget??context.commitmentBudget??null);
+    const result=await api(`/budget-commitments/${encodeURIComponent(context.commitment)}/purchase/`,{
+      method:'POST',
+      body:JSON.stringify({family:family.id,budget:selectedBudget||null,expense:expensePayload}),
+    });
+    return result.expense;
+  }
+  async function finish(record){
+    if(context.commitment&&context.shoppingItem){
+      try{await api(`/shopping-items/${encodeURIComponent(context.shoppingItem)}/`,{method:'PATCH',body:JSON.stringify({checked:true})})}
+      catch(error){toast(error.message,{type:'error'})}
     }
     await saved(record);
   }
-  return <ExpenseEditor family={family} expense={prefill} initialLedger={context.ledger||prefill?.ledger||''} initialBudget={context.commitmentBudget||''} initialMode={context.mode==='receipt'?'receipt':context.mode==='details'?'details':'quick'} onClose={onClose} onSaved={finish} onUndo={onRefresh}/>;
+  return <ExpenseEditor family={family} expense={prefill} initialLedger={context.ledger||prefill?.ledger||''} initialBudget={context.commitmentBudget||''} initialMode={context.mode==='receipt'?'receipt':context.mode==='details'?'details':'quick'} createExpense={context.commitment?createReservedExpense:null} onClose={onClose} onSaved={finish} onUndo={onRefresh}/>;
 }
 
 const renderers={
