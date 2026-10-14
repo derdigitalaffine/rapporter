@@ -31,12 +31,17 @@ def normalize_event_recurrence(value, starts_at, family_timezone):
     if not isinstance(value, dict) or value.get("frequency") not in SUPPORTED_FREQUENCIES:
         raise ValueError("Unsupported calendar recurrence.")
     zone = ZoneInfo(family_timezone or "UTC")
-    anchor = starts_at.astimezone(zone).date().isoformat()
+    local_start = starts_at.astimezone(zone)
+    normalized_value = deepcopy(value)
+    # "First/last weekday yearly" without an explicit month means the event's
+    # start month, not the first/last weekday of the whole year.
+    if normalized_value.get("frequency") == "yearly" and normalized_value.get("nth_weekdays") and not normalized_value.get("months"):
+        normalized_value["months"] = [local_start.month]
     schedule = normalize_schedule(
         {
             "mode": "static",
-            "anchor_date": anchor,
-            "recurrence": value,
+            "anchor_date": local_start.date().isoformat(),
+            "recurrence": normalized_value,
         },
         family_timezone or "UTC",
     )
