@@ -1,10 +1,15 @@
 .app-shell{
   --app-nav-space:calc(var(--bottom-nav-height,76px) + env(safe-area-inset-bottom));
+  --app-floating-create-height:48px;
+  --app-floating-create-gap:12px;
+  --app-floating-create-space:calc(var(--app-floating-create-height) + var(--app-floating-create-gap) + 24px);
 }
 
 .bottom-nav{
   position:fixed;
-  bottom:var(--app-viewport-bottom,0px);
+  /* Persistent navigation follows the layout viewport. VisualViewport can
+     transiently shrink or pan while iOS presents sheets and keyboards. */
+  bottom:0;
   grid-template-columns:repeat(var(--bottom-nav-items,5),minmax(0,1fr));
   gap:4px;
   background:var(--surface);
@@ -74,7 +79,7 @@
 }
 
 @media (orientation:landscape) and (max-width:950px) and (max-height:620px){
-  .app-shell{--bottom-nav-height:66px}
+  .app-shell{--bottom-nav-height:66px;--app-floating-create-gap:10px}
   .bottom-nav button{min-height:52px;padding-block:2px}
 }
 
@@ -115,7 +120,8 @@ html[data-app-standalone] .app-shell:not(.messenger-shell)>.content{
 }
 
 html[data-app-standalone] .app-shell.global-create-enabled:not(.messenger-shell)>.content{
-  padding-bottom:calc(var(--app-nav-space) + 92px);
+  padding-bottom:calc(var(--app-nav-space) + var(--app-floating-create-space));
+  scroll-padding-bottom:calc(var(--app-nav-space) + var(--app-floating-create-space));
 }
 
 html[data-app-standalone] .bottom-nav{

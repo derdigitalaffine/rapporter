@@ -39,6 +39,26 @@ Das Abhaken ist offline-fähig. In `Offen` erhält die Zeile unmittelbar eine ku
 
 Fehler, relevante Offline-Zustände und fehlgeschlagene Synchronisierung bleiben sichtbar. Erfolgreiche Synchronisierung ist dagegen der Normalfall und erzeugt keine Benachrichtigungskaskade.
 
+## Checkout, Purchase-History und Ausgabe
+
+Der Store Mode schließt einen Einkauf **nie automatisch** ab. Sobald mindestens ein Artikel im Wagen liegt, steht der ruhige CTA `Einkauf abschließen` zur Verfügung. Vor dem Abschluss wird die vorhandene Shopping-Offline-Queue vollständig synchronisiert; ein Checkout baut keinen zweiten Offline-/Konfliktmechanismus auf.
+
+Sind noch offene Artikel vorhanden, fordert das Checkout-Sheet eine bewusste Entscheidung: offene Artikel behalten, offene Artikel entfernen oder abbrechen. Erst danach wird die aktive `ShoppingSession` atomar abgeschlossen. Der Server schreibt davor einen unveränderlichen Snapshot der gekauften und noch offenen, für die abschließende Person sichtbaren Artikel. Gekaufte Artikel werden anschließend aus der wiederverwendbaren aktiven Liste entfernt. Bei `entfernen` gilt dasselbe für die sichtbaren offenen Artikel.
+
+`ShoppingSession` plus Snapshot ist die kanonische Purchase-History. `ShoppingPurchaseEvent` bleibt ausschließlich Prediction-/Learning-Telemetrie und wird nicht zur Checkout-Wahrheit. Historische Snapshots bewahren die Item-Privacy von Geschenk-/Überraschungsartikeln: ein Artikel, der für eine Person verborgen war, wird ihr auch nach dem Löschen des ursprünglichen `ShoppingItem` nicht über die History offengelegt.
+
+Nach dem Abschluss zeigt das Sheet kompakt `N gekauft · M offen` und bietet drei gleichwertige Folgewege:
+
+- **Beleg scannen:** öffnet den bestehenden Expense-Receipt-Flow und damit den kanonischen Document-Processing-/OCR-Pfad.
+- **Betrag eingeben:** öffnet den bestehenden Expense-Quick-Flow. Zahler und Beteiligte werden dort sichtbar bestätigt bzw. geändert; Shopping-Sichtbarkeit oder Shopping-Verantwortung werden nicht als Finance-Teilnahme übernommen.
+- **Ohne Ausgabe abschließen:** beendet den Shopping-Flow ohne Finance-Objekt.
+
+Eine gespeicherte Expense wird über den kanonischen Context-Link `expense → shopping_session` mit der abgeschlossenen Session verknüpft. Der Link erweitert keine ACL: beide Endpunkte müssen für die lesende Person weiterhin eigenständig sichtbar sein. Finance-/OCR-Fehler machen den bereits abgeschlossenen Einkauf nicht rückgängig.
+
+Beim erfolgreichen Checkout wird die konkrete Session-ID als URL-Zustand (`session=<uuid>`) gesetzt. Ein Reload oder ein Context-Link auf eine abgeschlossene Session öffnet denselben unveränderlichen Snapshot erneut. Beim Schließen dieser historischen Zusammenfassung wird der Session-Parameter entfernt und der normale Store Mode kann mit einer neuen aktiven Session fortfahren.
+
+Serverseitig stehen dafür neben Start/Current/Complete auch ACL-gesicherte Detail- und History-Reads bereit: `GET /api/shopping-sessions/<session_id>/` und `GET /api/shopping-sessions/history/?shopping_list=<list_id>`.
+
 ## Barrierefreiheit und Touch
 
 - Reorder hat immer eine Nicht-Drag-Alternative.
@@ -49,8 +69,9 @@ Fehler, relevante Offline-Zustände und fehlgeschlagene Synchronisierung bleiben
 - Empty-/Completed-State-CTAs sind mindestens 48 px hoch.
 - Store Check-off ist per ganzer Checkfläche, Tastatur und Screenreader bedienbar.
 - Die kurze Check-off-Transition respektiert `prefers-reduced-motion`.
+- Checkout-Aktionen haben mindestens 48 px Höhe und sind ohne Drag-Geste erreichbar.
 - Status wird nicht ausschließlich über Farbe vermittelt.
 
 ## Regressionen
 
-Backend-Tests decken Persistenz, Family-Scoping, vollständige Sequenzen und die Unabhängigkeit von Check-off und Reihenfolge ab. Playwright deckt zusätzlich sichtbare/touch-sichere Reorder-Controls, den kompakten Listenwechsel, No-list/Empty/Completed/Offline-Zustände, 320-px-Mobile-Reflow ohne Horizontaloverflow, Desktop-Reflow, reduzierte Planning-Chrome, Laufweg-Gruppierung, Store-Filter, leises Add/Check-off, automatischen Online-Refresh sowie tastatur- und pointerbasiertes Planning-Reorder auf Desktop und Mobile ab.
+Backend-Tests decken Persistenz, Family-Scoping, vollständige Sequenzen, die Unabhängigkeit von Check-off und Reihenfolge sowie Checkout-Idempotenz, History-ACLs und Geschenk-Privacy ab. Playwright deckt zusätzlich sichtbare/touch-sichere Reorder-Controls, den kompakten Listenwechsel, No-list/Empty/Completed/Offline-Zustände, 320-px-Mobile-Reflow ohne Horizontaloverflow, Desktop-Reflow, reduzierte Planning-Chrome, Laufweg-Gruppierung, Store-Filter, leises Add/Check-off, automatischen Online-Refresh sowie tastatur- und pointerbasiertes Planning-Reorder auf Desktop und Mobile ab. Der Checkout-E2E prüft den expliziten Abschluss, Keep/Cancel, die reload-sichere Session-Zusammenfassung, den optionalen Expense-Handoff und den Context-Link zurück zur `ShoppingSession`.
