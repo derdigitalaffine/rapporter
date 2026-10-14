@@ -19,6 +19,7 @@ class FamilyConfig(AppConfig):
             PinReaction,
         )
         from .caldav_models import CalDavConnection
+        from .calendar_planner_models import CalendarPlannerPreference
         from .context_models import ContextLink
         from .create_action_models import CreateActionPreference, CreateActionStat, CreateActionUsageReceipt
         from .family_master_models import FamilyMasterData
@@ -37,6 +38,7 @@ class FamilyConfig(AppConfig):
         core_models.PinInteractionState = PinInteractionState
         core_models.PinReaction = PinReaction
         core_models.CalDavConnection = CalDavConnection
+        core_models.CalendarPlannerPreference = CalendarPlannerPreference
         core_models.ContextLink = ContextLink
         core_models.CreateActionPreference = CreateActionPreference
         core_models.CreateActionStat = CreateActionStat
