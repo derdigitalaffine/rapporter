@@ -7,7 +7,9 @@
 
 .bottom-nav{
   position:fixed;
-  bottom:var(--app-viewport-bottom,0px);
+  /* Persistent navigation follows the layout viewport. VisualViewport can
+     transiently shrink or pan while iOS presents sheets and keyboards. */
+  bottom:0;
   grid-template-columns:repeat(var(--bottom-nav-items,5),minmax(0,1fr));
   gap:4px;
   background:var(--surface);

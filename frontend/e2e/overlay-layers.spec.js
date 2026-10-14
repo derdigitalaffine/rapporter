@@ -30,7 +30,7 @@ async function pointHit(page,locator){
   },point)};
 }
 
-test('global create stays clear of primary navigation across viewport offsets and breakpoints',async({page})=>{
+test('global create stays clear of primary navigation despite stale viewport inset',async({page})=>{
   await installApiMocks(page,{dismissOnboarding:true});
   await routeDirectEventCreate(page);
 
@@ -38,17 +38,21 @@ test('global create stays clear of primary navigation across viewport offsets an
     await page.setViewportSize(viewport);
     await page.goto('/?page=home');
     await page.waitForLoadState('networkidle');
-    await page.evaluate(()=>document.documentElement.style.setProperty('--app-viewport-bottom','52px'));
 
     const nav=page.locator('.bottom-nav');
     const controls=page.locator('.global-create-controls');
     await expect(nav).toBeVisible();
     await expect(controls).toBeVisible();
+    const stableNav=await nav.boundingBox();
+    const stableControls=await controls.boundingBox();
 
+    // Reproduce the stale value that used to survive an iOS sheet/keyboard
+    // transition. Persistent chrome must not consume it.
+    await page.evaluate(()=>document.documentElement.style.setProperty('--app-viewport-bottom','52px'));
     const navBox=await nav.boundingBox();
     const controlsBox=await controls.boundingBox();
-    expect(navBox).not.toBeNull();
-    expect(controlsBox).not.toBeNull();
+    expect(navBox.y).toBeCloseTo(stableNav.y,0);
+    expect(controlsBox.y).toBeCloseTo(stableControls.y,0);
     expect(controlsBox.y+controlsBox.height).toBeLessThanOrEqual(navBox.y-8);
 
     const navHit=await pointHit(page,nav.locator('button').first());
