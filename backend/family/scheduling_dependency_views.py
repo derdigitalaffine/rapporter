@@ -59,6 +59,8 @@ def scheduling_dependencies(request):
         rows = SchedulingDependency.objects.filter(family=family).order_by("created_at")
         anchor_type = request.query_params.get("anchor_type")
         anchor_id = request.query_params.get("anchor_id")
+        output_type = request.query_params.get("output_type")
+        output_id = request.query_params.get("output_id")
         if anchor_type:
             rows = rows.filter(anchor_type=anchor_type)
         if anchor_id:
@@ -71,7 +73,21 @@ def scheduling_dependencies(request):
             item = dependency_payload(row, language=language)
             item["materializations"] = [materialization_payload(value) for value in row.materializations.order_by("scheduled_for")[:12]]
             result.append(item)
-        return Response({"dependencies": result})
+
+        origins = []
+        if output_id:
+            try:
+                output_uuid = _uuid(output_id, "output_id")
+            except DjangoValidationError as exc:
+                return _error(exc)
+            materializations = SchedulingMaterialization.objects.filter(family=family, output_id=output_uuid).select_related("dependency").order_by("scheduled_for")
+            if output_type:
+                materializations = materializations.filter(output_type=output_type)
+            for materialization in materializations[:12]:
+                origin = materialization_payload(materialization)
+                origin["dependency"] = dependency_payload(materialization.dependency, language=language)
+                origins.append(origin)
+        return Response({"dependencies": result, "origins": origins})
 
     data = request.data if isinstance(request.data, dict) else {}
     allowed = {"anchor_type", "anchor_id", "anchor_scope", "anchor_occurrence_key", "output_type", "output_blueprint", "relative_rule", "inheritance", "conflict_policy"}
