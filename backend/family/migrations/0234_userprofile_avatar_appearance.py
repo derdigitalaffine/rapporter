@@ -1,19 +1,9 @@
 from django.db import migrations, models
 
 
-PALETTE = (
-    "#2F6F73", "#3F6FA8", "#6B5FA7", "#8A5E8D",
-    "#A65353", "#A86E35", "#8A7A32", "#4F7B45",
-    "#357A68", "#426E8A", "#755B45", "#626A73",
-)
-
-
-def seed_avatar_appearance(apps, schema_editor):
+def seed_avatar_mode(apps, schema_editor):
     UserProfile = apps.get_model("family", "UserProfile")
-    for profile in UserProfile.objects.all().iterator():
-        profile.avatar_mode = "photo" if profile.avatar_key else "initials"
-        profile.avatar_color = PALETTE[profile.user_id % len(PALETTE)]
-        profile.save(update_fields=["avatar_mode", "avatar_color"])
+    UserProfile.objects.exclude(avatar_key="").update(avatar_mode="photo")
 
 
 class Migration(migrations.Migration):
@@ -35,5 +25,5 @@ class Migration(migrations.Migration):
             name="avatar_color",
             field=models.CharField(blank=True, max_length=7),
         ),
-        migrations.RunPython(seed_avatar_appearance, migrations.RunPython.noop),
+        migrations.RunPython(seed_avatar_mode, migrations.RunPython.noop),
     ]
