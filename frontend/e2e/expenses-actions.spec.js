@@ -29,7 +29,7 @@ test('expenses hub uses canonical action hierarchy on mobile and desktop',async(
   await page.setViewportSize({width:390,height:844});
   await installApiMocks(page,{dismissOnboarding:true});
   await installExpensesActionMocks(page);
-  await page.goto('/?page=expenses');
+  await page.goto('/?page=expenses&finance=expenses');
   await page.waitForLoadState('networkidle');
   await expect(page.getByRole('heading',{name:'Geld & Finanzen',exact:true})).toBeVisible();
   await expect(page.getByText('Supermarkt',{exact:true})).toBeVisible();
@@ -56,19 +56,6 @@ test('expenses hub uses canonical action hierarchy on mobile and desktop',async(
   await expect(remove).toHaveClass(/\bghost-danger\b/);
   await expectMinTarget(remove);
 
-  const repayment=page.getByRole('button',{name:/Rückzahlung planen|Plan repayment/i});
-  await expect(repayment).toHaveClass(/\bsecondary\b/);
-  await expectMinTarget(repayment);
-  const settle=page.getByRole('button',{name:/Als abgerechnet markieren|Mark as settled/i});
-  await expect(settle).toHaveClass(/\bprimary\b/);
-  await expectMinTarget(settle);
-  const history=page.locator('.finance-history-card');
-  await expect(history).not.toHaveAttribute('open','');
-  await history.locator('summary').click();
-  await expect(history).toHaveAttribute('open','');
-  const undo=history.getByRole('button',{name:/Abrechnung stornieren|Void settlement/i});
-  await expect(undo).toHaveClass(/\btext-button\b/);
-
   expect(await page.evaluate(()=>document.documentElement.scrollWidth-document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
   for(const viewport of [{width:320,height:568},{width:1024,height:768},{width:1440,height:900}]){
     await page.setViewportSize(viewport);
@@ -81,6 +68,23 @@ test('expenses hub uses canonical action hierarchy on mobile and desktop',async(
   await expect(remove).toBeFocused();
   await page.keyboard.press('Enter');
   await expect(page.getByRole('alertdialog')).toBeVisible();
+  await page.getByRole('alertdialog').getByRole('button',{name:/Abbrechen|Cancel/i}).click();
+
+  await page.setViewportSize({width:390,height:844});
+  await page.locator('.finance-section-nav').getByRole('button',{name:/Abrechnung|Settlements/i}).click();
+  const repayment=page.getByRole('button',{name:/Rückzahlung planen|Plan repayment/i});
+  await expect(repayment).toHaveClass(/\bsecondary\b/);
+  await expectMinTarget(repayment);
+  const settle=page.getByRole('button',{name:/Als abgerechnet markieren|Mark as settled/i});
+  await expect(settle).toHaveClass(/\bprimary\b/);
+  await expectMinTarget(settle);
+  const history=page.locator('.finance-history-card');
+  await expect(history).not.toHaveAttribute('open','');
+  await history.locator('summary').click();
+  await expect(history).toHaveAttribute('open','');
+  const undo=history.getByRole('button',{name:/Abrechnung stornieren|Void settlement/i});
+  await expect(undo).toHaveClass(/\btext-button\b/);
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth-document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
 });
 
 test('repayment planning creates cent-accurate installment tasks for the debtor without settling',async({page})=>{
@@ -98,7 +102,7 @@ test('repayment planning creates cent-accurate installment tasks for the debtor 
     return route.fallback();
   });
 
-  await page.goto('/?page=expenses');
+  await page.goto('/?page=expenses&finance=settlements');
   await page.waitForLoadState('networkidle');
   await page.getByRole('button',{name:/Rückzahlung planen|Plan repayment/i}).click();
   const dialog=page.getByRole('dialog',{name:/Rückzahlung planen|Plan repayment/i});
