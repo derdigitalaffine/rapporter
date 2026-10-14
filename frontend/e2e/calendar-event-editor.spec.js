@@ -53,7 +53,8 @@ test('new event editor is touch-first, defaults to me and saves start plus durat
   await expect(alex).toBeChecked();
   await expect(sam).toBeChecked();
   const familyEvent=dialog.getByRole('checkbox',{name:/Familientermin/});
-  await familyEvent.check();
+  await dialog.locator('.event-editor-family-toggle').click();
+  await expect(familyEvent).toBeChecked();
   await dialog.getByRole('button',{name:'Niemand',exact:true}).click();
   await expect(alex).not.toBeChecked();
   await expect(sam).not.toBeChecked();
@@ -64,11 +65,11 @@ test('new event editor is touch-first, defaults to me and saves start plus durat
 
   await dialog.getByRole('radio',{name:/Start \+ Endzeit/}).check();
   await dialog.getByLabel('Beginn').fill('2026-10-15T10:00');
-  await dialog.getByLabel('Ende').fill('2026-10-15T11:45');
+  await dialog.getByLabel(/^Ende(?:\s|$)/).fill('2026-10-15T11:45');
   await dialog.getByRole('radio',{name:/Start \+ Dauer/}).check();
   await expect(dialog.getByLabel('Andere Dauer')).toHaveValue('105');
   await dialog.getByRole('radio',{name:/Start \+ Endzeit/}).check();
-  await expect(dialog.getByLabel('Ende')).toHaveValue('2026-10-15T11:45');
+  await expect(dialog.getByLabel(/^Ende(?:\s|$)/)).toHaveValue('2026-10-15T11:45');
   await dialog.getByRole('radio',{name:/Start \+ Dauer/}).check();
   await dialog.getByRole('button',{name:'1.5 Std.',exact:true}).click();
   await expect(dialog.getByLabel('Andere Dauer')).toHaveValue('90');
@@ -104,7 +105,7 @@ test('new event editor saves first Monday of each calendar quarter',async({page}
   const dialog=await openNewEventEditor(page);
   await dialog.getByLabel('Titel').fill('Quartalsplanung');
   await dialog.getByRole('button',{name:'Weitere Details'}).click();
-  await dialog.getByLabel('Wiederholung').selectOption('quarterly');
+  await dialog.getByLabel('Wiederholung',{exact:true}).selectOption('quarterly');
   await dialog.getByLabel('Wochentag im Quartal').selectOption('MO');
   await dialog.getByLabel('Welche Position?').selectOption('1');
   await dialog.getByRole('button',{name:'Speichern',exact:true}).click();
@@ -122,7 +123,8 @@ test('editing an existing multi-person event keeps participants, family marker a
   await page.goto('/?page=calendar');
   await page.waitForLoadState('networkidle');
 
-  await page.locator('.calendar-event-chip').filter({hasText:'Kinderarzt'}).first().click();
+  await page.locator('.calendar-mobile-daystrip').getByRole('button',{name:/Kinderarzt/}).click();
+  await page.locator('.calendar-event-chip:visible').filter({hasText:'Kinderarzt'}).first().click();
   const detail=page.getByRole('dialog').filter({hasText:'Kinderarzt'});
   await expect(detail).toBeVisible();
   await detail.getByRole('button',{name:'Termin bearbeiten',exact:true}).click();
@@ -139,10 +141,11 @@ test('editing an existing multi-person event keeps participants, family marker a
 test('editing a projected recurrence occurrence keeps the master series anchor',async({page})=>{
   await page.setViewportSize({width:390,height:844});
   const state=await installApiMocks(page,{dismissOnboarding:true});
-  const occurrenceStart=new Date(Date.now()+5*3600000).toISOString();
-  const occurrenceEnd=new Date(Date.now()+6*3600000).toISOString();
-  const masterStart=new Date(Date.now()-48*3600000).toISOString();
-  const masterEnd=new Date(Date.now()-47*3600000).toISOString();
+  const now=Math.floor(Date.now()/60000)*60000;
+  const occurrenceStart=new Date(now+5*3600000).toISOString();
+  const occurrenceEnd=new Date(now+6*3600000).toISOString();
+  const masterStart=new Date(now-48*3600000).toISOString();
+  const masterEnd=new Date(now-47*3600000).toISOString();
   state.events[1]={
     ...state.events[1],
     title:'Serientermin',
@@ -164,13 +167,14 @@ test('editing a projected recurrence occurrence keeps the master series anchor',
   await page.goto('/?page=calendar');
   await page.waitForLoadState('networkidle');
 
-  await page.locator('.calendar-event-chip').filter({hasText:'Serientermin'}).first().click();
+  await page.locator('.calendar-mobile-daystrip').getByRole('button',{name:/Serientermin/}).click();
+  await page.locator('.calendar-event-chip:visible').filter({hasText:'Serientermin'}).first().click();
   const detail=page.getByRole('dialog').filter({hasText:'Serientermin'});
   await detail.getByRole('button',{name:'Termin bearbeiten',exact:true}).click();
 
   const dialog=page.getByRole('dialog',{name:'Termin bearbeiten'});
   await expect(dialog.getByLabel('Beginn')).toHaveValue(localInputValue(masterStart));
-  await expect(dialog.getByLabel('Wiederholung')).toHaveValue('monthly');
+  await expect(dialog.getByLabel('Wiederholung',{exact:true})).toHaveValue('monthly');
   await dialog.getByRole('button',{name:'Speichern',exact:true}).click();
   await expect.poll(()=>patched).not.toBeNull();
   expect(patched.starts_at).toBe(new Date(masterStart).toISOString());
