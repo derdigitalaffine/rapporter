@@ -1,9 +1,14 @@
+from datetime import timedelta
+
 from django.db import transaction
 from django.utils import timezone
 
 from .models import ShoppingList
 from .shopping_access import can_access_shopping_list
 from .shopping_models import ShoppingSession, ShoppingSessionActivity, ShoppingSessionParticipant
+
+
+PRESENCE_WRITE_INTERVAL = timedelta(seconds=15)
 
 
 def start_or_join_shopping_session(shopping_list, user):
@@ -49,11 +54,14 @@ def start_or_join_shopping_session(shopping_list, user):
 def touch_shopping_session_participant(session, user):
     if not user or not getattr(user, "is_authenticated", False):
         return
-    ShoppingSessionParticipant.objects.update_or_create(
+    now = timezone.now()
+    participant, created = ShoppingSessionParticipant.objects.get_or_create(
         session=session,
         user=user,
-        defaults={"last_seen_at": timezone.now()},
+        defaults={"last_seen_at": now},
     )
+    if not created and participant.last_seen_at < now - PRESENCE_WRITE_INTERVAL:
+        ShoppingSessionParticipant.objects.filter(pk=participant.pk).update(last_seen_at=now)
 
 
 def active_shopping_session(shopping_list):
