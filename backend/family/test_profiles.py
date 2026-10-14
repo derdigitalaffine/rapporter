@@ -126,6 +126,13 @@ class ProfileTests(TestCase):
             self.assertEqual(response.status_code, 200, response.data)
             profile = UserProfile.objects.get(user=self.owner)
             self.assertNotIn("secret-", profile.avatar_key)
+            self.assertIn("avatar_edit_url", response.data)
+            source_path = Path(self.media.name) / "avatars" / f"{profile.avatar_key}-source.webp"
+            self.assertTrue(source_path.is_file())
+            with Image.open(source_path) as source:
+                self.assertEqual(source.format, "WEBP")
+                self.assertEqual(source.size, (320, 320))
+                self.assertFalse(source.getexif())
             for size in (64, 128, 256):
                 path = Path(self.media.name) / "avatars" / f"{profile.avatar_key}-{size}.webp"
                 self.assertTrue(path.is_file())
@@ -133,6 +140,25 @@ class ProfileTests(TestCase):
                     self.assertEqual(saved.format, "WEBP")
                     self.assertEqual(saved.size, (size, size))
                     self.assertFalse(saved.getexif())
+
+    def test_source_upload_retains_uncropped_aspect_ratio_for_later_recropping(self):
+        response = self.client.post(
+            f"/api/profile/avatar/?family={self.family.id}",
+            {
+                "avatar": self._image(size=(512, 512), name="crop.webp", fmt="WEBP"),
+                "avatar_source": self._image(size=(1200, 800), name="source.jpg", fmt="JPEG", exif=True),
+            },
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        profile = UserProfile.objects.get(user=self.owner)
+        source_path = Path(self.media.name) / "avatars" / f"{profile.avatar_key}-source.webp"
+        with Image.open(source_path) as source:
+            self.assertEqual(source.size, (1200, 800))
+            self.assertFalse(source.getexif())
+        source_response = self.client.get(response.data["avatar_edit_url"])
+        self.assertEqual(source_response.status_code, 200)
+        self.assertEqual(source_response["Content-Type"], "image/webp")
 
     def test_fake_image_and_oversize_upload_are_rejected(self):
         fake = SimpleUploadedFile("avatar.png", b"not actually a png", content_type="image/png")
@@ -145,17 +171,32 @@ class ProfileTests(TestCase):
     def test_avatar_is_only_available_to_self_or_shared_family(self):
         response = self.client.post("/api/profile/avatar/", {"avatar": self._image()}, format="multipart")
         self.assertEqual(response.status_code, 200)
-        url = response.data["avatar_url"]
         shared = APIClient(); shared.force_authenticate(self.member)
-        allowed = shared.get(url)
-        self.assertEqual(allowed.status_code, 200)
         outsider = APIClient(); outsider.force_authenticate(self.outsider)
-        blocked = outsider.get(url)
-        self.assertEqual(blocked.status_code, 404)
+        for url in (response.data["avatar_url"], response.data["avatar_edit_url"]):
+            allowed = shared.get(url)
+            self.assertEqual(allowed.status_code, 200)
+            blocked = outsider.get(url)
+            self.assertEqual(blocked.status_code, 404)
+
+    def test_pre_master_avatar_edit_source_falls_back_to_existing_rendition(self):
+        response = self.client.post("/api/profile/avatar/", {"avatar": self._image()}, format="multipart")
+        self.assertEqual(response.status_code, 200)
+        profile = UserProfile.objects.get(user=self.owner)
+        source_path = Path(self.media.name) / "avatars" / f"{profile.avatar_key}-source.webp"
+        source_path.unlink()
+        fallback = self.client.get(response.data["avatar_edit_url"])
+        self.assertEqual(fallback.status_code, 200)
+        self.assertEqual(fallback["Content-Type"], "image/webp")
 
     def test_avatar_delete_restores_initials_fallback_contract(self):
-        self.client.post("/api/profile/avatar/", {"avatar": self._image()}, format="multipart")
+        uploaded = self.client.post("/api/profile/avatar/", {"avatar": self._image()}, format="multipart")
+        profile = UserProfile.objects.get(user=self.owner)
+        old_key = profile.avatar_key
+        self.assertTrue((Path(self.media.name) / "avatars" / f"{old_key}-source.webp").is_file())
         response = self.client.delete(f"/api/profile/avatar/?family={self.family.id}")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["avatar_url"], "")
+        self.assertEqual(response.data["avatar_edit_url"], "")
         self.assertEqual(UserProfile.objects.get(user=self.owner).avatar_key, "")
+        self.assertFalse((Path(self.media.name) / "avatars" / f"{old_key}-source.webp").exists())
