@@ -114,8 +114,8 @@ class Migration(migrations.Migration):
             model_name="schedulingruleversion",
             constraint=models.CheckConstraint(
                 condition=(
-                    models.Q(("change_scope", "future"), effective_from__isnull=False)
-                    | models.Q(("change_scope__in", ["initial", "whole"]), effective_from__isnull=True)
+                    models.Q(change_scope="future", effective_from__isnull=False)
+                    | models.Q(change_scope__in=["initial", "whole"], effective_from__isnull=True)
                 ),
                 name="schedule_rule_scope_effective_valid",
             ),
@@ -136,8 +136,8 @@ class Migration(migrations.Migration):
             model_name="schedulingdependency",
             constraint=models.CheckConstraint(
                 condition=(
-                    models.Q(("anchor_scope", "series"), ("anchor_occurrence_key", ""))
-                    | (models.Q(("anchor_scope", "occurrence")) & ~models.Q(("anchor_occurrence_key", "")))
+                    models.Q(anchor_scope="series", anchor_occurrence_key="")
+                    | (models.Q(anchor_scope="occurrence") & ~models.Q(anchor_occurrence_key=""))
                 ),
                 name="schedule_dependency_scope_key_valid",
             ),
@@ -154,8 +154,8 @@ class Migration(migrations.Migration):
             model_name="schedulingtemplate",
             constraint=models.CheckConstraint(
                 condition=(
-                    models.Q(("scope", "personal"), owner__isnull=False)
-                    | models.Q(("scope__in", ["family", "admin"]), owner__isnull=True)
+                    models.Q(scope="personal", owner__isnull=False)
+                    | models.Q(scope__in=["family", "admin"], owner__isnull=True)
                 ),
                 name="schedule_template_scope_owner_valid",
             ),
@@ -163,7 +163,7 @@ class Migration(migrations.Migration):
         migrations.AddConstraint(
             model_name="schedulingtemplate",
             constraint=models.UniqueConstraint(
-                condition=models.Q(("scope", "personal")),
+                condition=models.Q(scope="personal"),
                 fields=("family", "owner", "name"),
                 name="schedule_template_personal_name_unique",
             ),
@@ -171,7 +171,7 @@ class Migration(migrations.Migration):
         migrations.AddConstraint(
             model_name="schedulingtemplate",
             constraint=models.UniqueConstraint(
-                condition=models.Q(("scope__in", ["family", "admin"])),
+                condition=models.Q(scope__in=["family", "admin"]),
                 fields=("family", "scope", "name"),
                 name="schedule_template_shared_name_unique",
             ),
