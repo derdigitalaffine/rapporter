@@ -111,7 +111,7 @@ export default function SchedulingRecurrenceEditor({
 
   {showNaturalLanguage&&<div className="scheduling-recurrence-phrase">
    <FormField label={de?'In eigenen Worten':'In your own words'} description={de?'Zum Beispiel: „immer am ersten Montag im Quartal“':'For example: “every first Monday of the quarter”'}>
-    <div className="scheduling-recurrence-phrase-input"><input value={phrase} disabled={disabled} onChange={event=>setPhrase(event.target.value)} onKeyDown={event=>{if(event.key==='Enter'){event.preventDefault();parsePhrase()}}} placeholder={de?'Wiederholung beschreiben …':'Describe recurrence …'}/><button type="button" disabled={disabled||previewBusy||!phrase.trim()||!familyId} onClick={parsePhrase}>{de?'Erkennen':'Interpret'}</button></div>
+    {fieldProps=><div className="scheduling-recurrence-phrase-input"><input {...fieldProps} value={phrase} disabled={disabled} onChange={event=>setPhrase(event.target.value)} onKeyDown={event=>{if(event.key==='Enter'){event.preventDefault();parsePhrase()}}} placeholder={de?'Wiederholung beschreiben …':'Describe recurrence …'}/><button type="button" disabled={disabled||previewBusy||!phrase.trim()||!familyId} onClick={parsePhrase}>{de?'Erkennen':'Interpret'}</button></div>}
    </FormField>
   </div>}
 

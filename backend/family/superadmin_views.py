@@ -1,8 +1,10 @@
 from datetime import timedelta
 
+from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.db.models import Count, Max, Q
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 from django.utils.text import slugify
 from rest_framework import permissions, status
 from rest_framework.decorators import api_view, permission_classes
@@ -12,7 +14,14 @@ from auth_abuse.service import enforce
 from auth_identity.models import EmailIdentity
 from auth_identity.service import EmailIdentityError, normalize_email
 from auth_sessions.service import require_fresh_session
-from entitlements.services import resolve_entitlements, resolve_entitlements_for_families
+from entitlements.catalog import VALID_PLAN_KEYS
+from entitlements.services import (
+    active_admin_tier_overrides,
+    clear_admin_tier_override,
+    resolve_entitlements,
+    resolve_entitlements_for_families,
+    set_admin_tier_override,
+)
 from telemetry.models import AuditEvent, UsageEvent
 
 from .invitation_delivery import invitation_delivery_summary, prime_invitation_delivery_summaries
@@ -58,6 +67,12 @@ def _rate_limited_response(decision):
 
 def _enforce_sensitive_action(request):
     require_fresh_session(request)
+    return enforce("superadmin.sensitive_action", request=request, user=request.user)
+
+
+def _enforce_entitlement_action(request):
+    # #83 contract: reserve a dedicated mutation seam now. Fresh re-auth can be
+    # activated here later without changing the public endpoint or UI flow.
     return enforce("superadmin.sensitive_action", request=request, user=request.user)
 
 
@@ -247,6 +262,33 @@ def _invite_state(invite, now):
     return "pending"
 
 
+def _entitlement_control_payload(family):
+    snapshot = resolve_entitlements(family)
+    overrides = active_admin_tier_overrides(family)
+    active_override = overrides[-1] if overrides else None
+    return {
+        "effective": snapshot.as_dict(),
+        "override": (
+            {
+                "id": str(active_override.id),
+                "tier": active_override.plan_key,
+                "starts_at": active_override.starts_at,
+                "ends_at": active_override.ends_at,
+                "reason": active_override.reason,
+            }
+            if active_override
+            else None
+        ),
+        "available_tiers": sorted(VALID_PLAN_KEYS),
+        "fallback": "automatic",
+        "data_retention": "non_destructive",
+        "security": {
+            "fresh_reauth_required": False,
+            "fresh_reauth_planned": True,
+        },
+    }
+
+
 def _family_detail_payload(family):
     now = timezone.now()
     activity = UsageEvent.objects.filter(family=family, event_key="activity.foreground")
@@ -290,6 +332,7 @@ def _family_detail_payload(family):
 
     return {
         "family": _family_row(family),
+        "entitlement_control": _entitlement_control_payload(family),
         "memberships": _membership_rows(family),
         "activity": {
             "active_users_7d": activity.filter(occurred_at__gte=now - timedelta(days=7)).values("user_id").distinct().count(),
@@ -456,6 +499,44 @@ def superadmin_family_detail(request, family_id):
     family.status = requested
     family.save(update_fields=["status", "updated_at"])
     return Response(_family_row(family))
+
+
+@api_view(["PUT", "DELETE"])
+@permission_classes([IsSuperAdmin])
+def superadmin_family_entitlement_override(request, family_id):
+    decision = _enforce_entitlement_action(request)
+    if not decision.allowed:
+        return _rate_limited_response(decision)
+    family = Family.objects.filter(id=family_id).first()
+    if not family:
+        return Response({"detail": "Familie nicht gefunden."}, status=status.HTTP_404_NOT_FOUND)
+
+    reason = str(request.data.get("reason") or "").strip()
+    try:
+        if request.method == "DELETE":
+            clear_admin_tier_override(actor=request.user, family=family, reason=reason)
+        else:
+            tier = str(request.data.get("tier") or "").strip().lower()
+            ends_at_raw = request.data.get("ends_at")
+            ends_at = None
+            if ends_at_raw:
+                ends_at = parse_datetime(str(ends_at_raw))
+                if ends_at is None:
+                    raise ValidationError("Ungültiges Ablaufdatum.")
+                if timezone.is_naive(ends_at):
+                    ends_at = timezone.make_aware(ends_at, timezone.get_current_timezone())
+            set_admin_tier_override(
+                actor=request.user,
+                family=family,
+                tier=tier,
+                reason=reason,
+                ends_at=ends_at,
+            )
+    except ValidationError as exc:
+        detail = exc.messages[0] if getattr(exc, "messages", None) else str(exc)
+        return Response({"detail": detail}, status=status.HTTP_400_BAD_REQUEST)
+
+    return Response(_entitlement_control_payload(family))
 
 
 @api_view(["POST"])
