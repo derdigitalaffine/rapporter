@@ -1,6 +1,7 @@
 import calendar
 from datetime import date, timedelta
 from decimal import Decimal
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from django.db import transaction
 from django.db.models import Sum
@@ -17,6 +18,15 @@ RECURRING_PERIOD_TYPES = {
 }
 
 
+def _family_local_date(budget):
+    timezone_name = getattr(getattr(budget, "family", None), "timezone", None) or "UTC"
+    try:
+        family_tz = ZoneInfo(timezone_name)
+    except ZoneInfoNotFoundError:
+        family_tz = ZoneInfo("UTC")
+    return timezone.localtime(timezone.now(), family_tz).date()
+
+
 def _calendar_bounds(period_type, day):
     if period_type == ExpenseBudget.PeriodType.MONTH:
         last_day = calendar.monthrange(day.year, day.month)[1]
@@ -31,6 +41,9 @@ def _next_bounds(period_type, prior_end):
 
 
 def _spent_for_bounds(budget, starts_on=None, ends_on=None):
+    cached = getattr(budget, "_budget_spent_amount", None)
+    if starts_on is None and ends_on is None and cached is not None:
+        return money(cached)
     allocations = budget.allocations.filter(expense__status=Expense.Status.POSTED)
     if starts_on:
         allocations = allocations.filter(expense__occurred_at__date__gte=starts_on)
@@ -59,8 +72,8 @@ def _carry_from_period(period):
 @transaction.atomic
 def ensure_budget_period(budget, as_of=None):
     """Return the active recurring period, lazily closing/rolling expired periods."""
-    day = as_of or timezone.localdate()
-    budget = ExpenseBudget.objects.select_for_update().get(pk=budget.pk)
+    budget = ExpenseBudget.objects.select_for_update().select_related("family").get(pk=budget.pk)
+    day = as_of or _family_local_date(budget)
     if budget.period_type not in RECURRING_PERIOD_TYPES:
         return None
 
@@ -114,7 +127,7 @@ def ensure_budget_period(budget, as_of=None):
 
 def period_state(budget, as_of=None):
     """Return period-aware planning facts without folding active commitments into carryover."""
-    day = as_of or timezone.localdate()
+    day = as_of or _family_local_date(budget)
     if budget.period_type in RECURRING_PERIOD_TYPES:
         period = ensure_budget_period(budget, as_of=day)
         return {
