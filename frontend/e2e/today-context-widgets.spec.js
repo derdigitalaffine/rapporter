@@ -1,3 +1,4 @@
+import {expectActiveFamily,selectFamily} from './family-ui.js';
 import {test,expect} from '@playwright/test';
 import {installApiMocks} from './mock-api.js';
 
@@ -77,7 +78,7 @@ test('late Tomorrow data from the previous family never flashes after a family s
   return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({count:1,results:rows,scope})});
  });
  await page.route('**/api/events/**',route=>route.fulfill({status:200,contentType:'application/json',body:'[]'}));
- await page.goto('/');const switcher=page.locator('.family-switcher select');await expect(switcher).toHaveValue('family-1');await switcher.selectOption('family-2');
+ await page.goto('/');await expectActiveFamily(page,'family-1');await selectFamily(page,'family-2');
  const tomorrow=page.getByTestId('today-tomorrow');await expect(tomorrow).toContainText('Nebenfamilie morgen');await page.waitForTimeout(450);await expect(tomorrow).not.toContainText('Alt-Familie morgen');
 });
 

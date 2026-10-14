@@ -1,3 +1,4 @@
+import {selectFamily} from './family-ui.js';
 import {test,expect} from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import {installApiMocks} from './mock-api.js';
@@ -70,7 +71,7 @@ for(const action of ['reorder','delete'])test(`late ${action} failure cannot res
  await boot(page,{multipleFamilies:true});let release,requested=false;const gate=new Promise(resolve=>release=resolve);
  await page.route(action==='reorder'?'**/api/board/reorder/':'**/api/board/first/',async route=>{requested=true;await gate;return route.fulfill({status:503,json:{detail:'OLD FAMILY ERROR'}})});
  if(action==='reorder')await move(page);else{await more(page).click();await page.locator('#pin-first').getByRole('button',{name:'Entfernen',exact:true}).click();await page.getByRole('alertdialog').getByRole('button',{name:'Entfernen',exact:true}).click()}
- await expect.poll(()=>requested).toBe(true);await page.locator('.family-switcher select').selectOption('family-2');await expect(page.locator('.pin-card')).toHaveCount(0);release();
+ await expect.poll(()=>requested).toBe(true);await selectFamily(page,'family-2');await expect(page.locator('.pin-card')).toHaveCount(0);release();
  await page.locator('.bottom-nav button').filter({hasText:'Mehr'}).click();await page.getByRole('button',{name:'Pinnwand',exact:true}).click();await expect(page.locator('.pin-card')).toHaveCount(0);await expect(page.getByText('OLD FAMILY ERROR')).toHaveCount(0);
 });
 

@@ -34,7 +34,7 @@ test('invite registration has no username field and sends no username',async({pa
   await fulfillJson(route,{detail:'Test stoppt vor Navigation.'},409);
  });
  await page.goto('/invite/token-identity');
- await expect(page.getByRole('heading',{name:'Musterfamilie'})).toBeVisible();
+ await expect(page.getByRole('main').getByRole('heading',{name:'Musterfamilie'})).toBeVisible();
  await expect(page.getByLabel(/Benutzername/i)).toHaveCount(0);
  await page.getByLabel('Anzeigename').fill('Neue Person');
  await page.getByLabel('E-Mail').fill('new.member@example.test');
