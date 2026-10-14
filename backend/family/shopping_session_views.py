@@ -103,7 +103,7 @@ def _item_snapshot(item):
         "checked_at": item.checked_at.isoformat() if item.checked_at else None,
         # The source item is deleted after checkout, so retain just enough ACL
         # metadata to keep gift/surprise items private when history is read later.
-        "hidden_from_user_ids": [user.id for user in item.hidden_from_user.all()],
+        "hidden_from_user_id": item.hidden_from_user_id,
     }
 
 
@@ -114,6 +114,9 @@ def _snapshot_for_user(snapshot, request_user):
         for raw in result.get(key) or []:
             row = dict(raw)
             hidden_ids = {str(value) for value in row.pop("hidden_from_user_ids", [])}
+            hidden_id = row.pop("hidden_from_user_id", None)
+            if hidden_id is not None:
+                hidden_ids.add(str(hidden_id))
             if str(request_user.id) in hidden_ids:
                 continue
             visible.append(row)
@@ -273,7 +276,6 @@ def shopping_session_complete(request):
             ShoppingItem.objects.select_for_update()
             .filter(shopping_list=shopping_list)
             .exclude(hidden_from_user=request.user)
-            .prefetch_related("hidden_from_user")
             .order_by("position", "created_at", "id")
         )
         purchased = [item for item in visible_items if item.checked]
