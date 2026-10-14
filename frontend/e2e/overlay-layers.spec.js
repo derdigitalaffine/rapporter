@@ -1,17 +1,17 @@
 import {test,expect} from '@playwright/test';
 import {installApiMocks} from './mock-api.js';
 
-const directEventProfile={
+const createProfile=({direct=false,action='' }={})=>({
   ranking_version:1,
   cold_start_threshold:5,
-  preferences:{smart_ranking_enabled:true,context_ranking_enabled:true,time_patterns_enabled:false,direct_mode:true,direct_action_id:'event',max_quick_actions:4,pinned_action_ids:[],hidden_action_ids:[],manual_order:[],learning_scope:'family'},
+  preferences:{smart_ranking_enabled:true,context_ranking_enabled:true,time_patterns_enabled:false,direct_mode:direct,direct_action_id:action,max_quick_actions:4,pinned_action_ids:[],hidden_action_ids:[],manual_order:[],learning_scope:'family'},
   stats:[],
-};
+});
 
-async function routeDirectEventCreate(page){
+async function routeCreateProfile(page,profile=createProfile()){
   await page.route('**/api/create-actions/**',async route=>{
-    if(route.request().method()==='POST')return route.fulfill({status:201,contentType:'application/json',body:JSON.stringify({...directEventProfile,accepted:true,deduplicated:false})});
-    return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(directEventProfile)});
+    if(route.request().method()==='POST')return route.fulfill({status:201,contentType:'application/json',body:JSON.stringify({...profile,accepted:true,deduplicated:false})});
+    return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(profile)});
   });
 }
 
@@ -32,7 +32,7 @@ async function pointHit(page,locator){
 
 test('global create stays clear of primary navigation despite stale viewport inset',async({page})=>{
   await installApiMocks(page,{dismissOnboarding:true});
-  await routeDirectEventCreate(page);
+  await routeCreateProfile(page,createProfile({direct:true,action:'event'}));
 
   for(const viewport of [{width:390,height:844},{width:820,height:900}]){
     await page.setViewportSize(viewport);
@@ -46,8 +46,6 @@ test('global create stays clear of primary navigation despite stale viewport ins
     const stableNav=await nav.boundingBox();
     const stableControls=await controls.boundingBox();
 
-    // Reproduce the stale value that used to survive an iOS sheet/keyboard
-    // transition. Persistent chrome must not consume it.
     await page.evaluate(()=>document.documentElement.style.setProperty('--app-viewport-bottom','52px'));
     const navBox=await nav.boundingBox();
     const controlsBox=await controls.boundingBox();
@@ -71,10 +69,10 @@ test('global create stays clear of primary navigation despite stale viewport ins
   }
 });
 
-test('nested confirmation owns input above a modal sheet while app navigation stays inert',async({page})=>{
+test('nested confirmation owns input above a modal sheet while app chrome is hidden',async({page})=>{
   await page.setViewportSize({width:390,height:844});
   await installApiMocks(page,{dismissOnboarding:true});
-  await routeDirectEventCreate(page);
+  await routeCreateProfile(page,createProfile({direct:true,action:'event'}));
   await page.goto('/?page=calendar');
   await page.waitForLoadState('networkidle');
 
@@ -85,12 +83,9 @@ test('nested confirmation owns input above a modal sheet while app navigation st
 
   const editor=page.getByRole('dialog',{name:'Termin bearbeiten'});
   await expect(editor).toBeVisible();
-
-  const navButton=page.locator('.bottom-nav button').first();
-  await expect(navButton).toBeVisible();
-  const navHit=await pointHit(page,navButton);
-  expect(navHit.hit.insideBottomNav).toBe(false);
-  expect(navHit.hit.insideSheetBackdrop).toBe(true);
+  await expect(page.locator('html')).toHaveAttribute('data-app-modal','');
+  await expect(page.locator('.bottom-nav')).toBeHidden();
+  await expect(page.locator('.global-create-controls')).toBeHidden();
 
   await editor.locator('.ghost-danger.destructive-wide').click();
   const confirm=page.getByRole('alertdialog');
@@ -98,16 +93,13 @@ test('nested confirmation owns input above a modal sheet while app navigation st
   expect(await confirm.evaluate(node=>node.parentElement?.parentElement===document.body)).toBe(true);
 
   const layers=await page.evaluate(()=>{
-    const nav=document.querySelector('.bottom-nav');
     const sheet=[...document.querySelectorAll('.sheet-backdrop')].find(node=>!node.classList.contains('confirm-backdrop'));
     const confirmBackdrop=document.querySelector('.confirm-backdrop');
     return {
-      navigation:Number(getComputedStyle(nav).zIndex),
       sheet:Number(getComputedStyle(sheet).zIndex),
       dialog:Number(getComputedStyle(confirmBackdrop).zIndex),
     };
   });
-  expect(layers.navigation).toBeLessThan(layers.sheet);
   expect(layers.sheet).toBeLessThan(layers.dialog);
 
   const confirmButton=confirm.locator('.destructive');
@@ -116,4 +108,83 @@ test('nested confirmation owns input above a modal sheet while app navigation st
   await page.mouse.click(confirmHit.point.x,confirmHit.point.y);
   await expect(confirm).toBeHidden();
   await expect(editor).toBeHidden();
+  await expect(page.locator('html')).not.toHaveAttribute('data-app-modal','');
+  await expect(page.locator('.bottom-nav')).toBeVisible();
+});
+
+test('task editor is a root modal and permanent chrome never competes with its actions',async({page})=>{
+  await page.setViewportSize({width:390,height:844});
+  await installApiMocks(page,{dismissOnboarding:true});
+  await routeCreateProfile(page);
+  await page.goto('/?page=tasks');
+  await page.waitForLoadState('networkidle');
+
+  await page.locator('.global-create-fab').click();
+  const palette=page.getByRole('dialog',{name:'Neu hinzufügen'});
+  await expect(palette).toBeVisible();
+  await palette.getByRole('button',{name:/Aufgabe/}).first().click();
+
+  const editor=page.getByRole('dialog').filter({has:page.getByRole('heading',{name:'Aufgabe hinzufügen'})});
+  await expect(editor).toBeVisible();
+  expect(await editor.evaluate(node=>node.parentElement?.parentElement===document.body)).toBe(true);
+  await expect(page.locator('html')).toHaveAttribute('data-app-modal','');
+  await expect(page.locator('.bottom-nav')).toBeHidden();
+  await expect(page.locator('.global-create-controls')).toBeHidden();
+
+  const save=editor.getByRole('button',{name:'Speichern',exact:true});
+  await editor.getByLabel('Titel').fill('Layer-Vertrag prüfen');
+  const saveHit=await pointHit(page,save);
+  expect(saveHit.hit.buttonClass).toContain('primary');
+  expect(saveHit.hit.insideBottomNav).toBe(false);
+});
+
+test('keyboard resizes only the modal surface, never permanent app chrome',async({page})=>{
+  await page.setViewportSize({width:390,height:844});
+  await installApiMocks(page,{dismissOnboarding:true});
+  await routeCreateProfile(page);
+  await page.goto('/?page=tasks');
+  await page.waitForLoadState('networkidle');
+
+  await page.locator('.global-create-fab').click();
+  const palette=page.getByRole('dialog',{name:'Neu hinzufügen'});
+  await palette.getByRole('button',{name:/Aufgabe/}).first().click();
+  const editor=page.getByRole('dialog').filter({has:page.getByRole('heading',{name:'Aufgabe hinzufügen'})});
+  await expect(editor).toBeVisible();
+
+  await page.evaluate(()=>{
+    const root=document.documentElement;
+    root.setAttribute('data-app-standalone','');
+    root.setAttribute('data-app-keyboard','');
+    root.style.setProperty('--app-viewport-top','44px');
+    root.style.setProperty('--app-viewport-height','480px');
+  });
+
+  const geometry=await page.evaluate(()=>{
+    const backdrop=document.querySelector('body > .sheet-backdrop');
+    const shell=document.querySelector('.app-shell:not(.messenger-shell)');
+    const b=backdrop.getBoundingClientRect();
+    const s=shell.getBoundingClientRect();
+    return {backdrop:{top:b.top,height:b.height,bottom:b.bottom},shell:{top:s.top,height:s.height,bottom:s.bottom}};
+  });
+  expect(geometry.backdrop.top).toBeCloseTo(44,0);
+  expect(geometry.backdrop.height).toBeCloseTo(480,0);
+  expect(geometry.backdrop.bottom).toBeCloseTo(524,0);
+  expect(geometry.shell.height).toBeCloseTo(844,0);
+  await expect(page.locator('.bottom-nav')).toBeHidden();
+  await expect(page.locator('.global-create-controls')).toBeHidden();
+
+  const title=editor.getByLabel('Titel');
+  await title.fill('Tastatur ohne Abdeck-Layer');
+  await expect(title).toBeVisible();
+
+  await page.evaluate(()=>{
+    const root=document.documentElement;
+    root.removeAttribute('data-app-keyboard');
+    root.style.setProperty('--app-viewport-top','0px');
+    root.style.setProperty('--app-viewport-height','844px');
+  });
+  const fullBackdrop=await page.locator('body > .sheet-backdrop').boundingBox();
+  expect(fullBackdrop.y).toBeCloseTo(0,0);
+  expect(fullBackdrop.height).toBeCloseTo(844,0);
+  await expect(page.locator('.bottom-nav')).toBeHidden();
 });
