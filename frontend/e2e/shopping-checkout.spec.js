@@ -71,11 +71,12 @@ test('checkout · amount handoff keeps finance participants explicit and links e
  const expenseDialog=page.getByRole('dialog');
  await expect(expenseDialog.getByRole('heading',{name:/Ausgabe/})).toBeVisible();
  await expect(expenseDialog.getByText(/Alex.*Sam|Sam.*Alex/)).toBeVisible();
+ await expect(expenseDialog.getByLabel('Optionaler Titel')).toHaveValue('Markt');
  await expenseDialog.getByLabel('Betrag').fill('43,27');
- await expenseDialog.getByLabel('Optionaler Titel').fill('Markt');
  await expenseDialog.getByRole('button',{name:/Speichern/}).click();
  await expect(page.getByRole('heading',{name:'Einkauf abgeschlossen'})).toBeVisible();
  await expect(page.getByText(/43,27/)).toBeVisible();
+ expect(expensePayload.title).toBe('Markt');
  expect(expensePayload.participants.map(String).sort()).toEqual(['member-1','member-2'].sort());
  expect(linked).toEqual({family:'family-1',source:{type:'expense',id:'22222222-2222-4222-8222-222222222222'},context:{type:'shopping_session',id:sessionId},relation:'context'});
  expect(run.completeCalls).toHaveLength(1);
