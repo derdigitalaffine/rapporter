@@ -2,6 +2,7 @@ from django.core.management.base import BaseCommand
 from family.birthdays import run_birthday_reminders
 from family.routine_reminders import run_routine_reminders
 from family.unified_action_service import emit_due_events
+from family_statistics.services import prune_expired
 from family.notification_digests import flush_notification_batches
 from family.automation import run_all_rules
 from family.integration_health import sync_with_health
@@ -20,6 +21,7 @@ class Command(BaseCommand):
                 self.stdout.write(f"{source.name}: {count}")
             except Exception as exc:
                 self.stderr.write(f"{source.name}: {exc}")
+        self.stdout.write(f"Statistics retention families: {prune_expired()}")
         notifications = flush_notification_batches()
         self.stdout.write(f"Notification summaries: {notifications}")
         executed = run_all_rules()
