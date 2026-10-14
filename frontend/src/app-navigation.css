@@ -58,14 +58,20 @@
 
 /* True modal surfaces own the screen. Likewise, while the OS keyboard is
    visible, persistent app chrome must not be lifted to the keyboard edge or
-   become a solid obstruction above it. Layout spacing stays stable because
-   these controls are fixed-positioned. */
+   become a solid obstruction above it. */
 html[data-app-modal] .bottom-nav,
 html[data-app-keyboard] .bottom-nav,
 html[data-app-modal] .global-create-controls,
 html[data-app-keyboard] .global-create-controls{
   visibility:hidden!important;
   pointer-events:none!important;
+}
+
+/* Once the keyboard hides persistent navigation, keyboard-aware surfaces must
+   not keep reserving its height. Keeping this gap was the opaque band that
+   appeared above iOS keyboards in Messenger and editors. */
+html[data-app-keyboard] .app-shell{
+  --app-nav-space:0px;
 }
 
 @media(max-width:380px){
