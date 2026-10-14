@@ -1,9 +1,31 @@
 import math
 from decimal import Decimal
 from datetime import timedelta
+
 from django.utils import timezone
 from rest_framework import serializers
-from .models import Vehicle, FuelEntry, Journey, JourneyPoint
+
+from .models import FuelEntry, JOURNEY_KINDS, Journey, JourneyPoint, Vehicle
+
+
+JOURNEY_KIND_VALUES = [value for value, _label in JOURNEY_KINDS]
+BUSINESS_REQUIRED = ("destination", "business_partner", "purpose")
+
+
+def validate_business_fields(values, *, partial=False, current=None):
+    kind = values.get("kind", getattr(current, "kind", None))
+    if kind != "business":
+        return values
+    missing = []
+    for field in BUSINESS_REQUIRED:
+        value = values.get(field, getattr(current, field, "") if current is not None else "")
+        if not str(value or "").strip():
+            missing.append(field)
+    if missing and not partial:
+        raise serializers.ValidationError({field: "required_for_business" for field in missing})
+    if missing and partial and "kind" in values:
+        raise serializers.ValidationError({field: "required_for_business" for field in missing})
+    return values
 
 
 class VehicleSerializer(serializers.ModelSerializer):
@@ -46,20 +68,93 @@ class FuelSerializer(serializers.ModelSerializer):
 
 
 class JourneySerializer(serializers.ModelSerializer):
+    review_locked = serializers.BooleanField(read_only=True)
+    needs_review = serializers.BooleanField(read_only=True)
+
     class Meta:
         model = Journey
-        fields = ["id", "vehicle", "started_at", "ended_at", "start_odometer", "end_odometer", "purpose", "kind", "distance_m", "point_count"]
+        fields = [
+            "id", "vehicle", "created_at", "updated_at", "started_at", "ended_at",
+            "start_odometer", "end_odometer", "purpose", "kind", "destination",
+            "business_partner", "note", "detour_reason", "source", "review_due_at",
+            "classified_at", "voided_at", "void_reason", "legacy_record", "review_locked",
+            "needs_review", "distance_m", "point_count",
+        ]
+        read_only_fields = fields
 
 
 class StartSerializer(serializers.Serializer):
     request_id = serializers.UUIDField()
     start_odometer = serializers.DecimalField(max_digits=10, decimal_places=1, min_value=0)
     purpose = serializers.CharField(max_length=240, required=False, allow_blank=True, default="")
-    kind = serializers.ChoiceField(choices=["private", "business", "commute"], default="private")
+    kind = serializers.ChoiceField(choices=JOURNEY_KIND_VALUES, default="unclassified")
 
 
 class StopSerializer(serializers.Serializer):
     end_odometer = serializers.DecimalField(max_digits=10, decimal_places=1, min_value=0)
+
+
+class JourneyClassifySerializer(serializers.Serializer):
+    kind = serializers.ChoiceField(choices=JOURNEY_KIND_VALUES)
+    destination = serializers.CharField(max_length=240, required=False, allow_blank=True, default="")
+    business_partner = serializers.CharField(max_length=240, required=False, allow_blank=True, default="")
+    purpose = serializers.CharField(max_length=240, required=False, allow_blank=True, default="")
+    note = serializers.CharField(max_length=1000, required=False, allow_blank=True, default="")
+    detour_reason = serializers.CharField(max_length=500, required=False, allow_blank=True, default="")
+    reason = serializers.CharField(max_length=500, required=False, allow_blank=True, default="")
+
+    def validate(self, values):
+        if values["kind"] == "unclassified":
+            raise serializers.ValidationError({"kind": "classification_required"})
+        return validate_business_fields(values)
+
+
+class JourneyCorrectionSerializer(serializers.Serializer):
+    start_odometer = serializers.DecimalField(max_digits=10, decimal_places=1, min_value=0, required=False)
+    end_odometer = serializers.DecimalField(max_digits=10, decimal_places=1, min_value=0, required=False)
+    started_at = serializers.DateTimeField(required=False)
+    ended_at = serializers.DateTimeField(required=False)
+    kind = serializers.ChoiceField(choices=JOURNEY_KIND_VALUES, required=False)
+    destination = serializers.CharField(max_length=240, required=False, allow_blank=True)
+    business_partner = serializers.CharField(max_length=240, required=False, allow_blank=True)
+    purpose = serializers.CharField(max_length=240, required=False, allow_blank=True)
+    note = serializers.CharField(max_length=1000, required=False, allow_blank=True)
+    detour_reason = serializers.CharField(max_length=500, required=False, allow_blank=True)
+    reason = serializers.CharField(max_length=500, required=True, allow_blank=False)
+
+    def validate(self, values):
+        editable = set(values) - {"reason"}
+        if not editable:
+            raise serializers.ValidationError("no_changes")
+        return values
+
+
+class ManualJourneySerializer(serializers.Serializer):
+    request_id = serializers.UUIDField()
+    started_at = serializers.DateTimeField()
+    ended_at = serializers.DateTimeField()
+    start_odometer = serializers.DecimalField(max_digits=10, decimal_places=1, min_value=0)
+    end_odometer = serializers.DecimalField(max_digits=10, decimal_places=1, min_value=0)
+    kind = serializers.ChoiceField(choices=JOURNEY_KIND_VALUES, default="unclassified")
+    destination = serializers.CharField(max_length=240, required=False, allow_blank=True, default="")
+    business_partner = serializers.CharField(max_length=240, required=False, allow_blank=True, default="")
+    purpose = serializers.CharField(max_length=240, required=False, allow_blank=True, default="")
+    note = serializers.CharField(max_length=1000, required=False, allow_blank=True, default="")
+    detour_reason = serializers.CharField(max_length=500, required=False, allow_blank=True, default="")
+    reason = serializers.CharField(max_length=500, required=True, allow_blank=False)
+
+    def validate(self, values):
+        if values["ended_at"] <= values["started_at"]:
+            raise serializers.ValidationError({"ended_at": "must_follow_start"})
+        if values["end_odometer"] < values["start_odometer"]:
+            raise serializers.ValidationError({"end_odometer": "odometer_decreased"})
+        if values["ended_at"] > timezone.now() + timedelta(minutes=1):
+            raise serializers.ValidationError({"ended_at": "future_journey"})
+        return validate_business_fields(values)
+
+
+class JourneyVoidSerializer(serializers.Serializer):
+    reason = serializers.CharField(max_length=500, required=True, allow_blank=False)
 
 
 class PointSerializer(serializers.ModelSerializer):

@@ -1,7 +1,18 @@
+import uuid
+
 from django.conf import settings
 from django.db import models
 from django.db.models import Q
+from django.utils import timezone
 from family.models import TimestampedModel
+
+
+JOURNEY_KINDS = [
+    ("unclassified", "Unclassified"),
+    ("private", "Private"),
+    ("business", "Business"),
+    ("commute", "Commute"),
+]
 
 
 class Vehicle(TimestampedModel):
@@ -52,18 +63,67 @@ class Journey(TimestampedModel):
     start_odometer = models.DecimalField(max_digits=10, decimal_places=1)
     end_odometer = models.DecimalField(max_digits=10, decimal_places=1, null=True, blank=True)
     purpose = models.CharField(max_length=240, blank=True)
-    kind = models.CharField(max_length=16, choices=[("private", "Private"), ("business", "Business"), ("commute", "Commute")], default="private")
+    kind = models.CharField(max_length=16, choices=JOURNEY_KINDS, default="unclassified")
+    destination = models.CharField(max_length=240, blank=True)
+    business_partner = models.CharField(max_length=240, blank=True)
+    note = models.CharField(max_length=1000, blank=True)
+    detour_reason = models.CharField(max_length=500, blank=True)
+    source = models.CharField(max_length=16, choices=[("tracked", "Tracked"), ("manual", "Manual")], default="tracked")
+    review_due_at = models.DateTimeField(null=True, blank=True)
+    classified_at = models.DateTimeField(null=True, blank=True)
+    voided_at = models.DateTimeField(null=True, blank=True)
+    void_reason = models.CharField(max_length=500, blank=True)
+    legacy_record = models.BooleanField(default=False)
     distance_m = models.FloatField(default=0)
     point_count = models.PositiveIntegerField(default=0)
 
+    @property
+    def review_locked(self):
+        return bool(self.ended_at and self.review_due_at and timezone.now() >= self.review_due_at)
+
+    @property
+    def needs_review(self):
+        if not self.ended_at or self.voided_at:
+            return False
+        if self.kind == "unclassified":
+            return True
+        if self.kind == "business":
+            return not all((self.destination.strip(), self.business_partner.strip(), self.purpose.strip()))
+        return False
+
     class Meta:
         ordering = ["-started_at", "-id"]
+        indexes = [
+            models.Index(fields=["driver", "kind", "started_at"], name="journey_drv_kind_start_idx"),
+            models.Index(fields=["vehicle", "started_at"], name="journey_vehicle_start_idx"),
+        ]
         constraints = [
             models.UniqueConstraint(fields=["driver", "request_id"], name="journey_request_unique"),
             models.UniqueConstraint(fields=["driver"], condition=Q(ended_at__isnull=True), name="journey_driver_active_unique"),
             models.UniqueConstraint(fields=["vehicle"], condition=Q(ended_at__isnull=True), name="journey_vehicle_active_unique"),
             models.CheckConstraint(condition=Q(start_odometer__gte=0) & (Q(end_odometer__isnull=True) | Q(end_odometer__gte=models.F("start_odometer"))), name="journey_odometer_valid"),
         ]
+
+
+class JourneyRevision(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    journey = models.ForeignKey(Journey, on_delete=models.CASCADE, related_name="revisions")
+    actor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, related_name="journey_revisions")
+    sequence = models.PositiveIntegerField()
+    event = models.CharField(max_length=24, choices=[
+        ("manual_created", "Manual created"),
+        ("classified", "Classified"),
+        ("corrected", "Corrected"),
+        ("voided", "Voided"),
+    ])
+    reason = models.CharField(max_length=500, blank=True)
+    before = models.JSONField(default=dict)
+    after = models.JSONField(default=dict)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["journey_id", "sequence"]
+        constraints = [models.UniqueConstraint(fields=["journey", "sequence"], name="journey_revision_sequence_unique")]
 
 
 class JourneyPoint(models.Model):

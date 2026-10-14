@@ -142,13 +142,15 @@ class VehicleApiTests(TestCase):
         with self.assertRaises(IntegrityError),transaction.atomic():
             Journey.objects.create(vehicle=self.vehicle,driver=self.bob,request_id=uuid.uuid4(),started_at=timezone.now(),start_odometer=100)
 
-    def test_private_route_can_be_deleted_only_after_stop(self):
+    def test_completed_journey_cannot_be_hard_deleted(self):
         trip=self.start().data
         url=f'/api/vehicle-journeys/{trip["id"]}/'
         self.assertEqual(self.client.delete(url).status_code,409)
         self.client.post(url,{"end_odometer":100},format="json")
-        self.assertEqual(self.client.delete(url).status_code,204)
-        self.assertEqual(Journey.objects.count(),0)
+        response=self.client.delete(url)
+        self.assertEqual(response.status_code,409)
+        self.assertEqual(response.data["code"],"revision_required")
+        self.assertEqual(Journey.objects.count(),1)
 
     def test_osm_map_config_works_without_account_and_is_private(self):
         url=f'/api/vehicles/map-config/?family={self.family.id}'
