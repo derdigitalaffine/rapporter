@@ -35,6 +35,10 @@ class WebAuthnChallenge(models.Model):
         AUTHENTICATE = "authenticate", "Authenticate"
         REAUTHENTICATE = "reauthenticate", "Reauthenticate"
 
+    class Context(models.TextChoices):
+        APP = "app", "App"
+        SUPERADMIN = "superadmin", "Superadmin"
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -44,6 +48,7 @@ class WebAuthnChallenge(models.Model):
         related_name="webauthn_challenges",
     )
     ceremony = models.CharField(max_length=24, choices=Ceremony.choices)
+    context = models.CharField(max_length=24, choices=Context.choices, default=Context.APP)
     challenge = models.BinaryField()
     created_at = models.DateTimeField(auto_now_add=True)
     expires_at = models.DateTimeField(db_index=True)
@@ -51,5 +56,5 @@ class WebAuthnChallenge(models.Model):
 
     class Meta:
         indexes = [
-            models.Index(fields=["ceremony", "expires_at"], name="passkey_chal_exp_idx"),
+            models.Index(fields=["ceremony", "context", "expires_at"], name="passkey_chal_ctx_exp_idx"),
         ]
