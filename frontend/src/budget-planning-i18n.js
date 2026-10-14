@@ -10,7 +10,7 @@ const de={
  reload:'Aktuellen Stand laden',archive:'Archivieren',archiveQuestion:'Kostenbereich archivieren?',
  periodSettings:'Zeitraum & Übertrag',periodType:'Budgetzeitraum',periodOpen:'Ohne festen Zeitraum',periodMonth:'Monatlich',periodYear:'Jährlich',periodDateRange:'Fester Zeitraum',periodContext:'Bis Kontextende',
  rolloverPolicy:'Am Periodenende',rolloverReset:'Neu starten',rolloverCarry:'Positiven Rest übertragen',rolloverHint:'Aktive Vormerkungen bleiben erhalten und werden im neuen Zeitraum weiter separat abgezogen.',
- startsOn:'Startdatum',endsOn:'Enddatum',requiredDates:'Für einen festen Zeitraum sind Start- und Enddatum erforderlich.',invalidDateRange:'Das Enddatum darf nicht vor dem Startdatum liegen.',periodCurrent:'Aktueller Zeitraum',
+ startsOn:'Startdatum',endsOn:'Enddatum',requiredDates:'Für einen festen Zeitraum sind Start- und Enddatum erforderlich.',invalidDateRange:'Das Enddatum darf nicht vor dem Startdatum liegen.',periodCurrent:'Aktueller Zeitraum',contextManaged:'Der Zeitraum wird vom verknüpften Kontext, zum Beispiel einer Reise, gesteuert.',
 };
 const en={
  plan:'Plan budget',editOverall:'Plan overall budget',editCategory:'Edit cost category',newCategory:'Add cost category',name:'Cost category',
@@ -22,6 +22,6 @@ const en={
  reload:'Load current version',archive:'Archive',archiveQuestion:'Archive cost category?',
  periodSettings:'Period & carryover',periodType:'Budget period',periodOpen:'No fixed period',periodMonth:'Monthly',periodYear:'Yearly',periodDateRange:'Fixed date range',periodContext:'Until context ends',
  rolloverPolicy:'At period end',rolloverReset:'Reset',rolloverCarry:'Carry positive remainder',rolloverHint:'Active reservations remain live and continue to reduce availability separately in the new period.',
- startsOn:'Start date',endsOn:'End date',requiredDates:'A fixed date range needs a start and end date.',invalidDateRange:'The end date cannot be before the start date.',periodCurrent:'Current period',
+ startsOn:'Start date',endsOn:'End date',requiredDates:'A fixed date range needs a start and end date.',invalidDateRange:'The end date cannot be before the start date.',periodCurrent:'Current period',contextManaged:'The period is controlled by the linked context, such as a trip.',
 };
 for(const [language,resource] of Object.entries({de,en}))i18n.addResourceBundle(language,'translation',{budgetPlanning:resource},true,true);
