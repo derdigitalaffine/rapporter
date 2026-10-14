@@ -6,17 +6,19 @@ function berlinDayKey(value=new Date()){
  const part=type=>parts.find(item=>item.type===type)?.value;
  return `${part('year')}-${part('month')}-${part('day')}`;
 }
+function currentWeekMonday(){const [year,month,day]=berlinDayKey().split('-').map(Number);const value=new Date(Date.UTC(year,month-1,day,12));const offset=(value.getUTCDay()+6)%7;value.setUTCDate(value.getUTCDate()-offset);return value.toISOString().slice(0,10)}
 function addCivilDay(key,amount){const [year,month,day]=key.split('-').map(Number);return new Date(Date.UTC(year,month-1,day+amount,12)).toISOString().slice(0,10)}
 function event(state,id,title,start,end,participants=[],extra={}){return{id,family:state.family.id,source:null,type:'calendar.event',title,starts_at:start,ends_at:end,participants,actionable:false,is_family_event:false,payload:{location:'',provider:'FamilyOS'},...extra}}
 function icsEvent(state,id,title,start,end,participants=[]){return event(state,id,title,start,end,participants,{source:'ics-source-1',source_meta:{id:'ics-source-1',name:'Privater Kalender',kind:'ics',presentation:{tone:'blue'}},payload:{location:'',provider:'ics'}})}
 async function mockCurrentProfile(page,state){await page.route('**/api/profile/?family=*',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({user_id:1,membership_id:'member-1',family:state.family.id,display_name:'Alex',role:'owner',calendar_color:'#2F855A'})}))}
+async function mockPlannerPreferences(page,state){let laneOrder=[];await page.route('**/api/calendar-planner-preferences/**',async route=>{const request=route.request();const method=request.method();if(method==='GET')return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({family:state.family.id,lane_order:laneOrder})});if(method==='PATCH'){const body=request.postDataJSON();laneOrder=Array.isArray(body?.lane_order)?body.lane_order.map(String):[];return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({family:state.family.id,lane_order:laneOrder})})}return route.fallback()});return{get laneOrder(){return laneOrder}}}
 async function expectNoHorizontalPageOverflow(page){const dimensions=await page.evaluate(()=>({scroll:document.documentElement.scrollWidth,width:window.innerWidth}));expect(dimensions.scroll).toBeLessThanOrEqual(dimensions.width+1)}
 
 test('family plan supports ordering, per-user persistence, ICS imports, hiding, rotation, extended zoom and lane height',async({page})=>{
- const state=await installApiMocks(page);await mockCurrentProfile(page,state);
+ const state=await installApiMocks(page);await mockCurrentProfile(page,state);const plannerPreferences=await mockPlannerPreferences(page,state);
  state.memberships[0].calendar_color='#2F855A';
  state.memberships[1].calendar_color='#2563EB';
- const monday=addCivilDay(berlinDayKey(),1);
+ const monday=currentWeekMonday();
  const tuesday=addCivilDay(monday,1);
  const wednesday=addCivilDay(monday,2);
  state.events.splice(0,state.events.length,
@@ -77,7 +79,9 @@ test('family plan supports ordering, per-user persistence, ICS imports, hiding, 
  await expect(page.getByPlaceholder('Personen und Bereiche suchen')).toBeVisible();
  await page.getByRole('button',{name:'Sam nach oben verschieben'}).click();
  await expect(lanes.nth(0)).toHaveAttribute('data-lane-id','member-2');
+ await expect.poll(()=>plannerPreferences.laneOrder[0]).toBe('member-2');
  await expect.poll(()=>page.evaluate(()=>JSON.parse(localStorage.getItem('familyos:calendar:timeline:v3:family-1:member-1')||'{}').laneOrder?.[0])).toBe('member-2');
+ await page.evaluate(()=>localStorage.removeItem('familyos:calendar:timeline:v3:family-1:member-1'));
  await page.reload();
  await expect(page.locator('.family-timeline-lane').nth(0)).toHaveAttribute('data-lane-id','member-2');
 
@@ -95,7 +99,7 @@ test('family plan supports ordering, per-user persistence, ICS imports, hiding, 
 
 test('family plan can hide empty lanes and keeps controls inside a 320px viewport',async({page})=>{
  await page.setViewportSize({width:320,height:720});
- const state=await installApiMocks(page);await mockCurrentProfile(page,state);
+ const state=await installApiMocks(page);await mockCurrentProfile(page,state);await mockPlannerPreferences(page,state);
  state.memberships[0].calendar_color='#2F855A';state.memberships[1].calendar_color='#2563EB';
  state.memberships.push({id:'member-3',family:state.family.id,user:3,username:'lee',role:'adult',display_name:'Lee',avatar:'',calendar_color:'#7C3AED'});state.family.memberships=state.memberships;
  const day=addCivilDay(berlinDayKey(),1);
