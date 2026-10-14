@@ -4,7 +4,7 @@ import {installApiMocks} from './mock-api.js';
 async function openCalendarEvent(page,title){
   await page.goto('/?page=calendar');
   await page.waitForLoadState('networkidle');
-  await page.locator('.calendar-mobile-daystrip').getByRole('button',{name:new RegExp(title)}).click();
+  await page.locator('.calendar-mobile-daystrip').getByRole('button',{name:new RegExp(title)}).first().click();
   await page.locator('.calendar-event-chip:visible').filter({hasText:title}).first().click();
   const detail=page.getByRole('dialog').filter({hasText:title});
   await expect(detail).toBeVisible();
