@@ -1,4 +1,5 @@
 import {useEffect,useRef,useState} from 'react';
+import {scrollAppTo} from './app-scroll';
 import {useTranslation} from 'react-i18next';
 import {api,AUTH_CHANGED_EVENT,isAuthenticated} from './api';
 import {Icon} from './icons';
@@ -80,7 +81,7 @@ export default function BoardHub({family,onBack}){
   catch(e){if(mutationCurrent(lease)){setRows(current=>before.filter(row=>current.some(item=>item.id===row.id)).map(row=>({...row,interaction:current.find(item=>item.id===row.id)?.interaction})));setError(e.message||w.failed)}}
   finally{lease.pending=false;if(mutationCurrent(lease)){setBusy(false);setLoading(false);if(lease.refresh){lease.refresh=false;load()}}}
  }
- const startEdit=row=>{setEditing(row);setKind(row.kind);setAdapterKey(row.adapter_key||'');setText(row.text||'');setFiles([]);setVisibility(row.visibility||'family');setSelectedMembershipIds(row.selected_membership_ids||[]);setCompose(true);window.scrollTo({top:0,behavior:'smooth'})};
+ const startEdit=row=>{setEditing(row);setKind(row.kind);setAdapterKey(row.adapter_key||'');setText(row.text||'');setFiles([]);setVisibility(row.visibility||'family');setSelectedMembershipIds(row.selected_membership_ids||[]);setCompose(true);scrollAppTo({top:0,behavior:'smooth'})};
  const interactionLease=boardLease.current;
  const updateInteraction=(id,interaction)=>{if(!interactionLease.active||interactionLease!==boardLease.current)return;if(interaction?.can_interact===false){setRows(current=>current.filter(row=>String(row.id)!==String(id)));if(interactionLease.pending)interactionLease.refresh=true;else load();return}setRows(current=>current.map(row=>String(row.id)===String(id)?{...row,interaction}:row))};
 
