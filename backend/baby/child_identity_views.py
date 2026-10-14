@@ -1,6 +1,6 @@
 from rest_framework import serializers, status
 from rest_framework.decorators import api_view
-from rest_framework.exceptions import NotFound
+from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.response import Response
 
 from auth_abuse.service import enforce
@@ -10,6 +10,7 @@ from family.models import Family
 from .child_identity_service import (
     begin_child_login_activation,
     child_profile,
+    guardian_settings_for_family,
     replace_child_guardians,
     require_child_guardian,
     serialize_child_identity,
@@ -93,6 +94,21 @@ def child_identity_detail(request, baby_id):
     baby = child_profile(baby_id)
     require_child_guardian(request.user, baby)
     return Response(serialize_child_identity(baby))
+
+
+@api_view(["GET"])
+def child_guardian_settings(request):
+    family_id = request.query_params.get("family")
+    if not family_id:
+        raise ValidationError({"family": "Family is required."})
+    family = Family.objects.filter(
+        pk=family_id,
+        status=Family.Status.ACTIVE,
+        memberships__user=request.user,
+    ).first()
+    if not family:
+        raise NotFound("Family not found.")
+    return Response(guardian_settings_for_family(request.user, family))
 
 
 @api_view(["PUT"])
