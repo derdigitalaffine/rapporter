@@ -3,7 +3,13 @@ import {isWasteEvent,wasteClass} from './waste-ui';
 export const isHolidayEvent=event=>event?.type==='school.holiday';
 export const isWarningEvent=event=>Boolean(event?.type?.includes('warning'));
 export const isBirthdayEvent=event=>event?.type==='birthday';
-export const isNativeCalendarEvent=event=>!event?.source&&event?.type==='calendar.event';
+const familyOsProviders=new Set(['familyos','fam-uh-le']);
+export const isNativeCalendarEvent=event=>{
+ if(event?.source)return false;
+ if(event?.type==='calendar.event')return true;
+ const provider=String(event?.payload?.provider||'').trim().toLowerCase();
+ return familyOsProviders.has(provider);
+};
 
 export const calendarSourceRegistry={
  birthday:{icon:'calendar',labelKey:null,tone:'violet'},
