@@ -5,12 +5,17 @@ from django.db import models
 
 
 class WebAuthnCredential(models.Model):
+    class Surface(models.TextChoices):
+        APP = "app", "App"
+        SUPERADMIN = "superadmin", "Superadmin"
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name="webauthn_credentials",
     )
+    surface = models.CharField(max_length=24, choices=Surface.choices, default=Surface.APP, db_index=True)
     credential_id = models.BinaryField(unique=True)
     public_key = models.BinaryField()
     sign_count = models.PositiveBigIntegerField(default=0)
@@ -25,7 +30,7 @@ class WebAuthnCredential(models.Model):
     class Meta:
         ordering = ["-last_used_at", "-created_at"]
         indexes = [
-            models.Index(fields=["user", "revoked_at"], name="passkey_user_active_idx"),
+            models.Index(fields=["user", "surface", "revoked_at"], name="passkey_user_surface_idx"),
         ]
 
 
