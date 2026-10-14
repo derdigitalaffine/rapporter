@@ -96,7 +96,7 @@ test('checkout · amount handoff retries context linking without duplicating the
  expect(expensePayloads).toHaveLength(1);
  await expenseDialog.getByRole('button',{name:/Speichern/}).click();
  await expect(page.getByRole('heading',{name:'Einkauf abgeschlossen'})).toBeVisible();
- await expect(page.getByText(/43,27/)).toBeVisible();
+ await expect(page.locator('.shopping-completion-expense')).toContainText('43,27');
  expect(expensePayload.title).toBe('Markt');
  expect(expensePayload.participants.map(String).sort()).toEqual(['member-1','member-2'].sort());
  expect(expensePayloads).toHaveLength(2);
@@ -110,5 +110,5 @@ test('checkout · amount handoff retries context linking without duplicating the
  await expect(page.getByRole('dialog')).toHaveCount(0);
  await page.reload();
  await expect(page.getByRole('heading',{name:'Einkauf abgeschlossen'})).toBeVisible();
- await expect(page.getByText(/43,27/)).toBeVisible();
+ await expect(page.locator('.shopping-completion-expense')).toContainText('43,27');
 });
