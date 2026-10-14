@@ -9,6 +9,9 @@ on:
       - 'backend/requirements.txt'
       - 'backend/family/private_images.py'
       - 'backend/family/profile_views.py'
+      - 'frontend/src/ProfilePhotoCropper.jsx'
+      - 'frontend/src/profile-i18n.js'
+      - 'frontend/e2e/profile.spec.js'
       - 'frontend/src/*Expense*'
       - 'frontend/src/expenses*'
       - 'frontend/e2e/expenses*'
@@ -23,6 +26,9 @@ on:
       - 'backend/requirements.txt'
       - 'backend/family/private_images.py'
       - 'backend/family/profile_views.py'
+      - 'frontend/src/ProfilePhotoCropper.jsx'
+      - 'frontend/src/profile-i18n.js'
+      - 'frontend/e2e/profile.spec.js'
       - 'frontend/src/*Expense*'
       - 'frontend/src/expenses*'
       - 'frontend/e2e/expenses*'
@@ -94,7 +100,7 @@ jobs:
       - working-directory: frontend
         run: npx playwright install --with-deps chromium
       - working-directory: frontend
-        run: npx playwright test e2e/expenses.spec.js e2e/expenses-actions.spec.js e2e/expenses-budget.spec.js e2e/travel-expenses.spec.js --project=${{ matrix.project }} --workers=2
+        run: npx playwright test e2e/expenses.spec.js e2e/expenses-actions.spec.js e2e/expenses-budget.spec.js e2e/travel-expenses.spec.js e2e/profile.spec.js --grep='expenses|finance|travel|HEIC' --project=${{ matrix.project }} --workers=2
       - uses: actions/upload-artifact@v4
         if: always()
         with:

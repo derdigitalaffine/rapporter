@@ -149,7 +149,7 @@ test('expenses · two-tap quick add uses visible safe defaults and updates balan
   expect(store.expenses[0].shares).toHaveLength(2);
   await expect(page.locator('.settlement-plan').getByText('Sam schuldet Alex',{exact:true})).toBeVisible();
   await page.getByRole('button',{name:'Als abgerechnet markieren'}).click();
-  await expect(page.locator('.balance-total')).toContainText('Alles ausgeglichen');
+  await expect(page.locator('.smart-balance-card .balance-total')).toContainText('Alles ausgeglichen');
   expect(store.settlements[0].ledger).toBe('ledger-default');
   await expect(page.getByText('Rapporter dokumentiert die Abrechnung nur. Es wird kein Geld übertragen.')).toBeVisible();
 });
@@ -177,7 +177,7 @@ test('expenses · details expose shared funding, ledger and one standard budget 
   await expect.poll(()=>store.allocations.get(store.expenses[0]?.id)).toEqual([{budget:'budget-home',budget_name:'Haushalt',amount_in_budget_currency:'42.50'}]);
   await expect(page.locator('.transaction-description small').first()).toContainText('gemeinsam bezahlt');
   await expect(page.locator('.transaction-description small').first()).toHaveText('gemeinsam bezahlt');
-  await expect(page.locator('.balance-total')).toContainText('Alles ausgeglichen');
+  await expect(page.locator('.smart-balance-card .balance-total')).toContainText('Alles ausgeglichen');
   await expect(page.getByRole('button',{name:'Als abgerechnet markieren'})).toHaveCount(0);
 });
 

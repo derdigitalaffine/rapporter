@@ -56,8 +56,8 @@ test('travel · trip expenses create one canonical ledger and reopen the same le
  await page.getByRole('button',{name:'Reisekosten',exact:true}).click();
  await expect(page.getByRole('heading',{name:'Geld & Finanzen',exact:true})).toBeVisible();
  await expect(page).toHaveURL(/page=expenses.*ledger=ledger-trip/);
- await expect(page.getByLabel('Konto')).toHaveValue('ledger-trip');
- await expect(page.locator('.balance-card-head').getByText('Japan',{exact:true})).toBeVisible();
+ await expect(page.locator('.expenses-toolbar').getByRole('combobox',{name:'Konto',exact:true})).toHaveValue('ledger-trip');
+ await expect(page.locator('.smart-balance-card .balance-card-head').getByText('Japan',{exact:true})).toBeVisible();
  expect(store.createCalls).toBe(1);
 
  await page.goBack();
