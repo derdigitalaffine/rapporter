@@ -15,8 +15,8 @@ from .scheduling_dependencies import (
     preview_relative_dependency,
     update_relative_dependency,
 )
+from .scheduling_detach import detach_materialization_fields
 from .scheduling_models import SchedulingDependency, SchedulingMaterialization, SchedulingSeries
-from .scheduling_relative import detach_materialization_fields
 from .unified_action_models import Action
 
 
