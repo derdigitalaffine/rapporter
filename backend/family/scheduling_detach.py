@@ -10,14 +10,17 @@ ALLOWED_FIELDS = {"scheduled_for", "title", "location", "description", "particip
 
 
 def _snapshot_field(row, field, snapshot):
+    """Snapshot the current canonical output value; return a detached schedule time when relevant."""
     if row.output_type == SchedulingDependency.OutputType.EVENT:
         event = FamilyEvent.objects.filter(family=row.family, id=row.output_id).first()
         if event is None:
-            return
+            return None
         payload = event.payload if isinstance(event.payload, dict) else {}
         if field == "scheduled_for":
-            snapshot[field] = event.starts_at.isoformat() if event.starts_at else row.scheduled_for.isoformat()
-        elif field == "title":
+            value = event.starts_at or row.scheduled_for
+            snapshot[field] = value.isoformat()
+            return value
+        if field == "title":
             snapshot[field] = event.title
         elif field == "location":
             snapshot[field] = payload.get("location", "")
@@ -29,15 +32,18 @@ def _snapshot_field(row, field, snapshot):
         action = Action.objects.filter(family=row.family, id=row.output_id).select_related("legacy_task").first()
         task = action.legacy_task if action and action.legacy_task_id else None
         if task is None:
-            return
+            return None
         if field == "scheduled_for":
-            snapshot[field] = task.due_at.isoformat() if task.due_at else row.scheduled_for.isoformat()
-        elif field == "title":
+            value = task.due_at or row.scheduled_for
+            snapshot[field] = value.isoformat()
+            return value
+        if field == "title":
             snapshot[field] = task.title
         elif field == "notes":
             snapshot[field] = task.notes
         elif field == "priority":
             snapshot[field] = task.priority
+    return None
 
 
 @transaction.atomic
@@ -47,11 +53,18 @@ def detach_materialization_fields(row, fields):
     row = SchedulingMaterialization.objects.select_for_update().get(pk=row.pk)
     fields = sorted(set(fields))
     snapshot = dict(row.projected_payload or {})
+    detached_schedule = None
     for field in fields:
-        _snapshot_field(row, field, snapshot)
+        value = _snapshot_field(row, field, snapshot)
+        if field == "scheduled_for" and value is not None:
+            detached_schedule = value
     provenance = dict(row.provenance or {})
     provenance["detached_fields"] = fields
     row.projected_payload = snapshot
     row.provenance = provenance
-    row.save(update_fields=["projected_payload", "provenance", "updated_at"])
+    update_fields = ["projected_payload", "provenance", "updated_at"]
+    if detached_schedule is not None:
+        row.scheduled_for = detached_schedule
+        update_fields.append("scheduled_for")
+    row.save(update_fields=update_fields)
     return row
