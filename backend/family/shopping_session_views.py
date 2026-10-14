@@ -295,7 +295,7 @@ def shopping_session_complete(request):
     open_items_policy = str(request.data.get("open_items") or "").strip().lower()
     with transaction.atomic():
         sessions = (
-            ShoppingSession.objects.select_for_update()
+            ShoppingSession.objects.select_for_update(of=("self",))
             .filter(shopping_list=shopping_list)
             .select_related("shopping_list", "family", "started_by", "completed_by")
         )
