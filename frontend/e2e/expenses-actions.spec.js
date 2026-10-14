@@ -56,9 +56,15 @@ test('expenses hub uses canonical action hierarchy on mobile and desktop',async(
   await expect(remove).toHaveClass(/\bghost-danger\b/);
   await expectMinTarget(remove);
 
+  const repayment=page.getByRole('button',{name:/Rückzahlung planen|Plan repayment/i});
+  await expect(repayment).toHaveClass(/\bsecondary\b/);
+  await expectMinTarget(repayment);
   const settle=page.getByRole('button',{name:/Als abgerechnet markieren|Mark as settled/i});
-  await expect(settle).toHaveClass(/\bsecondary\b/);
-  const undo=page.locator('.settlement-history').getByRole('button',{name:/Abrechnung stornieren|Void settlement/i});
+  await expect(settle).toHaveClass(/\bprimary\b/);
+  await expectMinTarget(settle);
+  const history=page.locator('.finance-history-card');
+  await expect(history).not.toHaveAttribute('open','');
+  const undo=history.getByRole('button',{name:/Abrechnung stornieren|Void settlement/i});
   await expect(undo).toHaveClass(/\btext-button\b/);
 
   expect(await page.evaluate(()=>document.documentElement.scrollWidth-document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
@@ -73,4 +79,43 @@ test('expenses hub uses canonical action hierarchy on mobile and desktop',async(
   await expect(remove).toBeFocused();
   await page.keyboard.press('Enter');
   await expect(page.getByRole('alertdialog')).toBeVisible();
+});
+
+test('repayment planning creates cent-accurate installment tasks for the debtor without settling',async({page})=>{
+  await page.setViewportSize({width:390,height:844});
+  await installApiMocks(page,{dismissOnboarding:true});
+  await installExpensesActionMocks(page);
+  const taskRequests=[];let settlementPosts=0;
+  await page.route('**/api/tasks/',async route=>{
+    if(route.request().method()!=='POST')return route.fallback();
+    const body=route.request().postDataJSON();taskRequests.push(body);
+    return json(route,{id:`repayment-${taskRequests.length}`,...body,completed_at:null},201);
+  });
+  await page.route('**/api/expenses/settlements/',async route=>{
+    if(route.request().method()==='POST'){settlementPosts+=1;return json(route,{id:'unexpected'},201)}
+    return route.fallback();
+  });
+
+  await page.goto('/?page=expenses');
+  await page.waitForLoadState('networkidle');
+  await page.getByRole('button',{name:/Rückzahlung planen|Plan repayment/i}).click();
+  const dialog=page.getByRole('dialog',{name:/Rückzahlung planen|Plan repayment/i});
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole('button',{name:/Ratenzahlung|Installments/i}).click();
+  const count=dialog.getByLabel(/Anzahl Raten|Number of installments/i);
+  await count.fill('3');
+
+  await expect(dialog.getByText(/4,14\s?€|€4\.14/)).toBeVisible();
+  await expect(dialog.getByText(/4,13\s?€|€4\.13/).first()).toBeVisible();
+  await dialog.getByRole('button',{name:/3 Raten-Aufgaben erstellen|Create 3 installment tasks/i}).click();
+  await expect(dialog).toBeHidden();
+
+  expect(taskRequests).toHaveLength(3);
+  expect(taskRequests.map(item=>item.assignee)).toEqual([2,2,2]);
+  expect(taskRequests.map(item=>item.family)).toEqual(['family-1','family-1','family-1']);
+  const scheduledTotal=taskRequests.reduce((sum,item)=>{
+    const match=item.title.match(/(?:€|EUR\s*)?(\d+[.,]\d{2})/);return sum+(match?Number(match[1].replace(',','.')):0);
+  },0);
+  expect(Math.round(scheduledTotal*100)).toBe(1240);
+  expect(settlementPosts).toBe(0);
 });
