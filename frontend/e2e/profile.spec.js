@@ -46,7 +46,7 @@ async function openFamilyMaster(page){const section=page.getByTestId('family-mas
 
 test('profile is reachable from More and survives reload',async({page})=>{
  const state=await installApiMocks(page);await installProfileMock(page);await installFamilyMasterMock(page,state);
- await page.goto('/?page=more');await page.locator('main .menu-row').filter({hasText:'Mein Profil'}).click();await expect(page).toHaveURL(/page=profile/);await expect(page.getByRole('heading',{name:'Mein Profil'})).toBeVisible();await page.reload();await expect(page.getByRole('heading',{name:'Mein Profil'})).toBeVisible();
+ await page.goto('/?page=more');await page.locator('main .menu-row').filter({hasText:'Mein Profil'}).click();await expect(page).toHaveURL(/page=profile/);await expect(page.getByRole('heading',{name:'Mein Profil',exact:true}).last()).toBeVisible();await page.reload();await expect(page.getByRole('heading',{name:'Mein Profil',exact:true}).last()).toBeVisible();
 });
 
 test('user updates profile name birthday and visibility without changing role',async({page})=>{

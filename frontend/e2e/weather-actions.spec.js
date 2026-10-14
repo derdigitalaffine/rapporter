@@ -25,7 +25,7 @@ test('weather hub keeps canonical back action and explicit forecast disclosures'
 
   await page.goto('/?page=weather');
   await page.waitForLoadState('networkidle');
-  await expect(page.getByRole('heading',{name:'Wetter'})).toBeVisible();
+  await expect(page.getByRole('heading',{name:'Wetter',exact:true}).last()).toBeVisible();
 
   const back=page.getByRole('button',{name:'Zurück'});
   await expect(back).toHaveClass(/\bghost\b/);

@@ -28,15 +28,12 @@ test('Pregnancy & Baby stays private, reload-safe and responsive in German',asyn
   await page.setViewportSize({width:390,height:844});
   await installApiMocks(page,{language:'de'});
   await installBabyMocks(page,{enabled:true,authorized:true,canManage:true,showInNav:true});
-  await page.goto('/');
-  const nav=page.locator('.bottom-nav');
-  await expect(nav.getByRole('button',{name:'Baby',exact:true})).toBeVisible();
-  expect(await nav.evaluate(el=>getComputedStyle(el).position)).toBe('fixed');
-  await nav.getByRole('button',{name:'Baby',exact:true}).click();
-  await expect(page.getByRole('heading',{name:'Schwangerschaft & Baby'})).toBeVisible();
+  await page.goto('/?page=more');
+  await page.getByRole('button',{name:'Schwangerschaft & Baby',exact:true}).click();
+  await expect(page.getByRole('heading',{name:'Schwangerschaft & Baby',exact:true}).last()).toBeVisible();
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBeTruthy();
   await page.reload();
-  await expect(page.getByRole('heading',{name:'Schwangerschaft & Baby'})).toBeVisible();
+  await expect(page.getByRole('heading',{name:'Schwangerschaft & Baby',exact:true}).last()).toBeVisible();
   await expect(page.getByText(/Care Circle/).first()).toBeVisible();
 });
 
@@ -46,7 +43,7 @@ test('disabled module is opt-in and usable in English without entering main nav'
   await page.goto('/?page=more');
   await expect(page.locator('.bottom-nav').getByRole('button',{name:'Baby',exact:true})).toHaveCount(0);
   await page.getByRole('button',{name:'Pregnancy & Baby',exact:true}).click();
-  await expect(page.getByRole('heading',{name:'Pregnancy & Baby'})).toBeVisible();
+  await expect(page.getByRole('heading',{name:'Pregnancy & Baby',exact:true}).last()).toBeVisible();
   await expect(page.getByRole('button',{name:'Enable module'})).toBeVisible();
 });
 

@@ -6,7 +6,7 @@ async function boot(page,path='/'){
   await installApiMocks(page,{dismissOnboarding:true});
   await page.goto(path);
   await page.waitForLoadState('networkidle');
-  if(path.includes('page=todo'))await expect(page.getByRole('heading',{name:'To-dos',exact:true})).toBeVisible();
+  if(path.includes('page=todo'))await expect(page.locator('main[data-page="todo"]')).toBeVisible();
   else await expect(page.locator('.today-hero h1')).toBeVisible();
 }
 
