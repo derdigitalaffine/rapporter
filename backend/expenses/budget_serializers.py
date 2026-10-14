@@ -3,8 +3,15 @@ from decimal import Decimal
 from django.db import transaction
 from rest_framework import serializers
 
+from family.models import Membership
 from .models import ExpenseBudget, ExpenseLedger
 from .money import money
+from .participant_services import (
+    can_manage_participant_plans,
+    current_plan_signature,
+    replace_participant_plans,
+    requested_plan_signature,
+)
 from .period_models import ExpenseBudgetPeriod
 from .period_services import (
     RECURRING_PERIOD_TYPES,
@@ -18,8 +25,32 @@ from .serializers import LocalizedDecimalField, _request_can_access_family
 from .planning_serializers import BudgetPlanningConflict, RevisionCheckedPlanningSerializer
 
 
+class ParticipantPlanWriteSerializer(serializers.Serializer):
+    member = serializers.UUIDField()
+    spending_limit = LocalizedDecimalField(
+        max_digits=12,
+        decimal_places=2,
+        allow_null=True,
+        required=False,
+        min_value=Decimal("0.00"),
+    )
+    planned_share = LocalizedDecimalField(
+        max_digits=12,
+        decimal_places=2,
+        allow_null=True,
+        required=False,
+        min_value=Decimal("0.00"),
+    )
+
+    def validate(self, attrs):
+        if attrs.get("spending_limit") is None and attrs.get("planned_share") is None:
+            raise serializers.ValidationError("Mindestens Limit oder geplanter Kostenanteil ist erforderlich.")
+        return attrs
+
+
 class ExpenseBudgetSerializer(RevisionCheckedPlanningSerializer):
     client_request_id = serializers.UUIDField(write_only=True, required=False, allow_null=True)
+    participant_plans = ParticipantPlanWriteSerializer(many=True, write_only=True, required=False)
     amount = LocalizedDecimalField(max_digits=12, decimal_places=2)
     estimated_amount = LocalizedDecimalField(
         max_digits=12, decimal_places=2, allow_null=True, required=False, min_value=Decimal("0.00"),
@@ -92,8 +123,23 @@ class ExpenseBudgetSerializer(RevisionCheckedPlanningSerializer):
             raise serializers.ValidationError("Budget darf nicht negativ sein.")
         return value
 
+    def _replace_plans(self, budget, participant_plans):
+        if participant_plans is serializers.empty:
+            return
+        try:
+            replace_participant_plans(
+                budget=budget,
+                rows=participant_plans,
+                user=self.context["request"].user,
+            )
+        except PermissionError as exc:
+            raise serializers.ValidationError({"participant_plans": str(exc)}) from exc
+        except ValueError as exc:
+            raise serializers.ValidationError({"participant_plans": str(exc)}) from exc
+
     @transaction.atomic
     def create(self, validated_data):
+        participant_plans = validated_data.pop("participant_plans", serializers.empty)
         rollover_policy = validated_data.pop("_rollover_policy", None)
         ledger = ExpenseLedger.objects.select_for_update().get(pk=validated_data["ledger"].pk)
         if ledger.archived:
@@ -109,13 +155,17 @@ class ExpenseBudgetSerializer(RevisionCheckedPlanningSerializer):
                     state = period_state(existing)
                     if existing.period_type not in RECURRING_PERIOD_TYPES or state["rollover_policy"] != rollover_policy:
                         raise BudgetPlanningConflict()
+                if participant_plans is not serializers.empty and requested_plan_signature(participant_plans) != current_plan_signature(existing):
+                    raise BudgetPlanningConflict()
                 return existing
         created = super().create(validated_data)
         configure_current_period(created, rollover_policy=rollover_policy)
+        self._replace_plans(created, participant_plans)
         return created
 
     @transaction.atomic
     def update(self, instance, validated_data):
+        participant_plans = validated_data.pop("participant_plans", serializers.empty)
         rollover_policy = validated_data.pop("_rollover_policy", None)
         validated_data.pop("client_request_id", None)
         next_period_type = validated_data.get("period_type", instance.period_type)
@@ -140,6 +190,7 @@ class ExpenseBudgetSerializer(RevisionCheckedPlanningSerializer):
             close_current_period(updated)
         else:
             configure_current_period(updated, rollover_policy=rollover_policy)
+        self._replace_plans(updated, participant_plans)
         return updated
 
     def validate(self, attrs):
@@ -147,11 +198,29 @@ class ExpenseBudgetSerializer(RevisionCheckedPlanningSerializer):
         family = attrs.get("family") or getattr(self.instance, "family", None)
         ledger = attrs.get("ledger") or getattr(self.instance, "ledger", None)
         parent = attrs.get("parent", getattr(self.instance, "parent", None))
+        participant_plans = attrs.get("participant_plans", serializers.empty)
 
         if not family or not _request_can_access_family(request, family):
             raise serializers.ValidationError({"family": "Familie ist für diesen Benutzer nicht verfügbar."})
         if not ledger or ledger.family_id != family.id or ledger.archived:
             raise serializers.ValidationError({"ledger": "Abrechnungskreis ist für diese Familie nicht verfügbar."})
+
+        if participant_plans is not serializers.empty:
+            if not can_manage_participant_plans(request.user, family):
+                raise serializers.ValidationError({
+                    "participant_plans": "Teilnehmerplanung darf nur von Erwachsenen verwaltet werden."
+                })
+            member_ids = [str(row["member"]) for row in participant_plans]
+            if len(member_ids) != len(set(member_ids)):
+                raise serializers.ValidationError({"participant_plans": "Jede Person darf nur einmal vorkommen."})
+            found = set(
+                str(value)
+                for value in Membership.objects.filter(family=family, id__in=member_ids).values_list("id", flat=True)
+            )
+            if set(member_ids) != found:
+                raise serializers.ValidationError({
+                    "participant_plans": "Mindestens eine Person gehört nicht zu dieser Familie."
+                })
 
         if self.instance:
             if "family" in attrs and family.id != self.instance.family_id:
@@ -196,6 +265,7 @@ class ExpenseBudgetSerializer(RevisionCheckedPlanningSerializer):
             "estimated_amount",
             "expected_updated_at",
             "client_request_id",
+            "participant_plans",
             "currency",
             "period_type",
             "starts_on",
