@@ -26,6 +26,7 @@ export const FEATURE_REGISTRY=Object.freeze([
   defineFeature('settings',{detail:true}),
   defineFeature('calendar'),
   defineFeature('weather',{detail:true}),
+  defineFeature('statistics',{detail:true,familyContext:true,queryParams:['stats_range','stats_view','stats_member','stats_domain','stats_from','stats_to']}),
   defineFeature('expenses',{detail:true,queryParams:['ledger','expense']}),
   defineFeature('contracts',{detail:true,familyContext:true}),
   defineFeature('inbox',{detail:true}),
