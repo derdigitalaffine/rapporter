@@ -27,14 +27,16 @@ function CreatePageRedirect({page,params,openModule}){
 
 function ExpenseCreateFlow({family,context,onClose,saved,onRefresh}){
   const prefill=context.prefill||null;
-  async function finish(record){
+  async function finish(record,financeContext={}){
     if(context.commitment){
       try{
-        const allocation=await api(`/expenses/${record.id}/budget-allocations/`);
-        const selected=(allocation?.allocations||[]).length===1?allocation.allocations[0].budget:null;
+        // `budget` deliberately preserves an explicit empty selection. The
+        // user may turn a reserved purchase into an unbudgeted Expense; do not
+        // silently restore the originally reserved category afterwards.
+        const selectedBudget=financeContext.budget==='__advanced__'?null:(financeContext.budget??context.commitmentBudget??null);
         await api(`/budget-commitments/${encodeURIComponent(context.commitment)}/consume/`,{
           method:'POST',
-          body:JSON.stringify({family:family.id,expense:record.id,budget:selected||context.commitmentBudget||null}),
+          body:JSON.stringify({family:family.id,expense:record.id,budget:selectedBudget||null}),
         });
         if(context.shoppingItem){
           try{await api(`/shopping-items/${encodeURIComponent(context.shoppingItem)}/`,{method:'PATCH',body:JSON.stringify({checked:true})})}
@@ -51,7 +53,7 @@ function ExpenseCreateFlow({family,context,onClose,saved,onRefresh}){
     }
     await saved(record);
   }
-  return <ExpenseEditor family={family} expense={prefill} initialLedger={context.ledger||prefill?.ledger||''} initialMode={context.mode==='receipt'?'receipt':context.mode==='details'?'details':'quick'} onClose={onClose} onSaved={finish} onUndo={onRefresh}/>;
+  return <ExpenseEditor family={family} expense={prefill} initialLedger={context.ledger||prefill?.ledger||''} initialBudget={context.commitmentBudget||''} initialMode={context.mode==='receipt'?'receipt':context.mode==='details'?'details':'quick'} onClose={onClose} onSaved={finish} onUndo={onRefresh}/>;
 }
 
 const renderers={
