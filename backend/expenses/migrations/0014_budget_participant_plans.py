@@ -20,14 +20,19 @@ class Migration(migrations.Migration):
                 ("updated_at", models.DateTimeField(auto_now=True)),
                 ("spending_limit", models.DecimalField(blank=True, decimal_places=2, max_digits=12, null=True)),
                 ("planned_share", models.DecimalField(blank=True, decimal_places=2, max_digits=12, null=True)),
-                ("budget", models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name="participant_plans", to="expenses.expensebudget")),
+                ("budget", models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name="participant_plans", to="expenses.expensebudget")),
+                ("ledger", models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name="participant_plans", to="expenses.expenseledger")),
                 ("member", models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name="expense_budget_plans", to="family.membership")),
             ],
             options={"ordering": ["created_at", "id"]},
         ),
         migrations.AddConstraint(
             model_name="expensebudgetparticipantplan",
-            constraint=models.UniqueConstraint(fields=("budget", "member"), name="expense_budget_participant_unique"),
+            constraint=models.UniqueConstraint(condition=models.Q(budget__isnull=False), fields=("budget", "member"), name="expense_budget_participant_unique"),
+        ),
+        migrations.AddConstraint(
+            model_name="expensebudgetparticipantplan",
+            constraint=models.UniqueConstraint(condition=models.Q(budget__isnull=True), fields=("ledger", "member"), name="expense_ledger_participant_unique"),
         ),
         migrations.AddConstraint(
             model_name="expensebudgetparticipantplan",
