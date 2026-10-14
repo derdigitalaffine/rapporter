@@ -9,6 +9,7 @@ import ShoppingAudienceFields,{defaultShoppingAudience} from './ShoppingAudience
 import './workflow-i18n';
 import {toast} from './feedback';
 import {ErrorSummary,FormActions,FormField,FormShell,ProgressiveFieldGroup} from './form-primitives';
+import OverlayPortal from './OverlayPortal';
 
 function initialAudience(list){
  const access=list?.access;if(!access)return defaultShoppingAudience();
@@ -23,7 +24,7 @@ export default function ListEditor({type,list=null,family,onClose,onSaved}){
  async function save(e){e.preventDefault();setBusy(true);setError('');try{const payload={name:form.name.trim(),store:type==='shopping'?form.store||'':undefined,archived:!!form.archived,icon:form.icon||(type==='task'?'list-check':'cart-shopping')};if(type==='task'&&canManageSettings&&!!form.workflow_enabled!==!!list?.workflow_enabled)payload.workflow_enabled=!!form.workflow_enabled;if(isNew)payload.family=family?.id;if(type==='shopping'&&canManageAudience)Object.assign(payload,audience);const saved=await api(isNew?`/${path}/`:`/${path}/${list.id}/`,{method:isNew?'POST':'PATCH',body:JSON.stringify(payload)});await onSaved(saved);toast(t(isNew?'listCreated':'listSaved'),{type:'success'})}catch(err){setError(err.message);toast(err.message||t('listSaveFailed'),{type:'error'})}finally{setBusy(false)}}
  async function archive(){setBusy(true);setError('');try{await api(`/${path}/${list.id}/`,{method:'PATCH',body:JSON.stringify({archived:true})});await onSaved();toast(t('listArchived',{name:list.name}),{type:'success',actionLabel:t('undo'),duration:8000,onAction:async()=>{try{await api(`/${path}/${list.id}/`,{method:'PATCH',body:JSON.stringify({archived:false})});await onSaved();toast(t('archiveUndone'),{type:'success'})}catch(err){toast(err.message||t('restoreListFailed'),{type:'error'})}}})}catch(err){setError(err.message);toast(err.message||t('archiveListFailed'),{type:'error'})}finally{setBusy(false)}}
  const errors=error?[{id:'list-name',label:t('name'),message:error}]:[];
- return <div className="sheet-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget&&!busy)onClose()}}><section className="quick-sheet" role="dialog" aria-modal="true" aria-labelledby="list-editor-title"><div className="sheet-handle"/><div className="sheet-head"><div><small>{type==='task'?t('taskList'):t('shoppingList')}</small><h2 id="list-editor-title">{isNew?t('create'):t('editList')}</h2></div><button type="button" className="sheet-close" onClick={onClose} disabled={busy} aria-label={t('close')}><Icon name="close"/></button></div><FormShell className="quick-form" onSubmit={save}>
+ return <OverlayPortal><div className="sheet-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget&&!busy)onClose()}}><section className="quick-sheet" role="dialog" aria-modal="true" aria-labelledby="list-editor-title"><div className="sheet-handle"/><div className="sheet-head"><div><small>{type==='task'?t('taskList'):t('shoppingList')}</small><h2 id="list-editor-title">{isNew?t('create'):t('editList')}</h2></div><button type="button" className="sheet-close" onClick={onClose} disabled={busy} aria-label={t('close')}><Icon name="close"/></button></div><FormShell className="quick-form" onSubmit={save}>
   <ErrorSummary errors={errors}/>
   <FormField id="list-name" label={t('name')} required><input value={form.name||''} onChange={e=>set('name',e.target.value)} autoFocus/></FormField>
   {type==='shopping'&&canManageAudience&&<ShoppingAudienceFields family={audienceFamily} value={audience} onChange={setAudience} compact/>}
@@ -33,5 +34,5 @@ export default function ListEditor({type,list=null,family,onClose,onSaved}){
     {type==='task'&&canManageSettings&&<><label className="toggle-label"><input type="checkbox" checked={!!form.workflow_enabled} onChange={e=>set('workflow_enabled',e.target.checked)}/><span>{t('workflowUi.enabled')}</span></label><small>{t('workflowUi.hint')}</small>{list?.workflow_enabled&&form.workflow_enabled&&<WorkflowSettings list={list}/>}</>}
   </ProgressiveFieldGroup>
   <FormActions><button className="primary" disabled={busy||!form.name.trim()}><Icon name="check"/> {busy?t('saving'):t('save')}</button>{!isNew&&<button type="button" className="ghost-danger destructive-wide" onClick={archive} disabled={busy}><Icon name="archive"/> {t('archiveList')}</button>}</FormActions>
- </FormShell>{type==='shopping'&&!isNew&&<ShoppingTemplateTools familyId={family?.id||list?.family} list={list} onChanged={onSaved}/>}</section></div>
+ </FormShell>{type==='shopping'&&!isNew&&<ShoppingTemplateTools familyId={family?.id||list?.family} list={list} onChanged={onSaved}/>}</section></div></OverlayPortal>
 }
