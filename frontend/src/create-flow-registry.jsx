@@ -30,7 +30,7 @@ const renderers={
   pets:({family,onClose,openModule,learnSuccessfulCreate})=><PetCreateSheet family={family} onClose={onClose} onOpenPage={openModule} onSuccessfulCreate={learnSuccessfulCreate}/>,
   task:({family,taskLists,taskListId,onClose,saved})=><TaskEditor family={family} lists={taskLists} members={family.memberships||[]} defaultListId={taskListId} onClose={onClose} onSaved={saved}/>,
   shoppingItem:({family,shoppingLists,shoppingList,onClose,saved,setCreatedShoppingList,onRefresh})=>shoppingLists.length?<ShoppingEditor shoppingList={shoppingList} lists={shoppingLists} onClose={onClose} onSaved={saved}/>:<ListEditor type="shopping" family={family} onClose={onClose} onSaved={async list=>{setCreatedShoppingList(list);await onRefresh?.()}}/>,
-  event:({family,onClose,saved})=><EventEditor family={family} onClose={onClose} onSaved={saved}/>,
+  event:({userId,family,onClose,saved})=><EventEditor family={family} currentUserId={userId} onClose={onClose} onSaved={saved}/>,
   expense:({family,context,onClose,saved,onRefresh})=><ExpenseEditor family={family} initialLedger={context.ledger||''} initialMode={context.mode==='receipt'?'receipt':'quick'} onClose={onClose} onSaved={saved} onUndo={onRefresh}/>,
   contract:({family,onClose,saved})=><ContractEditor family={family} onClose={onClose} onSaved={saved}/>,
   correspondence:({family,shoppingLists,onClose,saved})=><CorrespondenceEditor family={family} shoppingLists={shoppingLists} onClose={onClose} onSaved={saved}/>,

@@ -24,13 +24,19 @@ Ein Tipp auf einen Wochentag öffnet den Kalender direkt auf diesem Datum. Der K
 
 ## Eigenen Termin anlegen
 
-Nutze die Anlegen-Aktion für einen Termin und trage die nötigen Angaben ein.
+Nutze die Anlegen-Aktion für einen Termin. Neue Termine öffnen mit **Start + Dauer** und zunächst 60 Minuten Dauer. Häufige Dauern kannst du direkt antippen; für andere Werte gibst du die Minuten ein.
 
-Halte den Titel kurz. Ergänze Uhrzeit und weitere Angaben nur, wenn sie gebraucht werden.
+Wenn die Endzeit wichtiger ist, wechselst du zu **Start + Endzeit**. Beim Wechsel zwischen beiden Varianten bleiben die eingegebenen Zeiten erhalten. FamilyOS speichert in beiden Fällen denselben Start- und Endzeitpunkt.
+
+Unter **Wer ist dabei?** wählst du Personen über große Avatar-Flächen aus. **Nur ich**, **Alle** und **Niemand** beschleunigen häufige Auswahlen. In größeren Familien kannst du zusätzlich nach Namen suchen.
+
+Ein **Familientermin** ist eine eigene Kennzeichnung und unabhängig von der Personenauswahl. Du kannst also zum Beispiel zwei Personen auswählen und den Termin trotzdem als Familientermin markieren – oder einen Termin mit mehreren Personen ohne diese Kennzeichnung speichern.
+
+Ort, Notizen und Wiederholung findest du unter **Weitere Details**, damit die wichtigsten Angaben auf kleinen Displays zuerst erreichbar bleiben.
 
 ## Eigenen Termin bearbeiten
 
-Termine, die direkt in FamilyOS angelegt wurden, kannst du wieder öffnen und bearbeiten.
+Termine, die direkt in FamilyOS angelegt wurden, kannst du wieder öffnen und bearbeiten. Bestehende Termine starten mit **Start + Endzeit**, damit die bereits gespeicherten Uhrzeiten direkt sichtbar sind. Bereits zugeordnete Personen und die Familientermin-Kennzeichnung bleiben vorausgewählt.
 
 ## Warum kann ich einen Termin nicht bearbeiten?
 
