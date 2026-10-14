@@ -53,7 +53,8 @@ test('checkout · explicit finish keeps open items and reload reopens immutable 
  await expect(page.getByRole('heading',{name:'Einkauf abgeschlossen'})).toBeVisible();
  await expect(page.getByText('1 gekauft · 1 offen',{exact:true})).toBeVisible();
  expect(run.startCalls).toBe(startsBeforeReload);
- await page.getByRole('button',{name:'Fertig'}).click();
+ const summaryDialog=page.getByRole('dialog');
+ await summaryDialog.locator('.shopping-checkout-actions').getByRole('button',{name:'Fertig',exact:true}).click();
  await expect(page.getByRole('dialog')).toHaveCount(0);
  await expect.poll(()=>new URL(page.url()).searchParams.get('session')).toBeNull();
  await expect.poll(()=>run.startCalls).toBeGreaterThan(startsBeforeReload);
@@ -87,7 +88,7 @@ test('checkout · amount handoff retries context linking without duplicating the
  const expenseDialog=page.getByRole('dialog');
  await expect(expenseDialog.getByRole('heading',{name:/Ausgabe/})).toBeVisible();
  await expect(expenseDialog.getByText(/Alex.*Sam|Sam.*Alex/)).toBeVisible();
- await expect(expenseDialog.getByLabel('Optionaler Titel')).toHaveValue('Markt');
+ await expect(expenseDialog.getByLabel('Wofür? (optional)')).toHaveValue('Markt');
  await expenseDialog.getByLabel('Betrag').fill('43,27');
  await expenseDialog.getByRole('button',{name:/Speichern/}).click();
  await expect(expenseDialog).toBeVisible();
