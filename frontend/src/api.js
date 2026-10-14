@@ -105,3 +105,13 @@ export async function api(path,options={}){
  if(method==='GET'){rememberFamilyModuleRuntime(path,data);rememberBootstrapRuntime(path,data)}
  await rememberOfflineData(path,data,options);return data;
 }
+
+export async function apiDownload(path){
+ let response=await request(path,{method:'GET',headers:{Accept:'application/octet-stream'}});
+ if(response.status===401&&await refreshAccess())response=await request(path,{method:'GET',headers:{Accept:'application/octet-stream'}});
+ if(response.status===401){notifySessionExpired();throw new Error('unauthorized')}
+ if(!response.ok){let payload=null;try{payload=await response.json()}catch{}throw apiError(response,payload)}
+ const disposition=response.headers.get('Content-Disposition')||'';
+ const match=disposition.match(/filename="?([^";]+)"?/i);
+ return {blob:await response.blob(),filename:match?.[1]||'download'};
+}
