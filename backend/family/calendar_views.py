@@ -4,8 +4,10 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from django.db.models import Q
 from rest_framework.exceptions import PermissionDenied, ValidationError
+from rest_framework.response import Response
 
 from .birthdays import calendar_projection, local_now
+from .calendar_recurrence import normalize_event_recurrence, project_event, recurrence_dict
 from .models import Family, FamilyEvent, Membership
 from .views import FamilyEventViewSet as BaseFamilyEventViewSet
 
@@ -48,6 +50,12 @@ def _effective_family(serializer):
 
 def _effective_event_type(serializer):
     return serializer.validated_data.get("type") or getattr(serializer.instance, "type", None)
+
+
+def _effective_source(serializer):
+    if "source" in serializer.validated_data:
+        return serializer.validated_data.get("source")
+    return getattr(serializer.instance, "source", None)
 
 
 def _validate_guardian(target, family, request):
@@ -118,11 +126,33 @@ def _validate_event_people(serializer, request):
     return legacy_selection
 
 
+def _validate_native_recurrence(serializer):
+    family = _effective_family(serializer)
+    event_type = _effective_event_type(serializer)
+    source = _effective_source(serializer)
+    if event_type != "calendar.event" or source is not None or "payload" not in serializer.validated_data:
+        return
+    payload = serializer.validated_data.get("payload")
+    if not isinstance(payload, dict) or "recurrence" not in payload:
+        return
+    starts_at = serializer.validated_data.get("starts_at") or getattr(serializer.instance, "starts_at", None)
+    try:
+        recurrence = normalize_event_recurrence(payload.get("recurrence"), starts_at, family.timezone if family else "UTC")
+    except (ValueError, ZoneInfoNotFoundError) as exc:
+        raise ValidationError({"payload": {"recurrence": str(exc)}}) from exc
+    serializer.validated_data["payload"] = {**payload, "recurrence": recurrence}
+
+
+def _has_recurrence(event):
+    payload = event.payload if isinstance(event.payload, dict) else {}
+    return recurrence_dict(payload.get("recurrence")) is not None
+
+
 class FamilyEventViewSet(BaseFamilyEventViewSet):
     """Calendar contract: forecasts/current conditions are weather data, not appointments."""
 
     queryset = (
-        FamilyEvent.objects.select_related("source")
+        FamilyEvent.objects.select_related("source", "family")
         .prefetch_related("participants")
         .exclude(type__in=["weather.current", "weather.forecast"])
         .all()
@@ -140,6 +170,7 @@ class FamilyEventViewSet(BaseFamilyEventViewSet):
         start, end = _parse_range(self.request, date.today())
         include_undated = self.request.query_params.get("include_undated") == "1"
         overlap = None
+        recurring = None
         for family in families:
             zone = _family_zone(family)
             starts_at = datetime.combine(start, time.min, zone)
@@ -149,11 +180,34 @@ class FamilyEventViewSet(BaseFamilyEventViewSet):
             )
             if include_undated:
                 family_overlap |= Q(family=family, starts_at__isnull=True)
+            family_recurring = (
+                Q(family=family, source__isnull=True, type="calendar.event")
+                & Q(payload__recurrence__isnull=False)
+                & ~Q(payload__recurrence="")
+            )
             overlap = family_overlap if overlap is None else overlap | family_overlap
-        return queryset.filter(overlap) if overlap is not None else queryset.none()
+            recurring = family_recurring if recurring is None else recurring | family_recurring
+        if overlap is None:
+            return queryset.none()
+        return queryset.filter(overlap | recurring).distinct()
 
     def list(self, request, *args, **kwargs):
-        response = super().list(request, *args, **kwargs)
+        queryset = self.filter_queryset(self.get_queryset())
+        events = list(queryset)
+        serialized = list(self.get_serializer(events, many=True).data)
+        explicit_range = bool(request.query_params.get("start") and request.query_params.get("end"))
+        project_for_list = request.query_params.get("include_undated") == "1"
+        projected = []
+        for event, row in zip(events, serialized):
+            if event.source_id is None and event.type == "calendar.event" and _has_recurrence(event) and (explicit_range or project_for_list):
+                start, end = _parse_range(request, local_now(event.family).date())
+                projected.extend(project_event(event, row, start, end))
+            else:
+                projected.append(row)
+        projected.sort(key=lambda row: row.get("starts_at") or "9999")
+
+        page = self.paginate_queryset(projected)
+        response = self.get_paginated_response(page) if page is not None else Response(projected)
         if request.query_params.get("birthdays") == "0":
             return response
         families = _visible_families(request)
@@ -168,6 +222,7 @@ class FamilyEventViewSet(BaseFamilyEventViewSet):
             response.data["count"] += len(virtual)
         else:
             response.data.extend(virtual)
+            response.data.sort(key=lambda row: row.get("starts_at") or "9999")
         return response
 
     def perform_create(self, serializer):
@@ -175,6 +230,7 @@ class FamilyEventViewSet(BaseFamilyEventViewSet):
             raise PermissionDenied("Externe Kalendertermine werden von ihrer Quelle verwaltet.")
         if serializer.validated_data.get("type") in READ_ONLY_EVENT_TYPES:
             raise PermissionDenied("Dieser Termin wird von seinem Fachbereich verwaltet.")
+        _validate_native_recurrence(serializer)
         legacy_selection = _validate_event_people(serializer, self.request)
         super().perform_create(serializer)
         if legacy_selection is not None:
@@ -185,6 +241,7 @@ class FamilyEventViewSet(BaseFamilyEventViewSet):
             raise PermissionDenied("Externe Kalendertermine sind schreibgeschützt.")
         if serializer.instance.type in READ_ONLY_EVENT_TYPES or serializer.validated_data.get("type") in READ_ONLY_EVENT_TYPES:
             raise PermissionDenied("Dieser Termin ist hier schreibgeschützt.")
+        _validate_native_recurrence(serializer)
         legacy_selection = _validate_event_people(serializer, self.request)
         super().perform_update(serializer)
         if legacy_selection is not None:
