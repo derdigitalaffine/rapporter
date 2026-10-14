@@ -16,6 +16,7 @@ from .models import CapabilityDefinition, EntitlementCutover, EntitlementGrant, 
 MAX_CAPABILITIES_PER_GRANT = 64
 MAX_METADATA_BYTES = 4096
 PRE_COMMERCIAL_ORIGIN_SUMMARY = "pre_commercial_vip"
+ADMIN_TIER_OVERRIDE_MODE = "tier_override"
 ORIGIN_ORDER = {
     EntitlementGrant.Origin.LEGACY_GRANDFATHERED: 0,
     EntitlementGrant.Origin.PURCHASED_LIFETIME: 1,
@@ -32,6 +33,8 @@ class EntitlementSnapshot:
     capabilities: tuple[str, ...]
     origin_summary: str
     origins: tuple[str, ...]
+    override_tier: str | None = None
+    override_ends_at: object | None = None
 
     def as_dict(self):
         return {
@@ -40,6 +43,8 @@ class EntitlementSnapshot:
             "capabilities": list(self.capabilities),
             "origin_summary": self.origin_summary,
             "origins": list(self.origins),
+            "override_tier": self.override_tier,
+            "override_ends_at": self.override_ends_at.isoformat() if self.override_ends_at else None,
         }
 
 
@@ -61,37 +66,62 @@ def _active_grants(family, at):
     )
 
 
+def _is_tier_override(grant):
+    return grant.origin == EntitlementGrant.Origin.ADMIN_GRANT and (grant.metadata or {}).get("mode") == ADMIN_TIER_OVERRIDE_MODE
+
+
+def _active_tier_override(grants):
+    matches = [grant for grant in grants if _is_tier_override(grant) and grant.plan_key in VALID_PLAN_KEYS]
+    return matches[-1] if matches else None
+
+
+def _capabilities_for_tier(definitions, tier):
+    if tier == "light":
+        return {key for key, definition in definitions.items() if definition.default_light}
+    if tier in FULL_ACCESS_PLAN_KEYS:
+        return set(definitions)
+    return set()
+
+
 def _snapshot_from(definitions, pre_commercial_vip, grants):
-    capabilities = (
-        set(definitions)
-        if pre_commercial_vip
-        else {key for key, definition in definitions.items() if definition.default_light}
-    )
-    for grant in grants:
-        if grant.plan_key in FULL_ACCESS_PLAN_KEYS:
-            capabilities.update(definitions)
-        for key in grant.capability_set or []:
-            if key in definitions:
-                capabilities.add(key)
+    override = _active_tier_override(grants)
+    if override is not None:
+        capabilities = _capabilities_for_tier(definitions, override.plan_key)
+        tier = override.plan_key
+        display_name = "VIP" if tier == "vip" else tier.capitalize()
+    else:
+        capabilities = (
+            set(definitions)
+            if pre_commercial_vip
+            else {key for key, definition in definitions.items() if definition.default_light}
+        )
+        for grant in grants:
+            if grant.plan_key in FULL_ACCESS_PLAN_KEYS:
+                capabilities.update(definitions)
+            for key in grant.capability_set or []:
+                if key in definitions:
+                    capabilities.add(key)
+
+        premium_keys = {key for key, definition in definitions.items() if definition.premium}
+        if pre_commercial_vip or any(grant.plan_key == "vip" for grant in grants):
+            tier = "vip"
+            display_name = "VIP"
+        elif premium_keys.intersection(capabilities):
+            tier = "premium"
+            display_name = "Premium"
+        else:
+            tier = "light"
+            display_name = "Light"
 
     origins = tuple(sorted({grant.origin for grant in grants}, key=lambda value: (ORIGIN_ORDER.get(value, 99), value)))
-    if pre_commercial_vip:
+    if override is not None:
+        origin_summary = EntitlementGrant.Origin.ADMIN_GRANT
+    elif pre_commercial_vip:
         origin_summary = PRE_COMMERCIAL_ORIGIN_SUMMARY
     elif not origins:
         origin_summary = "default_light"
     else:
         origin_summary = origins[0]
-
-    premium_keys = {key for key, definition in definitions.items() if definition.premium}
-    if pre_commercial_vip or any(grant.plan_key == "vip" for grant in grants):
-        tier = "vip"
-        display_name = "VIP"
-    elif premium_keys.intersection(capabilities):
-        tier = "premium"
-        display_name = "Premium"
-    else:
-        tier = "light"
-        display_name = "Light"
 
     return EntitlementSnapshot(
         tier=tier,
@@ -99,6 +129,8 @@ def _snapshot_from(definitions, pre_commercial_vip, grants):
         capabilities=tuple(sorted(capabilities)),
         origin_summary=origin_summary,
         origins=origins,
+        override_tier=override.plan_key if override else None,
+        override_ends_at=override.ends_at if override else None,
     )
 
 
@@ -111,6 +143,11 @@ def resolve_entitlements(family, *, at=None):
     families are grandfathered by ``apply_commercial_cutover`` at that boundary,
     while families created afterwards can follow future commercial policy without
     another resolver special case.
+
+    Explicit Superadmin tier overrides are the only layer allowed to replace the
+    otherwise additive result. They never mutate or delete the underlying billing,
+    legacy or purchased grants, so expiry/revocation automatically reveals the
+    next valid canonical state without a data migration.
     """
     at = at or timezone.now()
     definitions = _definitions()
@@ -368,3 +405,70 @@ def revoke_admin_grant(*, actor, grant, reason):
         actor=actor,
     )
     return grant
+
+
+def active_admin_tier_overrides(family, *, at=None):
+    at = at or timezone.now()
+    return [grant for grant in _active_grants(family, at) if _is_tier_override(grant)]
+
+
+@transaction.atomic
+def set_admin_tier_override(*, actor, family, tier, reason, ends_at=None):
+    if not getattr(actor, "is_superuser", False):
+        raise PermissionDenied("Lizenz-Overrides erfordern Superadmin-Rechte.")
+    tier = _validate_plan(tier)
+    if not tier:
+        raise ValidationError("Ein Ziel-Tier ist erforderlich.")
+    reason = (reason or "").strip()
+    if not reason:
+        raise ValidationError("Ein auditierbarer Grund ist erforderlich.")
+    now = timezone.now()
+    if ends_at is not None:
+        if timezone.is_naive(ends_at):
+            raise ValidationError("Override-Ende benötigt einen timezone-aware Zeitstempel.")
+        if ends_at <= now:
+            raise ValidationError("Override-Ende muss in der Zukunft liegen.")
+
+    current = list(
+        EntitlementGrant.objects.select_for_update().filter(
+            family=family,
+            origin=EntitlementGrant.Origin.ADMIN_GRANT,
+            active=True,
+            revoked_at__isnull=True,
+        ).order_by("created_at", "id")
+    )
+    for grant in current:
+        if _is_tier_override(grant):
+            revoke_admin_grant(actor=actor, grant=grant, reason=f"Durch neuen Tier-Override ersetzt: {reason}")
+
+    return create_admin_grant(
+        actor=actor,
+        family=family,
+        plan_key=tier,
+        starts_at=now,
+        ends_at=ends_at,
+        reason=reason,
+        metadata={"mode": ADMIN_TIER_OVERRIDE_MODE},
+    )
+
+
+@transaction.atomic
+def clear_admin_tier_override(*, actor, family, reason):
+    if not getattr(actor, "is_superuser", False):
+        raise PermissionDenied("Lizenz-Overrides erfordern Superadmin-Rechte.")
+    reason = (reason or "").strip()
+    if not reason:
+        raise ValidationError("Ein auditierbarer Grund ist erforderlich.")
+    current = list(
+        EntitlementGrant.objects.select_for_update().filter(
+            family=family,
+            origin=EntitlementGrant.Origin.ADMIN_GRANT,
+            active=True,
+            revoked_at__isnull=True,
+        ).order_by("created_at", "id")
+    )
+    revoked = []
+    for grant in current:
+        if _is_tier_override(grant):
+            revoked.append(revoke_admin_grant(actor=actor, grant=grant, reason=reason))
+    return revoked
