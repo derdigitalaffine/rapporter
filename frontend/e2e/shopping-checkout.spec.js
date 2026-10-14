@@ -105,7 +105,8 @@ test('checkout · amount handoff retries context linking without duplicating the
  expect(linked).toEqual({family:'family-1',source:{type:'expense',id:expenseId},context:{type:'shopping_session',id:sessionId},relation:'context'});
  expect(run.completeCalls).toHaveLength(1);
 
- await page.getByRole('button',{name:'Fertig'}).click();
+ const completionDialog=page.getByRole('dialog');
+ await completionDialog.locator('.shopping-checkout-actions').getByRole('button',{name:'Fertig',exact:true}).click();
  await expect(page.getByRole('dialog')).toHaveCount(0);
  await page.reload();
  await expect(page.getByRole('heading',{name:'Einkauf abgeschlossen'})).toBeVisible();
