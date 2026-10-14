@@ -95,16 +95,14 @@ test('nested confirmation owns input above a modal sheet while app chrome is hid
   const layers=await page.evaluate(()=>{
     const sheet=[...document.querySelectorAll('.sheet-backdrop')].find(node=>!node.classList.contains('confirm-backdrop'));
     const confirmBackdrop=document.querySelector('.confirm-backdrop');
-    return {
-      sheet:Number(getComputedStyle(sheet).zIndex),
-      dialog:Number(getComputedStyle(confirmBackdrop).zIndex),
-    };
+    return {sheet:Number(getComputedStyle(sheet).zIndex),dialog:Number(getComputedStyle(confirmBackdrop).zIndex)};
   });
   expect(layers.sheet).toBeLessThan(layers.dialog);
 
   const confirmButton=confirm.locator('.destructive');
   const confirmHit=await pointHit(page,confirmButton);
   expect(confirmHit.hit.buttonClass).toContain('destructive');
+  expect(confirmHit.hit.insideBottomNav).toBe(false);
   await page.mouse.click(confirmHit.point.x,confirmHit.point.y);
   await expect(confirm).toBeHidden();
   await expect(editor).toBeHidden();
@@ -133,12 +131,13 @@ test('task editor is a root modal and permanent chrome never competes with its a
 
   const save=editor.getByRole('button',{name:'Speichern',exact:true});
   await editor.getByLabel('Titel').fill('Layer-Vertrag prüfen');
+  await save.scrollIntoViewIfNeeded();
   const saveHit=await pointHit(page,save);
   expect(saveHit.hit.buttonClass).toContain('primary');
   expect(saveHit.hit.insideBottomNav).toBe(false);
 });
 
-test('keyboard resizes only the modal surface, never permanent app chrome',async({page})=>{
+test('keyboard constrains the modal surface but never moves its full-screen backdrop',async({page})=>{
   await page.setViewportSize({width:390,height:844});
   await installApiMocks(page,{dismissOnboarding:true});
   await routeCreateProfile(page);
@@ -157,31 +156,44 @@ test('keyboard resizes only the modal surface, never permanent app chrome',async
     root.setAttribute('data-app-keyboard','');
     root.style.setProperty('--app-viewport-top','44px');
     root.style.setProperty('--app-viewport-height','480px');
+    root.style.setProperty('--app-keyboard-inset','320px');
   });
 
   const geometry=await page.evaluate(()=>{
     const backdrop=document.querySelector('body > .sheet-backdrop');
+    const editor=document.querySelector('.task-editor');
     const shell=document.querySelector('.app-shell:not(.messenger-shell)');
     const b=backdrop.getBoundingClientRect();
+    const e=editor.getBoundingClientRect();
     const s=shell.getBoundingClientRect();
-    return {backdrop:{top:b.top,height:b.height,bottom:b.bottom},shell:{top:s.top,height:s.height,bottom:s.bottom}};
+    return {
+      backdrop:{top:b.top,height:b.height,bottom:b.bottom},
+      editor:{top:e.top,height:e.height,bottom:e.bottom},
+      shell:{top:s.top,height:s.height,bottom:s.bottom},
+    };
   });
-  expect(geometry.backdrop.top).toBeCloseTo(44,0);
-  expect(geometry.backdrop.height).toBeCloseTo(480,0);
-  expect(geometry.backdrop.bottom).toBeCloseTo(524,0);
+  expect(geometry.backdrop.top).toBeCloseTo(0,0);
+  expect(geometry.backdrop.height).toBeCloseTo(844,0);
+  expect(geometry.backdrop.bottom).toBeCloseTo(844,0);
+  expect(geometry.editor.bottom).toBeLessThanOrEqual(525);
   expect(geometry.shell.height).toBeCloseTo(844,0);
   await expect(page.locator('.bottom-nav')).toBeHidden();
   await expect(page.locator('.global-create-controls')).toBeHidden();
 
   const title=editor.getByLabel('Titel');
   await title.fill('Tastatur ohne Abdeck-Layer');
-  await expect(title).toBeVisible();
+  const save=editor.getByRole('button',{name:'Speichern',exact:true});
+  await save.scrollIntoViewIfNeeded();
+  const saveHit=await pointHit(page,save);
+  expect(saveHit.hit.insideSheetBackdrop).toBe(true);
+  expect(saveHit.hit.insideBottomNav).toBe(false);
 
   await page.evaluate(()=>{
     const root=document.documentElement;
     root.removeAttribute('data-app-keyboard');
     root.style.setProperty('--app-viewport-top','0px');
     root.style.setProperty('--app-viewport-height','844px');
+    root.style.setProperty('--app-keyboard-inset','0px');
   });
   const fullBackdrop=await page.locator('body > .sheet-backdrop').boundingBox();
   expect(fullBackdrop.y).toBeCloseTo(0,0);

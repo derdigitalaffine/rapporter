@@ -30,21 +30,40 @@ export default function useAppViewport(active=true){
   if(!viewport)return;
   const root=document.documentElement;
   let frame=0;
+
+  function clearKeyboardState(){
+   root.removeAttribute('data-app-keyboard');
+   root.style.setProperty('--app-keyboard-inset','0px');
+  }
+
   function update(){
    frame=0;
-   // VisualViewport also moves for zooming, elastic panning and transient iOS
-   // sheet/keyboard transitions. Only a focused editor may shrink app content.
+   // The layout viewport owns permanent app chrome. VisualViewport is only a
+   // measurement of the area currently visible above a focused OS keyboard.
+   // Do not resize or translate the app shell/backdrop from these values.
    const keyboardOpen=keyboardIsOpen(viewport);
-   const height=keyboardOpen?Math.max(1,Math.min(window.innerHeight,viewport.height)):window.innerHeight;
-   const top=keyboardOpen?Math.max(0,Math.min(viewport.offsetTop||0,window.innerHeight-height)):0;
+   const layoutHeight=Math.max(1,window.innerHeight||viewport.height||1);
+   const height=keyboardOpen?Math.max(1,Math.min(layoutHeight,viewport.height)):layoutHeight;
+   const top=keyboardOpen?Math.max(0,Math.min(viewport.offsetTop||0,layoutHeight-height)):0;
+   const keyboardInset=keyboardOpen?Math.max(0,layoutHeight-(top+height)):0;
    root.style.setProperty('--app-viewport-height',`${height}px`);
    root.style.setProperty('--app-viewport-top',`${top}px`);
-   // Persistent app chrome is anchored to the layout viewport. Keep the legacy
-   // variable neutral so stale iOS VisualViewport state cannot lift the UI.
    root.style.setProperty('--app-viewport-bottom','0px');
+   root.style.setProperty('--app-keyboard-inset',`${keyboardInset}px`);
    root.toggleAttribute('data-app-keyboard',keyboardOpen);
   }
   function schedule(){if(!frame)frame=requestAnimationFrame(update)}
+  function onFocusOut(){
+   // iOS can keep a stale shrunken VisualViewport for a frame (or longer)
+   // after focus leaves an editor. Stop suppressing app chrome immediately;
+   // the next measurement may update geometry but cannot reopen keyboard state
+   // without an editable element actually owning focus.
+   queueMicrotask(()=>{
+    if(!hasEditableFocus())clearKeyboardState();
+    schedule();
+   });
+  }
+
   update();
   viewport.addEventListener('resize',schedule);
   viewport.addEventListener('scroll',schedule);
@@ -52,7 +71,7 @@ export default function useAppViewport(active=true){
   window.addEventListener('orientationchange',schedule);
   window.addEventListener('pageshow',schedule);
   document.addEventListener('focusin',schedule);
-  document.addEventListener('focusout',schedule);
+  document.addEventListener('focusout',onFocusOut);
   document.addEventListener('visibilitychange',schedule);
   return()=>{
    cancelAnimationFrame(frame);
@@ -62,9 +81,10 @@ export default function useAppViewport(active=true){
    window.removeEventListener('orientationchange',schedule);
    window.removeEventListener('pageshow',schedule);
    document.removeEventListener('focusin',schedule);
-   document.removeEventListener('focusout',schedule);
+   document.removeEventListener('focusout',onFocusOut);
    document.removeEventListener('visibilitychange',schedule);
    root.removeAttribute('data-app-keyboard');
+   root.style.removeProperty('--app-keyboard-inset');
    for(const name of ['height','top','bottom'])root.style.removeProperty(`--app-viewport-${name}`);
   };
  },[]);
