@@ -119,3 +119,48 @@ class OfflineSyncTests(TestCase):
         m=self.mutation(entity_type='event',entity_id=str(event.pk),base_version=event.version,changes={'title':'No'})
         result=self.sync([m]); self.assertEqual(result.data['mutation_results'][0]['code'],'read_only_source',result.data)
         self.assertTrue(result.data['snapshot']['events'][0]['read_only'])
+
+
+from concurrent.futures import ThreadPoolExecutor
+from threading import Event
+from django.db import connection, connections
+from django.test import TransactionTestCase
+from unittest import skipUnless
+
+
+@skipUnless(connection.vendor == 'postgresql', 'Commit-order proof requires PostgreSQL row locks')
+class OfflineCommitOrderingTests(TransactionTestCase):
+    def test_journal_watermark_cannot_overtake_uncommitted_writer(self):
+        family=Family.objects.create(name='Concurrent',slug='concurrent')
+        shopping=ShoppingList.objects.create(family=family,name='Shopping')
+        item=ShoppingItem.objects.create(shopping_list=shopping,name='Milk')
+        locked,release,reader_started,reader_done=Event(),Event(),Event(),Event()
+        def writer():
+            try:
+                with transaction.atomic():
+                    row=ShoppingItem.objects.get(pk=item.pk)
+                    row.quantity='2';row.save(update_fields=['quantity'])
+                    locked.set()
+                    if not release.wait(10):raise AssertionError('writer release timeout')
+            finally:connections.close_all()
+        def reader():
+            from .sync_tracking import sync_lock
+            try:
+                reader_started.set()
+                with sync_lock():
+                    clock=SyncSequence.objects.get(pk=1).cursor
+                    row=ShoppingItem.objects.get(pk=item.pk)
+                    result=(clock,row.quantity,row.version)
+                reader_done.set();return result
+            finally:connections.close_all()
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            future=pool.submit(writer)
+            try:
+                self.assertTrue(locked.wait(10))
+                read=pool.submit(reader);self.assertTrue(reader_started.wait(10))
+                self.assertFalse(reader_done.wait(.1),'snapshot overtook an uncommitted journal writer')
+            finally:release.set()
+            future.result(timeout=10)
+            cursor,quantity,version=read.result(timeout=10)
+        self.assertEqual(quantity,'2');self.assertEqual(version,2)
+        self.assertEqual(cursor,SyncJournal.objects.latest('cursor').cursor)
