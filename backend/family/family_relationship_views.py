@@ -4,8 +4,14 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 
+from auth_sessions.service import require_fresh_session
+from telemetry.service import try_record_audit_event
+
 from .family_relationship_models import FamilyRelationship
 from .models import Family, Membership
+
+
+CUSTODY_ROLES = {Membership.Role.OWNER, Membership.Role.ADULT}
 
 
 class FamilyRelationshipInputSerializer(serializers.Serializer):
@@ -93,19 +99,37 @@ def _member(family, membership_id, field):
     return member
 
 
+def _effective_custody(*, has_custody, relationship_status, related_role):
+    return bool(
+        has_custody is True
+        and relationship_status == FamilyRelationship.Status.ACTIVE
+        and related_role in CUSTODY_ROLES
+    )
+
+
+def _audit_custody_change(row, user, scope):
+    try_record_audit_event(
+        "family.custody.changed",
+        actor=user,
+        actor_class="user",
+        family=row.family,
+        target_type="relationship",
+        target_id=str(row.pk),
+        metadata={"scope": scope},
+    )
+
+
 def _permission_suggestions(row):
     active = row.status == FamilyRelationship.Status.ACTIVE
-    adult = row.related_membership.role in {
-        Membership.Role.OWNER,
-        Membership.Role.ADULT,
-    }
-    parent_authority = row.is_legal_parent or row.has_custody is True
+    adult = row.related_membership.role in CUSTODY_ROLES
+    custody_authority = bool(active and adult and row.has_custody is True)
     return {
-        "account_management": bool(active and adult and parent_authority),
+        "account_management": custody_authority,
         "care_circle": bool(
             active and adult and row.kind != FamilyRelationship.Kind.NONE
         ),
-        "automatic": False,
+        "automatic": custody_authority,
+        "child_authority": custody_authority,
     }
 
 
@@ -211,6 +235,10 @@ def family_relationships(request):
                 )
             }
         )
+    if values.get("has_custody") is True and related.role not in CUSTODY_ROLES:
+        raise serializers.ValidationError(
+            {"has_custody": "Sorgerecht kann nur Erwachsenen zugeordnet werden."}
+        )
     if FamilyRelationship.objects.filter(
         family=actor.family,
         child_membership=child,
@@ -224,6 +252,8 @@ def family_relationships(request):
                 )
             }
         )
+    if values.get("has_custody") is True:
+        require_fresh_session(request)
     row = FamilyRelationship(
         family=actor.family,
         child_membership=child,
@@ -241,6 +271,17 @@ def family_relationships(request):
     )
     row.full_clean()
     row.save()
+    if row.has_custody is True:
+        scope = (
+            "custody_granted"
+            if _effective_custody(
+                has_custody=row.has_custody,
+                relationship_status=row.status,
+                related_role=row.related_membership.role,
+            )
+            else "custody_recorded_inactive"
+        )
+        _audit_custody_change(row, request.user, scope)
     return Response(
         _relationship_payload(row, actor=actor),
         status=status.HTTP_201_CREATED,
@@ -278,6 +319,31 @@ def family_relationship_detail(request, relationship_id):
                 for field in immutable
             }
         )
+
+    before_custody = row.has_custody
+    before_effective = _effective_custody(
+        has_custody=row.has_custody,
+        relationship_status=row.status,
+        related_role=row.related_membership.role,
+    )
+    next_custody = values.get("has_custody", row.has_custody)
+    next_status = values.get("status", row.status)
+    if next_custody is True and row.related_membership.role not in CUSTODY_ROLES:
+        raise serializers.ValidationError(
+            {"has_custody": "Sorgerecht kann nur Erwachsenen zugeordnet werden."}
+        )
+    after_effective = _effective_custody(
+        has_custody=next_custody,
+        relationship_status=next_status,
+        related_role=row.related_membership.role,
+    )
+    custody_value_changed = (
+        "has_custody" in values and next_custody != before_custody
+    )
+    authority_changed = before_effective != after_effective
+    if custody_value_changed or authority_changed:
+        require_fresh_session(request)
+
     for field in (
         "kind",
         "custom_label",
@@ -291,4 +357,13 @@ def family_relationship_detail(request, relationship_id):
             setattr(row, field, values[field])
     row.full_clean()
     row.save()
+
+    if custody_value_changed or authority_changed:
+        if not before_effective and after_effective:
+            scope = "custody_granted"
+        elif before_effective and not after_effective:
+            scope = "custody_revoked"
+        else:
+            scope = "custody_record_changed"
+        _audit_custody_change(row, request.user, scope)
     return Response(_relationship_payload(row, actor=actor))
