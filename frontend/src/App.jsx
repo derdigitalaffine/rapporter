@@ -1,4 +1,4 @@
-import {switchLanguage} from './language';
+import {switchAppLanguage as switchLanguage} from './language-options';
 import OfflineSyncStatus from './OfflineSyncStatus';
 import {clearTracking} from './vehicle-tracking';
 import VehiclesHub from './VehiclesHub';

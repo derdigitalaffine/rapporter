@@ -1,4 +1,4 @@
-import {switchLanguage} from './language';
+import {switchAppLanguage as switchLanguage} from './language-options';
 import {useEffect,useState} from 'react';
 import {useTranslation} from 'react-i18next';
 import App from './App';

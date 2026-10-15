@@ -37,8 +37,10 @@ This follow-up preserves that coverage and adds the shared shell/language/brand
 and entitlement regressions. Page headings contain the contextual page title;
 FamilyOS branding comes from the header's generated label. VIP fixtures include
 the existing statistics capability instead of inventing a locked VIP feature.
-Both existing language controls use one de/en/fr/nl/th cycle; the previous duplicated
-handlers accidentally exposed only de/en despite advertising all five locales.
+Both existing language controls now call the canonical explicit locale adapter
+through language-options. Previously duplicated de/en handlers relied on the
+global compatibility interception to reach all five locales. That adapter stays
+intact for other consumers; no second list or interpretation of locales is added.
 
 The broad repository CI remains a separate acceptance concern. At pre-change head
 b5be88ed, desktop shards show 25 + 23 failures across Calendar visuals/participants,
