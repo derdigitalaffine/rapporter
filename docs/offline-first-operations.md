@@ -155,6 +155,10 @@ For the standard `Nginx Proxy Manager → FamilyOS Caddy → Daphne` deployment:
    cookie/session/family/origin validation; 502 suggests an upstream problem.
    Use status codes and sanitized logs; never paste session cookies into issues.
 
+The shipped CSP explicitly permits WSS to the current host (including its port),
+because `connect-src 'self'` does not cover WebSocket schemes in every browser.
+The external proxy must preserve the browser's public Host header.
+
 Caddy's reverse_proxy handles the WebSocket upgrade automatically once `/ws/*`
 is routed to Daphne. NPM must preserve `Upgrade` / `Connection` upstream; the UI
 Websockets Support option supplies this contract. Custom advanced snippets should
@@ -174,3 +178,5 @@ upgrade-header contract; it does not claim to inspect an owner's NPM instance.
 Primary references:
 - https://caddyserver.com/docs/caddyfile/directives/reverse_proxy
 - https://github.com/NginxProxyManager/nginx-proxy-manager/blob/develop/backend/templates/proxy_host.conf
+
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Security-Policy/connect-src

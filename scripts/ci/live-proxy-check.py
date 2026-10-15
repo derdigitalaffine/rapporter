@@ -39,5 +39,7 @@ with connect(url, origin=origin, additional_headers={'Cookie': cookie}, open_tim
     wakeup = json.loads(socket.recv(timeout=10))
     assert set(wakeup) == {'type', 'family_id', 'cursor'}, wakeup.keys()
     assert wakeup['type'] == 'sync_available' and wakeup['family_id'] == family_id
-assert session.get(base + '/', timeout=5).status_code == 200
+page = session.get(base + '/', timeout=5)
+assert page.status_code == 200
+assert 'wss://familyos.test' in page.headers['Content-Security-Policy']
 print('PASS: HTTP101 + Redis wakeup through Nginx -> shipped Caddy -> Daphne; anonymous/wrong-origin/cross-family denied; HTTP preserved')
