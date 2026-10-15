@@ -17,3 +17,6 @@ reportlab>=4,<5
 cryptography>=46,<47
 webauthn==2.8.0
 pillow-heif>=1.1,<2
+channels>=4.2,<5
+channels-redis>=4.2,<5
+daphne>=4.2,<5
