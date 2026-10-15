@@ -60,8 +60,9 @@ export default function GlobalCreate({page,family,role,context={},onCreate,suppr
 
   useEffect(()=>{
     const requested=event=>{
-      // Toasts may hide the FAB visually, but they must not swallow an
-      // explicit programmatic create handoff. Only a real modal blocks it.
+      // A toast hides the FAB so it does not compete visually, but it must not
+      // swallow an explicit programmatic create handoff (for example Shopping
+      // reservation → Expense). Only a real modal dialog blocks that handoff.
       if(!eligible||suppressed||paletteOpen||hasBlockingDialog())return;
       const action=createActionById(event.detail?.id,options);if(!action)return;
       anchorCurrentHistory();
