@@ -1,3 +1,6 @@
+import os
+from unittest import skipUnless
+
 from asgiref.sync import async_to_sync, sync_to_async
 from channels.routing import URLRouter
 from channels.testing import WebsocketCommunicator
@@ -67,4 +70,37 @@ class OfflineLiveTests(TransactionTestCase):
             self.assertEqual(close["type"], "websocket.close")
             self.assertEqual(close["code"], 4400)
 
+        async_to_sync(scenario)()
+
+    @override_settings(CHANNEL_LAYERS={"default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}})
+    def test_membership_revocation_closes_before_next_wakeup(self):
+        async def scenario():
+            communicator = WebsocketCommunicator(self.app_for(self.user), f"/ws/sync/{self.family.id}/")
+            connected, _ = await communicator.connect()
+            self.assertTrue(connected)
+            await sync_to_async(Membership.objects.filter(user=self.user, family=self.family).delete)()
+            await sync_to_async(publish)(str(self.family.id), 99)
+            output = await communicator.receive_output(timeout=1)
+            self.assertEqual(output["type"], "websocket.close")
+            self.assertEqual(output["code"], 4403)
+            await communicator.disconnect()
+        async_to_sync(scenario)()
+
+
+@skipUnless(os.environ.get("OFFLINE_LIVE_TEST_REDIS") == "1", "Requires dedicated CI Redis service")
+@override_settings(CHANNEL_LAYERS={"default": {"BACKEND": "channels_redis.core.RedisChannelLayer", "CONFIG": {"hosts": ["redis://127.0.0.1:6379/15"]}}})
+class RedisOfflineLiveTests(TransactionTestCase):
+    setUp = OfflineLiveTests.setUp
+    app_for = OfflineLiveTests.app_for
+
+    def test_real_redis_transport_delivers_cursor_without_domain_data(self):
+        async def scenario():
+            communicator = WebsocketCommunicator(self.app_for(self.user), f"/ws/sync/{self.family.id}/")
+            connected, _ = await communicator.connect()
+            self.assertTrue(connected)
+            await sync_to_async(publish)(str(self.family.id), 123)
+            self.assertEqual(await communicator.receive_json_from(timeout=3), {
+                "type": "sync_available", "family_id": str(self.family.id), "cursor": 123,
+            })
+            await communicator.disconnect()
         async_to_sync(scenario)()

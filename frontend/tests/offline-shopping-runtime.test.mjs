@@ -35,3 +35,13 @@ test('quick-add reuses and reopens matching Shopping items instead of creating d
  const again=(await request('/smart/shopping/quick-add/','POST',{family:'f',shopping_list:list.id,name:'milk',quantity:''})).value;
  assert.equal(again.reused,true);assert.equal(again.item.id,first.item.id);assert.equal(again.item.checked,false);assert.equal(again.item.quantity,'2');assert.equal((await e.list('shopping_item')).length,1);
 });
+
+test('logout in another tab stops old writes without erasing the newly selected account',async()=>{
+ await setup();const old=offlineEngine('f'),account=old.accountId;old.schedule=()=>{};
+ await old.mutate('shopping_list',null,'create',{family:'f',name:'Unsent'});
+ localStorage.setItem('familyos-offline-account','new-account');
+ localStorage.setItem('familyos-offline-bootstrap:new-account',JSON.stringify({session:{user:{id:'new-account'}}}));
+ const {clearRemoteOfflineAccount}=await import('../src/offline-runtime.js');await clearRemoteOfflineAccount(account);
+ assert.equal(old.stopped,true);assert.equal((await old.store.list('outbox')).length,0);
+ assert.equal(localStorage.getItem('familyos-offline-account'),'new-account');assert.notEqual(localStorage.getItem('familyos-offline-bootstrap:new-account'),null);
+});

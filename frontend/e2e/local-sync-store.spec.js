@@ -73,3 +73,11 @@ test('invalid scope and mismatched mutation targets fail before persistence', as
     return {invalid,mismatch,entities:await store.list('tasks'),outbox:await store.list('outbox')};
   })).toEqual({invalid:true,mismatch:true,entities:[],outbox:[]});
 });
+
+test('browser schema upgrade retains a pending v1 outbox record',async({page})=>{
+ expect(await page.evaluate(async()=>{
+  const {LOCAL_SYNC_DB,LOCAL_SYNC_VERSION,createLocalSyncStore}=await import('/local-sync-store.js');
+  await new Promise((resolve,reject)=>{const r=indexedDB.open(LOCAL_SYNC_DB,1);r.onupgradeneeded=()=>{const s=r.result.createObjectStore('outbox',{keyPath:['accountId','familyId','id']});s.createIndex('scope',['accountId','familyId']);s.createIndex('account','accountId');s.createIndex('entity',['accountId','familyId','entity_type','entity_id'])};r.onerror=()=>reject(r.error);r.onsuccess=()=>{const db=r.result,tx=db.transaction('outbox','readwrite');tx.objectStore('outbox').put({accountId:'a',familyId:'f',id:'draft',attempted:true,state:'sending',changes:{name:'Keep'}});tx.oncomplete=()=>{db.close();resolve()};tx.onabort=()=>reject(tx.error)}});
+  const [row]=await createLocalSyncStore({accountId:'a',familyId:'f'}).list('outbox');return {name:row.changes.name,attempted:row.attempted,state:row.state,order:row.order,version:LOCAL_SYNC_VERSION};
+ })).toEqual({name:'Keep',attempted:true,state:'sending',order:0,version:2});
+});

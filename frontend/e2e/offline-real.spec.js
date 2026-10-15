@@ -50,9 +50,43 @@ test('Calendar native creation survives offline reload and external events remai
    await expect(eventChoice.first()).toBeVisible();await eventChoice.first().click();
    dialog=page.getByRole('dialog');titleInput=dialog.getByRole('textbox',{name:'Title',exact:true});
  }
- const title=`Offline event ${Date.now()}`,editor=dialog;await expect(titleInput).toBeVisible();await titleInput.fill(title);await editor.getByRole('button',{name:'Save',exact:true}).click();
+ const title=`Offline event ${Date.now()}`,editor=dialog;await expect(titleInput).toBeVisible();await titleInput.fill(title);await editor.getByRole('button',{name:'Save',exact:true}).click();await expect(editor).toBeHidden();
  await expect(page.getByText(title,{exact:true})).toBeVisible();await page.reload();await expect(page.getByText(title,{exact:true})).toBeVisible();
  await page.getByText('Read-only external',{exact:true}).click();const detail=page.getByRole('dialog');await expect(detail.getByRole('button',{name:'Edit event',exact:true})).toHaveCount(0);await detail.locator('.sheet-close').click();
  await context.setOffline(false);await expect.poll(async()=>{const response=await page.request.get(`/api/events/?family=${family.id}&birthdays=0`);const value=await response.json();return (value.results||value).filter(event=>event.title===title).length},{timeout:20000}).toBe(1);
  await expect(page.locator('.offline-sync-pill')).toHaveText('Synced',{timeout:20000});
+});
+
+test('two independent clients merge disjoint edits, preserve field conflicts and propagate deletion',async({page,browser})=>{
+ const family=await boot(page),other=await browser.newContext({baseURL:'http://127.0.0.1:4173'});
+ try{
+  const login=await other.request.post('/api/auth/login/',{data:{username:'offline-e2e',password:'offline-e2e-only-password',legacy:true}});expect(login.ok()).toBeTruthy();
+  const sync=async(client,mutations=[],cursor=null)=>{const response=await client.post('/api/sync/',{data:{protocol_version:1,family_id:family.id,cursor,mutations}});expect(response.ok()).toBeTruthy();return response.json()};
+  const seed=await sync(page.request),id=crypto.randomUUID();
+  const created=await sync(page.request,[{mutation_id:crypto.randomUUID(),entity_type:'shopping_item',entity_id:id,operation:'create',base_version:null,data:{shopping_list:seed.snapshot.shopping_lists[0].id,name:'Concurrent case'}}]);expect(created.mutation_results[0].status).toBe('applied');
+  const initial=await sync(page.request),item=initial.snapshot.shopping_items.find(row=>row.id===id);
+  const mutation=(changes,version=item.version,operation='update')=>({mutation_id:crypto.randomUUID(),entity_type:'shopping_item',entity_id:item.id,operation,base_version:version,changes});
+  const first=await sync(page.request,[mutation({quantity:'3'})],initial.cursor);expect(first.mutation_results[0].status).toBe('applied');
+  const second=await sync(other.request,[mutation({note:'Second client'})],initial.cursor);expect(second.mutation_results[0].status).toBe('applied');
+  const lost=mutation({quantity:'4'},second.mutation_results[0].version);
+  expect((await sync(page.request,[lost],second.cursor)).mutation_results[0].status).toBe('applied');
+  expect((await sync(page.request,[lost],second.cursor)).mutation_results[0].status).toBe('already_applied');
+  const conflict=await sync(other.request,[mutation({quantity:'5'})],initial.cursor);expect(conflict.mutation_results[0].status).toBe('conflict');expect(conflict.mutation_results[0].conflicts.quantity.client).toBe('5');expect(conflict.mutation_results[0].conflicts.quantity.server).toBe('4');
+  const latest=await sync(page.request),version=latest.snapshot.shopping_items.find(row=>row.id===item.id).version;
+  expect((await sync(page.request,[mutation({},version,'delete')],latest.cursor)).mutation_results[0].status).toBe('applied');
+  const deleted=await sync(other.request,[],latest.cursor);expect(deleted.visibility.shopping_item).not.toContain(item.id);expect(deleted.cursor).toBeGreaterThan(latest.cursor);expect(deleted.changes.some(row=>row.entity_id===item.id)).toBeFalsy();
+ }finally{await other.close()}
+});
+
+
+test('snapshot reset preserves pending offline create and unsupported protocol cannot write',async({page,context})=>{
+ const family=await boot(page);await context.setOffline(true);
+ const name=`Snapshot draft ${Date.now()}`;const input=page.locator('.smart-input input');await input.fill(name);await input.press('Enter');await expect(page.getByText(name,{exact:true})).toBeVisible();
+ await page.evaluate(async familyId=>{
+  await new Promise((resolve,reject)=>{const request=indexedDB.open('familyos-local-sync');request.onerror=()=>reject(request.error);request.onsuccess=()=>{const db=request.result,tx=db.transaction('syncState','readwrite'),store=tx.objectStore('syncState');const rows=store.getAll();rows.onsuccess=()=>{for(const row of rows.result)if(row.familyId===familyId)store.put({...row,cursor:Number.MAX_SAFE_INTEGER})};tx.oncomplete=()=>{db.close();resolve()};tx.onabort=()=>reject(tx.error)}});
+ },String(family.id));
+ await page.reload();await expect(page.getByText(name,{exact:true})).toBeVisible();await context.setOffline(false);
+ await expect.poll(async()=>{const response=await page.request.get(`/api/shopping-lists/?family=${family.id}`);const value=await response.json();return (value.results||value).flatMap(list=>list.items).filter(item=>item.name===name).length},{timeout:20000}).toBe(1);
+ await expect(page.locator('.offline-sync-pill')).toHaveText('Synced',{timeout:20000});
+ const response=await page.request.post('/api/sync/',{data:{protocol_version:999,family_id:family.id,cursor:0,mutations:[]}});expect(response.status()).toBe(409);
 });

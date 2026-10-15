@@ -151,7 +151,10 @@ export class SyncEngine{
    if(choice==='server'){await this.store.write([remove('conflicts',id)]);emit(this);return}
    if(!result.server_data||!result.server_version)throw new Error('sync_entity_unavailable');
    const next={...m,id:uuid(),operation:m.operation,changes:manual||m.changes,base_version:result.server_version,state:'pending',attempted:false,order:Date.now()};next.mutation_id=next.id;delete next.data;if(next.operation!=='command'){delete next.command;delete next.args}if(next.operation!=='update')delete next.changes;
-   await this.store.write([remove('conflicts',id),put('outbox',next)]);emit(this);this.schedule();
+   const name=TYPE_STORES[m.entity_type],row=await this.store.get(name,m.entity_id),server=row?.server_data||result.server_data;
+   const pending=ordered(await this.store.list('outbox')).filter(item=>item.entity_type===m.entity_type&&item.entity_id===m.entity_id);
+   const data=overlay(server,[...pending,next]);
+   await this.store.write([remove('conflicts',id),put('outbox',next),put(name,{id:m.entity_id,version:server.version||result.server_version,server_data:server,data,sync_status:'pending',deleted:data===null})]);emit(this);this.schedule();
   });
  }
 }

@@ -1,4 +1,5 @@
 import {getSyncEngine,stopSyncAccount,SYNC_CHANGED} from './offline-sync-engine.js';
+import {requestBackgroundSync} from './offline-recovery.js';
 import {ensureLiveCoordinator,stopLiveAccount} from './offline-live.js';
 const ACCOUNT='familyos-offline-account';
 const PREFIX='familyos-offline-bootstrap:';
@@ -34,6 +35,9 @@ export async function clearOfflineIdentity(){
  // The old fallback database is not account-scoped. Explicit logout must erase
  // its private data too. Aborted/deferred legacy transactions are stopped by UI.
  await new Promise((resolve,reject)=>{const request=indexedDB.deleteDatabase('famuhle-offline-v1');request.onsuccess=resolve;request.onerror=()=>reject(request.error);request.onblocked=()=>reject(new Error('legacy_offline_cleanup_blocked'))});
+}
+export async function clearRemoteOfflineAccount(accountId){
+ generation++;enabled.clear();stopLiveAccount(String(accountId));await stopSyncAccount(String(accountId));localStorage.removeItem(PREFIX+accountId);
 }
 export function offlineMetadata(path){
  const data=offlineIdentity();if(!data)return {handled:false};
@@ -79,8 +83,11 @@ export async function offlineShoppingRequest(path,options={}){
 const syncAll=()=>{const identity=offlineIdentity();for(const family of identity?.families||[])offlineEngine(family.id)?.sync().catch(()=>{})};
 if(typeof window!=='undefined'){
  window.addEventListener('online',syncAll);
+ window.addEventListener('storage',event=>{if(event.key===ACCOUNT&&event.oldValue&&event.oldValue!==event.newValue)clearRemoteOfflineAccount(event.oldValue).then(()=>globalThis.location?.reload?.()).catch(()=>globalThis.location?.reload?.())});
  document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')syncAll()});
  window.addEventListener('familyos:sync-now',syncAll);
+ window.addEventListener(SYNC_CHANGED,event=>{if(offlineIdentity()&&['offline','retry'].includes(event.detail?.state))requestBackgroundSync()});
+ navigator.serviceWorker?.addEventListener?.('message',event=>{if(event.data?.type==='FAMILYOS_SYNC_WAKE')syncAll()});
 }
 
 export async function offlineDashboard(path){
