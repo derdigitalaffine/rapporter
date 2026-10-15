@@ -13,6 +13,24 @@ class TimestampedModel(models.Model):
         abstract = True
 
 
+class SynchronizedModel(TimestampedModel):
+    version = models.PositiveBigIntegerField(default=1, editable=False)
+    from .sync_tracking import SyncQuerySet
+    objects = SyncQuerySet.as_manager()
+
+    class Meta:
+        abstract = True
+
+    def save(self, *args, **kwargs):
+        from .sync_tracking import tracked_save
+        return tracked_save(self, super().save, args, kwargs)
+
+    def delete(self, *args, **kwargs):
+        from .sync_tracking import sync_lock
+        with sync_lock(kwargs.get('using') or self._state.db or 'default'):
+            return super().delete(*args, **kwargs)
+
+
 class UserProfile(TimestampedModel):
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="familyos_profile")
     avatar_key = models.CharField(max_length=64, blank=True)
@@ -87,7 +105,7 @@ class FamilyInvitation(TimestampedModel):
         return self.family.status == Family.Status.ACTIVE and not self.accepted_at and not self.revoked_at and self.expires_at > timezone.now()
 
 
-class TaskList(TimestampedModel):
+class TaskList(SynchronizedModel):
     family = models.ForeignKey(Family, on_delete=models.CASCADE, related_name="task_lists")
     name = models.CharField(max_length=120)
     icon = models.CharField(max_length=48, default="list-check")
@@ -100,7 +118,7 @@ class TaskList(TimestampedModel):
         unique_together = ("family", "name")
 
 
-class Task(TimestampedModel):
+class Task(SynchronizedModel):
     class Priority(models.TextChoices):
         LOW = "low", "Low"
         NORMAL = "normal", "Normal"
@@ -131,7 +149,8 @@ class Task(TimestampedModel):
         # Every writer (API, quick-add, toggle and automation) uses the same invariant.
         from django.db import transaction
         from .task_workflow import prepare_task, record_status
-        with transaction.atomic():
+        from .sync_tracking import sync_lock
+        with sync_lock(), transaction.atomic():
             previous = prepare_task(self)
             if kwargs.get("update_fields") is not None:
                 kwargs["update_fields"] = set(kwargs["update_fields"]) | {"workflow_column", "workflow_position", "completed_at"}
@@ -165,7 +184,7 @@ class TaskStatusEvent(TimestampedModel):
         ordering = ["-created_at"]
 
 
-class ShoppingList(TimestampedModel):
+class ShoppingList(SynchronizedModel):
     family = models.ForeignKey(Family, on_delete=models.CASCADE, related_name="shopping_lists")
     name = models.CharField(max_length=120, default="Einkauf")
     store = models.CharField(max_length=120, blank=True)
@@ -174,7 +193,7 @@ class ShoppingList(TimestampedModel):
     sort_order = models.PositiveIntegerField(default=0)
 
 
-class ShoppingItem(TimestampedModel):
+class ShoppingItem(SynchronizedModel):
     shopping_list = models.ForeignKey(ShoppingList, on_delete=models.CASCADE, related_name="items")
     name = models.CharField(max_length=160)
     quantity = models.CharField(max_length=40, blank=True)
@@ -361,7 +380,7 @@ class IntegrationSource(TimestampedModel):
     next_sync_at = models.DateTimeField(null=True, blank=True)
 
 
-class FamilyEvent(TimestampedModel):
+class FamilyEvent(SynchronizedModel):
     family = models.ForeignKey(Family, on_delete=models.CASCADE, related_name="events")
     source = models.ForeignKey(IntegrationSource, null=True, blank=True, on_delete=models.SET_NULL, related_name="events")
     type = models.CharField(max_length=80)

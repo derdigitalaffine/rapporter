@@ -70,6 +70,9 @@ class FamilyConfig(AppConfig):
         core_models.TodoActionPreference = TodoActionPreference
         core_models.Trip = Trip
         core_models.TripPhoto = TripPhoto
+        from . import sync_models  # noqa: F401
+        from .sync_tracking import install_tracking
+        install_tracking()
         from . import models_features  # noqa: F401
         from . import board_notifications  # noqa: F401
         from . import pin_interaction_audit  # noqa: F401

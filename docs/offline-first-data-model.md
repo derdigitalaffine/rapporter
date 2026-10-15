@@ -72,3 +72,32 @@ Protocol v1 uses client-generated final UUIDs for offline creates. Serializers/s
 ## Snapshot scope
 
 Snapshots are per authorized family and include the agreed local-first domain data. External calendar events may be included for read-only local display but are not accepted as mutable sync entities in protocol v1.
+
+## Implemented backend foundation (#706)
+
+The five canonical models now expose a non-editable `version`. Their ORM save,
+QuerySet update/bulk-create/bulk-update, delete/cascade and event participant
+changes append metadata-only `SyncJournal` records in the same transaction.
+The initial implementation deliberately serializes synchronized writes on one
+`SyncSequence` row. This bounds throughput but makes cursor watermarks follow
+commit order; PostgreSQL sequence allocation by itself would miss late commits.
+Explicit synchronized row locks acquire the sequence lock first. Raw SQL and
+`save_base` are not supported write paths; new writers must use the model service.
+
+`POST /api/sync/` reuses domain viewsets, serializers, shopping visibility and
+native calendar validation. Task commands call the existing Unified Action
+service. Successful receipts are scoped by actor/family and fingerprint the
+whole mutation; changed-payload reuse is rejected. Each batch item owns its
+transaction. Retained-history gaps cause a conflict rather than an unsafe merge.
+
+Responses carry a fresh authorized `visibility` manifest. Clients remove local
+entities absent from this manifest, including revoked private lists and physical
+deletions, while preserving unsent work in conflicts. Hidden tombstone IDs and
+historical private payloads are never disclosed. Delta object reads and snapshot
+reads share the locked response watermark. Parent lists contain no nested items.
+
+Migration `0240` is additive. Roll back application code before reversing it;
+reversing the migration removes offline versions/journal/receipts and requires
+clients to take a fresh snapshot before any later re-enable. Do not contract
+these tables while pending clients still exist. The offline feature freeze stays
+active: this slice alone does not complete #706 or enable domain cutover.

@@ -123,7 +123,7 @@ class TaskListSerializer(serializers.ModelSerializer):
             return configure_workflow(instance, enabled)
     class Meta:
         model = TaskList
-        fields = ["id", "family", "name", "icon", "archived", "sort_order", "workflow_enabled", "workflow_columns", "open_count", "done_count", "created_at", "updated_at"]
+        fields = ["id", "version", "family", "name", "icon", "archived", "sort_order", "workflow_enabled", "workflow_columns", "open_count", "done_count", "created_at", "updated_at"]
 
 
 class TaskSerializer(serializers.ModelSerializer):
@@ -183,7 +183,7 @@ class ShoppingListSerializer(serializers.ModelSerializer):
         return attrs
     class Meta:
         model = ShoppingList
-        fields = ["id", "family", "name", "store", "icon", "archived", "sort_order", "items", "open_count", "checked_count", "created_at", "updated_at"]
+        fields = ["id", "version", "family", "name", "store", "icon", "archived", "sort_order", "items", "open_count", "checked_count", "created_at", "updated_at"]
 
 
 class RoutineLogSerializer(serializers.ModelSerializer):
