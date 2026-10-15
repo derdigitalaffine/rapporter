@@ -14,7 +14,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.utils import timezone
 from auth_abuse.service import enforce
 from .calendar_subscription_service import resolve_token, origin
-from .calendar_subscription_ics import shared_events, calendar_bytes, overlaps, CalendarCapacityError
+from .calendar_subscription_ics import shared_events, calendar_bytes, overlaps, CalendarCapacityError, MAX_BYTES
 from .calendar_subscription_views import private
 
 D = 'DAV:'
@@ -158,7 +158,10 @@ def multistatus(rows, requested):
             for name in selected:
                 prop.append(values[name] if found else ET.Element(name))
             ET.SubElement(propstat, q(D, 'status')).text = 'HTTP/1.1 ' + status
-    return response(ET.tostring(root, encoding='utf-8', xml_declaration=True), status=207)
+    data = ET.tostring(root, encoding='utf-8', xml_declaration=True)
+    if len(data) > MAX_BYTES:
+        raise CalendarCapacityError()
+    return response(data, status=207)
 
 
 def query_range(root):

@@ -62,3 +62,14 @@ test('service-worker sync wakes windows without private fetches or outbox acknow
  let completed;listeners.sync({tag:BACKGROUND_SYNC_TAG,waitUntil:promise=>{completed=promise}});await completed;
  assert.deepEqual(JSON.parse(JSON.stringify(messages)),[{type:'FAMILYOS_SYNC_WAKE'}]);
 });
+
+test('service worker never intercepts calendar secrets, DAV resources or profile responses',async()=>{
+ const listeners={};let intercepted=0;
+ const self={location:{origin:'https://familyos.test'},addEventListener:(name,fn)=>{listeners[name]=fn}};
+ const source=await readFile(new URL('../public/sw.js',import.meta.url),'utf8');
+ vm.runInNewContext(source,{self,URL,fetch:()=>{throw new Error('Private response must bypass cache')}});
+ for(const path of ['/calendar-feed/private-token/family.ics','/caldav/grant/home/family/','/.well-known/caldav','/api/calendar-subscriptions/family/grant/profile/']){
+  listeners.fetch({request:{method:'GET',url:`https://familyos.test${path}`,mode:'navigate'},respondWith(){intercepted++}});
+ }
+ assert.equal(intercepted,0);
+});

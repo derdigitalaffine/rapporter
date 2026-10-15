@@ -76,12 +76,13 @@ class CalendarSubscriptionTests(TestCase):
         selected = self.make_event('Selected'); selected.participants.add(self.membership)
         source = IntegrationSource.objects.create(family=self.family, kind='ics', name='External')
         self.make_event('Imported', source=source)
+        self.make_event('Orphaned import', external_id='external-123')
         self.make_event('Protected', type='health.appointment')
         other = Family.objects.create(name='Other', slug='other')
         alien = self.make_event('Alien', family=other)
         self.create()
         data = self.public.get(self.feed).content.decode()
-        for secret in ('Private', 'Selected', 'Imported', 'Protected', 'Alien', 'Never exported', 'Private note'):
+        for secret in ('Private', 'Selected', 'Imported', 'Orphaned import', 'Protected', 'Alien', 'Never exported', 'Private note'):
             self.assertNotIn(secret, data)
         calendar = Calendar.from_ical(data)
         events = calendar.walk('VEVENT')
@@ -230,3 +231,12 @@ class CalendarSubscriptionTests(TestCase):
             RedactingServer(action_logger=lambda protocol, action, details: captured.append(details))
         initialize.call_args.kwargs['action_logger']('http', 'complete', {'path': self.feed, 'status': 200})
         self.assertNotIn(token, captured[0]['path'])
+
+    def test_ordinal_recurrence_has_no_phantom_anchor_occurrence(self):
+        self.event.starts_at = datetime(2026, 10, 14, 8, tzinfo=utc.utc)
+        self.event.ends_at = self.event.starts_at + timedelta(hours=1)
+        self.event.payload = {'recurrence': {'frequency': 'monthly', 'interval': 1, 'nth_weekdays': [{'weekday': 'MO', 'ordinal': 1}]}}
+        self.event.save()
+        component = Calendar.from_ical(calendar_bytes(self.family, [self.event])).walk('VEVENT')[0]
+        self.assertEqual(component.decoded('dtstart').date().isoformat(), '2026-11-02')
+        self.assertEqual(component.decoded('dtend').hour, 11)

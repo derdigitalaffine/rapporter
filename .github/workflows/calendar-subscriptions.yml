@@ -52,5 +52,5 @@ jobs:
           done
           curl -s -o /dev/null http://localhost:8080/calendar-feed/ci-secret-must-be-redacted/family.ics
           docker logs calendar-proxy > calendar-proxy.log 2>&1
-          if rg 'ci-secret-must-be-redacted' calendar-proxy.log; then exit 1; fi
-          rg '/calendar-feed/\[redacted\]' calendar-proxy.log
+          if grep -F 'ci-secret-must-be-redacted' calendar-proxy.log; then exit 1; fi
+          grep -F '/calendar-feed/[redacted]' calendar-proxy.log

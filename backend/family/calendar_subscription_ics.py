@@ -1,8 +1,10 @@
 """Read-only projection of explicit shared native FamilyEvents (no participants/payload dumps)."""
+from functools import lru_cache
 from datetime import date, datetime, timedelta, timezone as dt_timezone
 from icalendar import Calendar, Event, Timezone
 from django.utils import timezone
 from .models import FamilyEvent
+from .action_schedule import _days
 from .calendar_recurrence import family_zone, recurrence_dict, project_event
 
 MAX_RESOURCES = 2000
@@ -18,7 +20,7 @@ def shared_events(grant):
     # Only explicit whole-family native events. Health, imports, selected participants,
     # birthdays, reminders and inferred/legacy visibility never widen through a link.
     rows = list(FamilyEvent.objects.filter(family_id=grant.family_id, source__isnull=True,
-        type='calendar.event', is_family_event=True, starts_at__isnull=False,
+        type='calendar.event', is_family_event=True, external_id='', starts_at__isnull=False,
         participants__isnull=True).select_related('family').order_by('id')[:MAX_RESOURCES + 1])
     if len(rows) > MAX_RESOURCES:
         raise CalendarCapacityError()
@@ -42,6 +44,8 @@ def overlaps(event, start, end):
         return event.starts_at < end and (event.ends_at or event.starts_at + timedelta(seconds=1)) > start
     # Include occurrences which start before the query but end within it.
     span = max(timedelta(0), (event.ends_at or event.starts_at) - event.starts_at)
+    if span > timedelta(days=1830):
+        raise CalendarCapacityError()
     zone = family_zone(event.family)
     for row in projection(event, (start - span).astimezone(zone).date() - timedelta(days=1), end.astimezone(zone).date()):
         a = datetime.fromisoformat(row['starts_at']); b = datetime.fromisoformat(row['ends_at']) if row.get('ends_at') else a + timedelta(seconds=1)
@@ -60,19 +64,33 @@ def event_component(event):
     component.add('summary', event.title)
     all_day = bool(payload.get('all_day'))
     start = event.starts_at.astimezone(zone)
-    end = event.ends_at.astimezone(zone) if event.ends_at else start + timedelta(hours=1)
+    end = event.ends_at.astimezone(zone) if event.ends_at else None
+    recurrence = recurrence_dict(payload.get('recurrence'))
+    shift = timedelta(0)
+    if recurrence:
+        first = next(_days({'anchor_date': start.date().isoformat(), 'recurrence': recurrence}, start.date()), None)
+        if first is None:
+            raise CalendarCapacityError()
+        shift = first - start.date()
+        # Native projection may begin after the stored anchor (e.g. first Monday).
+        # Retain the nominal wall clock for subsequent RFC recurrence instances.
+        if shift:
+            start = (start.replace(tzinfo=None) + shift).replace(tzinfo=zone)
+            if end is not None:
+                end = (end.replace(tzinfo=None) + shift).replace(tzinfo=zone)
     if all_day:
         try:
-            day = date.fromisoformat(payload.get('date_start') or start.date().isoformat())
-            last = date.fromisoformat(payload.get('date_end_exclusive') or (day + timedelta(days=1)).isoformat())
+            day = date.fromisoformat(payload['date_start']) + shift if payload.get('date_start') else start.date()
+            last = date.fromisoformat(payload['date_end_exclusive']) + shift if payload.get('date_end_exclusive') else day + timedelta(days=1)
         except (ValueError, TypeError):
             day, last = start.date(), start.date() + timedelta(days=1)
         component.add('dtstart', day); component.add('dtend', max(day + timedelta(days=1), last))
     else:
-        component.add('dtstart', start); component.add('dtend', max(start + timedelta(seconds=1), end))
+        component.add('dtstart', start)
+        if end is not None:
+            component.add('dtend', max(start + timedelta(seconds=1), end))
     # Deliberate export allow-list: no attendees, organizer, URLs, documents,
     # child/health references, notes or arbitrary payload fields.
-    recurrence = recurrence_dict(payload.get('recurrence'))
     if recurrence:
         frequency = recurrence['frequency']
         if frequency == 'quarterly':
@@ -102,6 +120,11 @@ def event_component(event):
     return component
 
 
+@lru_cache(maxsize=32)
+def timezone_component(zone):
+    return Timezone.from_tzinfo(zone, first_date=date(1970, 1, 1), last_date=date(2100, 1, 1))
+
+
 def calendar_bytes(family, events):
     calendar = Calendar()
     calendar.add('prodid', '-//FamilyOS//Family Calendar//EN')
@@ -111,7 +134,7 @@ def calendar_bytes(family, events):
     events = list(events)
     if events:
         # Include transition rules so local recurring times retain DST in clients.
-        calendar.add_component(Timezone.from_tzinfo(family_zone(family), first_date=date(1970, 1, 1), last_date=date(2100, 1, 1)))
+        calendar.add_component(timezone_component(family_zone(family)))
     for event in events:
         calendar.add_component(event_component(event))
     data = calendar.to_ical()

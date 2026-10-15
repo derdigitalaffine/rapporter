@@ -58,7 +58,7 @@ can list ETags and multiget changed resources. Refresh timing is client-controll
 At most 2,000 resources / 8 MiB per calendar response; capacity returns 507 rather
 than a silently incomplete feed. XML is bounded to 64 KiB, depth 12 and 1,000 nodes;
 DTD/entities/UTF-16 declarations are rejected. Multiget is bounded to 200 hrefs,
-never fetches remote URLs and denies another grant's path. Query ranges are bounded
+never fetches remote URLs and denies another grant's path. Query ranges and recurring event durations are bounded
 to five years; partial/unbounded time-range filters are rejected explicitly.
 
 ## Delivery and logs
