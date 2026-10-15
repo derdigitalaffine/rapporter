@@ -12,6 +12,7 @@ class ExpensesConfig(AppConfig):
         # Django model discovery and migration checks.
         from . import commitment_models  # noqa: F401
         from . import period_models  # noqa: F401
+        from . import participant_models  # noqa: F401
 
     def ready(self):
         from documents.consumers import register_processing_consumer
