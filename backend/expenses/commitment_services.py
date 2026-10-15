@@ -47,9 +47,6 @@ def _budget(family, ledger, budget_id):
 
 @transaction.atomic
 def upsert_budget_commitment(*, user, family, source_type, source_id, ledger_id, amount, budget_id=None):
-    # Lock the canonical source before checking/creating the active commitment.
-    # Concurrent retries for the same shopping item therefore serialize before
-    # they reach the partial unique constraint.
     _lock_source(family, source_type, source_id)
     ledger = _ledger(family, ledger_id)
     budget = _budget(family, ledger, budget_id)
@@ -78,7 +75,6 @@ def upsert_budget_commitment(*, user, family, source_type, source_id, ledger_id,
             currency=ledger.base_currency.upper(),
             created_by=user,
         )
-
     commitment.ledger = ledger
     commitment.budget = budget
     commitment.amount = amount
@@ -100,8 +96,10 @@ def release_budget_commitment(commitment):
 
 @transaction.atomic
 def consume_budget_commitment(*, commitment, expense, budget_id=None):
-    commitment = BudgetCommitment.objects.select_for_update().select_related("family", "ledger").get(pk=commitment.pk)
-    expense = Expense.objects.select_for_update().select_related("family", "ledger").get(pk=expense.pk)
+    # Lock only canonical rows. Expense.ledger is nullable and must not be part
+    # of a select_related() FOR UPDATE outer join on PostgreSQL.
+    commitment = BudgetCommitment.objects.select_for_update().get(pk=commitment.pk)
+    expense = Expense.objects.select_for_update().get(pk=expense.pk)
 
     if commitment.status == BudgetCommitment.Status.CONSUMED:
         if commitment.consumed_by_id == expense.id:
@@ -120,9 +118,6 @@ def consume_budget_commitment(*, commitment, expense, budget_id=None):
     if expense.currency.upper() != commitment.currency.upper():
         raise ValueError("Die Ausgabe muss in der Basiswährung der Vormerkung gebucht sein.")
 
-    # `None` deliberately means the user confirmed the purchase without a
-    # budget assignment. This is valid: the reservation is released while the
-    # canonical Expense remains unbudgeted.
     rows = [] if not budget_id else [{"budget": budget_id, "amount_in_budget_currency": expense.total_amount}]
     replace_budget_allocations(expense, rows)
 
