@@ -21,6 +21,7 @@ on:
       - 'frontend/src/shopping-offline.js'
       - 'frontend/e2e/expenses*'
       - 'frontend/e2e/budget-planning.spec.js'
+      - 'frontend/e2e/budget-periods.spec.js'
       - 'frontend/e2e/budget-commitments-shopping.spec.js'
       - 'frontend/e2e/travel-expenses.spec.js'
       - '.github/workflows/finance-regression.yml'
@@ -45,6 +46,7 @@ on:
       - 'frontend/src/shopping-offline.js'
       - 'frontend/e2e/expenses*'
       - 'frontend/e2e/budget-planning.spec.js'
+      - 'frontend/e2e/budget-periods.spec.js'
       - 'frontend/e2e/budget-commitments-shopping.spec.js'
       - 'frontend/e2e/travel-expenses.spec.js'
       - '.github/workflows/finance-regression.yml'
@@ -114,7 +116,7 @@ jobs:
       - working-directory: frontend
         run: npx playwright install --with-deps chromium
       - working-directory: frontend
-        run: npx playwright test e2e/expenses.spec.js e2e/expenses-actions.spec.js e2e/expenses-budget.spec.js e2e/budget-planning.spec.js e2e/budget-commitments-shopping.spec.js e2e/travel-expenses.spec.js e2e/profile.spec.js --grep='expenses|finance|travel|budget planning|HEIC' --project=${{ matrix.project }} --workers=2
+        run: npx playwright test e2e/expenses.spec.js e2e/expenses-actions.spec.js e2e/expenses-budget.spec.js e2e/budget-planning.spec.js e2e/budget-periods.spec.js e2e/budget-commitments-shopping.spec.js e2e/travel-expenses.spec.js e2e/profile.spec.js --grep='expenses|finance|travel|budget planning|HEIC' --project=${{ matrix.project }} --workers=2
       - uses: actions/upload-artifact@v4
         if: always()
         with:

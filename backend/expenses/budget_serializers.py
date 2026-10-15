@@ -1,11 +1,19 @@
 from decimal import Decimal
 
 from django.db import transaction
-from django.db.models import Sum
 from rest_framework import serializers
 
-from .models import Expense, ExpenseBudget, ExpenseLedger
+from .models import ExpenseBudget, ExpenseLedger
 from .money import money
+from .period_models import ExpenseBudgetPeriod
+from .period_services import (
+    RECURRING_PERIOD_TYPES,
+    close_current_period,
+    configure_current_period,
+    ensure_budget_period,
+    period_state,
+    validate_period_type_change,
+)
 from .serializers import LocalizedDecimalField, _request_can_access_family
 from .planning_serializers import BudgetPlanningConflict, RevisionCheckedPlanningSerializer
 
@@ -20,28 +28,64 @@ class ExpenseBudgetSerializer(RevisionCheckedPlanningSerializer):
     spent_amount = serializers.SerializerMethodField()
     remaining_amount = serializers.SerializerMethodField()
     over_budget = serializers.SerializerMethodField()
+    carryover_amount = serializers.SerializerMethodField()
+    period_starts_on = serializers.SerializerMethodField()
+    period_ends_on = serializers.SerializerMethodField()
+    rollover_policy = serializers.SerializerMethodField()
+
+    def to_internal_value(self, data):
+        policy = data.get("rollover_policy", serializers.empty)
+        clean = data.copy()
+        if "rollover_policy" in clean:
+            clean.pop("rollover_policy")
+        attrs = super().to_internal_value(clean)
+        if policy is not serializers.empty:
+            allowed = {choice for choice, _ in ExpenseBudgetPeriod.RolloverPolicy.choices}
+            if policy not in allowed:
+                raise serializers.ValidationError({
+                    "rollover_policy": "Übertrag muss 'reset' oder 'carry_positive' sein."
+                })
+            attrs["_rollover_policy"] = policy
+        return attrs
 
     def get_currency(self, obj):
         return obj.ledger.base_currency.upper()
 
+    def _state(self, obj):
+        cached = getattr(obj, "_active_period_state", None)
+        if cached is None:
+            cached = period_state(obj)
+            obj._active_period_state = cached
+        return cached
+
     def _spent(self, obj):
-        cached = getattr(obj, "_budget_spent_amount", None)
-        if cached is not None:
-            return money(cached)
-        value = obj.allocations.filter(
-            expense__status=Expense.Status.POSTED,
-        ).aggregate(total=Sum("amount_in_budget_currency"))["total"] or Decimal("0.00")
-        obj._budget_spent_amount = value
-        return money(value)
+        return self._state(obj)["spent_amount"]
 
     def get_spent_amount(self, obj):
         return self._spent(obj)
 
+    def get_carryover_amount(self, obj):
+        return self._state(obj)["carryover_amount"]
+
+    def get_period_starts_on(self, obj):
+        return self._state(obj)["starts_on"]
+
+    def get_period_ends_on(self, obj):
+        return self._state(obj)["ends_on"]
+
+    def get_rollover_policy(self, obj):
+        return self._state(obj)["rollover_policy"]
+
     def get_remaining_amount(self, obj):
-        return money(obj.amount - self._spent(obj))
+        state = self._state(obj)
+        return money(state["planned_amount"] - state["spent_amount"])
 
     def get_over_budget(self, obj):
-        return self._spent(obj) > money(obj.amount)
+        state = self._state(obj)
+        # Compatibility: this keeps the established "actual spend exceeded the
+        # planned amount" signal. Carryover/reservations belong to availability
+        # and its separate over_available state.
+        return state["spent_amount"] > state["planned_amount"]
 
     def validate_amount(self, value):
         if value < 0:
@@ -50,6 +94,7 @@ class ExpenseBudgetSerializer(RevisionCheckedPlanningSerializer):
 
     @transaction.atomic
     def create(self, validated_data):
+        rollover_policy = validated_data.pop("_rollover_policy", None)
         ledger = ExpenseLedger.objects.select_for_update().get(pk=validated_data["ledger"].pk)
         if ledger.archived:
             raise serializers.ValidationError({"ledger": "Abrechnungskreis ist nicht verfügbar."})
@@ -60,12 +105,42 @@ class ExpenseBudgetSerializer(RevisionCheckedPlanningSerializer):
                 for field in ("name", "amount", "estimated_amount", "parent", "period_type", "starts_on", "ends_on", "archived"):
                     if field in validated_data and getattr(existing, field) != validated_data[field]:
                         raise BudgetPlanningConflict()
+                if rollover_policy is not None:
+                    state = period_state(existing)
+                    if existing.period_type not in RECURRING_PERIOD_TYPES or state["rollover_policy"] != rollover_policy:
+                        raise BudgetPlanningConflict()
                 return existing
-        return super().create(validated_data)
+        created = super().create(validated_data)
+        configure_current_period(created, rollover_policy=rollover_policy)
+        return created
 
+    @transaction.atomic
     def update(self, instance, validated_data):
+        rollover_policy = validated_data.pop("_rollover_policy", None)
         validated_data.pop("client_request_id", None)
-        return super().update(instance, validated_data)
+        next_period_type = validated_data.get("period_type", instance.period_type)
+        try:
+            validate_period_type_change(instance, next_period_type)
+        except ValueError as exc:
+            raise serializers.ValidationError({"period_type": str(exc)}) from exc
+
+        will_archive = validated_data.get("archived", instance.archived)
+        # Roll expired periods while the old plan value is still present. This
+        # prevents a plan edit from retroactively rewriting skipped history.
+        if (
+            instance.period_type in RECURRING_PERIOD_TYPES
+            and next_period_type == instance.period_type
+            and not instance.archived
+            and not will_archive
+        ):
+            ensure_budget_period(instance)
+
+        updated = super().update(instance, validated_data)
+        if updated.archived:
+            close_current_period(updated)
+        else:
+            configure_current_period(updated, rollover_policy=rollover_policy)
+        return updated
 
     def validate(self, attrs):
         request = self.context.get("request")
@@ -96,10 +171,15 @@ class ExpenseBudgetSerializer(RevisionCheckedPlanningSerializer):
         starts_on = attrs.get("starts_on", getattr(self.instance, "starts_on", None))
         ends_on = attrs.get("ends_on", getattr(self.instance, "ends_on", None))
         period_type = attrs.get("period_type", getattr(self.instance, "period_type", ExpenseBudget.PeriodType.OPEN))
+        rollover_policy = attrs.get("_rollover_policy")
         if starts_on and ends_on and ends_on < starts_on:
             raise serializers.ValidationError({"ends_on": "Enddatum darf nicht vor dem Startdatum liegen."})
         if period_type == ExpenseBudget.PeriodType.DATE_RANGE and (not starts_on or not ends_on):
             raise serializers.ValidationError({"period_type": "Für einen Datumszeitraum sind Start- und Enddatum erforderlich."})
+        if rollover_policy is not None and period_type not in RECURRING_PERIOD_TYPES:
+            raise serializers.ValidationError({
+                "rollover_policy": "Restmittelübertrag ist nur für Monats- oder Jahresbudgets verfügbar."
+            })
         return attrs
 
     class Meta:
@@ -120,6 +200,10 @@ class ExpenseBudgetSerializer(RevisionCheckedPlanningSerializer):
             "period_type",
             "starts_on",
             "ends_on",
+            "rollover_policy",
+            "period_starts_on",
+            "period_ends_on",
+            "carryover_amount",
             "archived",
             "spent_amount",
             "remaining_amount",
@@ -129,6 +213,10 @@ class ExpenseBudgetSerializer(RevisionCheckedPlanningSerializer):
         ]
         read_only_fields = [
             "currency",
+            "rollover_policy",
+            "period_starts_on",
+            "period_ends_on",
+            "carryover_amount",
             "spent_amount",
             "remaining_amount",
             "over_budget",

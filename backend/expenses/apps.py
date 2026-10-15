@@ -7,10 +7,11 @@ class ExpensesConfig(AppConfig):
 
     def import_models(self):
         super().import_models()
-        # Budget commitments live in a dedicated module to keep the canonical
-        # expense model file stable while still participating in Django model
-        # discovery and migration checks.
+        # Finance extension models live in dedicated modules to keep the
+        # canonical expense model file stable while still participating in
+        # Django model discovery and migration checks.
         from . import commitment_models  # noqa: F401
+        from . import period_models  # noqa: F401
 
     def ready(self):
         from documents.consumers import register_processing_consumer

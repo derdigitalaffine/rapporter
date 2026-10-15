@@ -133,8 +133,9 @@ def expense_ledger_budget_summary(request, ledger_id):
     for row in budget_data:
         reserved = reserved_by_budget.get(str(row["id"]), Decimal("0.00"))
         planned = money(row["amount"])
+        carryover = money(row.get("carryover_amount") or Decimal("0.00"))
         spent = money(row["spent_amount"])
-        available = money(planned - spent - reserved)
+        available = money(planned + carryover - spent - reserved)
         row["reserved_amount"] = str(reserved)
         row["available_amount"] = str(available)
         row["over_available"] = available < Decimal("0.00")
