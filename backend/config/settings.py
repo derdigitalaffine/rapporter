@@ -61,3 +61,16 @@ VEHICLES_OSM_TILE_URL=os.getenv("VEHICLES_OSM_TILE_URL", "https://tile.openstree
 
 # Tenant-private family contribution retention; schedule rebuild_family_statistics daily.
 STATISTICS_RETENTION_DAYS = int(os.getenv("STATISTICS_RETENTION_DAYS", "730"))
+
+# Offline live transport is an optional wake-up optimization. Domain data and
+# correctness stay on POST /api/sync/; the in-memory layer keeps local/test ASGI
+# usable without Redis while production enables Redis explicitly.
+ASGI_APPLICATION="config.asgi.application"
+OFFLINE_LIVE_ENABLED=env_bool("OFFLINE_LIVE_ENABLED",False)
+OFFLINE_REDIS_URL=os.getenv("OFFLINE_REDIS_URL","redis://redis:6379/0").strip()
+CHANNEL_LAYERS={
+    "default": {
+        "BACKEND": "channels_redis.core.RedisChannelLayer" if OFFLINE_LIVE_ENABLED else "channels.layers.InMemoryChannelLayer",
+        **({"CONFIG": {"hosts": [OFFLINE_REDIS_URL]}} if OFFLINE_LIVE_ENABLED else {}),
+    }
+}

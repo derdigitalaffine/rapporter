@@ -14,6 +14,16 @@ services:
       timeout: 5s
       retries: 10
 
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   backend:
     build:
       context: .
@@ -23,8 +33,12 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     environment:
       POSTGRES_HOST: db
+      OFFLINE_LIVE_ENABLED: ${OFFLINE_LIVE_ENABLED:-true}
+      OFFLINE_REDIS_URL: ${OFFLINE_REDIS_URL:-redis://redis:6379/0}
       # In the standard topology every public request reaches Django through
       # exactly this pinned Caddy peer. This keeps X-Forwarded-For useful for
       # abuse keys without trusting an entire private Docker address range.
@@ -53,6 +67,8 @@ services:
         condition: service_healthy
     environment:
       POSTGRES_HOST: db
+      OFFLINE_LIVE_ENABLED: ${OFFLINE_LIVE_ENABLED:-true}
+      OFFLINE_REDIS_URL: ${OFFLINE_REDIS_URL:-redis://redis:6379/0}
       INTEGRATION_SYNC_SECONDS: ${INTEGRATION_SYNC_SECONDS:-300}
     entrypoint: ["/bin/sh", "-c"]
     command: ["while true; do python manage.py sync_integrations || true; python manage.py process_pet_reminders || true; sleep $${INTEGRATION_SYNC_SECONDS}; done"]
