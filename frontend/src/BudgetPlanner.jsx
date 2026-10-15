@@ -18,7 +18,7 @@ const displayDate=(value,locale)=>value?new Intl.DateTimeFormat(locale,{dateStyl
 const moneyPattern=/^\d{1,10}([,.]\d{1,2})?$/;
 const moneyNumber=value=>Number(String(value??'').trim().replace(',','.'))||0;
 const memberName=member=>member?.display_name||member?.username||'—';
-const blankParticipantPlans=members=>(members||[]).map(member=>({member:String(member.id),name:memberName(member),spending_limit:'',planned_share:''}));
+const blankParticipantPlans=members=>(members||[]).map(member=>({member:String(member.id),name:memberName(member),spending_limit:'',planned_share:'',spending_limit_visible:true}));
 const populatedParticipantCount=rows=>(rows||[]).filter(row=>String(row.spending_limit||'').trim()||String(row.planned_share||'').trim()).length;
 const flattenMessage=value=>{
  if(!value)return'';
@@ -73,7 +73,7 @@ export default function BudgetPlanner({familyId,ledger,summary,loading,onReload,
   });
  },[draft?.id,draft?.type,canManageParticipants,memberKey]);
  useEffect(()=>{
-  if(!draft?.id||!canManageParticipants)return;
+  if(!draft?.id)return;
   let active=true;
   const scopeId=String(draft.id);
   const endpoint=draft.type==='overall'?`/expense-ledgers/${encodeURIComponent(scopeId)}/participant-plans/`:`/expense-budgets/${encodeURIComponent(scopeId)}/participant-plans/`;
@@ -83,14 +83,20 @@ export default function BudgetPlanner({familyId,ledger,summary,loading,onReload,
    const configured=new Map((data?.plans||[]).map(row=>[String(row.member),row]));
    const participantPlans=blankParticipantPlans(familyContext.members).map(row=>{
     const saved=configured.get(row.member);
-    return saved?{...row,spending_limit:saved.spending_limit??'',planned_share:saved.planned_share??''}:row;
+    return saved?{
+     ...row,
+     name:saved.member_name||row.name,
+     spending_limit:saved.spending_limit??'',
+     planned_share:saved.planned_share??'',
+     spending_limit_visible:saved.spending_limit_visible!==false,
+    }:row;
    });
    setDraft(current=>current?.id===scopeId?{...current,participantPlans,participantLoaded:true,participantLoading:false,participantError:'',participantDirty:false}:current);
   }).catch(()=>{
    if(active)setDraft(current=>current?.id===scopeId?{...current,participantLoading:false,participantLoaded:false,participantError:t('budgetPlanning.participantLoadFailed')}:current);
   });
   return()=>{active=false};
- },[draft?.id,draft?.type,canManageParticipants,memberKey,familyId,t]);
+ },[draft?.id,draft?.type,memberKey,familyId,t]);
  const currency=summary?.currency||ledger?.base_currency||'EUR';
  const f=value=>format(value,currency,i18n.language);
  const budgets=summary?.budgets||[];
@@ -99,6 +105,7 @@ export default function BudgetPlanner({familyId,ledger,summary,loading,onReload,
  const participantCount=populatedParticipantCount(draft?.participantPlans);
  const participantShareTotal=useMemo(()=>draft?.participantPlans?.reduce((sum,row)=>sum+moneyNumber(row.planned_share),0)||0,[draft?.participantPlans]);
  const participantDifference=draft?.amount&&moneyPattern.test(String(draft.amount).trim())?moneyNumber(draft.amount)-participantShareTotal:null;
+ const showParticipantPlanning=canManageParticipants||Boolean(draft?.id&&draft?.participantLoaded&&participantCount);
 
  function open(event,record,type){
   triggerRef.current=event.currentTarget.dataset.budgetAction;
@@ -220,9 +227,9 @@ export default function BudgetPlanner({familyId,ledger,summary,loading,onReload,
      {draft.periodType==='date_range'&&<FormRow><FormField id={`${titleId}-startsOn`} label={label('startsOn')} error={errors.startsOn} required><input type="date" value={draft.startsOn} onChange={event=>set('startsOn',event.target.value)}/></FormField><FormField id={`${titleId}-endsOn`} label={label('endsOn')} error={errors.endsOn} required><input type="date" value={draft.endsOn} onChange={event=>set('endsOn',event.target.value)}/></FormField></FormRow>}
      {draft.periodType==='context'&&<p className="budget-soft-hint"><Icon name="info"/>{label('contextManaged')}</p>}
     </div></details>}
-    {canManageParticipants&&<details className="finance-collapsible budget-participant-settings"><summary><span>{label('participantPlanning')}</span><small>{participantCount?t('budgetPlanning.participantCount',{count:participantCount}):label('participantOptional')}</small></summary><div className="budget-participant-fields">
-     <p className="budget-soft-hint"><Icon name="info"/>{label('participantHint')}</p>
-     {draft.participantLoading?<p role="status">{label('participantLoading')}</p>:draft.participantError?<p role="alert" className="budget-participant-error">{draft.participantError}</p>:draft.participantLoaded?<>{draft.participantPlans?.length?<div className="budget-participant-list">{draft.participantPlans.map(row=>{const limitKey=`participant-${row.member}-spending_limit`;const shareKey=`participant-${row.member}-planned_share`;return <div className="budget-participant-row" key={row.member}><strong>{row.name}</strong><div className="budget-participant-money"><FormField id={`${titleId}-${limitKey}`} label={`${label('personalLimit')} · ${row.name} (${currency})`} error={errors[limitKey]}><input type="text" inputMode="decimal" autoComplete="off" value={row.spending_limit} onChange={event=>setParticipant(row.member,'spending_limit',event.target.value)}/></FormField><FormField id={`${titleId}-${shareKey}`} label={`${label('plannedShare')} · ${row.name} (${currency})`} error={errors[shareKey]}><input type="text" inputMode="decimal" autoComplete="off" value={row.planned_share} onChange={event=>setParticipant(row.member,'planned_share',event.target.value)}/></FormField></div></div>})}</div>:<p>{label('noParticipants')}</p>}<div className="budget-participant-summary"><span><span>{label('plannedShareTotal')}</span><strong>{f(participantShareTotal)}</strong></span>{participantDifference!==null&&<span><span>{label('plannedShareDifference')}</span><strong>{f(participantDifference)}</strong></span>}<small className="budget-soft-hint">{label('plannedShareHint')}</small></div></>:null}
+    {showParticipantPlanning&&<details className="finance-collapsible budget-participant-settings"><summary><span>{label('participantPlanning')}</span><small>{participantCount?t('budgetPlanning.participantCount',{count:participantCount}):label('participantOptional')}</small></summary><div className="budget-participant-fields">
+     <p className="budget-soft-hint"><Icon name="info"/>{label(canManageParticipants?'participantHint':'participantReadOnly')}</p>
+     {draft.participantLoading?<p role="status">{label('participantLoading')}</p>:draft.participantError?<p role="alert" className="budget-participant-error">{draft.participantError}</p>:draft.participantLoaded?<>{draft.participantPlans?.length?<div className="budget-participant-list">{draft.participantPlans.filter(row=>canManageParticipants||String(row.spending_limit||'').trim()||String(row.planned_share||'').trim()).map(row=>{const limitKey=`participant-${row.member}-spending_limit`;const shareKey=`participant-${row.member}-planned_share`;return <div className="budget-participant-row" key={row.member}><strong>{row.name}</strong>{canManageParticipants?<div className="budget-participant-money"><FormField id={`${titleId}-${limitKey}`} label={`${label('personalLimit')} · ${row.name} (${currency})`} error={errors[limitKey]}><input type="text" inputMode="decimal" autoComplete="off" value={row.spending_limit} onChange={event=>setParticipant(row.member,'spending_limit',event.target.value)}/></FormField><FormField id={`${titleId}-${shareKey}`} label={`${label('plannedShare')} · ${row.name} (${currency})`} error={errors[shareKey]}><input type="text" inputMode="decimal" autoComplete="off" value={row.planned_share} onChange={event=>setParticipant(row.member,'planned_share',event.target.value)}/></FormField></div>:<div className="budget-participant-summary">{String(row.spending_limit||'').trim()&&<span><span>{label('personalLimit')}</span><strong>{f(row.spending_limit)}</strong></span>}{String(row.planned_share||'').trim()&&<span><span>{label('plannedShare')}</span><strong>{f(row.planned_share)}</strong></span>}</div>}</div>})}</div>:<p>{label('noParticipants')}</p>}<div className="budget-participant-summary"><span><span>{label('plannedShareTotal')}</span><strong>{f(participantShareTotal)}</strong></span>{participantDifference!==null&&<span><span>{label('plannedShareDifference')}</span><strong>{f(participantDifference)}</strong></span>}<small className="budget-soft-hint">{label('plannedShareHint')}</small></div></>:null}
     </div></details>}
    </fieldset>
    <FormActions><button type="button" className="secondary" disabled={busy} onClick={close}>{t('expensesUi.close')}</button>{conflict?<button type="button" className="primary" disabled={busy} onClick={reload}><Icon name="refresh"/>{label('reload')}</button>:<button type="submit" className="primary" disabled={busy}><Icon name="check"/>{busy?t('expensesUi.saving'):label('save')}</button>}</FormActions>
