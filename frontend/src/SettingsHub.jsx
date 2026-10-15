@@ -1,3 +1,4 @@
+import CalendarSubscriptions from './CalendarSubscriptions';
 import {useState} from 'react';
 import {readAppearance,saveAppearance} from './appearance';
 import ChildPermissionsSettings from './ChildPermissionsSettings';
@@ -31,6 +32,7 @@ export default function SettingsHub({open}){
    <label className="settings-toggle"><span><strong>Hochkontrast Schwarz/Weiß</strong><small>Reduziert die Oberfläche auf Schwarz, Weiß und klare Konturen. Das Farbprofil bleibt gespeichert.</small></span><input type="checkbox" role="switch" checked={appearance.highContrast} onChange={event=>update({highContrast:event.target.checked})}/></label>
   </section>
   <section className="card settings-section" aria-labelledby="settings-pages-title"><div><small>Alle Bereiche</small><h2 id="settings-pages-title">App-Einstellungen</h2></div><nav className="settings-links" aria-label="Einstellungsbereiche">{SETTINGS_LINKS.map(([page,title,description])=><button type="button" key={page} onClick={()=>go(page)}><span><strong>{title}</strong><small>{description}</small></span><b aria-hidden="true">›</b></button>)}</nav></section>
+  <CalendarSubscriptions key={familyId} familyId={familyId} settings/>
   <ChildPermissionsSettings familyId={familyId}/>
  </div>;
 }

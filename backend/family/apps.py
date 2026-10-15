@@ -71,6 +71,7 @@ class FamilyConfig(AppConfig):
         core_models.Trip = Trip
         core_models.TripPhoto = TripPhoto
         from . import sync_models  # noqa: F401
+        from . import calendar_subscription_models  # noqa: F401
         from .sync_tracking import install_tracking
         install_tracking()
         from . import models_features  # noqa: F401

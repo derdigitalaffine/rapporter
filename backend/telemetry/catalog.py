@@ -69,6 +69,11 @@ class AuditSpec:
 
 
 AUDIT_EVENT_SPECS = {
+    "calendar.subscription.created": AuditSpec(),
+    "calendar.subscription.revealed": AuditSpec(),
+    "calendar.subscription.profile": AuditSpec(),
+    "calendar.subscription.rotated": AuditSpec(),
+    "calendar.subscription.revoked": AuditSpec(),
     "auth.login.succeeded": AuditSpec(frozenset({"auth_method"})),
     "auth.login.failed": AuditSpec(frozenset({"auth_method", "identifier_hash"})),
     "auth.rate_limited": AuditSpec(frozenset({"scope", "identifier_hash"})),

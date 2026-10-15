@@ -144,3 +144,34 @@ test('quiet header LED and label stay steady through repeated routine syncs',asy
  await dialog.locator('.offline-sync-legend summary').click();await expect(dialog.getByText('Up to date and live connected',{exact:true})).toBeVisible();
  await page.keyboard.press('Escape');await expect(pill).toBeFocused();
 });
+
+test('family subscription uses one Calendar/Settings flow with permanent link, additional profile and revocation',async({page},testInfo)=>{
+ const family=await boot(page);await page.goto('/?page=calendar&view=list');
+ await page.getByRole('button',{name:'Subscribe to calendar',exact:true}).click();
+ let dialog=page.getByRole('dialog',{name:'Calendar subscriptions',exact:true});await expect(dialog).toBeVisible();
+ await dialog.getByLabel('Device or subscription name',{exact:true}).fill('Test iPhone');
+ await dialog.getByRole('button',{name:'Create subscription link',exact:true}).click();
+ let link=dialog.getByRole('textbox',{name:'Permanent subscription link',exact:true});await expect(link).toBeVisible();const url=await link.inputValue();
+ expect(url).toMatch(/^https:\/\/calendar\.example\.test\/calendar-feed\/[A-Za-z0-9_-]{43}\/family\.ics$/);
+ await expect(dialog.getByText(/Anyone with the link can read/)).toBeVisible();
+ await expect(dialog.getByRole('button',{name:'Download iPhone profile',exact:true})).toBeVisible();
+ const id=(await (await page.request.get(`/api/calendar-subscriptions/${family.id}/`)).json()).subscriptions.find(row=>row.name==='Test iPhone').id;
+ const path=new URL(url).pathname;
+ try{
+  expect((await page.request.get(path)).status()).toBe(200);
+  const profileDownload=page.waitForEvent('download');await dialog.getByRole('button',{name:'Download iPhone profile',exact:true}).click();const download=await profileDownload;expect(download.suggestedFilename()).toBe('familyos-calendar.mobileconfig');
+  await expect(dialog.getByText(/Downloading does not mean it is installed/)).toBeVisible();
+  for(const width of [320,390,1440]){
+   await page.setViewportSize({width,height:844});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBeTruthy();
+   await link.scrollIntoViewIfNeeded();
+   const screenshotPath=testInfo.outputPath(`calendar-subscriptions-${width}.png`);await page.screenshot({path:screenshotPath,mask:[link]});await testInfo.attach(`calendar-subscriptions-${width}`,{path:screenshotPath,contentType:'image/png'});
+  }
+  await page.keyboard.press('Escape');await expect(dialog).toBeHidden();
+  await page.goto('/?page=settings');await page.getByRole('button',{name:'Subscribe to calendar',exact:true}).click();
+  dialog=page.getByRole('dialog',{name:'Calendar subscriptions',exact:true});await expect(dialog.getByText('Test iPhone',{exact:true})).toBeVisible();
+  await expect(dialog.getByRole('textbox',{name:'Permanent subscription link',exact:true})).toHaveCount(0);
+  await dialog.getByRole('button',{name:'Show link',exact:true}).click();await expect(dialog.getByRole('textbox',{name:'Permanent subscription link',exact:true})).toHaveValue(url);
+  await dialog.getByRole('button',{name:'Revoke link',exact:true}).click();const confirmation=page.getByRole('alertdialog');await expect(confirmation).toBeVisible();await confirmation.getByRole('button',{name:'Revoke link',exact:true}).click();
+  await expect(dialog.getByText('Test iPhone',{exact:true})).toHaveCount(0);expect((await page.request.get(path)).status()).toBe(404);
+ }finally{await page.request.delete(`/api/calendar-subscriptions/${family.id}/${id}/`)}
+});

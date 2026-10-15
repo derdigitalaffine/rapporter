@@ -11,7 +11,7 @@ def env_bool(name, default=False):
 BASE_DIR=Path(__file__).resolve().parent.parent
 SECRET_KEY=os.getenv("DJANGO_SECRET_KEY","dev-only-change-me");DEBUG=env_bool("DJANGO_DEBUG",False);ALLOWED_HOSTS=[h.strip() for h in os.getenv("DJANGO_ALLOWED_HOSTS","localhost,127.0.0.1").split(",") if h.strip()];CSRF_TRUSTED_ORIGINS=[u.strip() for u in os.getenv("CSRF_TRUSTED_ORIGINS","").split(",") if u.strip()]
 INSTALLED_APPS=["django.contrib.admin","django.contrib.auth","django.contrib.contenttypes","django.contrib.sessions","django.contrib.messages","django.contrib.staticfiles","django.contrib.postgres","corsheaders","rest_framework","auth_abuse.apps.AuthAbuseConfig","auth_identity.apps.AuthIdentityConfig","auth_sessions.apps.AuthSessionsConfig","auth_passkeys.apps.AuthPasskeysConfig","entitlements.apps.EntitlementsConfig","telemetry.apps.TelemetryConfig","family","family_statistics.apps.FamilyStatisticsConfig","vehicles.apps.VehiclesConfig","expenses","baby.apps.BabyConfig","pets.apps.PetsConfig","documents.apps.DocumentsConfig","contracts.apps.ContractsConfig","correspondence.apps.CorrespondenceConfig","decisions.apps.DecisionsConfig","wishlists.apps.WishlistsConfig","notifications.apps.NotificationsConfig","games.apps.GamesConfig","messenger.apps.MessengerConfig","mailing.apps.MailingConfig"]
-MIDDLEWARE=["django.middleware.security.SecurityMiddleware","whitenoise.middleware.WhiteNoiseMiddleware","corsheaders.middleware.CorsMiddleware","django.contrib.sessions.middleware.SessionMiddleware","django.middleware.common.CommonMiddleware","django.middleware.csrf.CsrfViewMiddleware","django.contrib.auth.middleware.AuthenticationMiddleware","family.request_context.ActorContextMiddleware","baby.middleware.PrivateBabyNoStoreMiddleware","pets.middleware.PrivatePetNoStoreMiddleware","vehicles.middleware.VehiclesNoStoreMiddleware","messenger.middleware.MessengerNoStoreMiddleware","django.contrib.messages.middleware.MessageMiddleware","django.middleware.clickjacking.XFrameOptionsMiddleware"]
+MIDDLEWARE=["family.calendar_subscription_privacy.CalendarSubscriptionPrivacyMiddleware","django.middleware.security.SecurityMiddleware","whitenoise.middleware.WhiteNoiseMiddleware","corsheaders.middleware.CorsMiddleware","django.contrib.sessions.middleware.SessionMiddleware","django.middleware.common.CommonMiddleware","django.middleware.csrf.CsrfViewMiddleware","django.contrib.auth.middleware.AuthenticationMiddleware","family.request_context.ActorContextMiddleware","baby.middleware.PrivateBabyNoStoreMiddleware","pets.middleware.PrivatePetNoStoreMiddleware","vehicles.middleware.VehiclesNoStoreMiddleware","messenger.middleware.MessengerNoStoreMiddleware","django.contrib.messages.middleware.MessageMiddleware","django.middleware.clickjacking.XFrameOptionsMiddleware"]
 ROOT_URLCONF="config.urls";TEMPLATES=[{"BACKEND":"django.template.backends.django.DjangoTemplates","DIRS":[],"APP_DIRS":True,"OPTIONS":{"context_processors":["django.template.context_processors.request","django.contrib.auth.context_processors.auth","django.contrib.messages.context_processors.messages"]}}];WSGI_APPLICATION="config.wsgi.application"
 DATABASES={"default":{"ENGINE":"django.db.backends.postgresql","NAME":os.getenv("POSTGRES_DB","famuhle"),"USER":os.getenv("POSTGRES_USER","famuhle"),"PASSWORD":os.getenv("POSTGRES_PASSWORD","famuhle"),"HOST":os.getenv("POSTGRES_HOST","db"),"PORT":os.getenv("POSTGRES_PORT","5432")}}
 AUTH_PASSWORD_VALIDATORS=[{"NAME":"django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},{"NAME":"django.contrib.auth.password_validation.MinimumLengthValidator"},{"NAME":"django.contrib.auth.password_validation.CommonPasswordValidator"},{"NAME":"django.contrib.auth.password_validation.NumericPasswordValidator"}]
@@ -73,4 +73,15 @@ CHANNEL_LAYERS={
         "BACKEND": "channels_redis.core.RedisChannelLayer" if OFFLINE_LIVE_ENABLED else "channels.layers.InMemoryChannelLayer",
         **({"CONFIG": {"hosts": [OFFLINE_REDIS_URL]}} if OFFLINE_LIVE_ENABLED else {}),
     }
+}
+
+# Redact bearer feed URLs in Django request/error/development access logs.
+LOGGING = {
+    "version": 1, "disable_existing_loggers": False,
+    "filters": {"calendar_secrets": {"()": "family.calendar_subscription_privacy.CalendarSecretFilter"}},
+    "handlers": {"calendar_safe_console": {"class": "logging.StreamHandler", "filters": ["calendar_secrets"]}},
+    "loggers": {
+        "django.request": {"handlers": ["calendar_safe_console"], "propagate": False},
+        "django.server": {"handlers": ["calendar_safe_console"], "propagate": False},
+    },
 }

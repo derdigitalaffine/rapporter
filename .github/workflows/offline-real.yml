@@ -19,6 +19,7 @@ jobs:
         options: --health-cmd="pg_isready -U famuhle" --health-interval=5s --health-timeout=5s --health-retries=10
     env:
       OFFLINE_E2E: '1'
+      APP_URL: 'https://calendar.example.test'
       POSTGRES_HOST: 127.0.0.1
       POSTGRES_DB: famuhle
       POSTGRES_USER: famuhle
@@ -59,3 +60,9 @@ jobs:
           name: sync-status-ui-review
           if-no-files-found: error
           path: frontend/test-results/**/sync-status-*.png
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: calendar-subscription-ui-review
+          if-no-files-found: error
+          path: frontend/test-results/**/calendar-subscriptions-*.png
