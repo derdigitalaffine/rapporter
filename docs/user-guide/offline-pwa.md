@@ -103,13 +103,25 @@ offline nutzbar; externe Kalendertermine bleiben schreibgeschützt.
 
 ### Serverstatus und Live-Verbindung unterscheiden
 
-„Synchronisiert“ erscheint nur nach einem kürzlich bestätigten Abgleich mit dem
-Server. Eine Internetverbindung allein reicht dafür nicht. Ist der Server nicht
+„Synchronisiert“ erscheint in den Details nur nach einem kürzlich bestätigten
+Abgleich mit dem Server. Eine Internetverbindung allein reicht dafür nicht. Ist der Server nicht
 erreichbar, steht das ausdrücklich im Status. Der Zeitpunkt des letzten
 Erfolgs bleibt als Verlauf sichtbar; deine lokalen Änderungen bleiben erhalten.
 
-Die zweite Statuszeile zeigt die Live-Verbindung: verbunden, im Aufbau,
-unterbrochen oder nicht verfügbar. Auch ohne Live-Verbindung prüft die App den
-Server regelmäßig und verwendet den normalen Abgleich. In der Statusansicht
-siehst du Erreichbarkeit, Live-Verbindung, letzten Erfolg und wartende Änderungen
-getrennt. „Jetzt prüfen“ stößt einen neuen Abgleich an.
+Ein Klick auf den Sync-Schalter öffnet die Details zur Live-Verbindung: verbunden,
+im Aufbau, unterbrochen oder nicht verfügbar. Auch ohne Live-Verbindung prüft die
+App den Server regelmäßig und verwendet den normalen Abgleich. In der
+Statusansicht siehst du Erreichbarkeit, Live-Verbindung, letzten Erfolg und
+wartende Änderungen getrennt. „Jetzt prüfen“ stößt einen neuen Abgleich an.
+
+### Ruhige Sync-LED
+
+Der Header zeigt einen konstanten Sync-Schalter mit mehrfarbiger LED statt
+wechselnder Statustexte. Normale Hintergrundabgleiche blinken nicht und ändern
+weder Beschriftung noch bestätigte Farbe. Grün mit Häkchen bedeutet aktuell und
+Live verbunden; Gelb mit Ausrufezeichen weist auf offene Änderungen/Konflikte oder
+eine unterbrochene Live-Verbindung hin. Rot bedeutet Server-/Anmeldeproblem,
+Blau noch nicht bestätigt und Grau offline. Ein Klick zeigt die getrennten
+Server-/Live-Zustände, den letzten bestätigten Abgleich und lokale Änderungen;
+die Farblegende steht im selben Dialog. Fehlende Live-Verbindung wird auch bei
+erfolgreichem HTTP-Abgleich nicht als Grün ausgegeben.
