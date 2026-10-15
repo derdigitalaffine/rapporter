@@ -50,7 +50,7 @@ test('Calendar native creation survives offline reload and external events remai
    await expect(eventChoice.first()).toBeVisible();await eventChoice.first().click();
    dialog=page.getByRole('dialog');titleInput=dialog.getByRole('textbox',{name:'Title',exact:true});
  }
- const title=`Offline event ${Date.now()}`,editor=dialog;await expect(titleInput).toBeVisible();await titleInput.fill(title);await editor.getByRole('button',{name:'Save',exact:true}).click();
+ const title=`Offline event ${Date.now()}`,editor=dialog;await expect(titleInput).toBeVisible();await titleInput.fill(title);await editor.getByRole('button',{name:'Save',exact:true}).click();await expect(editor).toBeHidden();
  await expect(page.getByText(title,{exact:true})).toBeVisible();await page.reload();await expect(page.getByText(title,{exact:true})).toBeVisible();
  await page.getByText('Read-only external',{exact:true}).click();const detail=page.getByRole('dialog');await expect(detail.getByRole('button',{name:'Edit event',exact:true})).toHaveCount(0);await detail.locator('.sheet-close').click();
  await context.setOffline(false);await expect.poll(async()=>{const response=await page.request.get(`/api/events/?family=${family.id}&birthdays=0`);const value=await response.json();return (value.results||value).filter(event=>event.title===title).length},{timeout:20000}).toBe(1);
