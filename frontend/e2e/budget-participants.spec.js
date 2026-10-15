@@ -136,3 +136,45 @@ test('finance · overall budget uses the same participant planning contract atom
  await expect(reopened.getByLabel('Geplanter Kostenanteil · Alex (EUR)',{exact:true})).toHaveValue('250.00');
  await expect(reopened.getByLabel('Geplanter Kostenanteil · Sam (EUR)',{exact:true})).toHaveValue('250.00');
 });
+
+test('finance · teen sees own personal limit and shared planned shares read-only',async({page})=>{
+ await installApiMocks(page,{dismissOnboarding:true,language:'de'});
+ const memberships=[
+  {id:'member-1',family:'family-1',user:1,username:'alex',role:'owner',display_name:'Alex',avatar:''},
+  {id:'member-2',family:'family-1',user:3,username:'toni',role:'teen',display_name:'Toni',avatar:''},
+ ];
+ await page.route('**/api/auth/session/',route=>json(route,{authenticated:true,user:{id:3,username:'toni',email:'toni@example.test'}}));
+ await page.route('**/api/families/',route=>json(route,[{id:'family-1',name:'Musterfamilie',slug:'musterfamilie',locale:'de',timezone:'Europe/Berlin',memberships}]));
+ const ledger={id:'ledger-home',family:'family-1',name:'Familie',base_currency:'EUR',budget_amount:'100.00',estimated_amount:null,is_default:true,archived:false,updated_at:'2026-10-14T12:00:00Z'};
+ const budget={id:'budget-1',family:'family-1',ledger:'ledger-home',parent:null,name:'Freizeit',amount:'100.00',estimated_amount:null,currency:'EUR',period_type:'open',rollover_policy:null,period_starts_on:null,period_ends_on:null,starts_on:null,ends_on:null,carryover_amount:'0.00',spent_amount:'0.00',reserved_amount:'0.00',remaining_amount:'100.00',available_amount:'100.00',over_budget:false,over_available:false,archived:false,updated_at:'2026-10-14T12:00:00Z'};
+ await page.route(/\/api\/expense-(?:ledgers|budgets)\//,async route=>{
+  const request=route.request();const path=new URL(request.url()).pathname;const method=request.method();
+  if(path==='/api/expense-ledgers/'&&method==='GET')return json(route,[ledger]);
+  if(path==='/api/expense-ledgers/ledger-home/budget-summary/'&&method==='GET')return json(route,{family:'family-1',ledger:'ledger-home',currency:'EUR',budget_amount:'100.00',estimated_amount:null,updated_at:ledger.updated_at,spent_amount:'0.00',reserved_amount:'0.00',remaining_amount:'100.00',available_amount:'100.00',over_budget:false,over_available:false,unconverted_expense_count:0,budgets:[budget]});
+  if(path==='/api/expense-budgets/'&&method==='GET')return json(route,[budget]);
+  if(path==='/api/expense-budgets/budget-1/participant-plans/'&&method==='GET')return json(route,{scope_type:'budget',scope_id:'budget-1',currency:'EUR',can_manage:false,plans:[
+   {member:'member-1',member_name:'Alex',spending_limit:null,planned_share:'60.00',spending_limit_visible:false},
+   {member:'member-2',member_name:'Toni',spending_limit:'35.00',planned_share:'40.00',spending_limit_visible:true},
+  ]});
+  return route.fallback();
+ });
+
+ await page.setViewportSize({width:390,height:844});
+ await page.goto('/?page=expenses&ledger=ledger-home');
+ await page.waitForLoadState('networkidle');
+ const planner=page.getByRole('region',{name:'Budget',exact:true});
+ const categories=planner.locator('details.finance-collapsible').first();await categories.locator('summary').click();
+ await planner.getByRole('button',{name:'Kostenbereich bearbeiten: Freizeit',exact:true}).click();
+ const dialog=page.getByRole('dialog',{name:'Kostenbereich bearbeiten'});
+ const participants=dialog.locator('details.budget-participant-settings');
+ await expect(participants).toBeVisible();await participants.locator('summary').click();
+ await expect(participants.getByText(/nur lesbar/)).toBeVisible();
+ await expect(participants.locator('input')).toHaveCount(0);
+ const alex=participants.locator('.budget-participant-row').filter({hasText:'Alex'});
+ const toni=participants.locator('.budget-participant-row').filter({hasText:'Toni'});
+ await expect(alex).toContainText('60,00');
+ await expect(alex).not.toContainText('Persönliches Limit');
+ await expect(toni).toContainText('35,00');
+ await expect(toni).toContainText('40,00');
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1)).toBe(true);
+});
