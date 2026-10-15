@@ -238,4 +238,6 @@ def synchronize(request, family, cursor, mutations):
                 # Deletions/revocations are represented by the manifest, avoiding
                 # disclosure of tombstone IDs for private/surprise entities.
             response['changes'] = changes
+        from .action_projection import project_actions
+        response['projections'] = {'actions': project_actions(user=request.user, family=family, scope='all', kind='all')}
         return response

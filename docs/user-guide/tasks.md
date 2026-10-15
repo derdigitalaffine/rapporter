@@ -62,3 +62,17 @@ FamilyOS merkt sich frühere Eingaben und kann passende Vorschläge machen. So m
 Im Aufgaben-Editor steht neben der Zuweisung **Zuweisung ausspielen**, wenn die Aufgabe dafür verfügbar ist. Im To-do-Bereich findest du denselben Einstieg unter den Schnellaktionen der Aufgabe. Du landest direkt bei dieser Aufgabe und wählst Gegner, Spiel und Einsatzregel. Eine vorhandene Zuweisung bleibt bis zum gültigen Ergebnis unverändert; beide Personen müssen ausdrücklich zustimmen.
 
 Beim Anlegen über **Hinzufügen → Aufgabe** kannst du **Zuweisung nach dem Speichern ausspielen** wählen. Zuerst wird die Aufgabe gespeichert, danach bereitest du das Duell vor. Einfaches Speichern startet kein Spiel. Schlägt die Vorbereitung nach dem Speichern fehl, setzt **Aufgabe gespeichert – weiter** mit derselben Aufgabe fort. Erledigte, nicht sichtbare oder fremde Aufgaben werden nicht durch eine andere Aufgabe ersetzt. Deaktivierte Konten können nicht herausgefordert werden.
+
+## Aufgaben offline
+
+Nach dem ersten Abgleich stehen Aufgaben und Listen auch ohne Netz bereit.
+Anlegen, Bearbeiten, Löschen, Erledigen, Wiederöffnen und Wechsel in bestehende
+Workflow-Spalten werden lokal gespeichert und nach der Wiederverbindung über
+dieselben fachlichen Commands abgeglichen. Erledigungen werden bei einem
+verlorenen Antwortpaket nicht doppelt gezählt. Bei konkurrierenden Änderungen
+zeigt der globale Sync-Status den erhaltenen Entwurf und die aktuelle Fassung.
+
+Routinen bleiben eine eigene fachliche Domain; ihre zuletzt geladene Projektion
+kann angezeigt werden, ihre Änderungen und erweiterte Aktions-/Abhängigkeits-
+Konfiguration benötigen weiterhin eine Verbindung. Wiederholungs- und Workflow-
+Folgewirkungen werden beim Abgleich durch den kanonischen Serverdienst bestätigt.
