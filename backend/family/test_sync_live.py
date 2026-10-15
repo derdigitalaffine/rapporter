@@ -1,4 +1,4 @@
-from asgiref.sync import async_to_sync
+from asgiref.sync import async_to_sync, sync_to_async
 from channels.routing import URLRouter
 from channels.testing import WebsocketCommunicator
 from django.contrib.auth import get_user_model
@@ -33,7 +33,7 @@ class OfflineLiveTests(TransactionTestCase):
             communicator = WebsocketCommunicator(self.app_for(self.user), f"/ws/sync/{self.family.id}/")
             connected, _ = await communicator.connect()
             self.assertTrue(connected)
-            publish(str(self.family.id), 42)
+            await sync_to_async(publish)(str(self.family.id), 42)
             message = await communicator.receive_json_from(timeout=1)
             self.assertEqual(message, {
                 "type": "sync_available",

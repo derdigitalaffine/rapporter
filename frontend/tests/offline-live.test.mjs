@@ -46,3 +46,17 @@ test('WebSocket absence does not disable leader HTTP synchronization',async()=>{
  const e=engine(),coordinator=new LiveSyncCoordinator({accountId:'a',familyId:'f',engine:e,storage:storage(),Channel:null,Socket:null,timers}).start();
  e.state.calls=0;coordinator.requestSync();assert.equal(e.state.calls,1);coordinator.stop();
 });
+
+test('closed WebSocket reconnects on the next lease heartbeat',()=>{
+ FakeSocket.instances=[];const e=engine(),coordinator=new LiveSyncCoordinator({accountId:'a',familyId:'f',engine:e,storage:storage(),Channel:null,Socket:FakeSocket,timers}).start();
+ const first=FakeSocket.instances.at(-1);first.close();coordinator.checkLease();
+ assert.equal(FakeSocket.instances.length,2);assert.notEqual(coordinator.socket,first);
+ coordinator.stop();coordinator.checkLease();assert.equal(FakeSocket.instances.length,2);
+});
+
+test('blocked storage degrades to independent HTTP sync instead of breaking startup',()=>{
+ const blocked={getItem(){throw new Error('SecurityError')},setItem(){throw new Error('SecurityError')}};
+ const e=engine(),coordinator=new LiveSyncCoordinator({accountId:'a',familyId:'f',engine:e,storage:blocked,Channel:null,Socket:null,timers}).start();
+ assert.equal(coordinator.isLeader(),true);assert.equal(e.state.calls,1);
+ coordinator.requestSync();assert.equal(e.state.calls,2);coordinator.stop();
+});

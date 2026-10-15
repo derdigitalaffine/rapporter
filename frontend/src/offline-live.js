@@ -15,8 +15,8 @@ export class LiveSyncCoordinator{
   globalThis.addEventListener?.('storage',this.storageHandler);this.checkLease();this.timer=this.timers.setInterval?.(()=>this.checkLease(),HEARTBEAT_MS);return this;
  }
  checkLease(){
-  if(this.stopped)return;const current=parse(this.storage?.getItem?.(this.key)),time=this.now();
-  if(this.leader){if(current&&current.owner!==this.id&&current.expires>time){this.stepDown();return}this.writeLease();return}
+  if(this.stopped)return;let current=null;try{current=parse(this.storage?.getItem?.(this.key))}catch{}const time=this.now();
+  if(this.leader){if(current&&current.owner!==this.id&&current.expires>time){this.stepDown();return}this.writeLease();this.openSocket();return}
   if(!current||current.expires<=time||current.owner===this.id){this.leader=true;this.writeLease();this.openSocket();this.runLeaderSync()}
  }
  writeLease(){try{this.storage?.setItem?.(this.key,JSON.stringify({owner:this.id,expires:this.now()+LEASE_MS}))}catch{}}
