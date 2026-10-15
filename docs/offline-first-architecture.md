@@ -2,6 +2,11 @@
 
 ## Status
 
+The accepted Shopping/Tasks/native Calendar offline program completed through
+#705–#711 / #735 on 2026-10-15. Scoped acceptance and operational limits are
+recorded in `offline-first-acceptance.md`; all 14 contracts below have evidence.
+This does not declare unrelated modules or repository-wide baseline CI complete.
+
 Offline capability is the current product priority. Until the acceptance criteria in this document are met for shopping, todos/tasks, and calendar, no unrelated product feature work should be started except for production-critical fixes, security fixes, dependency/security maintenance, or work strictly required by the offline program.
 
 ## Goal

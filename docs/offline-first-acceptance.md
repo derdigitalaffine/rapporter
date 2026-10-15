@@ -39,7 +39,29 @@ implicitly declared fully offline-capable.
 | Leader/takeover/reconnect/follower refresh and no-WebSocket fallback | `offline-live.test.mjs` |
 | Redis/ASGI deployment, retention, recovery and rollback | `offline-first-operations.md` |
 
-The new final matrix must pass scoped CI before #711/#705 are closed. Browser
+The final runtime head was accepted on 2026-10-15 in #735: all scoped suites below passed. The final follow-up only records these results and marks the workplan complete. Browser
 infrastructure-only failures may be recorded under the owner's explicit Chromium
 exception; authorization, convergence, preservation or idempotency failures cannot.
 Repository-wide unrelated baseline failures remain with their existing owners.
+
+
+## Accepted runtime evidence — 2026-10-15
+
+Validated runtime head: `a26abc97377ea6a1312394a1dda94d89b0de7ab4`.
+
+- PostgreSQL + real Redis, migration/drift/system checks: job **116582879029**, green (46 backend cases; prior identical-server-code run also green).
+- Real PostgreSQL/Django offline UI/API matrix: job **116582878252**, **6/6** green.
+- Real-browser local-store/engine/upgrade checks: job **116582878870**, **16/16** green.
+- Browser-independent Node checks: **35/35** total (29 offline cases + 6 store cases), green locally and in their dedicated CI jobs.
+- Production app/superadmin builds, i18n/release guards, passkey migrations, UI baseline, Unified Actions and statistics checks: green.
+
+No required offline scenario was disabled or waived for this acceptance. The owner's
+Chromium exception was available but not needed for the final scoped suites.
+The repository-wide general CI is tracked independently and is not declared green
+by this domain release. Legacy unscoped pre-cutover queues must be drained in the
+old client before upgrade/account switching; they are never reassigned to another
+account. Large media and unrelated modules retain their documented online limits.
+
+All 14 definition-of-done contracts in `offline-first-architecture.md` are covered
+by the evidence map above. #711/#705 can close after #735 lands; this releases only
+the Offline-first feature freeze, without overriding other roadmap/security gates.
