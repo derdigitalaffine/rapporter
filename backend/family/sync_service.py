@@ -60,7 +60,7 @@ def serialize(view, obj, kind):
                 row['audience_group'] = access['audience_group']
     row['version'] = obj.version
     if kind == 'event':
-        row['read_only'] = bool(obj.source_id or obj.type != 'calendar.event')
+        row['read_only'] = bool(obj.source_id or obj.external_id or obj.type != 'calendar.event')
     return json.loads(JSONRenderer().render(row))
 
 
@@ -105,7 +105,7 @@ def apply_mutation(request, family, mutation):
                 base = mutation.get('base_version')
                 if type(base) is not int or base < 1 or base > obj.version:
                     raise ValidationError({'base_version': 'A valid existing version is required.'})
-                if kind == 'event' and (obj.source_id or obj.type != 'calendar.event'):
+                if kind == 'event' and (obj.source_id or obj.external_id or obj.type != 'calendar.event'):
                     return {**result, 'status': 'rejected', 'code': 'read_only_source'}
                 if base != obj.version:
                     local = mutation.get('changes', {}) if op == 'update' else {}
@@ -142,12 +142,16 @@ def apply_mutation(request, family, mutation):
                 access_data = {key: data.pop(key) for key in access_keys if key in data}
                 serializer = view.get_serializer(obj, data=data, partial=op == 'update')
                 allowed = {name for name, field in serializer.fields.items() if not field.read_only} - {'id', 'version', 'hidden_from_user', 'birthday_context'}
+                if kind == 'event':
+                    allowed.discard('external_id')
                 unknown = set(data) - allowed
                 if unknown:
                     raise ValidationError({key: 'Field is not writable through sync.' for key in sorted(unknown)})
                 serializer.is_valid(raise_exception=True)
                 if op == 'create':
                     serializer.validated_data['id'] = entity_id
+                    if kind == 'shopping_item' and serializer.validated_data.get('checked'):
+                        serializer.validated_data['checked_at'] = timezone.now()
                     view.perform_create(serializer)
                 else:
                     view.perform_update(serializer)
@@ -203,7 +207,7 @@ def apply_mutation(request, family, mutation):
                 'errors': json.loads(JSONRenderer().render(exc.detail)) if isinstance(exc, APIException) else {'detail': 'Invalid mutation.'}}
 
 
-def synchronize(request, family, cursor, mutations):
+def synchronize(request, family, cursor, mutations, calendar_projection_key=None):
     results = [apply_mutation(request, family, mutation) for mutation in mutations]
     with sync_lock():
         clock = SyncSequence.objects.get(pk=1)
@@ -219,11 +223,8 @@ def synchronize(request, family, cursor, mutations):
             snapshot = {}
             for kind, queryset in visible.items():
                 if kind == 'event':
-                    # Recurrence masters are retained for local expansion. Weather
-                    # has already been excluded by the canonical calendar viewset.
-                    now = timezone.now()
-                    from django.db.models import Q
-                    queryset = queryset.filter(Q(starts_at__isnull=True) | Q(starts_at__gte=now-timedelta(days=90), starts_at__lte=now+timedelta(days=366)) | Q(payload__recurrence__isnull=False))
+                    from .sync_calendar import in_window
+                    queryset = in_window(queryset, family)
                 snapshot[SNAPSHOT_KEYS[kind]] = [serialize(views[kind], obj, kind) for obj in queryset]
             response.update(reset_required=True, snapshot_cursor=clock.cursor, snapshot=snapshot)
         else:
@@ -246,5 +247,11 @@ def synchronize(request, family, cursor, mutations):
                 # disclosure of tombstone IDs for private/surprise entities.
             response['changes'] = changes
         from .action_projection import project_actions
-        response['projections'] = {'actions': project_actions(user=request.user, family=family, scope='all', kind='all')}
+        from .sync_calendar import projection
+        from .calendar_recurrence import family_zone
+        key = f'{timezone.now().astimezone(family_zone(family)).date().isoformat()}:{family.timezone}'
+        events_changed = reset or SyncJournal.objects.filter(family=family, entity_type='event', cursor__gt=cursor or 0).exists()
+        response['projections'] = {'actions': project_actions(user=request.user, family=family, scope='all', kind='all'),
+                                  **projection(visible['event'], views['event'], family, request.user, serialize,
+                                               events_changed or calendar_projection_key != key)}
         return response

@@ -160,6 +160,51 @@ class OfflineSyncTests(TestCase):
         parent=next(row['data'] for row in result.data['changes'] if row['entity_id']==str(tasks.pk))
         self.assertEqual(parent['workflow_columns'][0]['name'],'Ready')
 
+    def test_compacted_checked_create_records_purchase_once(self):
+        from .models import ShoppingPurchaseEvent
+        entity=str(uuid4())
+        m=self.mutation(entity_id=entity,operation='create',base_version=None,
+                        data={'shopping_list':str(self.list.pk),'name':'Checked bread','checked':True})
+        first=self.sync([m]);self.assertEqual(first.data['mutation_results'][0]['status'],'applied',first.data)
+        self.assertEqual(self.sync([m]).data['mutation_results'][0]['status'],'already_applied')
+        row=ShoppingItem.objects.get(pk=entity);self.assertIsNotNone(row.checked_at)
+        self.assertEqual(ShoppingPurchaseEvent.objects.filter(source_item_id=entity).count(),1)
+
+    def test_calendar_prefetch_uses_canonical_recurrence_projection_and_window(self):
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        from unittest.mock import patch
+        event=FamilyEvent.objects.create(family=self.family,type='calendar.event',title='DST series',
+            starts_at=datetime(2026,10,18,10,tzinfo=ZoneInfo('Europe/Berlin')),
+            ends_at=datetime(2026,10,18,11,tzinfo=ZoneInfo('Europe/Berlin')),payload={'recurrence':'weekly'})
+        with patch('family.sync_calendar.timezone.now',return_value=datetime(2026,10,15,12,tzinfo=ZoneInfo('UTC'))):
+            response=self.sync()
+        projection=response.data['projections'];rows=[r for r in projection['calendar_occurrences'] if r['id']==str(event.pk)]
+        self.assertGreater(len(rows),40)
+        self.assertEqual(rows[0]['starts_at'],'2026-10-18T10:00:00+02:00')
+        self.assertEqual(rows[1]['starts_at'],'2026-10-25T10:00:00+01:00')
+        self.assertEqual(projection['calendar_window'],{'start':'2026-07-17','end':'2027-10-15'})
+
+    def test_source_metadata_and_reverse_participant_changes_publish_event_deltas(self):
+        source=IntegrationSource.objects.create(family=self.family,name='Before',kind='ics')
+        event=FamilyEvent.objects.create(family=self.family,source=source,type='calendar.event',title='Source metadata',starts_at=timezone.now())
+        before=self.sync().data['cursor'];source.name='After';source.save(update_fields=['name'])
+        changes=self.sync(cursor=before).data['changes']
+        self.assertEqual(next(row['data'] for row in changes if row['entity_id']==str(event.pk))['source_meta']['name'],'After')
+        version=FamilyEvent.objects.get(pk=event.pk).version
+        source.last_sync_error='Temporary';source.save(update_fields=['last_sync_error'])
+        self.assertEqual(FamilyEvent.objects.get(pk=event.pk).version,version)
+        native=FamilyEvent.objects.create(family=self.family,type='calendar.event',title='People')
+        member=Membership.objects.get(family=self.family,user=self.user)
+        member.calendar_events.add(native)
+        self.assertIn('participants',SyncJournal.objects.filter(entity_id=native.pk).latest('cursor').changed_fields)
+
+    def test_orphan_external_projection_stays_read_only(self):
+        event=FamilyEvent.objects.create(family=self.family,type='calendar.event',title='Orphan ICS',external_id='external-uid')
+        m=self.mutation(entity_type='event',entity_id=str(event.pk),base_version=event.version,changes={'title':'No'})
+        result=self.sync([m]);self.assertEqual(result.data['mutation_results'][0]['code'],'read_only_source')
+        self.assertTrue(next(row for row in result.data['snapshot']['events'] if row['id']==str(event.pk))['read_only'])
+
 
 from concurrent.futures import ThreadPoolExecutor
 from threading import Event
