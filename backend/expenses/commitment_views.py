@@ -77,17 +77,14 @@ def budget_commitment_source(request, source_type, source_id):
     if not family_id:
         raise ValidationError({"family": "Familie ist erforderlich."})
     family = _family(request, family_id)
-
     if request.method == "GET":
         row = _active_source_commitment(family, source_type, source_id)
         return Response({"commitment": _payload(row) if row else None})
-
     if request.method == "DELETE":
         row = _active_source_commitment(family, source_type, source_id)
         if row is None:
             return Response({"commitment": None})
         return Response({"commitment": _payload(release_budget_commitment(row))})
-
     serializer = CommitmentWriteSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
     if str(serializer.validated_data["family"]) != str(family.id):
@@ -120,11 +117,7 @@ def budget_commitment_consume(request, commitment_id):
     if not expense:
         raise NotFound()
     try:
-        row = consume_budget_commitment(
-            commitment=row,
-            expense=expense,
-            budget_id=serializer.validated_data.get("budget"),
-        )
+        row = consume_budget_commitment(commitment=row, expense=expense, budget_id=serializer.validated_data.get("budget"))
     except ValueError as exc:
         raise ValidationError({"commitment": str(exc)}) from exc
     return Response({"commitment": _payload(row)})
@@ -140,25 +133,16 @@ def budget_commitment_purchase(request, commitment_id):
     family = _family(request, serializer.validated_data["family"])
     row = (
         BudgetCommitment.objects.select_for_update()
-        .select_related("family", "ledger", "consumed_by")
+        .select_related("family", "ledger")
         .filter(id=commitment_id, family=family)
         .first()
     )
     if not row:
         raise NotFound()
-
-    # The commitment itself is the idempotency boundary. A retried request
-    # after a lost response returns the already committed expense rather than
-    # posting a second purchase.
     if row.status == BudgetCommitment.Status.CONSUMED:
         if not row.consumed_by_id:
             raise ValidationError({"commitment": "Die bereits verbrauchte Vormerkung hat keine zugehörige Ausgabe mehr."})
-        return Response(
-            {
-                "commitment": _payload(row),
-                "expense": ExpenseSerializer(row.consumed_by, context={"request": request}).data,
-            }
-        )
+        return Response({"commitment": _payload(row), "expense": ExpenseSerializer(row.consumed_by, context={"request": request}).data})
     if row.status != BudgetCommitment.Status.ACTIVE:
         raise ValidationError({"commitment": "Diese Vormerkung ist nicht mehr aktiv."})
 
@@ -171,23 +155,11 @@ def budget_commitment_purchase(request, commitment_id):
         raise ValidationError({"expense": {"ledger": "Ausgabe und Vormerkung müssen denselben Abrechnungskreis verwenden."}})
     expense_data["family"] = str(family.id)
     expense_data["ledger"] = str(row.ledger_id)
-
     expense_serializer = ExpenseSerializer(data=expense_data, context={"request": request})
     expense_serializer.is_valid(raise_exception=True)
     expense = expense_serializer.save()
     try:
-        row = consume_budget_commitment(
-            commitment=row,
-            expense=expense,
-            budget_id=serializer.validated_data.get("budget"),
-        )
+        row = consume_budget_commitment(commitment=row, expense=expense, budget_id=serializer.validated_data.get("budget"))
     except ValueError as exc:
         raise ValidationError({"commitment": str(exc)}) from exc
-
-    return Response(
-        {
-            "commitment": _payload(row),
-            "expense": ExpenseSerializer(expense, context={"request": request}).data,
-        },
-        status=status.HTTP_201_CREATED,
-    )
+    return Response({"commitment": _payload(row), "expense": ExpenseSerializer(expense, context={"request": request}).data}, status=status.HTTP_201_CREATED)
