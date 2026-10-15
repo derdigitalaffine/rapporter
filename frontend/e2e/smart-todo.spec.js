@@ -43,6 +43,15 @@ async function boot(page){
 function todoTabs(page){return page.locator('nav[aria-label="To-dos"]')}
 function focusItems(page){return page.locator('.todo-focus-item')}
 
+test('today prioritizes focus, then creation, then recent activity capture',async({page})=>{
+ await boot(page);
+ const order=await page.locator('.todo-hub > .todo-focus, .todo-hub > .todo-quick, .todo-hub > .action-capture').evaluateAll(nodes=>nodes.map(node=>node.classList.contains('todo-focus')?'focus':node.classList.contains('todo-quick')?'quick':'capture'));
+ expect(order).toEqual(['focus','quick','capture']);
+ await expect(page.getByRole('heading',{name:'Als Nächstes'})).toBeVisible();
+ await expect(page.locator('.todo-quick')).toContainText('Schnell hinzufügen');
+ await expect(page.locator('.action-capture')).toContainText('Ich habe gerade');
+});
+
 test('focus explains suggestions and manual pin outranks canonical order',async({page})=>{
  await boot(page);
  await expect(page.getByRole('heading',{name:'Als Nächstes'})).toBeVisible();
