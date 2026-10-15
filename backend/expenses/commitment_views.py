@@ -138,9 +138,11 @@ def budget_commitment_purchase(request, commitment_id):
     serializer = CommitmentPurchaseSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
     family = _family(request, serializer.validated_data["family"])
+    # `consumed_by` is nullable; do not include it in the FOR UPDATE query or
+    # PostgreSQL would try to lock the nullable side of a LEFT OUTER JOIN.
     row = (
         BudgetCommitment.objects.select_for_update()
-        .select_related("family", "ledger", "consumed_by")
+        .select_related("family", "ledger")
         .filter(id=commitment_id, family=family)
         .first()
     )
