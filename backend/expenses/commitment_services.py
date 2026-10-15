@@ -100,8 +100,11 @@ def release_budget_commitment(commitment):
 
 @transaction.atomic
 def consume_budget_commitment(*, commitment, expense, budget_id=None):
-    commitment = BudgetCommitment.objects.select_for_update().select_related("family", "ledger").get(pk=commitment.pk)
-    expense = Expense.objects.select_for_update().select_related("family", "ledger").get(pk=expense.pk)
+    # Lock only the canonical rows. Expense.ledger is nullable, so combining
+    # select_for_update() with select_related("ledger") would produce a LEFT
+    # OUTER JOIN that PostgreSQL refuses to lock.
+    commitment = BudgetCommitment.objects.select_for_update().get(pk=commitment.pk)
+    expense = Expense.objects.select_for_update().get(pk=expense.pk)
 
     if commitment.status == BudgetCommitment.Status.CONSUMED:
         if commitment.consumed_by_id == expense.id:
