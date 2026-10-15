@@ -13,10 +13,24 @@
 .budget-planning-row-actions{display:flex;align-items:center;gap:4px}
 .budget-planning-row-actions button{width:44px;height:44px}
 .budget-planner-fields{display:grid;gap:var(--space-4);min-width:0;padding:0;margin:0;border:0}
+.budget-period-settings,.budget-participant-settings{min-width:0;border:1px solid var(--line);border-radius:var(--radius-md);padding-inline:var(--space-3);background:var(--surface)}
+.budget-period-settings>summary,.budget-participant-settings>summary{border-top:0;padding-inline:0}
+.budget-period-fields,.budget-participant-fields{display:grid;gap:var(--space-3);min-width:0;padding:var(--space-2) 0 var(--space-3)}
+.budget-period-fields input,.budget-period-fields select,.budget-participant-fields input{min-width:0;max-width:100%}
+.budget-period-fields .budget-soft-hint,.budget-participant-fields .budget-soft-hint{padding:0}
+.budget-participant-list{display:grid;gap:var(--space-3);min-width:0}
+.budget-participant-row{display:grid;gap:var(--space-2);min-width:0;padding-block:var(--space-2);border-top:1px solid var(--line)}
+.budget-participant-row:first-child{border-top:0}
+.budget-participant-row>strong{overflow-wrap:anywhere}
+.budget-participant-money{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--space-3);min-width:0}
+.budget-participant-summary{display:grid;gap:4px;padding-top:var(--space-2);border-top:1px solid var(--line)}
+.budget-participant-summary>span{display:flex;justify-content:space-between;gap:var(--space-3);font-size:.85rem}
+.budget-participant-summary strong{font-variant-numeric:tabular-nums;text-align:right}
+.budget-participant-error{margin:0;color:var(--danger);font-size:.85rem}
 .budget-planner-editor{margin-top:var(--space-2)}
 .budget-planning-backdrop{top:var(--app-viewport-top,0px);bottom:auto;height:var(--app-viewport-height,100dvh);box-sizing:border-box}
 .budget-planning-sheet{max-height:calc(var(--app-viewport-height,100dvh) - 24px)}
 .budget-planning-sheet .sheet-head h2{font-size:1.1rem;overflow-wrap:anywhere}
 .budget-planning-sheet .sheet-head small{letter-spacing:0;text-transform:none}
 @media(min-width:640px){.budget-planning-sheet .form-actions>.primary{width:auto}}
-@media(max-width:520px){.budget-planning-facts{grid-template-columns:minmax(0,1fr)}.budget-planning-facts>div{display:flex;justify-content:space-between;align-items:baseline;gap:var(--space-3)}.budget-planning-facts dd{text-align:right}.budget-planner .budget-progress-head{flex-wrap:wrap}}
+@media(max-width:520px){.budget-planning-facts{grid-template-columns:minmax(0,1fr)}.budget-planning-facts>div{display:flex;justify-content:space-between;align-items:baseline;gap:var(--space-3)}.budget-planning-facts dd{text-align:right}.budget-planner .budget-progress-head{flex-wrap:wrap}.budget-period-settings,.budget-participant-settings{padding-inline:var(--space-2)}.budget-participant-money{grid-template-columns:minmax(0,1fr)}}
