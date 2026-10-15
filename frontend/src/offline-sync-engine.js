@@ -149,7 +149,7 @@ export class SyncEngine{
    const entry=await this.store.get('conflicts',id);if(!entry)return;const {mutation:m,result}=entry;
    if(choice==='server'){await this.store.write([remove('conflicts',id)]);emit(this);return}
    if(!result.server_data||!result.server_version)throw new Error('sync_entity_unavailable');
-   const next={...m,id:uuid(),operation:'update',changes:manual||m.changes,base_version:result.server_version,state:'pending',attempted:false,order:Date.now()};next.mutation_id=next.id;delete next.data;delete next.command;delete next.args;
+   const next={...m,id:uuid(),operation:m.operation,changes:manual||m.changes,base_version:result.server_version,state:'pending',attempted:false,order:Date.now()};next.mutation_id=next.id;delete next.data;if(next.operation!=='command'){delete next.command;delete next.args}if(next.operation!=='update')delete next.changes;
    await this.store.write([remove('conflicts',id),put('outbox',next)]);emit(this);this.schedule();
   });
  }

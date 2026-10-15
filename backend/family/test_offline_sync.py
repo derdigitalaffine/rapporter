@@ -120,6 +120,16 @@ class OfflineSyncTests(TestCase):
         result=self.sync([m]); self.assertEqual(result.data['mutation_results'][0]['code'],'read_only_source',result.data)
         self.assertTrue(result.data['snapshot']['events'][0]['read_only'])
 
+    def test_template_command_is_idempotent_and_uses_canonical_shopping_service(self):
+        from .shopping_models import ShoppingTemplate, ShoppingTemplateItem
+        template=ShoppingTemplate.objects.create(family=self.family,name='Basics',created_by=self.user)
+        ShoppingTemplateItem.objects.create(template=template,name='Bread',normalized_name='bread')
+        m=self.mutation(entity_type='shopping_list',entity_id=str(self.list.pk),base_version=self.list.version,
+                        operation='command',command='apply_template',args={'template_id':str(template.pk)})
+        first=self.sync([m]);self.assertEqual(first.data['mutation_results'][0]['status'],'applied',first.data)
+        self.assertEqual(self.sync([m]).data['mutation_results'][0]['status'],'already_applied')
+        self.assertEqual(self.list.items.filter(name='Bread').count(),1)
+
 
 from concurrent.futures import ThreadPoolExecutor
 from threading import Event

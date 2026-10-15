@@ -1,3 +1,4 @@
+import {offlineEngine} from './offline-runtime';
 import {useEffect,useMemo,useState} from 'react';
 import {useTranslation} from 'react-i18next';
 import {api} from './api';
@@ -22,7 +23,7 @@ export default function ShoppingTemplateTools({familyId,list,onChanged}){
  async function load(){
   if(!familyId)return;
   setError('');
-  if(!online){setTemplates(readCache('templates',familyId));setStores(readCache('stores',familyId));return}
+  if(!online||offlineEngine(familyId)){setTemplates(readCache('templates',familyId));setStores(readCache('stores',familyId));return}
   try{
    const [templateRows,storeRows]=await Promise.all([
     api(`/shopping-templates/?family=${encodeURIComponent(familyId)}`),
@@ -63,7 +64,7 @@ export default function ShoppingTemplateTools({familyId,list,onChanged}){
  }
  async function applyTemplate(template){
   if(busy||!list)return;
-  if(!online){
+  if(!online||offlineEngine(familyId)){
    const queued=await queueShoppingTemplateApply(familyId,template.id,list.id);
    if(!queued.deduplicated)toast(t('shoppingTemplateUi.applyQueued'),{type:'success'});
    return;

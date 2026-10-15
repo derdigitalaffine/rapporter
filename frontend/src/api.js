@@ -1,3 +1,4 @@
+import {offlineShoppingRequest,offlineMetadata,rememberOfflineBootstrap,clearOfflineIdentity,setSyncTransport,offlineIdentity,offlineDashboard} from './offline-runtime';
 import {clearBootstrapRuntime,clearFamilyModuleRuntime,invalidateFamilyModuleRuntimeForPath,rememberBootstrapRuntime,rememberFamilyModuleRuntime,takeBootstrapRuntime} from './family-runtime';
 import {loadFamilyShell,offlineApiFallback,saveFamilyShell,saveShoppingSnapshot} from './offline-store';
 
@@ -15,6 +16,7 @@ export function markAuthenticated(value=true){
 }
 function resetSessionExpiry(){sessionExpiredSent=false}
 function notifySessionExpired(){
+ if(offlineIdentity()){window.dispatchEvent(new CustomEvent('familyos:reauth-required'));return}
  markAuthenticated(false);
  if(sessionExpiredSent)return;
  sessionExpiredSent=true;
@@ -28,9 +30,11 @@ export async function login(identifier,password,{legacy=false}={}){
  if(!response.ok)throw new Error('login_failed');
  markAuthenticated(true);resetSessionExpiry();return response.json();
 }
-export function logout(){
+export async function logout(){
  markAuthenticated(false);resetSessionExpiry();
+ let cleanupError;try{await clearOfflineIdentity()}catch(error){cleanupError=error}
  fetch(`${API_BASE}/auth/logout/`,{method:'POST',credentials:'include',headers:jsonHeaders()}).catch(()=>{});
+ if(cleanupError)throw cleanupError;
 }
 export function isAuthenticated(){return localStorage.getItem(SESSION_MARKER)==='1'}
 export async function checkSession(){
@@ -40,7 +44,7 @@ export async function checkSession(){
 async function refreshAccess(){
  if(!refreshPromise){
   refreshPromise=fetch(`${API_BASE}/auth/refresh/`,{method:'POST',credentials:'include',headers:jsonHeaders()})
-   .then(response=>{if(!response.ok){markAuthenticated(false);return false}markAuthenticated(true);resetSessionExpiry();return true})
+   .then(response=>{if(!response.ok){if(!offlineIdentity())markAuthenticated(false);return false}markAuthenticated(true);resetSessionExpiry();return true})
    .catch(()=>false)
    .finally(()=>{refreshPromise=null});
  }
@@ -53,6 +57,8 @@ async function request(path,options={}){
 }
 async function requestOrOffline(path,options={}){
  try{return {response:await request(path,options)}}catch(error){
+  const scoped=offlineMetadata(path);if(scoped.handled)return {fallback:scoped.value};
+  const dashboard=await offlineDashboard(path);if(dashboard.handled)return {fallback:dashboard.value};
   const fallback=await offlineApiFallback(path,options).catch(()=>({found:false}));
   if(fallback.found)return {fallback:fallback.value};
   throw error;
@@ -60,7 +66,10 @@ async function requestOrOffline(path,options={}){
 }
 async function rememberOfflineData(path,data,options={}){
  const method=(options.method||'GET').toUpperCase();if(method!=='GET')return;
+ if(!isAuthenticated())return;
+ await rememberOfflineBootstrap(path,data);
  try{
+  if(offlineIdentity())return;
   if(path==='/families/'&&Array.isArray(data)){await saveFamilyShell(data);return}
   if(path==='/shopping-lists/'&&Array.isArray(data)){
    const familyId=data[0]?.family||(await loadFamilyShell())?.[0]?.id;
@@ -86,9 +95,11 @@ function apiError(response,payload){
  return error;
 }
 export async function api(path,options={}){
+ if(navigator.onLine===false){const scoped=offlineMetadata(path);if(scoped.handled)return scoped.value}
+ const local=await offlineShoppingRequest(path,options);if(local.handled){clearBootstrapRuntime();return local.value}
  const method=(options.method||'GET').toUpperCase();
  if(method==='GET'){
-  const runtime=takeBootstrapRuntime(path);if(runtime.found)return runtime.data;
+  const runtime=takeBootstrapRuntime(path);if(runtime.found){await rememberOfflineBootstrap(path,runtime.data);return runtime.data}
  }else{
   invalidateFamilyModuleRuntimeForPath(path);clearBootstrapRuntime();
  }
@@ -98,7 +109,7 @@ export async function api(path,options={}){
  if(response.status===401&&await refreshAccess()){
   result=await requestOrOffline(path,options);if('fallback' in result)return result.fallback;response=result.response;
  }
- if(response.status===401){notifySessionExpired();throw new Error('unauthorized')}
+ if(response.status===401){const cached=offlineMetadata(path);if(cached.handled)return cached.value;notifySessionExpired();throw new Error('unauthorized')}
  if(!response.ok){let payload=null;try{payload=await response.json()}catch{}throw apiError(response,payload)}
  if(response.status===204)return null;
  const data=await response.json();
@@ -109,9 +120,18 @@ export async function api(path,options={}){
 export async function apiDownload(path){
  let response=await request(path,{method:'GET',headers:{Accept:'application/octet-stream'}});
  if(response.status===401&&await refreshAccess())response=await request(path,{method:'GET',headers:{Accept:'application/octet-stream'}});
- if(response.status===401){notifySessionExpired();throw new Error('unauthorized')}
+ if(response.status===401){const cached=offlineMetadata(path);if(cached.handled)return cached.value;notifySessionExpired();throw new Error('unauthorized')}
  if(!response.ok){let payload=null;try{payload=await response.json()}catch{}throw apiError(response,payload)}
  const disposition=response.headers.get('Content-Disposition')||'';
  const match=disposition.match(/filename="?([^";]+)"?/i);
  return {blob:await response.blob(),filename:match?.[1]||'download'};
 }
+
+// Sync uses authenticated transport directly; it must never recurse through the
+// domain adapter or treat an auth failure as a request to delete local work.
+setSyncTransport(async(payload,signal)=>{
+ let response=await request('/sync/',{method:'POST',body:JSON.stringify(payload),signal});
+ if(response.status===401&&await refreshAccess())response=await request('/sync/',{method:'POST',body:JSON.stringify(payload),signal});
+ if(!response.ok)throw Object.assign(new Error(`sync_${response.status}`),{status:response.status});
+ return response.json();
+});

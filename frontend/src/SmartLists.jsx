@@ -1,3 +1,5 @@
+import {offlineEngine} from './offline-runtime';
+import {SYNC_CHANGED} from './offline-sync-engine';
 import {useEffect,useMemo,useRef,useState} from 'react';
 import {useTranslation} from 'react-i18next';
 import {api} from './api';
@@ -58,10 +60,11 @@ export function SmartShopping({family,onChanged,initialLists=[],initialLoaded=fa
   async function syncQueue({manual=false}={}){if(!family||syncing)return;setSyncing(true);if(retryTimer.current){clearTimeout(retryTimer.current);retryTimer.current=null}try{const result=manual?await retryShoppingMutations(family.id):await flushShoppingMutations(family.id);await refreshQueue();if(!result.error&&!result.blocked&&result.synced>0){await load();onChanged?.();toast(t('shoppingOffline.synced'),{type:'success'})}else if(result.error&&!result.failed&&navigator.onLine){retryTimer.current=setTimeout(()=>syncQueue(),1800)}}finally{setSyncing(false)}}
   useEffect(()=>{load();return()=>{if(retryTimer.current)clearTimeout(retryTimer.current)}},[family?.id]);
   useEffect(()=>{const online=()=>syncQueue();window.addEventListener('online',online);return()=>window.removeEventListener('online',online)},[family?.id,syncing]);
-  async function queueChanged(){const state=await refreshQueue();if(navigator.onLine&&!state.failed)void syncQueue()}
+  useEffect(()=>{const changed=event=>{if(String(event.detail?.familyId)===String(family?.id))void load()};window.addEventListener(SYNC_CHANGED,changed);return()=>window.removeEventListener(SYNC_CHANGED,changed)},[family?.id]);
+  async function queueChanged(){if(offlineEngine(family.id)){await load();return}const state=await refreshQueue();if(navigator.onLine&&!state.failed)void syncQueue()}
   const list=lists.find(x=>String(x.id)===String(active))||lists[0];const items=list?.items||[];const open=items.filter(x=>!x.checked);const checked=items.filter(x=>x.checked);const total=items.length;const progress=total?Math.round(checked.length/total*100):0;
   const groups=useMemo(()=>{const out={};open.forEach(x=>{const k=x.category||t('other');(out[k]||(out[k]=[])).push(x)});Object.values(out).forEach(rows=>rows.sort((a,b)=>Number(b.favorite)-Number(a.favorite)||a.name.localeCompare(b.name)));return out},[open,t]);
-  async function ensureList(){let target=list;if(target)return target;if(!navigator.onLine)throw new Error(t('shoppingOffline.offlineNeedsList'));target=await api('/shopping-lists/',{method:'POST',body:JSON.stringify({family:family.id,name:t('shopping'),icon:'cart-shopping'})});setBaseLists(rows=>[...rows,{...target,items:[],open_count:0,checked_count:0}]);setActive(target.id);return target}
+  async function ensureList(){let target=list;if(target)return target;if(!navigator.onLine&&!offlineEngine(family.id))throw new Error(t('shoppingOffline.offlineNeedsList'));target=await api('/shopping-lists/',{method:'POST',body:JSON.stringify({family:family.id,name:t('shopping'),icon:'cart-shopping'})});setBaseLists(rows=>[...rows,{...target,items:[],open_count:0,checked_count:0}]);setActive(target.id);return target}
   async function create({name,suggestion}){const target=await ensureList();await queueShoppingAdd(family.id,{family:family.id,shopping_list:target.id,name,quantity:suggestion?.quantity||'',category:suggestion?.category||'',aisle:suggestion?.aisle||'',note:suggestion?.note||''});await queueChanged();toast(t('itemAdded'),{type:'success'})}
   async function addMany(names){const clean=names.map(name=>String(name).trim()).filter(Boolean);if(!clean.length)return;const target=await ensureList();await Promise.all(clean.map(name=>queueShoppingAdd(family.id,{family:family.id,shopping_list:target.id,name,quantity:'',category:'',aisle:'',note:''})));await queueChanged();onChanged?.();toast(t('shoppingText.added',{count:clean.length}),{type:'success'})}
   async function toggle(x,target=!x.checked){await queueShoppingPatch(family.id,x.id,{checked:target});await queueChanged();onChanged?.()}
