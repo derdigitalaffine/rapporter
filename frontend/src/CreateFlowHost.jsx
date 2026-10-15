@@ -3,6 +3,7 @@ import {recordCreateUsage,createRankingScope} from './create-ranking-client';
 import {openTaskDuel} from './game-assignment-i18n';
 import {pageHref} from './navigation';
 import {resolveCreateFlowRenderer} from './create-flow-registry';
+import OverlayPortal from './OverlayPortal';
 
 export default function CreateFlowHost({userId,action,family,data,context={},onClose,onRefresh,onNavigate}){
  const learnedTask=useRef(null);
@@ -30,5 +31,5 @@ export default function CreateFlowHost({userId,action,family,data,context={},onC
  }
  const render=resolveCreateFlowRenderer(action);
  if(!render)return null;
- return render({userId,family,data,context,taskLists,shoppingLists,taskListId,shoppingList,onClose,onRefresh,saved,savedWithoutClose,openModule,learnSuccessfulCreate,setCreatedShoppingList});
+ return <OverlayPortal>{render({userId,family,data,context,taskLists,shoppingLists,taskListId,shoppingList,onClose,onRefresh,saved,savedWithoutClose,openModule,learnSuccessfulCreate,setCreatedShoppingList})}</OverlayPortal>;
 }

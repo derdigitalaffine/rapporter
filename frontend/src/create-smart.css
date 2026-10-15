@@ -1,7 +1,7 @@
-.global-create-controls{position:fixed;right:max(16px,calc((100vw - 760px)/2 + 16px));bottom:calc(88px + env(safe-area-inset-bottom));z-index:38;display:flex;align-items:stretch;gap:6px;max-width:calc(100vw - 32px)}
-.global-create-controls .global-create-fab{position:static!important;inset:auto!important;transform:none!important;min-height:48px;max-width:min(280px,calc(100vw - 84px));padding:0 16px;border:0;border-radius:var(--radius-pill);background:var(--ink);color:var(--surface);box-shadow:var(--shadow-md);display:flex;align-items:center;justify-content:center;gap:8px;font-weight:850;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.global-create-controls{position:fixed;right:max(16px,calc((100vw - 760px)/2 + 16px));bottom:calc(var(--app-nav-space,calc(76px + env(safe-area-inset-bottom))) + var(--app-floating-create-gap,12px));z-index:var(--layer-floating-action,40);display:flex;align-items:stretch;gap:6px;max-width:calc(100vw - 32px)}
+.global-create-controls .global-create-fab{position:static!important;inset:auto!important;transform:none!important;min-height:var(--app-floating-create-height,48px);max-width:min(280px,calc(100vw - 84px));padding:0 16px;border:0;border-radius:var(--radius-pill);background:var(--ink);color:var(--surface);box-shadow:var(--shadow-md);display:flex;align-items:center;justify-content:center;gap:8px;font-weight:850;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .global-create-controls .global-create-fab span{min-width:0;overflow:hidden;text-overflow:ellipsis}
-.global-create-menu-button{width:48px;min-width:48px;height:48px;border:1px solid var(--line);border-radius:var(--radius-pill);background:var(--surface);color:var(--ink);box-shadow:var(--shadow-md);display:grid;place-items:center}
+.global-create-menu-button{width:48px;min-width:48px;height:var(--app-floating-create-height,48px);border:1px solid var(--line);border-radius:var(--radius-pill);background:var(--surface);color:var(--ink);box-shadow:var(--shadow-md);display:grid;place-items:center}
 .create-palette-sheet{max-height:min(78dvh,680px);overflow:auto;overscroll-behavior:contain}
 .create-palette-hint{margin:0 0 16px;color:var(--muted);font-size:13px;line-height:1.45}
 .create-palette-group{display:grid;gap:8px;margin:14px 0}
@@ -30,7 +30,7 @@
 @media(max-width:389px){.global-create-controls{right:12px;max-width:calc(100vw - 24px)}.create-action-grid{grid-template-columns:1fr}.create-action-card{min-height:72px}.quickstart-settings-action-buttons{grid-template-columns:1fr 1fr 44px 44px}}
 @media(prefers-reduced-motion:reduce){.create-all-toggle svg{transition:none}}
 
-/* The wrapper follows the existing Create FAB breakpoint placement. */
-@media(min-width:760px) and (min-height:621px){.global-create-controls{bottom:28px;right:max(28px,calc((100vw - 1180px)/2 + 28px))}}
+/* Horizontal placement widens with the app shell; vertical placement always follows the bottom navigation contract. */
+@media(min-width:760px) and (min-height:621px){.global-create-controls{right:max(28px,calc((100vw - 1180px)/2 + 28px))}}
 @media(min-width:960px) and (min-height:621px){.global-create-controls{right:max(40px,calc((100vw - 1320px)/2 + 40px))}}
 @media(min-width:1180px) and (min-height:621px){.global-create-controls{right:max(52px,calc((100vw - 1480px)/2 + 52px))}}

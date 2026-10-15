@@ -53,6 +53,22 @@ test('elastic iOS viewport panning does not displace primary navigation',async({
  await expect(nav).toHaveCSS('transform','none');
 });
 
+test('transient iOS visual viewport changes do not lift app chrome',async({page})=>{
+ await boot(page,{visualViewport:true});
+ const nav=page.locator('.bottom-nav'),controls=page.locator('.global-create-controls');
+ await expect(controls).toBeVisible();
+ const beforeNav=await nav.boundingBox(),beforeControls=await controls.boundingBox();
+ expect(beforeControls.y+beforeControls.height).toBeLessThanOrEqual(beforeNav.y);
+
+ await page.evaluate(()=>{Object.assign(window.visualViewport,{height:784,offsetTop:0});window.visualViewport.dispatchEvent(new Event('resize'))});
+ await expect.poll(()=>nav.evaluate(el=>el.getBoundingClientRect().bottom)).toBeCloseTo(844,0);
+ await expect.poll(()=>page.evaluate(()=>getComputedStyle(document.documentElement).getPropertyValue('--app-viewport-height').trim())).toBe('844px');
+ const afterNav=await nav.boundingBox(),afterControls=await controls.boundingBox();
+ expect(afterNav.y).toBeCloseTo(beforeNav.y,0);
+ expect(afterControls.y).toBeCloseTo(beforeControls.y,0);
+ expect(afterControls.y+afterControls.height).toBeLessThanOrEqual(afterNav.y);
+});
+
 for(const viewport of [{width:390,height:844},{width:844,height:390}])test(`standalone navigation and forms remain reachable at ${viewport.width}x${viewport.height}`,async({page})=>{
  await boot(page,{viewport});
  const nav=page.locator('.bottom-nav');
@@ -70,15 +86,25 @@ for(const viewport of [{width:390,height:844},{width:844,height:390}])test(`stan
  await page.keyboard.press('Escape');await expect(dialog).toHaveCount(0);
 });
 
-test('standalone keyboard resize preserves the editable field and pinned navigation',async({page})=>{
+test('standalone keyboard resize keeps editing usable without moving persistent navigation',async({page})=>{
  await boot(page,{visualViewport:true});
  await page.locator('.bottom-nav').getByRole('button',{name:'To-dos',exact:true}).click();
  const field=page.locator('#todo-quick-title');await field.focus();
  await page.evaluate(()=>{Object.assign(window.visualViewport,{height:440,offsetTop:0});window.visualViewport.dispatchEvent(new Event('resize'))});
- await expect.poll(()=>page.locator('.bottom-nav').evaluate(el=>el.getBoundingClientRect().bottom)).toBeCloseTo(440,0);
+ await expect.poll(()=>page.evaluate(()=>document.documentElement.hasAttribute('data-app-keyboard'))).toBe(true);
+ await expect.poll(()=>page.evaluate(()=>getComputedStyle(document.documentElement).getPropertyValue('--app-viewport-height').trim())).toBe('440px');
+ await expect.poll(()=>page.locator('.bottom-nav').evaluate(el=>el.getBoundingClientRect().bottom)).toBeCloseTo(844,0);
  await field.fill('Keyboard stays usable');await expect(field).toHaveValue('Keyboard stays usable');
  const box=await field.boundingBox();expect(box.y+box.height).toBeLessThanOrEqual(440);
  expect(await page.evaluate(()=>window.scrollY)).toBe(0);
+
+ // Reproduce iOS dismissal race: focus is gone, but the final viewport resize
+ // has not arrived yet. Stable chrome must recover immediately.
+ await field.evaluate(el=>el.blur());
+ await expect.poll(()=>page.evaluate(()=>document.documentElement.hasAttribute('data-app-keyboard'))).toBe(false);
+ await expect.poll(()=>page.evaluate(()=>getComputedStyle(document.documentElement).getPropertyValue('--app-viewport-height').trim())).toBe('844px');
+ await expect.poll(()=>page.locator('.bottom-nav').evaluate(el=>el.getBoundingClientRect().bottom)).toBeCloseTo(844,0);
+
  await page.evaluate(()=>{Object.assign(window.visualViewport,{height:844,offsetTop:0});window.visualViewport.dispatchEvent(new Event('resize'))});
  await expect.poll(()=>page.locator('.bottom-nav').evaluate(el=>el.getBoundingClientRect().bottom)).toBeCloseTo(844,0);
 });

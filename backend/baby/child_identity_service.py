@@ -64,6 +64,53 @@ def require_child_guardian(user, baby, *, manage=False):
     raise PermissionDenied("Explicit guardian permission is required for this child.")
 
 
+def _require_guardian_manager_or_owner_bootstrap(user, baby):
+    """Authorize Guardian-list writes without turning Owner into a Guardian.
+
+    Existing account-managing Guardians remain authoritative. The only Owner
+    exception is recovery from a child that currently has no account-managing
+    Guardian at all. That exception is deliberately scoped to this write path;
+    protected child reads continue to use ``require_child_guardian``.
+    """
+    membership = active_membership(user, baby.family)
+    guardian = ManagedChildGuardian.objects.filter(
+        baby=baby,
+        membership=membership,
+        can_manage_account=True,
+    ).first()
+    if guardian:
+        return membership, guardian, False
+
+    # Preserve the legacy #147 Care Circle migration bridge for an explicitly
+    # marked guardian. This still never derives permission from Owner/Adult.
+    if not baby.guardians.exists() and _bootstrap_guardian_allowed(membership, baby):
+        guardian = ManagedChildGuardian.objects.create(
+            baby=baby,
+            membership=membership,
+            can_manage_account=True,
+        )
+        return membership, guardian, False
+
+    has_account_manager = ManagedChildGuardian.objects.filter(
+        baby=baby,
+        can_manage_account=True,
+    ).exists()
+    if membership.role == Membership.Role.OWNER and not has_account_manager:
+        return membership, None, True
+    raise PermissionDenied("An account-managing guardian is required to change guardians for this child.")
+
+
+def _serialize_guardian_rows(baby):
+    return [
+        {
+            "membership": str(row.membership_id),
+            "display_name": row.membership.display_name or row.membership.user.get_username(),
+            "can_manage_account": row.can_manage_account,
+        }
+        for row in baby.guardians.select_related("membership__user").order_by("created_at")
+    ]
+
+
 def serialize_child_identity(baby):
     user = baby.membership.user if baby.membership_id else None
     primary = primary_identity(user) if user else None
@@ -84,14 +131,65 @@ def serialize_child_identity(baby):
         "role": baby.membership.role if baby.membership_id else None,
         "access_state": state,
         "email_hint": _masked_email(email),
-        "guardians": [
+        "guardians": _serialize_guardian_rows(baby),
+    }
+
+
+def guardian_settings_for_family(user, family):
+    """Return permission metadata only; never child health/profile payloads."""
+    actor = active_membership(user, family)
+    legacy_guardian = CareCircleAccess.objects.filter(
+        family=family,
+        membership=actor,
+        is_guardian=True,
+    ).exists()
+    babies = (
+        BabyProfile.objects.filter(
+            family=family,
+            membership__isnull=False,
+            membership__role=Membership.Role.CHILD,
+        )
+        .select_related("membership__user")
+        .prefetch_related("guardians__membership__user")
+        .order_by("display_name", "created_at")
+    )
+    result = []
+    for baby in babies:
+        guardians = list(baby.guardians.all())
+        has_account_manager = any(row.can_manage_account for row in guardians)
+        actor_manages = any(
+            row.membership_id == actor.id and row.can_manage_account
+            for row in guardians
+        )
+        legacy_can_manage = not guardians and legacy_guardian
+        owner_bootstrap = actor.role == Membership.Role.OWNER and not has_account_manager
+        can_manage = actor_manages or legacy_can_manage or owner_bootstrap
+        if actor.role != Membership.Role.OWNER and not can_manage:
+            continue
+        result.append(
             {
-                "membership": str(row.membership_id),
-                "display_name": row.membership.display_name or row.membership.user.get_username(),
-                "can_manage_account": row.can_manage_account,
+                "baby": str(baby.pk),
+                "membership": str(baby.membership_id),
+                "display_name": baby.display_name,
+                "guardians": [
+                    {
+                        "membership": str(row.membership_id),
+                        "display_name": row.membership.display_name or row.membership.user.get_username(),
+                        "can_manage_account": row.can_manage_account,
+                    }
+                    for row in guardians
+                ],
+                "has_account_managing_guardian": has_account_manager,
+                "can_manage_guardians": can_manage,
+                "can_bootstrap_guardians": owner_bootstrap and not actor_manages,
             }
-            for row in baby.guardians.select_related("membership__user").order_by("created_at")
-        ],
+        )
+    return {
+        "family": str(family.pk),
+        "family_name": family.name,
+        "actor_membership": str(actor.pk),
+        "actor_role": actor.role,
+        "children": result,
     }
 
 
@@ -108,7 +206,7 @@ def replace_child_guardians(user, baby_id, rows):
     baby = child_profile(baby_id, for_update=True)
     if not baby.membership_id:
         raise ValidationError("Child identity must be reconciled before guardians can be managed.")
-    require_child_guardian(user, baby, manage=True)
+    _require_guardian_manager_or_owner_bootstrap(user, baby)
     if not isinstance(rows, list) or not rows:
         raise ValidationError({"guardians": "At least one account-managing guardian is required."})
 
