@@ -37,4 +37,4 @@ jobs:
       - working-directory: backend
         run: python manage.py migrate && python manage.py check
       - working-directory: backend
-        run: python manage.py test family.test_offline_sync family.test_shopping_access family.test_shopping_order
+        run: python manage.py test family.test_offline_sync family.test_sync_live family.test_shopping_access family.test_shopping_order
