@@ -34,3 +34,19 @@ test('hung request times out and aborts transport without acknowledging its muta
 test('new status and recovery controls have complete labels in all supported languages',()=>{
  const keys=Object.keys(syncLabels.en);for(const language of ['de','en','fr','nl','th'])for(const key of keys)assert.equal(typeof syncLabels[language][key],'string',`${language}.${key}`);
 });
+
+test('quiet LED remains steady during routine empty-queue checks and preserves real health changes',async()=>{
+ const {syncIndicator}=await import('../src/offline-status.js');
+ const health={online:true,serverState:'reachable',liveState:'connected',lastSyncAt:new Date().toISOString()};
+ assert.equal(syncIndicator({...health,state:'synced'}),'ready');
+ assert.equal(syncIndicator({...health,state:'synchronizing'}),'ready');
+ assert.equal(syncIndicator({...health,state:'synchronizing',pending:1}),'attention');
+ assert.equal(syncIndicator({...health,state:'synced',conflicts:1}),'attention');
+ assert.equal(syncIndicator({...health,state:'synchronizing',serverState:'unreachable'}),'error');
+ assert.equal(syncIndicator({...health,state:'synced',liveState:'reconnecting'}),'attention');
+ assert.equal(syncIndicator({...health,state:'synchronizing',liveState:'reconnecting'}),'attention');
+ assert.equal(syncIndicator({...health,state:'synced',online:false}),'offline');
+ assert.equal(syncIndicator({...health,state:'synced',serverState:'auth-required'}),'error');
+ assert.equal(syncIndicator({...health,state:'synchronizing',serverState:'unknown'}),'checking');
+ assert.equal(syncIndicator({...health,state:'synced',lastSyncAt:new Date(Date.now()-60001).toISOString()}),'checking');
+});
