@@ -53,3 +53,9 @@ jobs:
           path: |
             backend-server.log
             frontend/test-results
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sync-status-ui-review
+          if-no-files-found: error
+          path: frontend/test-results/**/sync-status-*.png

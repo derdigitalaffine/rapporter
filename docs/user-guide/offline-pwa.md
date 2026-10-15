@@ -100,3 +100,16 @@ Unterstützt dein Browser Hintergrundabgleich, kann er offene FamilyOS-Fenster z
 Abgleich anstoßen. Sind alle Fenster geschlossen, wird beim nächsten Öffnen
 abgeglichen. Einkäufe, To-dos und native Termine bleiben im vorbereiteten Umfang
 offline nutzbar; externe Kalendertermine bleiben schreibgeschützt.
+
+### Serverstatus und Live-Verbindung unterscheiden
+
+„Synchronisiert“ erscheint nur nach einem kürzlich bestätigten Abgleich mit dem
+Server. Eine Internetverbindung allein reicht dafür nicht. Ist der Server nicht
+erreichbar, steht das ausdrücklich im Status. Der Zeitpunkt des letzten
+Erfolgs bleibt als Verlauf sichtbar; deine lokalen Änderungen bleiben erhalten.
+
+Die zweite Statuszeile zeigt die Live-Verbindung: verbunden, im Aufbau,
+unterbrochen oder nicht verfügbar. Auch ohne Live-Verbindung prüft die App den
+Server regelmäßig und verwendet den normalen Abgleich. In der Statusansicht
+siehst du Erreichbarkeit, Live-Verbindung, letzten Erfolg und wartende Änderungen
+getrennt. „Jetzt prüfen“ stößt einen neuen Abgleich an.
