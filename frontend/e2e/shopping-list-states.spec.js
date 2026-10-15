@@ -9,20 +9,37 @@ async function expectNoHorizontalOverflow(page){
   const sizes=await page.evaluate(()=>({scrollWidth:document.documentElement.scrollWidth,clientWidth:document.documentElement.clientWidth}));expect(sizes.scrollWidth).toBeLessThanOrEqual(sizes.clientWidth);
 }
 
-test('shopping lists use one compact accessible switcher instead of a tab wall',async({page})=>{
-  await boot(page,state=>{state.shoppingLists.push(
+test('shopping list switcher scales from quick choices to a compact select',async({page})=>{
+  const state=await boot(page,state=>{state.shoppingLists.push(
     {id:'shop-2',family:'family-1',name:'Drogerie',store:'dm',icon:'cart-shopping',archived:false,sort_order:1,items:[]},
     {id:'shop-3',family:'family-1',name:'Baumarkt und Garten',store:'',icon:'cart-shopping',archived:false,sort_order:2,items:[]},
   )},'de',{width:320,height:844});
   await expect(page.locator('.shopping-list-tabs')).toHaveCount(0);
-  const select=page.getByLabel('Einkaufsliste wechseln');await expect(select).toBeVisible();await expect(select.locator('option')).toHaveCount(3);const box=await select.boundingBox();expect(box.height).toBeGreaterThanOrEqual(48);expect(parseFloat(await select.evaluate(element=>getComputedStyle(element).fontSize))).toBeGreaterThanOrEqual(16);
+  const quick=page.locator('.shopping-list-switcher-quick');await expect(quick).toBeVisible();await expect(quick.getByRole('button')).toHaveCount(3);await expect(page.locator('.shopping-list-switcher-select')).toHaveCount(0);
+  const quickBox=await quick.getByRole('button').first().boundingBox();expect(quickBox.height).toBeGreaterThanOrEqual(48);
   const createButton=page.getByRole('button',{name:'Neue Liste'});const createBox=await createButton.boundingBox();expect(createBox.width).toBeGreaterThanOrEqual(48);expect(createBox.height).toBeGreaterThanOrEqual(48);await expectNoHorizontalOverflow(page);
-  await select.selectOption('shop-2');await expect(page.locator('.shopping-session-title').getByText('Drogerie',{exact:true})).toBeVisible();await expect(page.getByText('Diese Liste ist noch leer',{exact:true})).toBeVisible();
+  await quick.getByRole('button',{name:/^Drogerie/}).click();await expect(page.locator('.shopping-session-title').getByText('Drogerie',{exact:true})).toBeVisible();await expect(page.getByText('Diese Liste ist noch leer',{exact:true})).toBeVisible();
+  state.shoppingLists.push(
+    {id:'shop-4',family:'family-1',name:'Getränke',store:'',icon:'cart-shopping',archived:false,sort_order:3,items:[]},
+    {id:'shop-5',family:'family-1',name:'Apotheke',store:'',icon:'cart-shopping',archived:false,sort_order:4,items:[]},
+  );
+  await page.reload();await expect(page.locator('.shopping-list-switcher-quick')).toHaveCount(0);const select=page.getByLabel('Einkaufsliste wechseln');await expect(select).toBeVisible();await expect(select.locator('option')).toHaveCount(5);const selectBox=await select.boundingBox();expect(selectBox.height).toBeGreaterThanOrEqual(48);expect(parseFloat(await select.evaluate(element=>getComputedStyle(element).fontSize))).toBeGreaterThanOrEqual(16);await expectNoHorizontalOverflow(page);
   await page.setViewportSize({width:1024,height:768});await expect(createButton.locator('span')).toBeVisible();await expectNoHorizontalOverflow(page);
 });
 
+test('planning keeps add and store primary while management stays in More',async({page})=>{
+  await boot(page,()=>{},'de',{width:320,height:844});
+  await expect(page.locator('.smart-input input')).toBeVisible();
+  await expect(page.locator('.shopping-mode-toggle')).toHaveCount(0);
+  const store=page.locator('.shopping-store-entry');await expect(store).toBeVisible();const storeBox=await store.boundingBox();expect(storeBox.height).toBeGreaterThanOrEqual(48);
+  const overflow=page.locator('.shopping-overflow');const summary=overflow.locator('summary');await expect(summary).toBeVisible();const summaryBox=await summary.boundingBox();expect(summaryBox.width).toBeGreaterThanOrEqual(48);expect(summaryBox.height).toBeGreaterThanOrEqual(48);
+  await expect(overflow.locator('.shopping-overflow-menu')).toBeHidden();await expect(page.getByRole('button',{name:'Liste bearbeiten'})).toBeHidden();await expect(page.getByRole('button',{name:'Textmodus'})).toBeHidden();
+  await summary.click();await expect(page.getByRole('button',{name:'Liste bearbeiten'})).toBeVisible();await expect(page.getByRole('button',{name:'Textmodus'})).toBeVisible();await expectNoHorizontalOverflow(page);
+  await page.getByRole('button',{name:'Liste bearbeiten'}).click();await expect(page.getByRole('dialog').getByRole('heading',{name:'Bearbeiten'})).toBeVisible();
+});
+
 test('shopping distinguishes no list and creates from the primary state CTA',async({page})=>{
-  const state=await boot(page,state=>{state.shoppingLists=[]});await expect(page.getByText('Noch keine Einkaufsliste',{exact:true})).toBeVisible();await expect(page.locator('.smart-input')).toHaveCount(0);const createButton=page.getByRole('button',{name:'Einkaufsliste anlegen'});const box=await createButton.boundingBox();expect(box.height).toBeGreaterThanOrEqual(48);await createButton.click();const input=page.getByPlaceholder('Name der neuen Liste');await expect(input).toBeFocused();await input.fill('Wochenmarkt');await page.getByRole('button',{name:'Anlegen',exact:true}).click();await expect(page.locator('.shopping-session-title').getByText('Wochenmarkt',{exact:true})).toBeVisible();expect(state.shoppingLists.some(list=>list.name==='Wochenmarkt')).toBe(true);
+  const state=await boot(page,state=>{state.shoppingLists=[]});await expect(page.getByText('Noch keine Einkaufsliste',{exact:true})).toBeVisible();await expect(page.locator('.smart-input')).toHaveCount(0);const createButton=page.getByRole('button',{name:'Einkaufsliste anlegen'});const box=await createButton.boundingBox();expect(box.height).toBeGreaterThanOrEqual(48);await createButton.click();const input=page.getByPlaceholder('Name der neuen Liste');await expect(input).toBeFocused();await expect(page.getByText('Für wen?',{exact:true})).toBeVisible();await expect(page.getByRole('radio',{name:'Ganze Familie'})).toHaveAttribute('aria-checked','true');await input.fill('Wochenmarkt');await page.getByRole('button',{name:'Anlegen',exact:true}).click();await expect(page.locator('.shopping-session-title').getByText('Wochenmarkt',{exact:true})).toBeVisible();expect(state.shoppingLists.some(list=>list.name==='Wochenmarkt')).toBe(true);
 });
 
 test('empty list CTA focuses quick add while completed-only recovers through Store Erledigt',async({page})=>{

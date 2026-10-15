@@ -1,4 +1,5 @@
 import {useEffect,useRef,useState} from 'react';
+import {createPortal} from 'react-dom';
 import {Icon} from './icons';
 
 let nextId=1;
@@ -41,7 +42,8 @@ export default function FeedbackHost(){
     const current=confirm;setConfirm(null);current?.resolve?.(value);
   }
 
-  return <>
+  if(typeof document==='undefined')return null;
+  return createPortal(<>
     <div className="toast-region" aria-live="polite" aria-atomic="false">
       {toasts.map(item=><div className={`toast toast-${item.type}`} key={item.id} role={item.type==='error'?'alert':'status'}>
         <span className="toast-icon"><Icon name={item.type==='success'?'check':item.type==='error'?'warning':item.type==='warning'?'warning':'info'}/></span>
@@ -61,5 +63,5 @@ export default function FeedbackHost(){
         </div>
       </section>
     </div>}
-  </>;
+  </>,document.body);
 }

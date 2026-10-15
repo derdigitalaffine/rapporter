@@ -25,6 +25,15 @@ def remember_entry(instance, *, bump=False):
             "tags": instance.tags or [],
         }
     elif isinstance(instance, ShoppingItem):
+        # EntryMemory is family-wide. Never copy private/selected list content
+        # into that shared suggestion pool; doing so would bypass list ACLs.
+        from .shopping_models import ShoppingListAccess
+        try:
+            access = instance.shopping_list.access_settings
+        except ShoppingListAccess.DoesNotExist:
+            access = None
+        if access and access.visibility != ShoppingListAccess.Visibility.FAMILY:
+            return None
         family = instance.shopping_list.family
         kind = EntryMemory.Kind.SHOPPING
         name = instance.name
