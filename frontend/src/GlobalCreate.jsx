@@ -15,6 +15,8 @@ function appChromeIsSuppressed(){
   return root.hasAttribute('data-app-modal')||root.hasAttribute('data-app-keyboard');
 }
 
+const hasBlockingDialog=()=>Boolean(document.querySelector('.sheet-backdrop:not(.create-palette-backdrop),[role="dialog"][aria-modal="true"]:not(.create-palette-sheet)'));
+
 export default function GlobalCreate({page,family,role,context={},onCreate,suppressed=false,createActions}){
   const {t}=useTranslation();
   const fabRef=useRef(null);const firstActionRef=useRef(null);const pendingAction=useRef(null);const previousSuppressed=useRef(suppressed);
@@ -28,8 +30,8 @@ export default function GlobalCreate({page,family,role,context={},onCreate,suppr
   const visible=eligible&&!suppressed&&!chromeSuppressed&&!paletteOpen;
 
   // Modal and keyboard ownership is centralized on documentElement. Global
-  // create must consume that contract, not run a competing VisualViewport or
-  // dialog scanner with different timing semantics.
+  // create consumes that contract for visibility instead of running a second
+  // VisualViewport/dialog scanner with different timing semantics.
   useEffect(()=>{
     const root=document.documentElement;
     const update=()=>setChromeSuppressed(appChromeIsSuppressed());
@@ -65,14 +67,18 @@ export default function GlobalCreate({page,family,role,context={},onCreate,suppr
 
   useEffect(()=>{
     const requested=event=>{
-      if(!eligible||suppressed||paletteOpen||chromeSuppressed)return;
+      // Chrome suppression may be caused by a toast or the on-screen keyboard.
+      // Those states hide the FAB but must not swallow an explicit programmatic
+      // create handoff (for example Shopping reservation → Expense). Only a
+      // real modal dialog blocks that handoff.
+      if(!eligible||suppressed||paletteOpen||hasBlockingDialog())return;
       const action=createActionById(event.detail?.id,options);if(!action)return;
       anchorCurrentHistory();
       action.open({open:onCreate,context:{...currentContext(),...(event.detail?.context||{})}});
     };
     window.addEventListener(CREATE_REQUEST_EVENT,requested);
     return()=>window.removeEventListener(CREATE_REQUEST_EVENT,requested);
-  },[eligible,suppressed,paletteOpen,chromeSuppressed,options,onCreate,page,context]);
+  },[eligible,suppressed,paletteOpen,options,onCreate,page,context]);
 
   function currentContext(){
     const next={...context,origin:page};

@@ -81,6 +81,29 @@ class TripExpenseLedgerViewTests(TestCase):
         self.assertEqual(response.data["code"], "trip_unavailable")
         self.assertFalse(ContextLink.objects.filter(relation_key="expense.trip").exists())
 
+    def test_trip_and_global_finance_resolve_same_updated_budget_plan(self):
+        created = self.client.post(
+            "/api/expense-ledgers/for-trip/",
+            {"family": str(self.family.id), "trip": str(self.trip.id)},
+            format="json",
+        )
+        self.assertEqual(created.status_code, 201, created.data)
+        ledger_id = created.data["id"]
+        updated = self.client.patch(
+            f"/api/expense-ledgers/{ledger_id}/",
+            {"budget_amount": "4500.00", "estimated_amount": "5200.25", "expected_updated_at": created.data["updated_at"]},
+            format="json",
+        )
+        self.assertEqual(updated.status_code, 200, updated.data)
+        trip_projection = self.client.get(self.url())
+        self.assertEqual(trip_projection.data["id"], ledger_id)
+        self.assertEqual(trip_projection.data["estimated_amount"], "5200.25")
+        global_projection = self.client.get(f"/api/expense-ledgers/{ledger_id}/budget-summary/")
+        self.assertEqual(global_projection.data["budget_amount"], "4500.00")
+        self.assertEqual(global_projection.data["estimated_amount"], "5200.25")
+        self.assertEqual(global_projection.data["spent_amount"], "0.00")
+        self.assertEqual(ExpenseLedger.objects.filter(family=self.family, is_default=False).count(), 1)
+
     def test_guest_can_read_existing_link_but_cannot_create_one(self):
         created = self.client.post(
             "/api/expense-ledgers/for-trip/",

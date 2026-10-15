@@ -1,15 +1,21 @@
 from decimal import Decimal
 
+from django.db import transaction
 from django.db.models import Sum
 from rest_framework import serializers
 
-from .models import Expense, ExpenseBudget
+from .models import Expense, ExpenseBudget, ExpenseLedger
 from .money import money
 from .serializers import LocalizedDecimalField, _request_can_access_family
+from .planning_serializers import BudgetPlanningConflict, RevisionCheckedPlanningSerializer
 
 
-class ExpenseBudgetSerializer(serializers.ModelSerializer):
+class ExpenseBudgetSerializer(RevisionCheckedPlanningSerializer):
+    client_request_id = serializers.UUIDField(write_only=True, required=False, allow_null=True)
     amount = LocalizedDecimalField(max_digits=12, decimal_places=2)
+    estimated_amount = LocalizedDecimalField(
+        max_digits=12, decimal_places=2, allow_null=True, required=False, min_value=Decimal("0.00"),
+    )
     currency = serializers.SerializerMethodField()
     spent_amount = serializers.SerializerMethodField()
     remaining_amount = serializers.SerializerMethodField()
@@ -41,6 +47,25 @@ class ExpenseBudgetSerializer(serializers.ModelSerializer):
         if value < 0:
             raise serializers.ValidationError("Budget darf nicht negativ sein.")
         return value
+
+    @transaction.atomic
+    def create(self, validated_data):
+        ledger = ExpenseLedger.objects.select_for_update().get(pk=validated_data["ledger"].pk)
+        if ledger.archived:
+            raise serializers.ValidationError({"ledger": "Abrechnungskreis ist nicht verfügbar."})
+        request_id = validated_data.get("client_request_id")
+        if request_id:
+            existing = ExpenseBudget.objects.filter(ledger=ledger, client_request_id=request_id).first()
+            if existing:
+                for field in ("name", "amount", "estimated_amount", "parent", "period_type", "starts_on", "ends_on", "archived"):
+                    if field in validated_data and getattr(existing, field) != validated_data[field]:
+                        raise BudgetPlanningConflict()
+                return existing
+        return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+        validated_data.pop("client_request_id", None)
+        return super().update(instance, validated_data)
 
     def validate(self, attrs):
         request = self.context.get("request")
@@ -79,6 +104,8 @@ class ExpenseBudgetSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ExpenseBudget
+        # Retry keys are optional and resolved under the ledger lock in create().
+        validators = []
         fields = [
             "id",
             "family",
@@ -86,6 +113,9 @@ class ExpenseBudgetSerializer(serializers.ModelSerializer):
             "parent",
             "name",
             "amount",
+            "estimated_amount",
+            "expected_updated_at",
+            "client_request_id",
             "currency",
             "period_type",
             "starts_on",
