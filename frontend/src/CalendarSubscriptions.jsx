@@ -1,4 +1,4 @@
-import {useEffect,useRef,useState} from 'react';
+import {useEffect,useId,useRef,useState} from 'react';
 import {useTranslation} from 'react-i18next';
 import {api} from './api';
 import OverlayPortal from './OverlayPortal';
@@ -16,6 +16,7 @@ export default function CalendarSubscriptions({familyId,settings=false}){
 }
 
 function SubscriptionDialog({familyId,labels:t,language,close}){
+ const linkId=useId();
  const dialog=useRef(null),alive=useRef(true),pending=useRef(null);
  const [rows,setRows]=useState([]),[loading,setLoading]=useState(true),[configured,setConfigured]=useState(true),[restricted,setRestricted]=useState(false);
  const [name,setName]=useState(''),[secret,setSecret]=useState(null),[busy,setBusy]=useState(false),[error,setError]=useState(''),[copied,setCopied]=useState(false),[reauth,setReauth]=useState(false),[password,setPassword]=useState('');
@@ -52,7 +53,7 @@ function SubscriptionDialog({familyId,labels:t,language,close}){
    <form className="calendar-subscription-create" onSubmit={e=>{e.preventDefault();if(name.trim())execute({type:'create',name:name.trim()})}}><label>{t.name}<input value={name} onChange={e=>setName(e.target.value)} maxLength={80} required disabled={busy||!configured}/></label><button className="primary" disabled={busy||!configured||!name.trim()}>{t.create}</button></form>
    {!rows.length&&<p>{t.empty}</p>}
    <ul className="calendar-subscription-list">{rows.map(row=><li key={row.id}><div><strong>{row.name}</strong><small>{t.lastUsed}: {row.last_used_at?new Date(row.last_used_at).toLocaleString(language):t.never}</small></div><div className="form-actions"><button type="button" className="secondary" disabled={busy} onClick={()=>{setSecret(null);execute({type:'reveal',id:row.id})}}>{t.show}</button><button type="button" className="secondary" disabled={busy} onClick={()=>change('rotate',row)}>{t.rotate}</button><button type="button" className="ghost-danger" disabled={busy} onClick={()=>change('revoke',row)}>{t.revoke}</button></div></li>)}</ul>
-   {secret&&<section className="calendar-subscription-access" aria-label={secret.name}><h3>{secret.name}</h3><label>{t.link}<textarea readOnly rows={3} value={secret.subscription_url} onFocus={e=>e.target.select()}/></label><div className="form-actions"><button type="button" className="secondary" onClick={async()=>{try{await navigator.clipboard.writeText(secret.subscription_url);if(alive.current)setCopied(true)}catch{setError(t.error)}}}>{t.copy}</button><a className="primary button" href={secret.webcal_url} rel="noreferrer">{t.subscribe}</a></div>{copied&&<p role="status">{t.copied}</p>}<p className="calendar-subscription-note">{t.refresh}</p><div className="calendar-subscription-profile"><button className="secondary" type="button" disabled={busy} onClick={()=>execute({type:'profile',id:secret.id})}>{t.profile}</button><p>{t.profileHint}</p></div><details><summary>{t.manual}</summary>{[['server','caldav_url'],['username','username'],['password','password']].map(([label,key])=><label key={key}>{t[label]}<input readOnly value={secret[key]} onFocus={e=>e.target.select()}/></label>)}</details><button type="button" className="secondary" onClick={()=>setSecret(null)}>{t.hide}</button></section>}
+   {secret&&<section className="calendar-subscription-access" aria-label={secret.name}><h3>{secret.name}</h3><label htmlFor={linkId}>{t.link}</label><textarea id={linkId} autoComplete="off" readOnly rows={3} value={secret.subscription_url} onFocus={e=>e.target.select()}/><div className="form-actions"><button type="button" className="secondary" disabled={busy} onClick={async()=>{try{await navigator.clipboard.writeText(secret.subscription_url);if(alive.current)setCopied(true)}catch{setError(t.error)}}}>{t.copy}</button><a className="primary button" href={secret.webcal_url} rel="noreferrer">{t.subscribe}</a></div>{copied&&<p role="status">{t.copied}</p>}<p className="calendar-subscription-note">{t.refresh}</p><div className="calendar-subscription-profile"><button className="secondary" type="button" disabled={busy} onClick={()=>execute({type:'profile',id:secret.id})}>{t.profile}</button><p>{t.profileHint}</p></div><details><summary>{t.manual}</summary>{[['server','caldav_url'],['username','username'],['password','password']].map(([label,key])=><label key={key}>{t[label]}<input readOnly value={secret[key]} onFocus={e=>e.target.select()}/></label>)}</details><button type="button" className="secondary" onClick={()=>setSecret(null)}>{t.hide}</button></section>}
   </>}
  </div></section></div></OverlayPortal>;
 }
