@@ -1,6 +1,8 @@
-# Child Identity, Account Authority & Family Relationships
+# Child Identity, Sorgerecht & Legacy Guardian compatibility
 
 FamilyOS treats a child as a durable family identity, not as a Baby-module record or a future login that has to be merged later.
+
+> **Policy since #717:** active, explicitly recorded `FamilyRelationship.has_custody=true` is the canonical domain source of the protected child and health authority that older code called *Guardian* authority. `Guardian` remains a technical compatibility term only.
 
 ## Canonical identity
 
@@ -10,101 +12,80 @@ Turning the Pregnancy & Baby module off does not remove any of these identity re
 
 ## Creating a child from Family
 
-Family owners and adults can create a managed child directly from **Family → Members → Add → Child without own access**. The only required profile data is the child's display name and birth date. This flow does not create an invitation, does not require an email address and does not enable authentication.
+Family owners and adults can create a managed child directly from **Family → Members → Add → Child without own access**. The only required profile data is the child's display name and birth date. This flow does not create an invitation, require an email address or enable authentication.
 
-`POST /api/baby/managed-children/` deliberately reuses the canonical managed-child creation service. It is available independently of the optional Pregnancy & Baby module. The creating owner/adult becomes an explicit `ManagedChildGuardian(can_manage_account=true)` for the new child because the create action itself explicitly establishes account-management authority. This does not add the person to the Care Circle and does not by itself grant Care Circle health/development access.
+Creating a child does **not** infer a family relationship, parenthood, legal parenthood or custody. It also does not create a new `ManagedChildGuardian` grant. Product-level permission to create the child profile is not proof of legal custody and therefore must not silently grant protected child authority.
 
-Creating a managed child does **not** create a `FamilyRelationship` and does not infer biological, social or legal parenthood from the creator's family role or account-management authority. Family relationships are entered explicitly afterwards in **Familienbeziehungen**.
-
-The child appears immediately as the same `Membership(role=child)` used by family assignments, birthday projection and other canonical family references. No shadow child object or second birthday/calendar model is created.
+Once an Owner records an active relationship with `has_custody=true`, that already stored custody fact is effective immediately. No Guardian backfill, second confirmation or manual Guardian assignment is required.
 
 ## Familienbeziehungen / patchwork model
 
-`FamilyRelationship` is a per-child, per-family-member description. Only existing memberships in the same family can be related; external contacts are intentionally out of scope. Different children can therefore have completely different relationships to the same adult.
+`FamilyRelationship` describes one concrete child's relationship to one existing membership in the same family. Different children may therefore have different relationships to the same adult.
 
-A relationship stores independent dimensions:
+The model keeps independent facts for relationship kind, biological parenthood, legal parenthood, custody (`true`, `false`, or not recorded), active/inactive status and child visibility.
 
-- a standard relationship kind (`parent`, mother/father, bonus/step, adoptive, foster, grandparent, sibling), a free label, or no label;
-- biological parenthood;
-- legal parenthood;
-- custody (`true`, `false`, or not yet recorded);
-- active/inactive status instead of destructive deletion;
-- child visibility: full details, relationship label only, or hidden.
+Relationship labels, biological parenthood, legal parenthood and family role do not imply custody. **Only an active `has_custody=true` relationship to an Owner/Adult membership activates the protected child-authority policy.** Inactive custody rows do not grant authority.
 
-Owners may create or edit family relationships without an additional per-child permission. Adult family role alone is deliberately insufficient to modify relationship facts. Relationship labels are readable inside the family, while biological/legal/custody facts are restricted: Owners see the full record; child-role viewers receive their configured redaction; ordinary Adults do not receive those sensitive fields merely because of their family role.
+Owners may create and edit relationship facts. Adults cannot self-assert custody through this endpoint. Cross-family child or related-membership identifiers are rejected server-side.
 
-`GET /api/family-relationships/?family=<family-id>&child_membership=<membership-id>` reads relationship data under those visibility rules. `POST /api/family-relationships/` and `PATCH /api/family-relationships/<relationship-id>/` require Owner role.
+Because custody now changes sensitive authorization, creating, changing, activating or deactivating an effective custody grant requires a fresh authenticated session. Custody changes are recorded through the security audit contract using an opaque relationship target; health payloads and free text are not included in that audit event.
 
-The API may return permission suggestions for an Owner, but those suggestions are advisory only and `automatic=false` is part of the contract. No relationship write creates, removes or modifies account guardianship, Care Circle access, family roles or other permissions.
+## Effective child authority
 
-## Family profile data
+The central authorization helper resolves protected child authority in this order:
 
-An explicit child account guardian can read and update the family-facing child profile at `GET/PATCH /api/baby/profiles/<baby-id>/family-profile/`. This endpoint intentionally returns only the minimal family profile (`id`, `membership`, `display_name`, `birth_date`). Medical birth fields, growth data and Care Circle content are not returned here.
+1. active `FamilyRelationship.has_custody=true` for that child and actor membership — canonical source;
+2. an existing `ManagedChildGuardian` row — legacy compatibility only;
+3. the pre-existing Care-Circle Guardian fallback for legacy records where no explicit Guardian row exists.
 
-For compatibility with the existing Family Members client, `GET /api/baby/profiles/<baby-id>/` and a PATCH to that URL containing `birth_date` are routed through the same narrow family-profile contract. The pre-existing Baby-module rename/delete behavior remains module-gated. New family-facing callers should use the explicit `/family-profile/` endpoint.
+A custody-derived authority is evaluated dynamically. Existing data therefore becomes effective without a migration that copies custody into `ManagedChildGuardian`.
 
-Changing the display name synchronizes `BabyProfile.display_name` and `Membership.display_name` (and the linked expected-baby label when present). Changing the birth date synchronizes `BabyProfile.birth_date` with `UserProfile.birth_year`, `birth_month` and `birth_day`, so canonical birthday consumers continue to use one source of truth.
+`Owner`, `Adult`, parent/legal-parent relationship or ordinary Care Circle membership alone do **not** grant the protected authority. A Care Circle remains an independently delegated, potentially narrower Pregnancy/Baby permission contract.
 
-The child-identity endpoint remains privacy-minimal and does not expose the birth date or health payload.
+## Legacy Guardian compatibility
 
-## Five separate concepts
+`ManagedChildGuardian` is retained during the Expand → Migrate → Cutover → Contract transition so existing installations do not lose access unexpectedly. An old Guardian row without custody remains a legacy access fact; FamilyOS does **not** silently convert it into a legal custody statement.
 
-These concepts must never be inferred from one another:
+The legacy Guardian write endpoint remains available only for compatibility management. It may update existing legacy rows, but it must not be used to create new protected authority for a person who has neither an existing legacy grant nor custody. New authority is established through explicit custody instead.
 
-- `Membership.role`: ordinary family tenancy/product role such as Owner, Adult or Child;
-- `FamilyRelationship`: social/biological/legal relationship facts for one concrete child;
-- `FamilyRelationship.has_custody`: optional custody fact, reserved for future authorization policy but not currently an authorization grant;
-- `ManagedChildGuardian`: explicit authority over one concrete child account/identity;
-- `CareCircleAccess`: access to Pregnancy/Baby health and care data.
+`GET /api/baby/guardian-settings/?family=<family-id>` remains a privacy-minimal compatibility projection. It marks effective rows with their source (`custody` or `legacy_guardian`) and does not expose birth, medical, growth or development payloads. The Settings UI is read-only for this projection; users manage the canonical fact under the child's **Familienbeziehungen → Sorgerecht**.
 
-Owner or Adult role alone is not parenthood. Owner role does grant product-level authority to maintain `FamilyRelationship` records, but that administrative ability is not itself a relationship fact. A biological, legal or custodial relationship does not grant account or health permissions. Care Circle access is not account-management authority. Creating a managed child establishes account-management authority for the creator but no parenthood or family relationship.
+There is no longer an Owner bootstrap that can create the first Guardian merely because a child has no authority rows. Owner role permits maintaining the custody fact, subject to fresh re-authentication, but Owner role alone is not child authority.
 
-A child must retain at least one `ManagedChildGuardian` with `can_manage_account=true` after Guardian management. Guardian membership must belong to the same active family and remain Owner/Adult under the existing #147 policy.
+## Health, care and appointments
 
-## Managing Guardian permissions
+Care, growth, development, preventive-care and report flows consume the centralized child-scope authorization. A custody holder therefore receives the protected rights previously supplied by Guardian authority without needing a `ManagedChildGuardian` or `CareCircleAccess` row.
 
-Guardian permission is explicit and **per child**. Custody, legal parenthood and the Family Owner role remain separate facts and never grant Guardian access automatically.
+Existing Care Circle permissions remain usable for explicitly delegated narrower access where the domain supports them. They do not assert custody.
 
-The UI has two consistent entry points:
+Preventive appointment materialization uses the same child authorization policy. A person with existing active custody can create the child's preventive calendar events even when no separate Guardian row exists; a family Adult without custody or suitable delegated Care permission cannot.
 
-- **Family → child profile → Sorge & Berechtigungen → Guardian-Rechte verwalten** opens the concrete child's Guardian settings;
-- **Settings → Kinder & Berechtigungen** shows the active family's children and their Guardian status in one overview.
+## Child profile and login
 
-Only Owner/Adult memberships can be selected as Guardians. Guardian changes require fresh re-authentication with the current user's password. The update endpoint remains `PUT /api/baby/profiles/<baby-id>/guardians/`.
+A person with effective protected child authority can use the family-facing child-profile contract. The endpoint intentionally exposes only the minimal family profile and does not turn profile access into a broader medical export.
 
-An existing `ManagedChildGuardian(can_manage_account=true)` is authoritative for subsequent changes. A Family Owner who is **not** a Guardian cannot override an existing account-managing Guardian merely because of the Owner role. If a child has no account-managing Guardian at all, however, an Owner may use the fresh-authenticated write flow to establish the first one. This is a recovery/bootstrap exception for an empty authority state only; it does not make that Owner a Guardian and does not unlock protected child reads unless the Owner is explicitly included in the saved Guardian list.
+`POST /api/baby/profiles/<baby-id>/activate-login/` remains a sensitive operation and requires a fresh authenticated session. It operates on the existing child user; no second child identity is created.
 
-`GET /api/baby/guardian-settings/?family=<family-id>` is the narrow settings projection. It exposes child identity labels, the explicit Guardian list and whether the current actor may manage/bootstrap that list. It intentionally does **not** expose birth/medical/growth/development/Care Circle payloads. Owners can therefore identify and repair an empty Guardian state without receiving the protected child data that normal Guardian checks guard.
+## Legal/product boundary
 
-The central action **Für alle Kinder übernehmen** is additive: it adds the selected Owner/Adult as Guardian only to children whose Guardian list the current actor may change. Existing Guardians are preserved, non-manageable children are skipped, and no `FamilyRelationship`, custody field or Care Circle grant is changed.
+FamilyOS uses confirmed custody as the app's source for child access and representation authority. That product rule does **not** claim that every person with custody may make every substantive medical decision alone. Joint custody, the child's own capacity to consent, court orders and other legal constraints can require additional workflow or consent rules.
 
-## Enabling the child's own login
-
-`POST /api/baby/profiles/<baby-id>/activate-login/` is a sensitive action and requires a fresh authenticated session.
-
-The authorized per-child account guardian supplies the target email address and a password that passes Django's configured password validators. FamilyOS writes the password to the **existing child user**, creates a pending `EmailIdentity`, and sends the normal platform verification email. The password cannot be used for email login while that identity is pending because authentication resolves only a verified primary identity. After the standard verification link promotes the address to verified primary identity, the same child user can log in.
-
-No second user is created, no dummy email address is stored, and this flow does not create a second recovery or token system. Password recovery remains owned by #199.
-
-## Invitation boundary
-
-A pending or verified child email identity participates in the central email uniqueness contract. Ordinary invitation registration attempting to create another account for that email is rejected and its transaction rolls back, so an invite cannot silently create a parallel child account.
-
-## Legacy reconciliation
-
-`python manage.py reconcile_child_identities` is dry-run by default. `--apply` attaches a canonical managed-child User/Membership/UserProfile to unambiguous legacy `BabyProfile` rows that have no membership.
-
-Potential duplicates with the same family, normalized display name and birth date are not merged automatically. They are listed under `REVIEW REQUIRED` and remain unchanged for explicit review. Re-running the command is idempotent.
+The authorization rule here answers who may access and act within FamilyOS's protected child scope; it is not a blanket legal-decision engine.
 
 ## Security invariants
 
-- child/account-authority lookups are always scoped through the child's family membership;
-- cross-family relationship and guardian membership IDs are rejected;
-- Owners can mutate `FamilyRelationship` records without a separate per-child grant;
-- Adult family role alone does not grant relationship mutation or sensitive lineage visibility;
-- child-role readers receive the configured relationship redaction;
-- relationships and custody never grant permissions automatically;
-- Owner role alone never grants protected child reads; its only Guardian exception is the fresh-authenticated first-manager bootstrap for an otherwise unmanaged child;
-- health access remains governed by Care Circle permissions even for account guardians;
-- there is no automatic role or permission change based on birthday/age;
-- the Child Identity contract is independent of Pediatric Reference Data and Wishlist capability policy.
+- child authority is always scoped to the child's active family membership;
+- cross-family relationship and authority identifiers are rejected;
+- active custody is effective immediately and needs no Guardian copy/backfill;
+- Owner/Adult role, parenthood and legal parenthood alone do not grant protected child access;
+- new child creation does not infer custody or create a new Guardian grant;
+- custody mutation requires server-side Owner authorization and fresh re-authentication;
+- effective grant/revocation through custody status changes is audited;
+- existing legacy Guardian rows remain compatible but do not become legal custody assertions;
+- Care Circle remains separate delegated access and cannot be interpreted as custody;
+- child-role readers continue to receive configured relationship redaction;
+- no role or permission changes automatically because of birthday/age.
+
+## Migration direction
+
+The target state contains one user-facing source of full child authority: **Sorgerecht**. Once all consumers use the central policy and legacy data has been reviewed, the technical Guardian compatibility model and endpoint can be removed in a later Contract step without changing the custody semantics established by #717.
