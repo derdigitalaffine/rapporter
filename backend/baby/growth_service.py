@@ -94,7 +94,7 @@ def add_measurement(user, baby_id, *, measured_at, weight_g=None, length_cm=None
     if length_cm is not None and not 20 <= float(length_cm) <= 160:
         raise ValidationError({"length_cm": "Length must be between 20 cm and 160 cm."})
     if head_circumference_cm is not None and not 20 <= float(head_circumference_cm) <= 80:
-        raise ValidationError({"head_circumference_cm": "Head circumference must be between 20 and 80 cm."})
+        raise ValidationError({"head_circumference_cm": "Head circumference must be between 20 cm and 80 cm."})
     if source not in BabyGrowthMeasurement.Source.values:
         raise ValidationError({"source": "Unknown measurement source."})
     return BabyGrowthMeasurement.objects.create(
@@ -158,6 +158,9 @@ def growth_payload(user, baby_id):
             "corrected_age_enabled": default_corrected,
         },
     )
+    # Earlier profiles were initialized with the generic WHO key while setting
+    # corrected_age_enabled=True. Normalize that inconsistent state so the API,
+    # UI label and z-score age basis all describe the same selected reference.
     if not created and setting.corrected_age_enabled and setting.reference_key == "who_2006":
         setting.reference_key = "who_2006_corrected"
         setting.reference_version = f"{REFERENCE_METADATA['who_2006_corrected']['label']} {REFERENCE_METADATA['who_2006_corrected']['version']}"
