@@ -103,6 +103,7 @@ def _sync_birth_profile(user, membership, *, display_name, birth_date):
 
 
 def _ensure_guardians(baby):
+    """Legacy reconciliation helper; new child creation must not call this."""
     guardian_access = CareCircleAccess.objects.filter(family=baby.family, is_guardian=True, membership__role__in=[Membership.Role.OWNER, Membership.Role.ADULT]).select_related("membership")
     for access in guardian_access:
         ManagedChildGuardian.objects.get_or_create(baby=baby, membership=access.membership, defaults={"can_manage_account": True})
@@ -110,7 +111,7 @@ def _ensure_guardians(baby):
 
 @transaction.atomic
 def create_managed_child(user, family, *, display_name, birth_date, birth_time=None, gestational_age_weeks=None, gestational_age_days=None, birth_weight_g=None, birth_length_cm=None, birth_head_circumference_cm=None, growth_reference_sex="unspecified", source_pregnancy=None, source_pregnancy_baby=None, client_identity_key=None):
-    manager_membership = require_manager(user, family)
+    require_manager(user, family)
     if source_pregnancy_baby:
         existing = BabyProfile.objects.select_for_update().filter(source_pregnancy_baby=source_pregnancy_baby).first()
         identity_key = source_pregnancy_baby.id
@@ -164,12 +165,9 @@ def create_managed_child(user, family, *, display_name, birth_date, birth_time=N
     )
     corrected = bool(gestational_age_weeks is not None and int(gestational_age_weeks) < 37)
     BabyGrowthReferenceSetting.objects.create(baby=baby, corrected_age_enabled=corrected)
-    ManagedChildGuardian.objects.get_or_create(
-        baby=baby,
-        membership=manager_membership,
-        defaults={"can_manage_account": True},
-    )
-    _ensure_guardians(baby)
+    # #717: creating a child proves product-management authority, not legal
+    # custody. Protected child authority is derived from an explicit active
+    # FamilyRelationship.has_custody=True; no new Guardian grant is inferred.
     if source_pregnancy_baby:
         source_pregnancy_baby.status = PregnancyBaby.Status.BORN
         if not source_pregnancy_baby.display_name or source_pregnancy_baby.display_name.startswith("Baby"):
