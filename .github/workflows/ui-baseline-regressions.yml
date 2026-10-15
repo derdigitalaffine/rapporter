@@ -36,6 +36,12 @@ jobs:
           e2e/messenger-mobile-fullwidth.spec.js e2e/family-messages.spec.js
           e2e/create-flow-registry.spec.js e2e/mobile-layout.spec.js
           e2e/navigation.spec.js
+      - working-directory: frontend
+        run: >-
+          npm run e2e -- --project=${{ matrix.project }}
+          e2e/i18n.spec.js e2e/familyos-brand.spec.js e2e/entitlements.spec.js
+      - working-directory: frontend
+        run: npm run e2e -- --project=${{ matrix.project }} e2e/core.spec.js --grep 'email login, Today and DE/EN smoke'
       - uses: actions/upload-artifact@v4
         if: failure()
         with:

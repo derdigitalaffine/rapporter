@@ -21,3 +21,11 @@ export function languageLabel(value='de'){
  const language=normalizeAppLanguage(value);
  return APP_LANGUAGES.find(item=>item.code===language)?.label||'Deutsch';
 }
+
+// Use the explicit locale adapter; legacy changeLanguage calls may cycle implicitly.
+export function switchAppLanguage(i18n){
+ const language=nextAppLanguage(i18n.language);
+ const change=i18n.changeAppLanguage||i18n.changeLanguage;
+ change.call(i18n,language);
+ localStorage.setItem('famuhle-language',language);
+}

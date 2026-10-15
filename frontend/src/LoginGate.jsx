@@ -1,3 +1,4 @@
+import {switchAppLanguage as switchLanguage} from './language-options';
 import {useEffect,useState} from 'react';
 import {useTranslation} from 'react-i18next';
 import App from './App';
@@ -11,7 +12,6 @@ import './passkey-i18n';
 import './passkey-login.css';
 
 function Card({children,className=''}){return <section className={`card ${className}`}>{children}</section>}
-function switchLanguage(i18n){const language=i18n.language?.startsWith('de')?'en':'de';i18n.changeLanguage(language);localStorage.setItem('famuhle-language',language)}
 function initialRecoveryMode(){return new URLSearchParams(window.location.search).get('password-reset')==='1'}
 
 export default function LoginGate(){

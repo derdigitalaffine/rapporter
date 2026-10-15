@@ -10,7 +10,7 @@ async function boot(page){
 async function switchToEnglish(page){
  await page.locator('.bottom-nav').getByRole('button',{name:/^Mehr$/}).click();
  await page.getByRole('button',{name:/Sprache/i}).click();
- await expect(page.getByRole('heading',{name:'More',exact:true})).toBeVisible();
+ await expect(page.locator('.topbar').getByRole('heading')).toHaveText('More');
 }
 
 test('DE to EN also changes calendar and integration locale-sensitive copy',async({page})=>{
@@ -40,15 +40,15 @@ test('language control cycles through French Dutch and Thai and persists Thai',a
  await switchToEnglish(page);
 
  await page.getByRole('button',{name:/Language/i}).click();
- await expect(page.getByRole('heading',{name:'Plus',exact:true})).toBeVisible();
+ await expect(page.locator('.topbar').getByRole('heading')).toHaveText('Plus');
  await expect(page.getByRole('button',{name:/Langue/i})).toBeVisible();
 
  await page.getByRole('button',{name:/Langue/i}).click();
- await expect(page.getByRole('heading',{name:'Meer',exact:true})).toBeVisible();
+ await expect(page.locator('.topbar').getByRole('heading')).toHaveText('Meer');
  await expect(page.getByRole('button',{name:/Taal/i})).toBeVisible();
 
  await page.getByRole('button',{name:/Taal/i}).click();
- await expect(page.getByRole('heading',{name:'เพิ่มเติม',exact:true})).toBeVisible();
+ await expect(page.locator('.topbar').getByRole('heading')).toHaveText('เพิ่มเติม');
  await expect(page.getByRole('button',{name:/ภาษา/})).toBeVisible();
  await expect.poll(()=>page.evaluate(()=>localStorage.getItem('famuhle-language'))).toBe('th');
 
