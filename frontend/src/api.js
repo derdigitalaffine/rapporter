@@ -1,3 +1,4 @@
+import {offlineTaskRequest} from './offline-tasks';
 import {offlineShoppingRequest,offlineMetadata,rememberOfflineBootstrap,clearOfflineIdentity,setSyncTransport,offlineIdentity,offlineDashboard} from './offline-runtime';
 import {clearBootstrapRuntime,clearFamilyModuleRuntime,invalidateFamilyModuleRuntimeForPath,rememberBootstrapRuntime,rememberFamilyModuleRuntime,takeBootstrapRuntime} from './family-runtime';
 import {loadFamilyShell,offlineApiFallback,saveFamilyShell,saveShoppingSnapshot} from './offline-store';
@@ -96,6 +97,7 @@ function apiError(response,payload){
 }
 export async function api(path,options={}){
  if(navigator.onLine===false){const scoped=offlineMetadata(path);if(scoped.handled)return scoped.value}
+ const taskLocal=await offlineTaskRequest(path,options);if(taskLocal.handled){clearBootstrapRuntime();return taskLocal.value}
  const local=await offlineShoppingRequest(path,options);if(local.handled){clearBootstrapRuntime();return local.value}
  const method=(options.method||'GET').toUpperCase();
  if(method==='GET'){

@@ -20,7 +20,7 @@ function overlay(server,mutations){
   else if(m.operation==='delete')data=null;
   else if(m.command==='complete_task'&&data)data={...data,completed_at:m.local_time};
   else if(m.command==='reopen_task'&&data)data={...data,completed_at:null};
-  else if(m.command==='move_task'&&data)data={...data,workflow_column:m.args.column_id};
+  else if(m.command==='move_task'&&data)data={...data,workflow_column:m.args.column_id,completed_at:m.args.local_terminal?m.local_time:null};
  }
  return data;
 }
@@ -142,6 +142,7 @@ export class SyncEngine{
    }
    for(const id of oldIds)ops.push(remove(name,id));
   }
+  if(r.projections)ops.push(put('meta',{id:'projections',data:r.projections}));
   ops.push(put('syncState',{id:'cursor',cursor:r.cursor,protocol_version:1,last_sync_at:new Date().toISOString()}));if(!this.stopped)await this.store.write(ops);
  }
  async resolve(id,choice,manual){

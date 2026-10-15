@@ -7,7 +7,7 @@ bulk operations use the same boundary; domain save hooks remain authoritative.
 from contextlib import contextmanager
 
 from django.db import models, transaction
-from django.db.models.signals import post_delete, m2m_changed
+from django.db.models.signals import post_save, post_delete, m2m_changed
 
 TYPES = {'ShoppingList': 'shopping_list', 'ShoppingItem': 'shopping_item',
          'TaskList': 'task_list', 'Task': 'task', 'FamilyEvent': 'event'}
@@ -111,6 +111,14 @@ def install_tracking():
     from .models import ShoppingList, ShoppingItem, TaskList, Task, FamilyEvent
     for model in (ShoppingList, ShoppingItem, TaskList, Task, FamilyEvent):
         post_delete.connect(deleted, sender=model, weak=False, dispatch_uid=f'sync-delete-{model.__name__}')
+    from .models import TaskWorkflowColumn
+    post_save.connect(workflow_metadata_changed, sender=TaskWorkflowColumn, weak=False, dispatch_uid='sync-workflow-save')
+    post_delete.connect(workflow_metadata_changed, sender=TaskWorkflowColumn, weak=False, dispatch_uid='sync-workflow-delete')
+    from .shopping_models import ShoppingListAccess
+    post_save.connect(shopping_access_changed, sender=ShoppingListAccess, weak=False, dispatch_uid='sync-shopping-access-save')
+    post_delete.connect(shopping_access_changed, sender=ShoppingListAccess, weak=False, dispatch_uid='sync-shopping-access-delete')
+    m2m_changed.connect(shopping_access_changed, sender=ShoppingListAccess.visible_members.through, weak=False, dispatch_uid='sync-shopping-access-people')
+    m2m_changed.connect(shopping_access_changed, sender=ShoppingListAccess.responsible_members.through, weak=False, dispatch_uid='sync-shopping-responsible-people')
     m2m_changed.connect(participants_changed, sender=FamilyEvent.participants.through, weak=False, dispatch_uid='sync-event-participants')
 
 
@@ -121,7 +129,9 @@ def deleted(sender, instance, using, **kwargs):
         return
     # Django Collector sends post_delete within its transaction, including cascades.
     with sync_lock(using):
-        instance.version += 1
+        from .sync_models import SyncJournal
+        last = SyncJournal.objects.using(using).filter(entity_type=TYPES[type(instance).__name__], entity_id=instance.pk).order_by('-version').values_list('version', flat=True).first() or 0
+        instance.version = max(instance.version, last) + 1
         append_change(instance, 'delete', [], using)
 
 
@@ -134,3 +144,39 @@ def participants_changed(sender, instance, action, reverse, using, **kwargs):
             journal = SyncJournal.objects.using(using).filter(entity_type='event', entity_id=instance.pk).latest('cursor')
             journal.changed_fields = sorted(set(journal.changed_fields) | {'participants'})
             journal.save(update_fields=['changed_fields'])
+
+
+def workflow_metadata_changed(sender, instance, using, **kwargs):
+    from .models import TaskList
+    origin = kwargs.get('origin')
+    if type(origin).__name__ in {'Family', 'TaskList'} or getattr(getattr(origin, 'model', None), '__name__', '') in {'Family', 'TaskList'}:
+        return
+    with sync_lock(using):
+        parent = TaskList.objects.using(using).filter(pk=instance.task_list_id).first()
+        if parent:
+            parent.save(using=using, update_fields=['updated_at'])
+            mark_virtual_change(parent, ['workflow_columns'], using)
+
+
+def shopping_access_changed(sender, instance, using, action=None, reverse=False, **kwargs):
+    if action is not None and (reverse or action not in {'post_add', 'post_remove', 'post_clear'}):
+        return
+    origin = kwargs.get('origin')
+    if type(origin).__name__ in {'Family', 'ShoppingList'} or getattr(getattr(origin, 'model', None), '__name__', '') in {'Family', 'ShoppingList'}:
+        return
+    from .models import ShoppingList
+    with sync_lock(using):
+        parent = ShoppingList.objects.using(using).filter(pk=instance.shopping_list_id).first()
+        if parent:
+            parent.save(using=using, update_fields=['updated_at'])
+            mark_virtual_change(parent, ['visibility', 'visible_members', 'responsible_members', 'audience_group', 'access'], using)
+            # A grant needs actual item deltas as well as an allowed-ID manifest.
+            for item in parent.items.all():
+                item.save(using=using, update_fields=['updated_at'])
+
+
+def mark_virtual_change(instance, fields, using):
+    from .sync_models import SyncJournal
+    row = SyncJournal.objects.using(using).filter(entity_type=TYPES[type(instance).__name__], entity_id=instance.pk).latest('cursor')
+    row.changed_fields = sorted(set(row.changed_fields) | set(fields))
+    row.save(update_fields=['changed_fields'])
