@@ -44,7 +44,7 @@ export class LiveSyncCoordinator{
  }
 }
 
-function routeEngineThrough(coordinator,engine){
+export function routeEngineThrough(coordinator,engine){
  if(engine.__liveCoordinator===coordinator)return;
  if(!engine.__directSync){
   engine.__directSync=engine.sync.bind(engine);
