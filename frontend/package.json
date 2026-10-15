@@ -11,7 +11,8 @@
     "preview": "vite preview --host 0.0.0.0",
     "e2e": "playwright test",
     "e2e:visual": "playwright test e2e/visual-regression.spec.js e2e/calendar-grid-visual.spec.js",
-    "e2e:visual:update": "playwright test e2e/visual-regression.spec.js e2e/calendar-grid-visual.spec.js --update-snapshots"
+    "e2e:visual:update": "playwright test e2e/visual-regression.spec.js e2e/calendar-grid-visual.spec.js --update-snapshots",
+    "test:offline": "node --test tests/offline-sync-engine.test.mjs"
   },
   "dependencies": {
     "@vitejs/plugin-react": "latest",
@@ -36,6 +37,7 @@
   },
   "devDependencies": {
     "@axe-core/playwright": "latest",
-    "@playwright/test": "latest"
+    "@playwright/test": "latest",
+    "fake-indexeddb": "^6.2.5"
   }
 }

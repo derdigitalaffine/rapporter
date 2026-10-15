@@ -58,3 +58,24 @@ protocol negotiation, future version migrations and logout wiring remain in #706
 Rollback before cutover simply removes the unused module; after cutover, pending
 mutations must be drained or exported before any destructive rollback. Browser
 regressions cover isolation, reload durability, atomic failure and account cleanup.
+
+## Generic response engine (#706 integration)
+
+`offline-sync-engine.js` consumes the scoped store without introducing a second
+IndexedDB database. Entity writes and outbox entries commit together. Unattempted
+field edits may compact; an attempted mutation is immutable until acknowledged,
+so a lost response can be retried under the same UUID. Side-effect commands never
+compact. At most one mutation per entity is sent in a batch to preserve create
+and command dependencies.
+
+Snapshot installation, mutation acknowledgement, conflicts and cursor advance
+commit together. A reset preserves pending mutations. Authorized visibility
+manifests purge revoked/deleted canonical data; affected unsent edits are retained
+in the conflict store. Unsupported protocol responses cannot advance the cursor.
+Authentication failures pause retries without clearing local work. Explicit
+account cleanup stops/aborts engines and awaits in-flight responses first.
+
+The module is not yet a domain cutover. Existing Shopping/Task/Calendar consumers
+remain unchanged until their dedicated migration slices. Web Locks serialize
+local read/modify/write on supporting browsers; live/multi-tab fallback remains
+part of #710 and is not claimed complete here.
