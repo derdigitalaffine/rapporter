@@ -1,7 +1,7 @@
 :80 {
     encode zstd gzip
 
-    @api path /api/* /admin/* /static/*
+    @api path /api/* /admin/* /static/* /ws/*
     handle @api {
         reverse_proxy backend:8000 {
             # Caddy receives plain HTTP from the user's reverse proxy. Tell

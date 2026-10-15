@@ -132,3 +132,45 @@ Legacy `famuhle-offline-v1` queues were not account-scoped and are never silentl
 assigned to the new account. Existing pre-cutover records remain untouched until
 explicit logout. For an installation upgrade, finish its old pending queue on the
 old client before switching accounts/upgrading; do not clear its origin as recovery.
+
+## Live Sync behind Nginx Proxy Manager
+
+For the standard `Nginx Proxy Manager → FamilyOS Caddy → Daphne` deployment:
+
+1. Select **Websockets Support** for the NPM Proxy Host and save it. Forward the
+   host to the normal FamilyOS HTTP port; no separate public WebSocket port is
+   required. TLS terminates at NPM; the public browser URL remains HTTPS.
+2. Use `CADDYFILE=Caddyfile.proxy`, `PUBLIC_SCHEME=https` and
+   `PUBLIC_HOST=<your public hostname>`. Include that exact public hostname in
+   `DJANGO_ALLOWED_HOSTS` (without scheme or path). Keep origin validation enabled.
+3. Keep `OFFLINE_LIVE_ENABLED=true`, `OFFLINE_REDIS_URL=redis://redis:6379/0` and a
+   healthy Redis/backend. Compose already supplies these live defaults. Daphne is
+   the shipped ASGI server; a WSGI-only replacement cannot serve `/ws/sync/`.
+4. Update the deployment to a revision containing #742, then restart/recreate
+   Caddy after changing its mounted Caddyfile, e.g. `docker compose up -d --build
+   backend caddy`. Earlier Caddyfiles omitted `/ws/*`, so NPM's toggle alone did
+   not fix the internal routing.
+5. In browser Network → WS, `/ws/sync/<family-id>/` should upgrade with **101** and
+   remain open. A 200 HTML response suggests the SPA fallback; 403 suggests
+   cookie/session/family/origin validation; 502 suggests an upstream problem.
+   Use status codes and sanitized logs; never paste session cookies into issues.
+
+Caddy's reverse_proxy handles the WebSocket upgrade automatically once `/ws/*`
+is routed to Daphne. NPM must preserve `Upgrade` / `Connection` upstream; the UI
+Websockets Support option supplies this contract. Custom advanced snippets should
+not duplicate generated directives. Match the configured public host to the
+browser origin rather than disabling `AllowedHostsOriginValidator`.
+
+An idle external proxy may close a socket according to its timeout; it should
+reconnect. A permanently interrupted connection has a different cause. The
+30-second authoritative HTTP fallback continues to synchronize while Live is
+unavailable. Do not describe polling as an active Live connection.
+
+CI `live-proxy` proves a cookie-authenticated HTTP101 handshake and Redis wakeup
+through real Nginx and the shipped Caddy.proxy into Daphne, including rejection
+of anonymous, wrong-origin and unknown-family handshakes. This exercises the NPM
+upgrade-header contract; it does not claim to inspect an owner's NPM instance.
+
+Primary references:
+- https://caddyserver.com/docs/caddyfile/directives/reverse_proxy
+- https://github.com/NginxProxyManager/nginx-proxy-manager/blob/develop/backend/templates/proxy_host.conf

@@ -2,7 +2,7 @@
     tls internal
     encode zstd gzip
 
-    @api path /api/* /admin/* /static/*
+    @api path /api/* /admin/* /static/* /ws/*
     handle @api {
         reverse_proxy backend:8000
     }
