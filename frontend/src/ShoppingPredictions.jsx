@@ -4,7 +4,10 @@ import './prediction-i18n';
 import {api} from './api';
 import {Icon} from './icons';
 import {toast} from './feedback';
+import {requestCreate} from './create-request';
 import SmartShopping from './SmartShopping';
+import ShoppingBudgetCommitment from './ShoppingBudgetCommitment';
+import {SHOPPING_BUDGET_PURCHASE_EVENT} from './shopping-offline';
 import './shopping-predictions.css';
 
 function PredictionPanel({family,onAccepted}){
@@ -21,5 +24,32 @@ function PredictionPanel({family,onAccepted}){
 export default function SmartShoppingPredicted({family,onChanged,...props}){
  const [revision,setRevision]=useState(0);
  async function accepted(){setRevision(value=>value+1);await onChanged?.()}
- return <div className="shopping-prediction-shell"><PredictionPanel family={family} onAccepted={accepted}/><SmartShopping key={`${family?.id||'none'}-${revision}`} family={family} onChanged={onChanged} {...props}/></div>
+ useEffect(()=>{
+  const openExpense=async event=>{
+   const detail=event.detail||{};
+   if(!family?.id||String(detail.familyId)!==String(family.id)||!detail.itemId||!detail.commitment)return;
+   try{
+    const item=await api(`/shopping-items/${encodeURIComponent(detail.itemId)}/`);
+    const commitment=detail.commitment;
+    requestCreate('expense',{
+     origin:'shopping',
+     mode:'details',
+     ledger:commitment.ledger,
+     commitment:commitment.id,
+     commitmentBudget:commitment.budget,
+     shoppingItem:item.id,
+     prefill:{
+      title:item.name||'',
+      merchant:item.name||'',
+      total_amount:commitment.amount,
+      currency:commitment.currency||'EUR',
+      ledger:commitment.ledger,
+     },
+    });
+   }catch(error){toast(error.message,{type:'error'})}
+  };
+  window.addEventListener(SHOPPING_BUDGET_PURCHASE_EVENT,openExpense);
+  return()=>window.removeEventListener(SHOPPING_BUDGET_PURCHASE_EVENT,openExpense);
+ },[family?.id]);
+ return <div className="shopping-prediction-shell"><PredictionPanel family={family} onAccepted={accepted}/><ShoppingBudgetCommitment key={`budget-${family?.id||'none'}-${revision}`} family={family} onChanged={accepted}/><SmartShopping key={`${family?.id||'none'}-${revision}`} family={family} onChanged={onChanged} {...props}/></div>
 }

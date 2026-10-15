@@ -61,14 +61,14 @@ function accountDefaults(account,members){
 }
 function confidenceLabel(value,t){if(value>=.82)return['good',t('expensesUi.confidenceHigh')];if(value>=.55)return['warn',t('expensesUi.confidenceMedium')];return['low',t('expensesUi.confidenceLow')]}
 
-export default function ExpenseEditor({family,expense=null,onClose,onSaved,onUndo,initialMode='quick',initialLedger='',initialPrefill={}}){
+export default function ExpenseEditor({family,expense=null,onClose,onSaved,onUndo,initialMode='quick',initialLedger='',initialPrefill={},initialBudget='',createExpense=null}){
  const {t,i18n}=useTranslation();
  const members=family?.memberships||[];
  const {membership}=useFamilyPermissions(family);
  const isExisting=Boolean(expense?.id);
  const [stage,setStage]=useState(isExisting?'form':initialMode==='receipt'?'capture':initialMode==='details'?'form':'quick');
  const [draft,setDraft]=useState(expense);
- const [form,setForm]=useState(()=>({...formFrom(expense,members,initialPrefill),ledger:expense?.ledger?String(expense.ledger):initialLedger}));
+ const [form,setForm]=useState(()=>({...formFrom(expense,members,initialPrefill),ledger:expense?.ledger?String(expense.ledger):initialLedger,budget:isExisting?'':String(initialBudget||'')}));
  const [ledgers,setLedgers]=useState([]);
  const [budgets,setBudgets]=useState([]);
  const [contextError,setContextError]=useState('');
@@ -167,7 +167,7 @@ export default function ExpenseEditor({family,expense=null,onClose,onSaved,onUnd
   setBusy(true);setError('');
   const normalized=normalizeAmount(form.amount);
   const payload={family:family.id,ledger:form.ledger||undefined,category:form.category,title:form.title.trim(),total_amount:normalized,currency:form.currency,occurred_at:initialPrefill.occurred_at||new Date().toISOString(),paid_by:form.paid_by||undefined,participants:form.participants,split_type:form.split_type,split_values:form.split_type==='equal'?undefined:form.split_values,client_request_id:quickRequestId.current};
-  try{const saved=await api('/expenses/',{method:'POST',body:JSON.stringify(payload)});toast(t('expensesUi.savedAmount',{amount:money(normalized,form.currency,i18n.language)}),{type:'success',actionLabel:t('expensesUi.undo'),onAction:()=>undoQuick(saved),duration:8000});await onSaved?.(saved)}catch(err){setError(err.message);setBusy(false)}
+  try{const saved=await api('/expenses/',{method:'POST',body:JSON.stringify(payload)});toast(t('expensesUi.savedAmount',{amount:money(normalized,form.currency,i18n.language)}),{type:'success',actionLabel:t('expensesUi.undo'),onAction:()=>undoQuick(saved),duration:8000});await onSaved?.(saved,{budget:form.budget})}catch(err){setError(err.message);setBusy(false)}
  }
  async function syncBudgetAllocation(saved){
   if(!saved?.id||form.budget==='__advanced__')return;
@@ -192,14 +192,15 @@ export default function ExpenseEditor({family,expense=null,onClose,onSaved,onUnd
   const payload={family:family.id,category:form.category,title:form.title.trim(),merchant:form.title.trim(),total_amount:normalizeAmount(form.amount),currency:form.currency,occurred_at:localMidday(form.date),funding_source:form.funding_source,ledger:form.ledger||undefined};
   if(!isShared){payload.paid_by=form.paid_by||undefined;payload.participants=form.participants;payload.split_type=form.split_type;payload.split_values=form.split_type==='equal'?undefined:form.split_values}
   try{
-   let saved;
+   let saved;let customCreated=false;
    if(draft?.id&&draft?.status==='draft')saved=await api(`/expenses/${draft.id}/`,{method:'PATCH',body:JSON.stringify({...payload,finalize:true})});
    else if(isExisting)saved=await api(`/expenses/${expense.id}/`,{method:'PATCH',body:JSON.stringify(payload)});
+   else if(createExpense){saved=await createExpense({...payload,client_request_id:quickRequestId.current},{budget:form.budget});customCreated=true}
    else saved=await api('/expenses/',{method:'POST',body:JSON.stringify({...payload,client_request_id:quickRequestId.current})});
    setDraft(saved);
-   await syncBudgetAllocation(saved);
+   if(!customCreated)await syncBudgetAllocation(saved);
    toast(t('expensesUi.save'),{type:'success'});
-   await onSaved?.(saved);
+   await onSaved?.(saved,{budget:form.budget});
   }catch(err){setError(err.message);setBusy(false)}
  }
 

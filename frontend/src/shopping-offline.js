@@ -1,6 +1,7 @@
 import {api} from './api';
 import {deleteShoppingMutation,listShoppingMutations,putShoppingMutation} from './offline-store';
 
+export const SHOPPING_BUDGET_PURCHASE_EVENT='famuhle:shopping-budget-purchase';
 const uuid=()=>globalThis.crypto?.randomUUID?.()||`offline-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
 export async function queueShoppingAdd(familyId,payload){
@@ -9,7 +10,24 @@ export async function queueShoppingAdd(familyId,payload){
   await putShoppingMutation(mutation);return mutation;
 }
 export async function queueShoppingPatch(familyId,targetId,payload){
-  const mutation={id:uuid(),familyId:String(familyId),type:'patch',targetId:String(targetId),payload,createdAt:Date.now(),attempts:0,status:'pending'};
+  const target=String(targetId);
+  // A budget reservation is an online finance transition, not an offline
+  // checkbox mutation. Keep the item open until the canonical Expense has
+  // been confirmed; the create flow will mark it checked afterwards.
+  if(payload?.checked===true&&!target.startsWith('offline-')&&typeof navigator!=='undefined'&&navigator.onLine){
+    try{
+      const result=await api(`/budget-commitments/source/shopping_item/${encodeURIComponent(target)}/?family=${encodeURIComponent(familyId)}`);
+      if(result?.commitment){
+        window.dispatchEvent(new CustomEvent(SHOPPING_BUDGET_PURCHASE_EVENT,{detail:{familyId:String(familyId),itemId:target,commitment:result.commitment}}));
+        return {intercepted:true,targetId:target,commitment:result.commitment};
+      }
+    }catch{
+      // Finance can be unavailable independently (entitlement/network). In
+      // that case preserve the existing shopping behavior instead of turning
+      // a normal checkbox into a hard failure.
+    }
+  }
+  const mutation={id:uuid(),familyId:String(familyId),type:'patch',targetId:target,payload,createdAt:Date.now(),attempts:0,status:'pending'};
   await putShoppingMutation(mutation);return mutation;
 }
 export async function queueShoppingDelete(familyId,targetId){

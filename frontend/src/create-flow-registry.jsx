@@ -12,6 +12,8 @@ import CorrespondenceEditor from './CorrespondenceEditor';
 import WishlistEditor from './WishlistEditor';
 import {BabyCreateSheet,PetCreateSheet} from './ModuleCreateSheets';
 import {CREATE_ACTIONS} from './create-actions';
+import {api} from './api';
+import {toast} from './feedback';
 
 function CreatePageRedirect({page,params,openModule}){
   const opened=useRef(false);
@@ -23,6 +25,26 @@ function CreatePageRedirect({page,params,openModule}){
   return null;
 }
 
+function ExpenseCreateFlow({family,context,onClose,saved,onRefresh}){
+  const prefill=context.prefill||null;
+  async function createReservedExpense(expensePayload,financeContext={}){
+    const selectedBudget=financeContext.budget==='__advanced__'?null:(financeContext.budget??context.commitmentBudget??null);
+    const result=await api(`/budget-commitments/${encodeURIComponent(context.commitment)}/purchase/`,{
+      method:'POST',
+      body:JSON.stringify({family:family.id,budget:selectedBudget||null,expense:expensePayload}),
+    });
+    return result.expense;
+  }
+  async function finish(record){
+    if(context.commitment&&context.shoppingItem){
+      try{await api(`/shopping-items/${encodeURIComponent(context.shoppingItem)}/`,{method:'PATCH',body:JSON.stringify({checked:true})})}
+      catch(error){toast(error.message,{type:'error'})}
+    }
+    await saved(record);
+  }
+  return <ExpenseEditor family={family} expense={prefill} initialLedger={context.ledger||prefill?.ledger||''} initialBudget={context.commitmentBudget||''} initialMode={context.mode==='receipt'?'receipt':context.mode==='details'?'details':'quick'} createExpense={context.commitment?createReservedExpense:null} onClose={onClose} onSaved={finish} onUndo={onRefresh}/>;
+}
+
 const renderers={
   vehicle:({family,onClose,saved})=><VehicleEditor family={family} onClose={onClose} onSaved={saved}/>,
   birthday:({family,onClose,saved})=><BirthdayEditor family={family} onClose={onClose} onSaved={saved}/>,
@@ -31,7 +53,7 @@ const renderers={
   task:({family,taskLists,taskListId,onClose,saved})=><TaskEditor family={family} lists={taskLists} members={family.memberships||[]} defaultListId={taskListId} onClose={onClose} onSaved={saved}/>,
   shoppingItem:({family,shoppingLists,shoppingList,onClose,saved,setCreatedShoppingList,onRefresh})=>shoppingLists.length?<ShoppingEditor shoppingList={shoppingList} lists={shoppingLists} onClose={onClose} onSaved={saved}/>:<ListEditor type="shopping" family={family} onClose={onClose} onSaved={async list=>{setCreatedShoppingList(list);await onRefresh?.()}}/>,
   event:({userId,family,onClose,saved})=><EventEditor family={family} currentUserId={userId} onClose={onClose} onSaved={saved}/>,
-  expense:({family,context,onClose,saved,onRefresh})=><ExpenseEditor family={family} initialLedger={context.ledger||''} initialMode={context.mode==='receipt'?'receipt':'quick'} onClose={onClose} onSaved={saved} onUndo={onRefresh}/>,
+  expense:props=><ExpenseCreateFlow {...props}/>,
   contract:({family,onClose,saved})=><ContractEditor family={family} onClose={onClose} onSaved={saved}/>,
   correspondence:({family,shoppingLists,onClose,saved})=><CorrespondenceEditor family={family} shoppingLists={shoppingLists} onClose={onClose} onSaved={saved}/>,
   wish:({family,context,onClose,savedWithoutClose})=><WishlistEditor family={family} context={context} onClose={onClose} onSaved={savedWithoutClose}/>,
