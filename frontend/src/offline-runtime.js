@@ -1,4 +1,5 @@
 import {getSyncEngine,stopSyncAccount,SYNC_CHANGED} from './offline-sync-engine.js';
+import {ensureLiveCoordinator,stopLiveAccount} from './offline-live.js';
 const ACCOUNT='familyos-offline-account';
 const PREFIX='familyos-offline-bootstrap:';
 let transport=null;
@@ -8,6 +9,7 @@ const meta=()=>{try{return JSON.parse(localStorage.getItem(PREFIX+localStorage.g
 export function offlineIdentity(){const data=meta();return data?.session?.offline_sync_protocol===1?data:null}
 export function offlineEngine(familyId){const data=offlineIdentity();if(!data||!familyId)return null;return getSyncEngine({accountId:String(data.session.user.id),familyId:String(familyId),transport})}
 export function setSyncTransport(fn){transport=fn}
+function enableLive(e,familyId){const data=offlineIdentity();if(data&&e)ensureLiveCoordinator(e,{accountId:String(data.session.user.id),familyId:String(familyId)})}
 export async function rememberOfflineBootstrap(path,data){
  if(path==='/families/'&&Array.isArray(data?.results))data=data.results;
  if(path==='/auth/session/'&&data?.offline_sync_protocol===1&&data.user?.id&&!data.user.is_superadmin){
@@ -22,13 +24,13 @@ export async function rememberOfflineBootstrap(path,data){
  if(path.startsWith('/dashboard/')&&offlineIdentity()){const accountId=localStorage.getItem(ACCOUNT),familyId=new URL(path,'https://local.invalid').searchParams.get('family');const value={...data};for(const key of ['tasks','task_lists','events','shopping_lists'])delete value[key];const saved=meta();localStorage.setItem(PREFIX+accountId,JSON.stringify({...saved,dashboards:{...saved.dashboards,[familyId]:value}}))}
  if(path==='/families/'&&Array.isArray(data)&&offlineIdentity()){
   const accountId=localStorage.getItem(ACCOUNT);localStorage.setItem(PREFIX+accountId,JSON.stringify({...meta(),families:data}));
-  for(const family of data){const e=offlineEngine(family.id);if(e)e.sync().then(()=>enabled.add(String(family.id))).catch(()=>{})}
+  for(const family of data){const e=offlineEngine(family.id);if(e)e.sync().then(()=>{enabled.add(String(family.id));enableLive(e,family.id)}).catch(()=>{})}
  }
 }
 export async function clearOfflineIdentity(){
  const old=localStorage.getItem(ACCOUNT);generation++;
  localStorage.removeItem(ACCOUNT);enabled.clear();
- if(old){await stopSyncAccount(old);localStorage.removeItem(PREFIX+old)}
+ if(old){stopLiveAccount(old);await stopSyncAccount(old);localStorage.removeItem(PREFIX+old)}
  // The old fallback database is not account-scoped. Explicit logout must erase
  // its private data too. Aborted/deferred legacy transactions are stopped by UI.
  await new Promise((resolve,reject)=>{const request=indexedDB.deleteDatabase('famuhle-offline-v1');request.onsuccess=resolve;request.onerror=()=>reject(request.error);request.onblocked=()=>reject(new Error('legacy_offline_cleanup_blocked'))});
@@ -41,8 +43,8 @@ export function offlineMetadata(path){
 }
 export async function readyOfflineEngine(familyId){
  const e=offlineEngine(familyId);if(!e)return null;
- if(await e.ready()){enabled.add(String(familyId));return e}
- await e.sync();if(!await e.ready())throw new Error('offline_prefetch_required');enabled.add(String(familyId));return e;
+ if(await e.ready()){enabled.add(String(familyId));enableLive(e,familyId);return e}
+ await e.sync();if(!await e.ready())throw new Error('offline_prefetch_required');enabled.add(String(familyId));enableLive(e,familyId);return e;
 }
 export async function offlineShoppingRequest(path,options={}){
  const identity=offlineIdentity();if(!identity)return {handled:false};
@@ -67,9 +69,7 @@ export async function offlineShoppingRequest(path,options={}){
    return {handled:true,value};
   }
  }
- if(route==='/smart/shopping/quick-add/'&&method==='POST'){
-  return {handled:true,value:await addShoppingLocally(familyId,data)};
- }
+ if(route==='/smart/shopping/quick-add/'&&method==='POST')return {handled:true,value:await addShoppingLocally(familyId,data)};
  const clear=route.match(/^\/smart\/shopping-lists\/([^/]+)\/clear-checked\/$/);
  if(clear&&method==='POST'){const rows=(await e.list('shopping_item')).filter(r=>r.shopping_list===clear[1]&&r.checked);for(const row of rows)await e.mutate('shopping_item',row.id,'delete');return {handled:true,value:{deleted:rows.length}}}
  const reorder=route.match(/^\/smart\/shopping-lists\/([^/]+)\/reorder\/$/);
