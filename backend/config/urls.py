@@ -36,7 +36,10 @@ from telemetry.superadmin_delivery_views import superadmin_delivery_summary
 from telemetry.superadmin_operations_views import superadmin_operations_health
 from telemetry.superadmin_views import superadmin_analytics_overview, superadmin_security_summary
 
+from family.sync_views import sync
+
 urlpatterns = [
+    path("api/sync/", sync, name="offline_sync"),
     path("admin/", admin.site.urls),
     path("api/auth/login/", login_view, name="auth_login"),
     path("api/auth/refresh/", refresh_view, name="auth_refresh"),
