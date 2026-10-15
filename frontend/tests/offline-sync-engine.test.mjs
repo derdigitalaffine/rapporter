@@ -49,3 +49,14 @@ test('unsupported response cannot acknowledge pending mutations or advance curso
  await assert.rejects(e.sync(),/unsupported_sync_protocol/);clearTimeout(e.timer);
  assert.equal((await e.store.list('outbox')).length,1);assert.equal(await e.store.get('syncState','cursor'),null);
 });
+
+test('keeping a conflict draft updates the local entity immediately and durably before network sync',async()=>{
+ const e=engine();e.schedule=()=>{};await e.install(snapshot([{id:'i',version:1,name:'Milk'}]),[]);
+ await e.mutate('shopping_item','i','update',{name:'Tea'});const sent=await e.store.list('outbox');
+ await e.install({protocol_version:1,mode:'delta',cursor:2,visibility:{...empty(),shopping_item:['i']},changes:[{entity_type:'shopping_item',entity_id:'i',version:2,operation:'update',data:{id:'i',version:2,name:'Coffee'}}],mutation_results:[{mutation_id:sent[0].id,status:'conflict',server_data:{id:'i',version:2,name:'Coffee'},server_version:2,conflicts:{name:{client:'Tea',server:'Coffee'}}}]},sent);
+ assert.equal((await e.get('shopping_item','i')).name,'Coffee');
+ await e.resolve(sent[0].id,'local');assert.equal((await e.get('shopping_item','i')).name,'Tea');
+ const row=await createLocalSyncStore({accountId:e.accountId,familyId:e.familyId}).get('shoppingItems','i');
+ assert.equal(row.data.name,'Tea');assert.equal(row.server_data.name,'Coffee');assert.equal(row.sync_status,'pending');
+ assert.deepEqual(await e.store.list('conflicts'),[]);const [retry]=await e.store.list('outbox');assert.notEqual(retry.id,sent[0].id);assert.equal(retry.base_version,2);assert.equal(retry.attempted,false);
+});
