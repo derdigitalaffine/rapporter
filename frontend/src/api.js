@@ -99,7 +99,7 @@ export async function api(path,options={}){
  const local=await offlineShoppingRequest(path,options);if(local.handled){clearBootstrapRuntime();return local.value}
  const method=(options.method||'GET').toUpperCase();
  if(method==='GET'){
-  const runtime=takeBootstrapRuntime(path);if(runtime.found)return runtime.data;
+  const runtime=takeBootstrapRuntime(path);if(runtime.found){await rememberOfflineBootstrap(path,runtime.data);return runtime.data}
  }else{
   invalidateFamilyModuleRuntimeForPath(path);clearBootstrapRuntime();
  }

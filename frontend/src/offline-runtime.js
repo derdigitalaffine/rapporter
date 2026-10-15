@@ -9,6 +9,7 @@ export function offlineIdentity(){const data=meta();return data?.session?.offlin
 export function offlineEngine(familyId){const data=offlineIdentity();if(!data||!familyId)return null;return getSyncEngine({accountId:String(data.session.user.id),familyId:String(familyId),transport})}
 export function setSyncTransport(fn){transport=fn}
 export async function rememberOfflineBootstrap(path,data){
+ if(path==='/families/'&&Array.isArray(data?.results))data=data.results;
  if(path==='/auth/session/'&&data?.offline_sync_protocol===1&&data.user?.id&&!data.user.is_superadmin){
   const accountId=String(data.user.id),old=localStorage.getItem(ACCOUNT);
   if(old&&old!==accountId)await clearOfflineIdentity();

@@ -6,7 +6,7 @@ const values=new Map();globalThis.localStorage={getItem:k=>values.get(k)||null,s
 Object.defineProperty(navigator,'onLine',{value:true,writable:true,configurable:true});
 afterEach(async()=>{navigator.onLine=true;await clearOfflineIdentity();values.clear()});
 function server(){const lists=[],items=[];let cursor=0;return {lists,items,async transport(p){const results=[];for(const m of p.mutations){const rows=m.entity_type==='shopping_list'?lists:items;const old=rows.find(r=>r.id===m.entity_id);if(m.operation==='create')rows.push({id:m.entity_id,version:1,checked:false,...m.data});else if(m.operation==='update'){Object.assign(old,m.changes);old.version++}else if(m.operation==='delete')rows.splice(rows.indexOf(old),1);results.push({mutation_id:m.mutation_id,status:'applied',version:old?.version||1,data:rows.find(r=>r.id===m.entity_id)});cursor++}return {protocol_version:1,mode:'snapshot',cursor,mutation_results:results,visibility:{task:[],task_list:[],event:[],shopping_list:lists.map(r=>r.id),shopping_item:items.map(r=>r.id)},snapshot:{shopping_lists:structuredClone(lists),shopping_items:structuredClone(items)}}}}}
-async function setup(){const s=server();setSyncTransport(s.transport);await rememberOfflineBootstrap('/auth/session/',{authenticated:true,offline_sync_protocol:1,user:{id:crypto.randomUUID(),username:'Owner'}});await rememberOfflineBootstrap('/families/',[{id:'f',name:'Family',memberships:[]}]);localStorage.setItem('famuhle-active-family','f');await offlineEngine('f').sync();return s}
+async function setup(){const s=server();setSyncTransport(s.transport);await rememberOfflineBootstrap('/auth/session/',{authenticated:true,offline_sync_protocol:1,user:{id:crypto.randomUUID(),username:'Owner'}});await rememberOfflineBootstrap('/families/',{count:1,next:null,results:[{id:'f',name:'Family',memberships:[]}]});localStorage.setItem('famuhle-active-family','f');await offlineEngine('f').sync();return s}
 const request=(path,method,body)=>offlineShoppingRequest(path,{method,body:body?JSON.stringify(body):undefined});
 test('same local read/write path online and offline with final UUID and reload bootstrap',async()=>{
  const s=await setup(),e=offlineEngine('f');e.schedule=()=>{};navigator.onLine=false;
@@ -14,7 +14,7 @@ test('same local read/write path online and offline with final UUID and reload b
  const item=(await request('/shopping-items/','POST',{shopping_list:list.id,name:'Milk'})).value;
  assert.match(item.id,/^[a-f0-9-]{36}$/);await request(`/shopping-items/${item.id}/`,'PATCH',{quantity:'2',checked:true});
  assert.equal((await request('/shopping-lists/','GET')).value[0].items[0].quantity,'2');assert.equal(offlineMetadata('/auth/session/').value.user.username,'Owner');
- assert.equal(s.items.length,0);navigator.onLine=true;await e.sync();await e.sync();
+ assert.equal(offlineMetadata('/families/').value[0].id,'f');assert.equal(s.items.length,0);navigator.onLine=true;await e.sync();await e.sync();
  assert.equal(s.lists.length,1);assert.equal(s.items.length,1);assert.equal(s.items[0].checked,true);assert.equal((await e.store.list('outbox')).length,0);
  await request(`/shopping-items/${item.id}/`,'DELETE');assert.equal((await request('/shopping-lists/','GET')).value[0].items.length,0);await e.sync();assert.equal(s.items.length,0);
 });
