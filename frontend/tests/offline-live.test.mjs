@@ -81,3 +81,27 @@ test('leader checks HTTP every thirty seconds even while an apparently open sock
  let now=0;const e=engine(),coordinator=new LiveSyncCoordinator({accountId:'a',familyId:'f',engine:e,storage:storage(),Channel:null,Socket:FakeSocket,timers,now:()=>now}).start();
  const before=e.state.calls;now=29000;coordinator.checkLease();assert.equal(e.state.calls,before);now=30000;coordinator.checkLease();assert.equal(e.state.calls,before+1);coordinator.stop();
 });
+
+test('failed reconnect attempts retain one visible interrupted state until socket really opens',async()=>{
+ FakeSocket.instances=[];FakeChannel.all.clear();const shared=storage(),a=engine(),b=engine();
+ const leader=new LiveSyncCoordinator({accountId:'a',familyId:'f',engine:a,storage:shared,Channel:FakeChannel,Socket:FakeSocket,timers}).start();
+ const follower=new LiveSyncCoordinator({accountId:'a',familyId:'f',engine:b,storage:shared,Channel:FakeChannel,Socket:FakeSocket,timers}).start();
+ const first=leader.socket;assert.equal(a.liveState,'connecting');first.onerror();first.close();
+ assert.equal(a.liveState,'reconnecting');assert.equal(b.liveState,'reconnecting');
+ for(let attempt=0;attempt<5;attempt++){
+  leader.checkLease();assert.equal(a.liveState,'reconnecting');assert.equal(b.liveState,'reconnecting');
+  leader.socket.onerror();leader.socket.close();await Promise.resolve();
+  assert.equal(a.liveState,'reconnecting');assert.equal(b.liveState,'reconnecting');
+ }
+ leader.checkLease();assert.equal(a.liveState,'reconnecting');leader.socket.onopen();
+ assert.equal(a.liveState,'connected');assert.equal(b.liveState,'connected');
+ leader.stop();follower.stop();
+});
+
+test('constructor failures do not flash connecting during later transport retries',()=>{
+ let attempts=0;class FailingSocket{constructor(){attempts++;throw new Error('unsupported')}}
+ const e=engine(),leader=new LiveSyncCoordinator({accountId:'a',familyId:'f',engine:e,storage:storage(),Channel:null,Socket:FailingSocket,timers}).start();
+ const transitions=[];const set=leader.setLiveState.bind(leader);leader.setLiveState=value=>{if(e.liveState!==value)transitions.push(value);set(value)};
+ for(let i=0;i<5;i++)leader.checkLease();
+ assert.equal(attempts,6);assert.equal(e.liveState,'unavailable');assert.deepEqual(transitions,[]);leader.stop();
+});

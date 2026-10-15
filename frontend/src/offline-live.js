@@ -37,7 +37,8 @@ export class LiveSyncCoordinator{
   if(!this.isLeader()||this.socket)return;if(!this.Socket){this.setLiveState('unavailable');return}
   try{
    const protocol=globalThis.location?.protocol==='https:'?'wss:':'ws:',host=globalThis.location?.host||'localhost';
-   this.setLiveState('connecting');const socket=new this.Socket(`${protocol}//${host}/ws/sync/${this.familyId}/`);this.socket=socket;
+   // Retrying is a transport detail: keep the last failure visible until open.
+   if(!['reconnecting','unavailable'].includes(this.engine.liveState))this.setLiveState('connecting');const socket=new this.Socket(`${protocol}//${host}/ws/sync/${this.familyId}/`);this.socket=socket;
    socket.onopen=()=>{if(this.socket===socket&&this.isLeader()){socket.__familyosOpened=true;this.setLiveState('connected');this.runLeaderSync()}};
    socket.onmessage=e=>{try{const data=JSON.parse(e.data);if(data.type==='sync_available'&&String(data.family_id)===this.familyId)this.runLeaderSync()}catch{}};
    socket.onclose=()=>{if(this.socket!==socket)return;this.socket=null;if(this.isLeader()){this.setLiveState('reconnecting');if(socket.__familyosOpened||this.now()-this.lastProbe>=PROBE_MS)this.runLeaderSync()}};socket.onerror=()=>{if(this.socket===socket&&this.isLeader()){this.setLiveState('reconnecting');if(socket.__familyosOpened||this.now()-this.lastProbe>=PROBE_MS)this.runLeaderSync()}};
