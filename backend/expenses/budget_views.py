@@ -1,7 +1,8 @@
 from decimal import Decimal
 
+from django.db import transaction
 from django.db.models import Q, Sum
-from rest_framework import viewsets
+from rest_framework import serializers as drf_serializers, viewsets
 from rest_framework.decorators import api_view
 from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.response import Response
@@ -9,11 +10,13 @@ from rest_framework.response import Response
 from entitlements.services import require_capability
 from .permissions import ExpenseAccess, finance_queryset
 from family.models import Family
-from .budget_serializers import ExpenseBudgetSerializer, BudgetAllocationReplaceSerializer
+from .budget_serializers import ExpenseBudgetSerializer, BudgetAllocationReplaceSerializer, ParticipantPlanWriteSerializer
 from .budget_services import ledger_budget_summary, replace_budget_allocations
 from .commitment_models import BudgetCommitment
 from .models import Expense, ExpenseBudget, ExpenseLedger, get_default_expense_ledger
 from .money import money
+from .participant_services import can_manage_participant_plans, participant_plan_payload, replace_participant_plans
+from .serializers import ExpenseLedgerSerializer
 
 
 def _visible_expense(request, expense_id):
@@ -43,6 +46,20 @@ def _visible_ledger(request, ledger_id):
         raise NotFound()
     require_capability(request.user, ledger.family, "expenses")
     return ledger
+
+
+def _visible_budget(request, budget_id):
+    queryset = ExpenseBudget.objects.select_related("family", "ledger").filter(
+        id=budget_id,
+        family__status=Family.Status.ACTIVE,
+    )
+    if not request.user.is_superuser:
+        queryset = queryset.filter(family__memberships__user=request.user)
+    budget = queryset.distinct().first()
+    if not budget:
+        raise NotFound()
+    require_capability(request.user, budget.family, "expenses")
+    return budget
 
 
 def _allocation_payload(expense, allocations):
@@ -88,6 +105,55 @@ class ExpenseBudgetViewSet(viewsets.ModelViewSet):
         if ledger_id:
             queryset = queryset.filter(ledger_id=ledger_id)
         return finance_queryset(queryset, user).distinct()
+
+
+@api_view(["GET", "PATCH"])
+def expense_ledger_participant_plans(request, ledger_id):
+    ledger = _visible_ledger(request, ledger_id)
+    if request.method == "GET":
+        return Response(participant_plan_payload(scope=ledger, user=request.user))
+
+    raw_plans = request.data.get("participant_plans", drf_serializers.empty)
+    payload = request.data.copy()
+    if "participant_plans" in payload:
+        payload.pop("participant_plans")
+
+    ledger_serializer = ExpenseLedgerSerializer(
+        ledger,
+        data=payload,
+        partial=True,
+        context={"request": request},
+    )
+    ledger_serializer.is_valid(raise_exception=True)
+
+    participant_plans = drf_serializers.empty
+    if raw_plans is not drf_serializers.empty:
+        if not can_manage_participant_plans(request.user, ledger.family):
+            raise ValidationError({"participant_plans": "Teilnehmerplanung darf nur von Erwachsenen verwaltet werden."})
+        plan_serializer = ParticipantPlanWriteSerializer(data=raw_plans, many=True)
+        plan_serializer.is_valid(raise_exception=True)
+        participant_plans = plan_serializer.validated_data
+        member_ids = [str(row["member"]) for row in participant_plans]
+        if len(member_ids) != len(set(member_ids)):
+            raise ValidationError({"participant_plans": "Jede Person darf nur einmal vorkommen."})
+
+    try:
+        with transaction.atomic():
+            updated = ledger_serializer.save()
+            if participant_plans is not drf_serializers.empty:
+                replace_participant_plans(scope=updated, rows=participant_plans, user=request.user)
+    except PermissionError as exc:
+        raise ValidationError({"participant_plans": str(exc)}) from exc
+    except ValueError as exc:
+        raise ValidationError({"participant_plans": str(exc)}) from exc
+
+    return Response(ExpenseLedgerSerializer(updated, context={"request": request}).data)
+
+
+@api_view(["GET"])
+def expense_budget_participant_plans(request, budget_id):
+    budget = _visible_budget(request, budget_id)
+    return Response(participant_plan_payload(scope=budget, user=request.user))
 
 
 @api_view(["GET", "PUT"])
