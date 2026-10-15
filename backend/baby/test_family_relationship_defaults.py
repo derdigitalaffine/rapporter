@@ -42,7 +42,7 @@ class ManagedChildRelationshipDefaultTests(TestCase):
         self.client = APIClient()
         self.client.force_authenticate(user=self.owner)
 
-    def test_child_creation_grants_account_management_but_infers_no_relationship(self):
+    def test_child_creation_infers_neither_relationship_nor_protected_authority(self):
         response = self.client.post(
             "/api/baby/managed-children/",
             {
@@ -61,18 +61,8 @@ class ManagedChildRelationshipDefaultTests(TestCase):
                 child_membership=baby.membership,
             ).exists()
         )
-        self.assertTrue(
-            ManagedChildGuardian.objects.filter(
-                baby=baby,
-                membership=self.owner_membership,
-                can_manage_account=True,
-            ).exists()
-        )
         self.assertFalse(
-            ManagedChildGuardian.objects.filter(
-                baby=baby,
-                membership=self.adult_membership,
-            ).exists()
+            ManagedChildGuardian.objects.filter(baby=baby).exists()
         )
         self.assertFalse(
             CareCircleAccess.objects.filter(

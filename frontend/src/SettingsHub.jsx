@@ -9,7 +9,7 @@ const SETTINGS_LINKS=[
  ['integrations','Integrationen','Verbundene Dienste verwalten'],
  ['automations','Automationen','Regeln und automatische Abläufe'],
  ['members','Familie','Mitglieder und Rollen verwalten'],
- ['#children-permissions','Kinder & Berechtigungen','Guardian-Rechte pro Kind verwalten'],
+ ['#children-permissions','Kinder & Berechtigungen','Sorgerecht und wirksame Kinderrechte einsehen'],
 ];
 const COLOR_PROFILES=[
  ['green','Dunkelgrün','Hell','Das bekannte FamilyOS-Farbprofil','settings-swatch-green'],

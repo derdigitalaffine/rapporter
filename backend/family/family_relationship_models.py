@@ -5,11 +5,12 @@ from .models import Family, Membership, TimestampedModel
 
 
 class FamilyRelationship(TimestampedModel):
-    """Descriptive relationship between one child and one family member.
+    """Relationship between one child and one family member.
 
-    Relationship facts deliberately carry no authorization semantics. Family
-    role, account guardianship and Pregnancy/Baby Care Circle permissions are
-    separate contracts.
+    Most relationship facts remain descriptive. An active ``has_custody=True``
+    relationship to an Owner/Adult membership is the canonical authorization
+    source for full child authority. Care Circle permissions remain a separate,
+    independently scoped compatibility contract.
     """
 
     class Kind(models.TextChoices):
@@ -114,6 +115,15 @@ class FamilyRelationship(TimestampedModel):
         ):
             errors["child_membership"] = (
                 "Familienbeziehungen können nur einem Kind zugeordnet werden."
+            )
+        if (
+            self.has_custody is True
+            and self.related_membership_id
+            and self.related_membership.role
+            not in {Membership.Role.OWNER, Membership.Role.ADULT}
+        ):
+            errors["has_custody"] = (
+                "Sorgerecht kann nur Owner-/Adult-Mitgliedschaften zugeordnet werden."
             )
         if errors:
             raise ValidationError(errors)

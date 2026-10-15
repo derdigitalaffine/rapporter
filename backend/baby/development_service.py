@@ -10,7 +10,7 @@ from rest_framework.exceptions import PermissionDenied, ValidationError
 
 from family.models import FamilyEvent
 
-from .family_modules import care_access
+from .child_identity_service import child_scope_access
 from .growth_service import corrected_age_days, chronological_age_days
 from .models import AppointmentQuestion, BabyProfile, DevelopmentObservation, DevelopmentReference
 from .reference_models import PediatricPreventiveEventReference
@@ -21,7 +21,6 @@ CDC_SOURCE_KEY = "cdc_act_early"
 CDC_SOURCE_VERSION = "2026-02-16"
 CDC_SOURCE_URL = "https://www.cdc.gov/act-early/milestones/"
 
-# Paraphrased, non-diagnostic prompts. The source/version is retained separately.
 REFERENCE_ROWS = [
     (2, "social", "looks-at-face", "Schaut Gesichter aufmerksam an", "Looks at faces with interest"),
     (2, "language", "sounds-other-than-crying", "Macht erste Laute außer Weinen", "Makes sounds other than crying"),
@@ -49,9 +48,6 @@ REFERENCE_ROWS = [
     (24, "cognitive", "uses-switches-knobs", "Probiert einfache Schalter oder Drehknöpfe aus", "Explores simple switches or knobs"),
 ]
 
-# Legacy names retained for backwards compatibility with callers/tests that may
-# still import these constants. Runtime scheduling is sourced from the versioned
-# reference package service below.
 U_EXAMS = [
     ("U2", 6, "3.–10. Lebenstag"),
     ("U3", 31, "4.–5. Lebenswoche"),
@@ -71,7 +67,7 @@ def _baby_for_user(user, baby_id):
     baby = BabyProfile.objects.select_related("family").filter(pk=baby_id, active=True).first()
     if not baby:
         raise ValidationError({"baby": "Baby profile not found."})
-    _, access = care_access(user, baby.family, "development")
+    _, access = child_scope_access(user, baby, "development")
     if not access.can_view_growth_development:
         raise PermissionDenied("Development access is not permitted.")
     return baby

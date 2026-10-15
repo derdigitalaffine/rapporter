@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import Counter
+from types import SimpleNamespace
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
@@ -16,9 +17,10 @@ from auth_identity.service import (
     queue_verification,
     request_pending_email,
 )
+from family.family_relationship_models import FamilyRelationship
 from family.models import Membership, UserProfile
 
-from .family_modules import MANAGER_ROLES, active_membership
+from .family_modules import MANAGER_ROLES, active_membership, care_access, require_module
 from .models import BabyProfile, CareCircleAccess, ManagedChildGuardian
 
 
@@ -43,8 +45,44 @@ def _bootstrap_guardian_allowed(membership, baby):
     ).exists()
 
 
+def _custody_guardian_allowed(membership, baby):
+    """Return whether stored custody grants full child authority.
+
+    Custody is derived at read time so already stored ``has_custody=True`` rows
+    become effective immediately without a Guardian backfill. Only an active
+    adult/owner membership in the same family can be an effective authority.
+    """
+    if not baby.membership_id or membership.role not in MANAGER_ROLES:
+        return False
+    return FamilyRelationship.objects.filter(
+        family=baby.family,
+        child_membership_id=baby.membership_id,
+        related_membership=membership,
+        has_custody=True,
+        status=FamilyRelationship.Status.ACTIVE,
+    ).exists()
+
+
+def _custody_authority(membership):
+    return SimpleNamespace(
+        membership=membership,
+        membership_id=membership.id,
+        can_manage_account=True,
+        source="custody",
+    )
+
+
 def require_child_guardian(user, baby, *, manage=False):
     membership = active_membership(user, baby.family)
+
+    # #717: Sorgerecht ist die kanonische fachliche Quelle. Der Zugriff wird
+    # dynamisch abgeleitet; eine zusätzliche ManagedChildGuardian-Zeile ist
+    # weder für bestehende noch für neue Sorgerechtsangaben erforderlich.
+    if _custody_guardian_allowed(membership, baby):
+        return membership, _custody_authority(membership)
+
+    # Bestehende explizite Guardian-Zeilen bleiben während der Migration als
+    # technische Legacy-Kompatibilität gültig, behaupten aber kein Sorgerecht.
     guardian = ManagedChildGuardian.objects.filter(
         baby=baby,
         membership=membership,
@@ -61,18 +99,40 @@ def require_child_guardian(user, baby, *, manage=False):
             can_manage_account=True,
         )
         return membership, guardian
-    raise PermissionDenied("Explicit guardian permission is required for this child.")
+    raise PermissionDenied("Sorgerecht oder eine bestehende Guardian-Berechtigung ist für dieses Kind erforderlich.")
+
+
+def child_scope_access(user, baby, scope):
+    """Authorize child-scoped health/care access consistently.
+
+    Custody and legacy Guardian authority grant the full former Guardian scope.
+    Existing Care Circle grants remain an independent compatibility path.
+    """
+    require_module(baby.family)
+    try:
+        membership, authority = require_child_guardian(user, baby)
+    except PermissionDenied:
+        return care_access(user, baby.family, scope)
+    return membership, SimpleNamespace(
+        can_view_pregnancy=True,
+        can_log_care=True,
+        can_view_growth_development=True,
+        is_guardian=True,
+        source=getattr(authority, "source", "legacy_guardian"),
+    )
 
 
 def _require_guardian_manager_or_owner_bootstrap(user, baby):
-    """Authorize Guardian-list writes without turning Owner into a Guardian.
+    """Authorize legacy Guardian-list writes without creating new Owner power.
 
-    Existing account-managing Guardians remain authoritative. The only Owner
-    exception is recovery from a child that currently has no account-managing
-    Guardian at all. That exception is deliberately scoped to this write path;
-    protected child reads continue to use ``require_child_guardian``.
+    #717 supersedes the former Owner bootstrap: custody is now the canonical
+    authority. Existing account-managing Guardian rows remain writable only as
+    migration compatibility.
     """
     membership = active_membership(user, baby.family)
+    if _custody_guardian_allowed(membership, baby):
+        return membership, _custody_authority(membership), False
+
     guardian = ManagedChildGuardian.objects.filter(
         baby=baby,
         membership=membership,
@@ -81,8 +141,6 @@ def _require_guardian_manager_or_owner_bootstrap(user, baby):
     if guardian:
         return membership, guardian, False
 
-    # Preserve the legacy #147 Care Circle migration bridge for an explicitly
-    # marked guardian. This still never derives permission from Owner/Adult.
     if not baby.guardians.exists() and _bootstrap_guardian_allowed(membership, baby):
         guardian = ManagedChildGuardian.objects.create(
             baby=baby,
@@ -91,24 +149,49 @@ def _require_guardian_manager_or_owner_bootstrap(user, baby):
         )
         return membership, guardian, False
 
-    has_account_manager = ManagedChildGuardian.objects.filter(
-        baby=baby,
-        can_manage_account=True,
-    ).exists()
-    if membership.role == Membership.Role.OWNER and not has_account_manager:
-        return membership, None, True
-    raise PermissionDenied("An account-managing guardian is required to change guardians for this child.")
+    raise PermissionDenied("Sorgerecht oder eine bestehende kontoverwaltende Guardian-Berechtigung ist erforderlich.")
+
+
+def _custody_rows(baby):
+    if not baby.membership_id:
+        return []
+    return list(
+        FamilyRelationship.objects.filter(
+            family=baby.family,
+            child_membership_id=baby.membership_id,
+            has_custody=True,
+            status=FamilyRelationship.Status.ACTIVE,
+            related_membership__role__in=MANAGER_ROLES,
+        )
+        .select_related("related_membership__user")
+        .order_by("created_at")
+    )
 
 
 def _serialize_guardian_rows(baby):
-    return [
-        {
-            "membership": str(row.membership_id),
-            "display_name": row.membership.display_name or row.membership.user.get_username(),
-            "can_manage_account": row.can_manage_account,
+    effective = {}
+    for relation in _custody_rows(baby):
+        membership = relation.related_membership
+        effective[str(membership.id)] = {
+            "membership": str(membership.id),
+            "display_name": membership.display_name or membership.user.get_username(),
+            "can_manage_account": True,
+            "source": "custody",
+            "has_custody": True,
         }
-        for row in baby.guardians.select_related("membership__user").order_by("created_at")
-    ]
+    for row in baby.guardians.select_related("membership__user").order_by("created_at"):
+        key = str(row.membership_id)
+        effective.setdefault(
+            key,
+            {
+                "membership": key,
+                "display_name": row.membership.display_name or row.membership.user.get_username(),
+                "can_manage_account": row.can_manage_account,
+                "source": "legacy_guardian",
+                "has_custody": False,
+            },
+        )
+    return list(effective.values())
 
 
 def serialize_child_identity(baby):
@@ -156,14 +239,15 @@ def guardian_settings_for_family(user, family):
     result = []
     for baby in babies:
         guardians = list(baby.guardians.all())
-        has_account_manager = any(row.can_manage_account for row in guardians)
-        actor_manages = any(
+        custody = _custody_rows(baby)
+        custody_ids = {row.related_membership_id for row in custody}
+        has_account_manager = bool(custody_ids) or any(row.can_manage_account for row in guardians)
+        actor_manages = actor.id in custody_ids or any(
             row.membership_id == actor.id and row.can_manage_account
             for row in guardians
         )
-        legacy_can_manage = not guardians and legacy_guardian
-        owner_bootstrap = actor.role == Membership.Role.OWNER and not has_account_manager
-        can_manage = actor_manages or legacy_can_manage or owner_bootstrap
+        legacy_can_manage = not guardians and not custody_ids and legacy_guardian
+        can_manage = actor_manages or legacy_can_manage
         if actor.role != Membership.Role.OWNER and not can_manage:
             continue
         result.append(
@@ -171,17 +255,19 @@ def guardian_settings_for_family(user, family):
                 "baby": str(baby.pk),
                 "membership": str(baby.membership_id),
                 "display_name": baby.display_name,
-                "guardians": [
+                "guardians": _serialize_guardian_rows(baby),
+                "custody_memberships": [
                     {
-                        "membership": str(row.membership_id),
-                        "display_name": row.membership.display_name or row.membership.user.get_username(),
-                        "can_manage_account": row.can_manage_account,
+                        "membership": str(row.related_membership_id),
+                        "display_name": row.related_membership.display_name
+                        or row.related_membership.user.get_username(),
                     }
-                    for row in guardians
+                    for row in custody
                 ],
                 "has_account_managing_guardian": has_account_manager,
                 "can_manage_guardians": can_manage,
-                "can_bootstrap_guardians": owner_bootstrap and not actor_manages,
+                "can_bootstrap_guardians": False,
+                "custody_is_authority": True,
             }
         )
     return {
@@ -208,12 +294,15 @@ def replace_child_guardians(user, baby_id, rows):
         raise ValidationError("Child identity must be reconciled before guardians can be managed.")
     _require_guardian_manager_or_owner_bootstrap(user, baby)
     if not isinstance(rows, list) or not rows:
-        raise ValidationError({"guardians": "At least one account-managing guardian is required."})
+        raise ValidationError({"guardians": "At least one account-managing authority is required."})
 
     family_memberships = {
         str(row.pk): row
         for row in Membership.objects.filter(family=baby.family, family__status="active").select_related("user")
     }
+    existing_legacy_ids = set(
+        ManagedChildGuardian.objects.filter(baby=baby).values_list("membership_id", flat=True)
+    )
     normalized = {}
     for item in rows:
         membership_id = str(item.get("membership") or "")
@@ -221,10 +310,14 @@ def replace_child_guardians(user, baby_id, rows):
         if not membership:
             raise ValidationError({"membership": "Guardian membership does not belong to this family."})
         if membership.role not in MANAGER_ROLES:
-            raise ValidationError({"membership": "Only owner/adult memberships can be guardians."})
+            raise ValidationError({"membership": "Only owner/adult memberships can hold child authority."})
+        if membership.id not in existing_legacy_ids and not _custody_guardian_allowed(membership, baby):
+            raise ValidationError(
+                {"membership": "Neue Kinderberechtigungen werden über Sorgerecht vergeben; eine separate Guardian-Freigabe ist nicht mehr möglich."}
+            )
         normalized[membership_id] = bool(item.get("can_manage_account", True))
     if not any(normalized.values()):
-        raise ValidationError({"guardians": "At least one guardian must be able to manage the child account."})
+        raise ValidationError({"guardians": "At least one authority must be able to manage the child account."})
 
     ManagedChildGuardian.objects.filter(baby=baby).exclude(membership_id__in=normalized).delete()
     for membership_id, can_manage in normalized.items():
@@ -258,8 +351,6 @@ def begin_child_login_activation(user, baby_id, *, email, password):
     except (EmailConflictError, EmailIdentityError) as exc:
         raise ValidationError({"email": str(exc)}) from exc
 
-    # The password alone cannot authenticate until the pending address becomes a
-    # verified PRIMARY EmailIdentity, so no login is enabled before mailbox proof.
     child_user.set_password(password)
     child_user.save(update_fields=["password"])
     identity = queue_verification(identity, locale=baby.family.locale)
@@ -311,8 +402,6 @@ def attach_identity_to_orphan_baby(baby_id):
     baby.membership = membership
     baby.save(update_fields=["membership", "updated_at"])
 
-    # Legacy Care Circle guardian flags are used only to seed explicit per-child
-    # rows. Owner/Adult role alone never grants guardian authority.
     for access in CareCircleAccess.objects.filter(
         family=baby.family,
         is_guardian=True,

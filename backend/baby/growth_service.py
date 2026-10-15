@@ -6,7 +6,7 @@ from django.utils import timezone
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from pygrowthstandards import functional as growth
 
-from .family_modules import care_access
+from .child_identity_service import child_scope_access
 from .models import BabyGrowthMeasurement, BabyGrowthReferenceSetting, BabyProfile
 
 
@@ -33,7 +33,7 @@ def _baby_for_user(user, baby_id):
     baby = BabyProfile.objects.select_related("family").filter(pk=baby_id, active=True).first()
     if not baby:
         raise ValidationError({"baby": "Baby profile not found."})
-    _, access = care_access(user, baby.family, "growth")
+    _, access = child_scope_access(user, baby, "growth")
     if not access.can_view_growth_development:
         raise PermissionDenied("Growth access is not permitted.")
     return baby
