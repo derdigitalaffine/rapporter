@@ -73,7 +73,7 @@ class CalendarSubscriptionTests(TestCase):
 
     def test_private_selected_external_health_and_other_families_never_exported(self):
         self.make_event('Private', is_family_event=False)
-        selected = self.make_event('Selected'); selected.participants.add(self.membership)
+        selected = self.make_event('Selected', is_family_event=False); selected.participants.add(self.membership)
         source = IntegrationSource.objects.create(family=self.family, kind='ics', name='External')
         self.make_event('Imported', source=source)
         self.make_event('Orphaned import', external_id='external-123')
@@ -260,3 +260,13 @@ class CalendarSubscriptionTests(TestCase):
             self.assertEqual(self.public.get(self.feed, secure=True).status_code, 200)
             self.assertEqual(self.client.post(self.detail + 'reveal/').status_code, 403)
             self.assertEqual(self.client.post(self.detail + 'reveal/', secure=True).status_code, 200)
+
+    def test_whole_family_flag_is_independent_of_attendance_selection(self):
+        self.event.participants.add(self.membership)
+        self.create()
+        response = self.public.get(self.feed)
+        self.assertEqual(response.status_code, 200)
+        components = Calendar.from_ical(response.content).walk('VEVENT')
+        self.assertEqual(len(components), 1)
+        self.assertNotIn('ATTENDEE', components[0])
+        self.assertNotIn('ORGANIZER', components[0])

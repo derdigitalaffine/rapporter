@@ -17,11 +17,10 @@ class CalendarCapacityError(Exception):
 
 
 def shared_events(grant):
-    # Only explicit whole-family native events. Health, imports, selected participants,
-    # birthdays, reminders and inferred/legacy visibility never widen through a link.
+    # The whole-family flag is canonical and independent of attendance selection.
+    # Selected-only/personal events, imports, health and virtual rows stay excluded.
     rows = list(FamilyEvent.objects.filter(family_id=grant.family_id, source__isnull=True,
-        type='calendar.event', is_family_event=True, external_id='', starts_at__isnull=False,
-        participants__isnull=True).select_related('family').order_by('id')[:MAX_RESOURCES + 1])
+        type='calendar.event', is_family_event=True, external_id='', starts_at__isnull=False).select_related('family').order_by('id')[:MAX_RESOURCES + 1])
     if len(rows) > MAX_RESOURCES:
         raise CalendarCapacityError()
     return rows

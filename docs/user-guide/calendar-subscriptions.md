@@ -13,8 +13,10 @@ je nach Kalender-App verzögert erscheinen.
 
 **Jeder mit diesem Link kann die freigegebenen Termine lesen.** Behandle ihn wie
 ein Passwort. Enthalten sind ausschließlich ausdrücklich gemeinsame eigene
-Familientermine ohne ausgewählte Teilnehmer; private Termine, importierte
+Familientermine; die Personenauswahl beschreibt die Teilnahme und ändert die
+ausdrückliche Familienmarkierung nicht. Termine ohne Familienmarkierung, importierte
 Kalender, Gesundheitsinformationen und geschützte Daten werden nicht exportiert.
+Übertragen werden Titel, Zeiten und Serien; Orte und Notizen bleiben in FamilyOS.
 
 ## Zusätzlich: iPhone und iPad
 

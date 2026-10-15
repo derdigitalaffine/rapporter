@@ -28,7 +28,9 @@ credentials cannot authenticate to DAV. All write/ACL/scheduling methods are den
 ## Export boundary
 
 Only `calendar.event` with no integration source, explicit `is_family_event=True`,
-no selected participants and a start time is exported. No inferred legacy/private
+a start time is exported. Attendance selection is independent of this whole-family
+flag and never becomes a second visibility policy; attendee identities are not
+exported. Selected-only events without the whole-family flag remain excluded. No inferred legacy/private
 visibility. Export allow-list is UID, escaped title, start/end, timezone and native
 recurrence. Arbitrary payload, participants, organizer, notes, location, documents,
 protected health/child references, imports and virtual projections are excluded.
