@@ -1,4 +1,4 @@
-import {offlineEngine,readyOfflineEngine,offlineIdentity} from './offline-runtime';
+import {offlineEngine,readyOfflineEngine,offlineIdentity,addShoppingLocally} from './offline-runtime';
 import {api} from './api';
 import {deleteShoppingMutation,listShoppingMutations,putShoppingMutation} from './offline-store';
 
@@ -6,7 +6,7 @@ export const SHOPPING_BUDGET_PURCHASE_EVENT='famuhle:shopping-budget-purchase';
 const uuid=()=>globalThis.crypto?.randomUUID?.()||`offline-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
 export async function queueShoppingAdd(familyId,payload){
-  if(offlineEngine(familyId)){const e=await readyOfflineEngine(familyId);const data={...payload};delete data.family;const row=await e.mutate('shopping_item',null,'create',data);return {localId:row.id,payload:data}}
+  if(offlineEngine(familyId)){const {item}=await addShoppingLocally(familyId,payload);return {localId:item.id,payload}}
   const localId=`offline-${uuid()}`;
   const mutation={id:uuid(),familyId:String(familyId),type:'add',localId,payload,createdAt:Date.now(),attempts:0,status:'pending'};
   await putShoppingMutation(mutation);return mutation;

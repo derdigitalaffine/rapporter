@@ -67,7 +67,7 @@ export async function offlineShoppingRequest(path,options={}){
   }
  }
  if(route==='/smart/shopping/quick-add/'&&method==='POST'){
-  delete data.family;return {handled:true,value:await e.mutate('shopping_item',null,'create',data)};
+  return {handled:true,value:await addShoppingLocally(familyId,data)};
  }
  const clear=route.match(/^\/smart\/shopping-lists\/([^/]+)\/clear-checked\/$/);
  if(clear&&method==='POST'){const rows=(await e.list('shopping_item')).filter(r=>r.shopping_list===clear[1]&&r.checked);for(const row of rows)await e.mutate('shopping_item',row.id,'delete');return {handled:true,value:{deleted:rows.length}}}
@@ -89,4 +89,13 @@ export async function offlineDashboard(path){
  if(!e||!await e.ready())return {handled:false};
  const items=await e.list('shopping_item'),lists=await e.list('shopping_list');
  return {handled:true,value:{...(saved.dashboards?.[familyId]||{}),tasks:await e.list('task'),task_lists:await e.list('task_list'),events:await e.list('event'),shopping_lists:lists.map(list=>({...list,items:items.filter(item=>item.shopping_list===list.id)})),routines:saved.dashboards?.[familyId]?.routines||[],offline_fallback:true}};
+}
+
+export async function addShoppingLocally(familyId,payload){
+ const e=await readyOfflineEngine(familyId),name=String(payload.name||'').trim();if(!name)throw new Error('item_name_required');
+ const listId=payload.shopping_list||(await e.list('shopping_list')).find(l=>!l.archived)?.id;if(!listId)throw new Error('shopping_list_required');
+ const existing=(await e.list('shopping_item')).filter(i=>i.shopping_list===listId&&!i.birthday_context&&String(i.name).toLocaleLowerCase()===name.toLocaleLowerCase()).sort((a,b)=>Number(a.checked)-Number(b.checked))[0];
+ const values={};for(const key of ['quantity','category','aisle','note'])if(payload[key]!==undefined&&payload[key]!==null&&payload[key]!=='')values[key]=payload[key];if('favorite' in payload)values.favorite=Boolean(payload.favorite);
+ const item=await e.mutate('shopping_item',existing?.id,existing?'update':'create',existing?{...values,checked:false}:{shopping_list:listId,name,...values,checked:false});
+ return {item,reused:Boolean(existing)};
 }
