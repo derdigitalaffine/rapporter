@@ -59,7 +59,8 @@ class CookieJWTWebSocketMiddleware:
     async def __call__(self, scope, receive, send):
         headers = dict(scope.get("headers", []))
         scope = dict(scope)
-        scope["user"] = await user_from_cookie(headers.get(b"cookie", b"").decode("latin1"))
+        scope["sync_cookie"] = headers.get(b"cookie", b"").decode("latin1")
+        scope["user"] = await user_from_cookie(scope["sync_cookie"])
         return await self.app(scope, receive, send)
 
 
@@ -83,6 +84,10 @@ class SyncWakeConsumer(AsyncJsonWebsocketConsumer):
             await self.close(code=4400)
 
     async def sync_available(self, event):
+        user = await user_from_cookie(self.scope["sync_cookie"]) if "sync_cookie" in self.scope else self.scope.get("user")
+        if not await may_access_family(user, self.family_id):
+            await self.close(code=4403)
+            return
         await self.send_json({
             "type": "sync_available",
             "family_id": self.family_id,

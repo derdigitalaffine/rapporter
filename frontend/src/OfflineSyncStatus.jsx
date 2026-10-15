@@ -1,5 +1,6 @@
 import {useEffect,useState} from 'react';
 import {useTranslation} from 'react-i18next';
+import {storageDiagnostics} from './offline-recovery.js';
 import {offlineEngine} from './offline-runtime';
 import {SYNC_CHANGED} from './offline-sync-engine';
 import OverlayPortal from './OverlayPortal';
@@ -10,7 +11,7 @@ export default function OfflineSyncStatus({family}){
  const [state,setState]=useState('idle'),[open,setOpen]=useState(false),[conflicts,setConflicts]=useState([]),[pending,setPending]=useState(0),[error,setError]=useState(''),[lowSpace,setLowSpace]=useState(false);
  const engine=offlineEngine(family?.id);
  const refresh=async()=>{if(!engine)return;setState(navigator.onLine?engine.state:'offline');setConflicts(await engine.store.list('conflicts'));setPending((await engine.store.list('outbox')).length)};
- useEffect(()=>{refresh();const changed=e=>{if(!e.detail?.familyId||e.detail.familyId===String(family?.id))refresh()};window.addEventListener(SYNC_CHANGED,changed);window.addEventListener('offline',changed);window.addEventListener('online',changed);navigator.storage?.estimate?.().then(({usage,quota})=>setLowSpace(Boolean(quota&&usage/quota>.9))).catch(()=>{});return()=>{window.removeEventListener(SYNC_CHANGED,changed);window.removeEventListener('offline',changed);window.removeEventListener('online',changed)}},[family?.id,engine]);
+ useEffect(()=>{refresh();const changed=e=>{if(!e.detail?.familyId||e.detail.familyId===String(family?.id))refresh()};window.addEventListener(SYNC_CHANGED,changed);window.addEventListener('offline',changed);window.addEventListener('online',changed);storageDiagnostics().then(result=>setLowSpace(result.lowSpace));return()=>{window.removeEventListener(SYNC_CHANGED,changed);window.removeEventListener('offline',changed);window.removeEventListener('online',changed)}},[family?.id,engine]);
  if(!engine)return null;
  const label=conflicts.length?t.attention:state==='offline'?t.offline:state==='synchronizing'?t.busy:state==='auth-required'?t.auth:pending||state==='retry'?t.retry:t.sync;
  async function resolve(id,choice){try{setError('');await engine.resolve(id,choice);await refresh()}catch(e){setError(e.message)}}

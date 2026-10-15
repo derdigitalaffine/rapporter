@@ -79,3 +79,14 @@ The module is not yet a domain cutover. Existing Shopping/Task/Calendar consumer
 remain unchanged until their dedicated migration slices. Web Locks serialize
 local read/modify/write on supporting browsers; live/multi-tab fallback remains
 part of #710 and is not claimed complete here.
+
+## Version 2: ordered outbox migration
+
+The local database now opens at version 2. Existing version-1 stores and records
+are preserved. The upgrade adds `outbox.scopeOrder` on account/family/order and
+backfills absent local order to zero. This field is not part of the HTTP mutation
+fingerprint. Attempted mutations remain immutable on the wire. Upgrade failure
+aborts the whole transaction; unsupported future versions are never auto-reset.
+`offline-recovery.test.mjs` seeds a v1 sending mutation plus conflict, upgrades it,
+and checks payload/state/scope preservation. It also proves future-schema refusal
+leaves pending records intact. Rollback restrictions are in the operations runbook.

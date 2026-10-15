@@ -56,3 +56,22 @@ test('Calendar native creation survives offline reload and external events remai
  await context.setOffline(false);await expect.poll(async()=>{const response=await page.request.get(`/api/events/?family=${family.id}&birthdays=0`);const value=await response.json();return (value.results||value).filter(event=>event.title===title).length},{timeout:20000}).toBe(1);
  await expect(page.locator('.offline-sync-pill')).toHaveText('Synced',{timeout:20000});
 });
+
+test('two independent clients merge disjoint edits, preserve field conflicts and propagate deletion',async({page,browser})=>{
+ const family=await boot(page),other=await browser.newContext({baseURL:'http://127.0.0.1:4173'});
+ try{
+  const login=await other.request.post('/api/auth/login/',{data:{username:'offline-e2e',password:'offline-e2e-only-password',legacy:true}});expect(login.ok()).toBeTruthy();
+  const sync=async(client,mutations=[],cursor=null)=>{const response=await client.post('/api/sync/',{data:{protocol_version:1,family_id:family.id,cursor,mutations}});expect(response.ok()).toBeTruthy();return response.json()};
+  const initial=await sync(page.request),item=initial.snapshot.shopping_items.find(row=>row.name==='Offline milk');
+  const mutation=(changes,version=item.version,operation='update')=>({mutation_id:crypto.randomUUID(),entity_type:'shopping_item',entity_id:item.id,operation,base_version:version,changes});
+  const first=await sync(page.request,[mutation({quantity:'3'})],initial.cursor);expect(first.mutation_results[0].status).toBe('applied');
+  const second=await sync(other.request,[mutation({note:'Second client'})],initial.cursor);expect(second.mutation_results[0].status).toBe('applied');
+  const lost=mutation({quantity:'4'},second.mutation_results[0].version);
+  expect((await sync(page.request,[lost],second.cursor)).mutation_results[0].status).toBe('applied');
+  expect((await sync(page.request,[lost],second.cursor)).mutation_results[0].status).toBe('already_applied');
+  const conflict=await sync(other.request,[mutation({quantity:'5'})],initial.cursor);expect(conflict.mutation_results[0].status).toBe('conflict');expect(conflict.mutation_results[0].conflicts.quantity.client).toBe('5');expect(conflict.mutation_results[0].conflicts.quantity.server).toBe('4');
+  const latest=await sync(page.request),version=latest.snapshot.shopping_items.find(row=>row.id===item.id).version;
+  expect((await sync(page.request,[mutation({},version,'delete')],latest.cursor)).mutation_results[0].status).toBe('applied');
+  const deleted=await sync(other.request,[],latest.cursor);expect(deleted.visibility.shopping_item).not.toContain(item.id);expect(deleted.cursor).toBeGreaterThan(latest.cursor);expect(deleted.changes.some(row=>row.entity_id===item.id)).toBeFalsy();
+ }finally{await other.close()}
+});

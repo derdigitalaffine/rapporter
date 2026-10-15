@@ -1,6 +1,6 @@
 // Additive P0 persistence contract. Domain cutover and HTTP sync follow separately.
 export const LOCAL_SYNC_DB = 'familyos-local-sync';
-export const LOCAL_SYNC_VERSION = 1;
+export const LOCAL_SYNC_VERSION = 2;
 export const ENTITY_STORES = Object.freeze(['taskLists', 'tasks', 'shoppingLists', 'shoppingItems', 'events']);
 const STORES = [...ENTITY_STORES, 'outbox', 'conflicts', 'syncState', 'meta'];
 
@@ -18,6 +18,17 @@ function openDb() {
         store.createIndex('scope', ['accountId', 'familyId']);
         store.createIndex('account', 'accountId');
         if (name === 'outbox') store.createIndex('entity', ['accountId', 'familyId', 'entity_type', 'entity_id']);
+      }
+      const outbox = request.transaction.objectStore('outbox');
+      if (!outbox.indexNames.contains('scopeOrder')) {
+        outbox.createIndex('scopeOrder', ['accountId', 'familyId', 'order']);
+        outbox.openCursor().onsuccess = event => {
+          const cursor = event.target.result;
+          if (cursor) {
+            if (!Number.isFinite(cursor.value.order)) cursor.update({...cursor.value, order: 0});
+            cursor.continue();
+          }
+        };
       }
     };
     request.onsuccess = () => {
@@ -77,7 +88,9 @@ export function createLocalSyncStore({accountId, familyId}) {
     async list(name) {
       storeName(name);
       return transaction([name], 'readonly', (tx, done) => {
-        tx.objectStore(name).index('scope').getAll(scope).onsuccess = event => done(event.target.result);
+        (name === 'outbox'
+          ? tx.objectStore(name).index('scopeOrder').getAll(IDBKeyRange.bound(scope, [...scope, []]))
+          : tx.objectStore(name).index('scope').getAll(scope)).onsuccess = event => done(event.target.result);
       });
     },
     // A sync response can update entities, acknowledgements, conflicts and cursor
@@ -87,7 +100,7 @@ export function createLocalSyncStore({accountId, familyId}) {
       if (!operations.length) return;
       const prepared = operations.map(operation => {
         const name = storeName(operation.store);
-        if (operation.type === 'put') return {name, type: 'put', value: row(operation.value)};
+        if (operation.type === 'put') return {name, type: 'put', value: row(name === 'outbox' ? {...operation.value, order: Number.isFinite(operation.value.order) ? operation.value.order : 0} : operation.value)};
         if (operation.type === 'delete') return {name, type: 'delete', id: identifier(operation.id)};
         throw new TypeError('unknown_local_sync_operation');
       });

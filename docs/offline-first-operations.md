@@ -59,3 +59,76 @@ Without logging sensitive field payloads unnecessarily, diagnostics should make 
 ## Recovery principles
 
 Prefer replay/idempotency and snapshot recovery over destructive client resets. Never instruct users to clear browser storage as the primary recovery mechanism while pending offline work may exist.
+
+## Retention job and stale clients
+
+Run daily through the host's existing scheduled-job mechanism:
+
+```bash
+docker compose exec -T backend python manage.py prune_sync_journal --dry-run
+docker compose exec -T backend python manage.py prune_sync_journal
+```
+
+The command enforces a minimum of 90 days (`--days` may increase it). It takes
+exactly the same sequence lock as domain writes, deletes only an expired cursor
+prefix, and updates `retained_after` in the same transaction. Recent entries are
+preserved even across timestamp/clock reversals. Repeating the command is safe.
+Dry-run never changes journal rows or the reset boundary. The command does **not**
+remove processed mutation receipts: an old retry must remain idempotent.
+
+A client behind the retained boundary receives a snapshot with `snapshot_cursor`.
+Its pending mutations are processed through the same authorization/version checks;
+local outbox and true conflicts survive base replacement. Missing retained field
+history produces a conflict rather than an unproven automatic merge.
+
+## Recovery runbook
+
+1. Keep IndexedDB and pending drafts intact. Never start by clearing browser data.
+2. Check the account/family and the synchronization sheet: pending work, expired
+   login, field conflicts and low storage are distinct states.
+3. For expired authentication, sign in again as the same account, then synchronize.
+   Explicit sign-out is destructive to that account's private local drafts.
+4. Restore HTTP/API/PostgreSQL first. Retrying uses stable mutation IDs, including
+   when the server committed but its response was lost.
+5. For stale cursors, allow automatic snapshot recovery; do not manually advance
+   the client cursor. If a server journal transaction fails, fix its database or
+   migration error and retry the entire transaction.
+6. For a conflict, compare the preserved local and server values in Synchronization.
+   Keep the server value, retry the local change against the returned version, or
+   copy a deleted/unavailable draft before explicitly discarding it.
+7. Restore Redis later. It contains no authoritative records. A WebSocket close
+   reconnects on a leader heartbeat; online/resume/manual HTTP works independently.
+8. For low storage, free unrelated device space, reopen the app and retry. Do not
+   delete the FamilyOS origin while pending drafts remain.
+
+## Local upgrades and rollback
+
+IndexedDB v2 adds ordered outbox lookup. The additive upgrade backfills only missing
+local ordering metadata; mutation IDs, attempted/sending state, payloads, conflicts,
+account/family scopes and cursor data remain unchanged in the upgrade transaction.
+An unsupported future database version fails with VersionError and is never wiped.
+After v2 activation, rolling back to a v1-only client requires a forward-compatible
+client or exporting/draining pending work first; do not downgrade by deleting the DB.
+Application assets and the service-worker build change independently of private data.
+
+## Optional browser capabilities
+
+Persistent storage is requested best-effort after login; browsers may deny it.
+Storage diagnostics tolerate unavailable/denied APIs and show a low-space warning
+at 90% usage. A stored draft is reported saved only after its IndexedDB transaction
+commits; quota failure must leave entity/outbox/cursor unchanged.
+
+Background Sync registers `familyos-outbox-v1` where supported. Its worker only
+wakes open window clients, which use their active account and normal authenticated
+HTTP engine. It stores no tokens, fetches no private API data, and never clears or
+acknowledges an outbox itself. With all windows closed, synchronization resumes on
+next app startup. Browsers without Background Sync retain online/resume/manual sync.
+
+Explicit logout/account switch stops writers before cleanup. Other tabs react to
+the shared account-key change, stop the old account's engines, clear its private
+stores and reload; they do not erase a newly selected account's bootstrap.
+
+Legacy `famuhle-offline-v1` queues were not account-scoped and are never silently
+assigned to the new account. Existing pre-cutover records remain untouched until
+explicit logout. For an installation upgrade, finish its old pending queue on the
+old client before switching accounts/upgrading; do not clear its origin as recovery.

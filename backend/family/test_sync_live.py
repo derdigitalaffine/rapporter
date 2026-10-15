@@ -68,3 +68,17 @@ class OfflineLiveTests(TransactionTestCase):
             self.assertEqual(close["code"], 4400)
 
         async_to_sync(scenario)()
+
+    @override_settings(CHANNEL_LAYERS={"default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}})
+    def test_membership_revocation_closes_before_next_wakeup(self):
+        async def scenario():
+            communicator = WebsocketCommunicator(self.app_for(self.user), f"/ws/sync/{self.family.id}/")
+            connected, _ = await communicator.connect()
+            self.assertTrue(connected)
+            await sync_to_async(Membership.objects.filter(user=self.user, family=self.family).delete)()
+            await sync_to_async(publish)(str(self.family.id), 99)
+            output = await communicator.receive_output(timeout=1)
+            self.assertEqual(output["type"], "websocket.close")
+            self.assertEqual(output["code"], 4403)
+            await communicator.disconnect()
+        async_to_sync(scenario)()
