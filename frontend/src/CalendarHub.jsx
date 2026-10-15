@@ -1,3 +1,4 @@
+import {SYNC_CHANGED} from './offline-sync-engine';
 import {useCallback,useEffect,useMemo,useRef,useState} from 'react';
 import {createPortal} from 'react-dom';
 import i18n from './i18n';
@@ -35,6 +36,7 @@ export default function CalendarHub({family,onBack,t}){
    setEvents(rows.filter(x=>!family||String(x.family)===String(family.id)).sort((a,b)=>eventTime(a)-eventTime(b)));
   }catch(e){if(sequence===loadSequence.current){setEvents([]);toast(e.message||t('saveFailed'),{type:'error'})}}
  },[family?.id,t]);
+ useEffect(()=>{const changed=event=>{if(event.detail?.familyId===String(family?.id))void load(lastRange.current)};window.addEventListener(SYNC_CHANGED,changed);return()=>window.removeEventListener(SYNC_CHANGED,changed)},[family?.id,load]);
  useEffect(()=>{
   let live=true;
   setIntegrations([]);setCalendarMembers([]);setCurrentMembershipId('');

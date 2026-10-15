@@ -26,6 +26,6 @@ def sync(request):
         raise ValidationError({'cursor': 'Expected a nonnegative integer or null.'})
     if not isinstance(mutations, list) or len(mutations) > 100:
         raise ValidationError({'mutations': 'At most 100 mutations per request.'})
-    response = Response(synchronize(request, membership.family, cursor, mutations))
+    response = Response(synchronize(request, membership.family, cursor, mutations, data.get('calendar_projection_key')))
     response['Cache-Control'] = 'no-store'
     return response

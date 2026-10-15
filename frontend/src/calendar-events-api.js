@@ -21,6 +21,6 @@ export async function fetchCalendarEvents({familyId,start,end,includeUndated=fal
 
 function dedupe(rows){
  const unique=new Map();
- rows.forEach((row,index)=>unique.set(row?.id??`row-${index}`,row));
+ rows.forEach((row,index)=>unique.set(row?.id?`${row.id}:${row.recurrence_occurrence_date||row.recurrence_occurrence_key||row.starts_at||''}`:`row-${index}`,row));
  return [...unique.values()];
 }

@@ -300,3 +300,14 @@ The server may support multiple protocol versions during rolling upgrades. Index
 - Client-provided UUIDs do not imply authorization.
 - Idempotency keys must be scoped sufficiently to prevent cross-account/cross-family collisions or information disclosure.
 - External calendar source ownership/family checks remain enforced.
+
+## Optional projection freshness (calendar consumer)
+
+Clients may send `calendar_projection_key`, the last `projections.calendar_key`.
+On snapshot, calendar journal changes, family-timezone changes or a changed local
+calendar day, the response includes canonical `calendar_occurrences`,
+`calendar_window` and a new key. Existing recurrence and birthday cores calculate
+these views; no second recurrence engine is introduced. Birthday projections are
+refreshed independently. The client merges projection metadata atomically with
+entities/outbox/cursor and keeps normalized master IDs for every write. A missing
+hint is safe and simply requests the projection again.

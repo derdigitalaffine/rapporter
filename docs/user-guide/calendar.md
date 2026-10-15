@@ -63,3 +63,23 @@ Wenn du ältere Einträge brauchst, wechsle in die **Liste** und blende vergange
 Kalenderquellen richtest du unter den **Integrationen** ein.
 
 Mehr dazu: **[Integrationen](integrations.md)**.
+
+## Kalender ohne Verbindung
+
+Nach dem ersten Abgleich stehen native Termine sowie bereits synchronisierte
+externe Termine für 90 Tage zurück und zwölf Monate voraus auf dem Gerät bereit.
+Native FamilyOS-Termine kannst du offline anlegen, bearbeiten und löschen.
+Externe Kalenderquellen bleiben lesbar und schreibgeschützt; ihre Originaldaten
+werden weiterhin vom jeweiligen Integrationsdienst gepflegt.
+
+Bestehende Terminserien verwenden die vorab berechneten Vorkommen der gemeinsamen
+Kalenderlogik, auch über Zeitzonen- und Sommerzeitgrenzen. Bei einer offline neu
+angelegten oder zeitlich geänderten Serie zeigt FamilyOS zunächst den geänderten
+Serienstart. Der Abgleich bestätigt und ergänzt anschließend die vollständige
+Vorkommensliste. Änderungen an Titel, Beschreibung oder Personen bleiben auf den
+bereits geladenen Vorkommen sichtbar. Bei einem Feldkonflikt bleibt der Entwurf
+im globalen Sync-Dialog erhalten.
+
+Außerhalb dieses vorab synchronisierten Zeitfensters bleibt die bisherige
+Online-Abfrage verfügbar. Offline zeigt FamilyOS für noch nicht gespeicherte
+Zeiträume einen Hinweis, statt eine leere Liste als vollständigen Stand auszugeben.

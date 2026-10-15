@@ -7,7 +7,7 @@ bulk operations use the same boundary; domain save hooks remain authoritative.
 from contextlib import contextmanager
 
 from django.db import models, transaction
-from django.db.models.signals import post_save, post_delete, m2m_changed
+from django.db.models.signals import pre_save, post_save, post_delete, m2m_changed
 
 TYPES = {'ShoppingList': 'shopping_list', 'ShoppingItem': 'shopping_item',
          'TaskList': 'task_list', 'Task': 'task', 'FamilyEvent': 'event'}
@@ -111,7 +111,9 @@ def install_tracking():
     from .models import ShoppingList, ShoppingItem, TaskList, Task, FamilyEvent
     for model in (ShoppingList, ShoppingItem, TaskList, Task, FamilyEvent):
         post_delete.connect(deleted, sender=model, weak=False, dispatch_uid=f'sync-delete-{model.__name__}')
-    from .models import TaskWorkflowColumn
+    from .models import TaskWorkflowColumn, IntegrationSource
+    pre_save.connect(source_metadata_before, sender=IntegrationSource, weak=False, dispatch_uid='sync-source-meta-before')
+    post_save.connect(source_metadata_after, sender=IntegrationSource, weak=False, dispatch_uid='sync-source-meta-after')
     post_save.connect(workflow_metadata_changed, sender=TaskWorkflowColumn, weak=False, dispatch_uid='sync-workflow-save')
     post_delete.connect(workflow_metadata_changed, sender=TaskWorkflowColumn, weak=False, dispatch_uid='sync-workflow-delete')
     from .shopping_models import ShoppingListAccess
@@ -135,15 +137,25 @@ def deleted(sender, instance, using, **kwargs):
         append_change(instance, 'delete', [], using)
 
 
-def participants_changed(sender, instance, action, reverse, using, **kwargs):
-    if not reverse and action in {'post_add', 'post_remove', 'post_clear'}:
-        with sync_lock(using):
-            instance.refresh_from_db(fields=['version'])
-            instance.save(update_fields=['updated_at'])
-            from .sync_models import SyncJournal
-            journal = SyncJournal.objects.using(using).filter(entity_type='event', entity_id=instance.pk).latest('cursor')
-            journal.changed_fields = sorted(set(journal.changed_fields) | {'participants'})
-            journal.save(update_fields=['changed_fields'])
+def participants_changed(sender, instance, action, reverse, using, pk_set=None, **kwargs):
+    from .models import FamilyEvent
+    if reverse:
+        if action == 'pre_clear':
+            instance._sync_removed_event_ids = list(instance.calendar_events.values_list('pk', flat=True))
+            return
+        if action not in {'post_add', 'post_remove', 'post_clear'}:
+            return
+        ids = pk_set if action != 'post_clear' else getattr(instance, '_sync_removed_event_ids', [])
+        events = FamilyEvent.objects.using(using).filter(pk__in=ids or [])
+    else:
+        if action not in {'post_add', 'post_remove', 'post_clear'}:
+            return
+        events = [instance]
+    with sync_lock(using):
+        for event in events:
+            event.refresh_from_db(fields=['version'])
+            event.save(using=using, update_fields=['updated_at'])
+            mark_virtual_change(event, ['participants'], using)
 
 
 def workflow_metadata_changed(sender, instance, using, **kwargs):
@@ -180,3 +192,19 @@ def mark_virtual_change(instance, fields, using):
     row = SyncJournal.objects.using(using).filter(entity_type=TYPES[type(instance).__name__], entity_id=instance.pk).latest('cursor')
     row.changed_fields = sorted(set(row.changed_fields) | set(fields))
     row.save(update_fields=['changed_fields'])
+
+
+def source_metadata_before(sender, instance, using, **kwargs):
+    from .calendar_sources import safe_calendar_source_metadata
+    old = sender.objects.using(using).filter(pk=instance.pk).first()
+    instance._sync_previous_source_meta = safe_calendar_source_metadata(old)
+
+
+def source_metadata_after(sender, instance, using, **kwargs):
+    from .calendar_sources import safe_calendar_source_metadata
+    if getattr(instance, '_sync_previous_source_meta', None) == safe_calendar_source_metadata(instance):
+        return
+    with sync_lock(using):
+        for event in instance.events.all():
+            event.save(using=using, update_fields=['updated_at'])
+            mark_virtual_change(event, ['source_meta'], using)

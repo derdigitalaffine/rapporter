@@ -87,9 +87,9 @@ export class SyncEngine{
     const seen=new Set();
     const rows=ordered(await this.store.list('outbox')).filter(m=>{const key=`${m.entity_type}:${m.entity_id}`;if(seen.has(key))return false;seen.add(key);return true}).slice(0,100);
     await this.store.write(rows.map(m=>put('outbox',{...m,state:'sending',attempted:true})));
-    return {rows,cursor:(await this.store.get('syncState','cursor'))?.cursor??null};
+    return {rows,cursor:(await this.store.get('syncState','cursor'))?.cursor??null,calendar_projection_key:(await this.store.get('meta','projections'))?.data?.calendar_key??null};
    });
-   const r=await this.transport({protocol_version:1,family_id:this.familyId,cursor:batch.cursor,mutations:batch.rows.map(envelope)},this.abort.signal);
+   const r=await this.transport({protocol_version:1,family_id:this.familyId,cursor:batch.cursor,calendar_projection_key:batch.calendar_projection_key,mutations:batch.rows.map(envelope)},this.abort.signal);
    if(this.stopped)return;
    if(r.protocol_version!==1||!['delta','snapshot'].includes(r.mode)||!Number.isSafeInteger(r.cursor))throw new Error('unsupported_sync_protocol');
    await localLock(this.key,()=>this.install(r,batch.rows));if(this.stopped)return;
@@ -142,7 +142,7 @@ export class SyncEngine{
    }
    for(const id of oldIds)ops.push(remove(name,id));
   }
-  if(r.projections)ops.push(put('meta',{id:'projections',data:r.projections}));
+  if(r.projections)ops.push(put('meta',{id:'projections',data:{...((await this.store.get('meta','projections'))?.data||{}),...r.projections}}));
   ops.push(put('syncState',{id:'cursor',cursor:r.cursor,protocol_version:1,last_sync_at:new Date().toISOString()}));if(!this.stopped)await this.store.write(ops);
  }
  async resolve(id,choice,manual){
