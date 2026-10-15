@@ -6,7 +6,7 @@ from django.db.models import Q
 from django.utils import timezone
 from rest_framework.exceptions import PermissionDenied, ValidationError
 
-from .family_modules import care_access
+from .child_identity_service import child_scope_access
 from .models import BabyCareLog, BabyProfile, BabyViewState, CareHandoverNote, HandoverRead
 
 
@@ -17,7 +17,7 @@ def _baby_for_user(user, baby_id, scope="care"):
     baby = BabyProfile.objects.select_related("family", "membership").filter(pk=baby_id, active=True).first()
     if not baby:
         raise ValidationError({"baby": "Baby profile not found."})
-    membership, access = care_access(user, baby.family, scope)
+    membership, access = child_scope_access(user, baby, scope)
     return baby, membership, access
 
 
