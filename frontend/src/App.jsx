@@ -11,6 +11,7 @@ import {useTranslation} from 'react-i18next';
 import './session-i18n';
 import './prediction-i18n';
 import './entitlements-i18n';
+import './more-i18n';
 import {api,isAuthenticated,login,logout} from './api';
 import {Icon} from './icons';
 import {SmartTasks} from './SmartLists';
@@ -55,6 +56,7 @@ import {pageIcon,pageLabel,primaryNavCurrent,primaryNavItems,primaryNavLabel} fr
 import './family-context.css';
 import './create-fab.css';
 import './entitlements.css';
+import './more-navigation.css';
 
 const demo={tasks:[],task_lists:[],events:[],routines:[],shopping_lists:[],inbox_count:0,automation_count:0};
 const ACTIVE_FAMILY_KEY='famuhle-active-family';
@@ -101,17 +103,30 @@ export default function App(){
  return <div className={`app-shell ${active==='inbox'?'messenger-shell':''} ${loaded&&family&&role&&active!=='inbox'&&active!=='settings'?'global-create-enabled':''}`} data-primary-nav={loaded&&family&&!detail?'true':'false'}><header className="topbar"><div className="brand-mini" role="heading" aria-level="1"><span>{headerTitle}</span></div><div className="topbar-context">{currentMember&&<button className="profile-shortcut" onClick={()=>navigate('profile')} aria-label={t('profileUi.title')}><MemberAvatar person={currentMember} size={34} decorative/></button>}</div></header><main key={`${familyKey}-${active}`} className="content page-transition" data-page={active}>{loading&&loaded&&<div className="loading" role="status"><Icon name="refresh"/> {t('syncing')}</div>}{!loaded?<DataState t={t} error={loadError} onRetry={()=>load()}/>:family?pages[active]:pages.inbox}</main>{loaded&&family&&!detail&&createPortal(<nav className={`bottom-nav ${nav.length>6?'bottom-nav--dense':''}`} aria-label={primaryNavLabel(i18n)} style={{'--bottom-nav-items':nav.length}}>{nav.map(({id,icon,label})=><button key={id} className={currentNav===id?'active':''} onClick={()=>navigate(id)} aria-current={currentNav===id?'page':undefined} title={label}><Icon name={icon} size={21}/><span>{label}</span></button>)}</nav>,document.body)}{loaded&&family&&<GlobalCreate createActions={createActions} page={active} family={family} role={role} context={createContext} onCreate={openCreate} suppressed={Boolean(createFlow)||active==='inbox'||active==='settings'}/>}<CreateFlowHost userId={sessionUser?.id} action={createFlow?.id} family={family} data={data} context={createFlow?.context} onClose={closeCreate} onRefresh={refreshAfterCreate}/></div>
 }
 
+const MORE_SECTION_IDS=['family','organisation','administration'];
+function readStoredList(key){try{const value=JSON.parse(localStorage.getItem(key)||'[]');return Array.isArray(value)?value:[]}catch{return []}}
+function normalizeMoreSectionOrder(order){const known=order.filter(id=>MORE_SECTION_IDS.includes(id));return [...new Set([...known,...MORE_SECTION_IDS])]}
+function MoreSection({id,title,collapsed,customizing,dragging,dropTarget,onToggle,onDragStart,onDragOver,onDrop,onDragEnd,onPointerDown,onPointerMove,onPointerUp,onKeyDown,dragLabel,children}){const panelId=`more-section-${id}`;return <section className={`more-section ${collapsed?'collapsed':''} ${dragging?'is-dragging':''} ${dropTarget?'more-section-drop-target':''}`} data-more-section={id} onDragOver={customizing?event=>onDragOver(event,id):undefined} onDrop={customizing?event=>onDrop(event,id):undefined}><div className="section-title more-section-title"><h2><button type="button" className="more-section-toggle" data-more-toggle={id} onClick={()=>onToggle(id)} aria-expanded={!collapsed} aria-controls={panelId}>{title}<Icon name="next" size={15}/></button></h2>{customizing&&<button type="button" className="more-section-drag" data-more-drag-handle={id} draggable onDragStart={event=>onDragStart(event,id)} onDragEnd={onDragEnd} onPointerDown={event=>onPointerDown(event,id)} onPointerMove={event=>onPointerMove(event,id)} onPointerUp={onPointerUp} onPointerCancel={onPointerUp} onKeyDown={event=>onKeyDown(event,id)} aria-label={dragLabel} title={dragLabel}><Icon name="drag"/></button>}</div><div id={panelId} hidden={collapsed}><Card>{children}</Card></div></section>}
+
 function MorePage({family,families,role,data,t,i18n,open,babyModule,petModule,entitlements,onShowOnboarding,onLogout,installable,onInstall,onSwitchFamily,loading}){
  const capabilities=new Set(entitlements?.capabilities||[]);
  const hasCapability=key=>!entitlements||capabilities.has(key);
- const english=i18n.language.startsWith('en');
+ const familyId=family?.id||'none';
+ const orderKey=`famuhle-more-section-order:v1:${familyId}`;
+ const collapsedKey=`famuhle-more-section-collapsed:v1:${familyId}`;
+ const [sectionOrder,setSectionOrder]=useState(()=>normalizeMoreSectionOrder(readStoredList(orderKey)));
+ const [collapsedSections,setCollapsedSections]=useState(()=>new Set(readStoredList(collapsedKey).filter(id=>MORE_SECTION_IDS.includes(id))));
+ const [customizing,setCustomizing]=useState(false);
+ const [announcement,setAnnouncement]=useState('');
+ const dragRef=useRef('');
+ const [dragging,setDragging]=useState('');
+ const [dropTarget,setDropTarget]=useState('');
  const babyAvailable=babyModule?.can_manage||(babyModule?.enabled&&babyModule?.authorized);
  const petAvailable=petModule?.can_manage||(petModule?.enabled&&petModule?.authorized);
  const babyInMainNav=babyModule?.enabled&&babyModule?.authorized&&babyModule?.show_in_main_navigation&&hasCapability('pregnancy_baby');
  const petInMainNav=petModule?.enabled&&petModule?.authorized&&petModule?.show_in_main_navigation&&hasCapability('pets');
  const familyItems=[
   ['board',pageLabel('board',t,i18n),pageIcon('board'),'',null],
-  ['routines',pageLabel('routines',t,i18n),pageIcon('routines'),'',null],
   ['birthdays',pageLabel('birthdays',t,i18n),pageIcon('birthdays'),'',null],
   ...(babyAvailable&&!babyInMainNav?[['baby',pageLabel('baby',t,i18n),pageIcon('baby'),'','pregnancy_baby']]:[]),
   ...(petAvailable&&!petInMainNav?[['pets',pageLabel('pets',t,i18n),pageIcon('pets'),'','pets']]:[]),
@@ -139,13 +154,28 @@ function MorePage({family,families,role,data,t,i18n,open,babyModule,petModule,en
  const tier=entitlements?.display_name||entitlements?.tier||'';
  const lockedAction=label=>toast(t('entitlementsUi.lockedMessage',{feature:label,tier:tier||'Light'}),{type:'info'});
  const renderItem=([id,label,icon,count,capability])=>{const locked=Boolean(capability&&entitlements&&!hasCapability(capability));return <button className={`menu-row ${locked?'entitlement-locked':''}`} key={id} onClick={()=>locked&&id!=='statistics'?lockedAction(label):open(id)} aria-label={locked?`${label}. ${t('entitlementsUi.lockedLabel')}`:undefined}><Icon name={icon}/><span>{label}</span><span className="menu-tail">{locked?<span className="entitlement-lock-badge"><Icon name="lock" size={13}/>{t('entitlementsUi.lockedLabel')}</span>:count?<b className="count-badge">{count}</b>:null}{!locked&&<Icon name="next"/>}</span></button>};
+ const titles={family:t('moreUi.family'),organisation:t('moreUi.householdFinance'),administration:t('moreUi.administration')};
+ const content={family:familyItems.map(renderItem),organisation:organisationItems.map(renderItem),administration:<><button className="menu-row" onClick={onShowOnboarding}><Icon name="progress"/><span><strong>{t('onboarding.setupMenu')}</strong><small>{t('onboarding.setupMenuHint')}</small></span><Icon name="next"/></button>{administrationItems.map(renderItem)}</>};
+ function saveOrder(next){localStorage.setItem(orderKey,JSON.stringify(next));return next}
+ function announcePosition(id,order){const position=order.indexOf(id)+1;setAnnouncement(t('moreUi.moved',{title:titles[id],position,total:order.length}))}
+ function reorderSection(source,target){if(!source||!target||source===target)return;setSectionOrder(current=>{const from=current.indexOf(source);const to=current.indexOf(target);if(from<0||to<0)return current;const next=current.slice();next.splice(from,1);next.splice(to,0,source);saveOrder(next);announcePosition(source,next);return next})}
+ function toggleSection(id){setCollapsedSections(current=>{const next=new Set(current);if(next.has(id))next.delete(id);else next.add(id);localStorage.setItem(collapsedKey,JSON.stringify([...next]));return next})}
+ function finishDrag(){dragRef.current='';setDragging('');setDropTarget('')}
+ function toggleCustomizing(){finishDrag();setCustomizing(value=>!value)}
+ function startDrag(event,id){dragRef.current=id;setDragging(id);event.dataTransfer.effectAllowed='move';event.dataTransfer.setData('text/plain',id)}
+ function dragOver(event,id){event.preventDefault();if(dragRef.current&&dragRef.current!==id)setDropTarget(id)}
+ function drop(event,id){event.preventDefault();const source=event.dataTransfer.getData('text/plain')||dragRef.current;reorderSection(source,id);finishDrag()}
+ function pointerDown(event,id){if(event.pointerType==='mouse'&&event.button!==0)return;dragRef.current=id;setDragging(id);event.currentTarget.setPointerCapture?.(event.pointerId)}
+ function pointerMove(event,id){if(dragRef.current!==id)return;const target=document.elementFromPoint(event.clientX,event.clientY)?.closest?.('[data-more-section]')?.dataset.moreSection;if(target&&target!==id){setDropTarget(target);reorderSection(id,target)}}
+ function pointerUp(event){if(event.currentTarget.hasPointerCapture?.(event.pointerId))event.currentTarget.releasePointerCapture(event.pointerId);finishDrag()}
+ function keyboardMove(event,id){if(event.key!=='ArrowUp'&&event.key!=='ArrowDown')return;event.preventDefault();setSectionOrder(current=>{const index=current.indexOf(id);const nextIndex=index+(event.key==='ArrowUp'?-1:1);if(index<0||nextIndex<0||nextIndex>=current.length)return current;const next=current.slice();[next[index],next[nextIndex]]=[next[nextIndex],next[index]];saveOrder(next);announcePosition(id,next);return next})}
  return <>
   {families.length>1&&<Card><label className="family-switcher" style={{maxWidth:'100%'}}><span className="sr-only">{t('members')}</span><Icon name="members" size={15}/><select value={family?.id||''} onChange={event=>onSwitchFamily(event.target.value)} disabled={loading}>{families.map(item=><option value={item.id} key={item.id}>{item.name}</option>)}</select></label></Card>}
   {entitlements&&<Card><div className="entitlement-summary"><div className="entitlement-summary-main"><Icon name={entitlements.tier==='light'?'lock':'check'}/><span><small>{t('entitlementsUi.access')}</small><strong>{tier}</strong></span></div><span className={`entitlement-tier ${entitlements.tier==='vip'?'vip':''}`}>{tier}</span></div><p className="entitlement-summary-hint">{t('entitlementsUi.tierHint')}</p></Card>}
   {installable&&<Card><button className="menu-row install-row" onClick={onInstall}><Icon name="install"/><span><strong>{t('installApp')}</strong><small>{t('pwaHint')}</small></span><Icon name="next"/></button></Card>}
-  <div data-more-section="family"><div className="section-title"><h2>{english?'Family & everyday life':'Familie & Alltag'}</h2></div><Card>{familyItems.map(renderItem)}</Card></div>
-  <div data-more-section="organisation"><div className="section-title"><h2>{english?'Organisation':'Organisation'}</h2></div><Card>{organisationItems.map(renderItem)}</Card></div>
-  <div data-more-section="administration"><div className="section-title"><h2>{english?'Settings & administration':'Einstellungen & Verwaltung'}</h2></div><Card><button className="menu-row" onClick={onShowOnboarding}><Icon name="progress"/><span><strong>{t('onboarding.setupMenu')}</strong><small>{t('onboarding.setupMenuHint')}</small></span><Icon name="next"/></button>{administrationItems.map(renderItem)}</Card></div>
+  <div className="more-toolbar"><button type="button" className="secondary compact more-customize" data-more-customize aria-pressed={customizing} onClick={toggleCustomizing}><Icon name="settings" size={16}/>{customizing?t('moreUi.done'):t('moreUi.customize')}</button></div>
+  <span className="sr-only" role="status" aria-live="polite">{announcement}</span>
+  {sectionOrder.map(id=><MoreSection key={id} id={id} title={titles[id]} collapsed={collapsedSections.has(id)} customizing={customizing} dragging={dragging===id} dropTarget={dropTarget===id} onToggle={toggleSection} onDragStart={startDrag} onDragOver={dragOver} onDrop={drop} onDragEnd={finishDrag} onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={pointerUp} onKeyDown={keyboardMove} dragLabel={t('moreUi.dragLabel',{title:titles[id]})}>{content[id]}</MoreSection>)}
   <Card><button className="menu-row" onClick={()=>switchLanguage(i18n)}><Icon name="language"/><span>{t('language')}</span><strong>{i18n.language.toUpperCase()}</strong></button><button className="menu-row danger-text" onClick={onLogout}><Icon name="logout"/><span>{t('logout')}</span></button></Card>
   <ProgramInfo/>
   {family&&<p className="family-note">{family.name} · {family.timezone}</p>}

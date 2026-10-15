@@ -140,6 +140,7 @@ test('expenses · two-tap quick add uses visible safe defaults and updates balan
   await amount.fill('12,50');
   await dialog.getByRole('button',{name:'Speichern',exact:true}).click();
 
+  await page.getByRole('button',{name:'Ausgaben',exact:true}).click();
   await expect(page.locator('.transaction-description button').first()).toHaveText('Ausgabe');
   expect(store.expenses).toHaveLength(1);
   expect(store.expenses[0].source).toBe('manual');
@@ -147,6 +148,7 @@ test('expenses · two-tap quick add uses visible safe defaults and updates balan
   expect(store.expenses[0].ledger).toBe('ledger-default');
   expect(store.expenses[0].paid_by).toBe('member-1');
   expect(store.expenses[0].shares).toHaveLength(2);
+  await page.getByRole('button',{name:'Abrechnung',exact:true}).click();
   await expect(page.locator('.settlement-plan').getByText('Sam schuldet Alex',{exact:true})).toBeVisible();
   await page.getByRole('button',{name:'Als abgerechnet markieren'}).click();
   await expect(page.locator('.smart-balance-card .balance-total')).toContainText('Alles ausgeglichen');
@@ -155,7 +157,7 @@ test('expenses · two-tap quick add uses visible safe defaults and updates balan
 });
 
 test('expenses · details expose shared funding, ledger and one standard budget without person debt',async({page})=>{
-  const store=await boot(page,'/?page=expenses');
+  const store=await boot(page,'/?page=expenses&finance=expenses');
   await page.locator('.expenses-toolbar').getByRole('button',{name:'Ausgabe',exact:true}).click();
   const dialog=page.getByRole('dialog');
   await dialog.getByLabel('Betrag').fill('42,50');
@@ -177,23 +179,26 @@ test('expenses · details expose shared funding, ledger and one standard budget 
   await expect.poll(()=>store.allocations.get(store.expenses[0]?.id)).toEqual([{budget:'budget-home',budget_name:'Haushalt',amount_in_budget_currency:'42.50'}]);
   await expect(page.locator('.transaction-description small').first()).toContainText('gemeinsam bezahlt');
   await expect(page.locator('.transaction-description small').first()).toHaveText('gemeinsam bezahlt');
+  await page.getByRole('button',{name:'Abrechnung',exact:true}).click();
   await expect(page.locator('.smart-balance-card .balance-total')).toContainText('Alles ausgeglichen');
   await expect(page.getByRole('button',{name:'Als abgerechnet markieren'})).toHaveCount(0);
 });
 
 test('expenses · ledger selector scopes list and balances to one ledger',async({page})=>{
-  const store=await boot(page,'/?page=expenses');
+  const store=await boot(page,'/?page=expenses&finance=expenses');
   store.expenses.push(expenseFrom({family:'family-1',ledger:'ledger-trip',title:'Hotel',total_amount:'120.00',currency:'EUR',paid_by:'member-1',participants:['member-1','member-2']},'trip-expense'));
   await page.locator('.expenses-toolbar').getByRole('combobox',{name:'Konto',exact:true}).selectOption('ledger-trip');
   await expect(page.getByText('Hotel',{exact:true})).toBeVisible();
+  await page.getByRole('button',{name:'Abrechnung',exact:true}).click();
   await expect(page.locator('.balance-card .balance-card-head').getByText('Urlaub',{exact:true})).toBeVisible();
   await expect(page.locator('.settlement-plan').getByText('Sam schuldet Alex',{exact:true})).toBeVisible();
+  await page.getByRole('button',{name:'Ausgaben',exact:true}).click();
   await page.locator('.expenses-toolbar').getByRole('combobox',{name:'Konto',exact:true}).selectOption('ledger-default');
   await expect(page.getByText('Hotel',{exact:true})).toHaveCount(0);
 });
 
 test('expenses · quick add opens advanced #114 split options without losing input',async({page})=>{
-  await boot(page,'/?page=expenses');
+  await boot(page,'/?page=expenses&finance=expenses');
   await page.locator('.expenses-toolbar').getByRole('button',{name:'Ausgabe',exact:true}).click();
   const dialog=page.getByRole('dialog');
   await dialog.getByLabel('Betrag').fill('10.00');
@@ -207,7 +212,7 @@ test('expenses · quick add opens advanced #114 split options without losing inp
 });
 
 test('expenses · quick add undo deletes exactly the created expense',async({page})=>{
-  const store=await boot(page,'/?page=expenses');
+  const store=await boot(page,'/?page=expenses&finance=expenses');
   await page.locator('.expenses-toolbar').getByRole('button',{name:'Ausgabe',exact:true}).click();
   const dialog=page.getByRole('dialog');
   await dialog.getByLabel('Betrag').fill('8,00');
@@ -220,7 +225,7 @@ test('expenses · quick add undo deletes exactly the created expense',async({pag
 });
 
 test('expenses · receipt upload remains available from quick add and becomes OCR review',async({page})=>{
-  await boot(page,'/?page=expenses');
+  await boot(page,'/?page=expenses&finance=expenses');
   await openCreateAction(page,'Geld & Finanzen');
   const dialog=page.getByRole('dialog');
   await dialog.getByRole('button',{name:'Beleg scannen'}).click();
@@ -235,7 +240,7 @@ test('expenses · receipt upload remains available from quick add and becomes OC
 });
 
 test('expenses · shared funding controls are keyboard reachable and available in English',async({page})=>{
-  await boot(page,'/?page=expenses',{language:'en'});
+  await boot(page,'/?page=expenses&finance=expenses',{language:'en'});
   await page.locator('.expenses-toolbar').getByRole('button',{name:'Expense',exact:true}).click();
   const dialog=page.getByRole('dialog');
   await dialog.getByLabel('Amount').fill('15.00');
@@ -278,7 +283,7 @@ test('finance · Light locks navigation, deep links and global create without fi
 });
 
 test('finance · create account and quick transaction use the selected ledger',async({page})=>{
- const store=await boot(page,'/?page=expenses');
+ const store=await boot(page,'/?page=expenses&finance=accounts');
  await page.getByRole('button',{name:'Konto hinzufügen'}).click();
  await page.getByLabel('Kontoname').fill('Kreditkarte');
  await page.getByRole('button',{name:'Konto anlegen'}).click();
@@ -293,7 +298,7 @@ test('finance · create account and quick transaction use the selected ledger',a
 });
 
 test('finance · semantic transactions, category search, receipts and responsive keyboard actions',async({page},testInfo)=>{
- const store=await boot(page,'/?page=expenses');
+ const store=await boot(page,'/?page=expenses&finance=expenses');
  store.expenses.push(expenseFrom({title:'Supermarkt',total_amount:'42.50',category:'Lebensmittel',receipt_mime:'application/pdf'},'table-1','receipt'));
  store.expenses.push(expenseFrom({title:'Parken',total_amount:'3.00',category:'Mobilität'},'table-2'));
  await page.reload();
@@ -324,7 +329,7 @@ test('finance · semantic transactions, category search, receipts and responsive
 });
 
 test('finance · PDF receipt uses native opening instead of an image preview',async({page})=>{
- await boot(page,'/?page=expenses');
+ await boot(page,'/?page=expenses&finance=expenses');
  await page.locator('.expenses-toolbar').getByRole('button',{name:'Ausgabe',exact:true}).click();
  const dialog=page.getByRole('dialog');
  await dialog.getByRole('button',{name:'Beleg scannen'}).click();

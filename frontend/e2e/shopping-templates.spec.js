@@ -46,7 +46,10 @@ async function installTemplateMocks(page,state){
 
 async function openTools(page){
  await page.goto('/?page=shopping');
- const editListButton=page.locator('.shopping-toolbar button').nth(1);
+ const overflow=page.locator('.shopping-overflow');
+ await expect(overflow.locator('summary')).toBeVisible();
+ await overflow.locator('summary').click();
+ const editListButton=overflow.locator('.shopping-overflow-menu button').first();
  await expect(editListButton).toBeVisible();
  await editListButton.click();
  await expect(page.getByTestId('shopping-template-tools')).toBeVisible();
@@ -93,7 +96,7 @@ test('store profile assigns legacy store label and exposes safe offers link in s
  await tools.getByRole('button',{name:'Zuordnen'}).click();
  await expect(page.locator('.shopping-session-title small')).toContainText('REWE · Innenstadt');
  await expect(tools).not.toBeVisible();
- await page.locator('.shopping-mode-toggle button').nth(1).click();
+ await page.locator('.shopping-store-entry').click();
  const offers=page.getByRole('link',{name:'Angebote ansehen'});
  await expect(offers).toHaveAttribute('href','https://offers.example.test/rewe');
  await expect(offers).toHaveAttribute('target','_blank');
