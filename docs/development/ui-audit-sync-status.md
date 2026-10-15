@@ -25,7 +25,6 @@ new component library, new navigation or duplicate data path is introduced.
   uses the screenshots emitted by scoped offline-real CI. Native screenreader and
   physical browser zoom are not claimed from automated viewport checks.
 
-Next roadmap work: #599 UI/CI baseline repair, preserving the established daily
-navigation and Messenger semantics before broad feature expansion. Other existing
-baseline issues remain with their domain owners; no broad CSS rewrite is justified
-by this audit.
+Next owner-prioritized work: #738 family calendar subscriptions and additional iPhone
+profile, reusing the canonical Calendar and shared Settings flow. #599 UI/CI
+baseline repair remains queued afterward; existing domain ownership is retained.

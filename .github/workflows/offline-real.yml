@@ -57,5 +57,5 @@ jobs:
         if: always()
         with:
           name: sync-status-ui-review
-          if-no-files-found: ignore
-          path: frontend/test-results/**/attachments/sync-status-*.png
+          if-no-files-found: error
+          path: frontend/test-results/**/sync-status-*.png

@@ -101,7 +101,8 @@ test('server failure remains visible with browser online; status sheet is respon
   await page.setViewportSize({width,height:844});await pill.click();const dialog=page.getByRole('dialog',{name:'Synchronization',exact:true});await expect(dialog).toBeVisible();
   await expect(dialog.getByText('Last successful sync',{exact:true})).toBeVisible();await expect(dialog.locator('time')).toBeVisible();
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBeTruthy();
-  await testInfo.attach(`sync-status-${width}`,{body:await page.screenshot(),contentType:'image/png'});
+  const screenshotPath=testInfo.outputPath(`sync-status-${width}.png`);
+  await page.screenshot({path:screenshotPath});await testInfo.attach(`sync-status-${width}`,{path:screenshotPath,contentType:'image/png'});
   await page.keyboard.press('Escape');await expect(dialog).toBeHidden();await expect(pill).toBeFocused();
  }
  await page.unroute('**/api/sync/');await page.evaluate(()=>window.dispatchEvent(new CustomEvent('familyos:sync-now')));await expect(primary).toHaveText('Synced',{timeout:20000});
