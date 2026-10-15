@@ -2,7 +2,7 @@ import {test,expect} from '@playwright/test';
 import {installApiMocks} from './mock-api.js';
 
 const lightCapabilities=['family_management','calendar','todo','shopping','pinboard','notes'];
-const premiumCapabilities=[...lightCapabilities,'expenses','vehicles','travel','documents','school','children','pregnancy_baby','pets','advanced_integrations','advanced_tasks'];
+const premiumCapabilities=[...lightCapabilities,'expenses','vehicles','travel','documents','school','children','pregnancy_baby','pets','advanced_integrations','advanced_tasks','statistics'];
 
 async function boot(page,{language='de',snapshot,status=200}={}){
   await installApiMocks(page,{dismissOnboarding:true,language});

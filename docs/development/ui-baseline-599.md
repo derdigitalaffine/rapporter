@@ -25,3 +25,25 @@ message capture, visible navigation, history/back routes and responsive layout.
 Full CI and the Action compatibility workflow remain enabled. Independent existing
 full-CI failures are tracked explicitly; focused green is not a claim of global
 green or a waiver of the parent issue's remaining release gate.
+
+## Current shell and language follow-up
+
+The current product contract is five primary roots plus the header Messenger
+shortcut. Native family/system chats replaced legacy family notices. The existing
+ui-baseline-regressions workflow covers their permissions, message retry identity,
+contrast, responsive layouts and keyboard behavior on mobile and desktop.
+
+This follow-up preserves that coverage and adds the shared shell/language/brand
+and entitlement regressions. Page headings contain the contextual page title;
+FamilyOS branding comes from the header's generated label. VIP fixtures include
+the existing statistics capability instead of inventing a locked VIP feature.
+Both existing language controls use one de/en/fr/nl/th cycle; the previous duplicated
+handlers accidentally exposed only de/en despite advertising all five locales.
+
+The broad repository CI remains a separate acceptance concern. At pre-change head
+b5be88ed, desktop shards show 25 + 23 failures across Calendar visuals/participants,
+member invitation/profile/custody fixtures, Global Create ranking, media/cropping,
+Shopping legacy/store adapters, PWA/overlay, Superadmin and Vehicles checks. This
+slice does not remove those tests, change their permissions or accept new failures.
+#599 remains open until the residual full-CI acceptance criterion is resolved or
+explicitly scoped by the maintainer; a focused follow-up PR must use Refs #599.

@@ -15,7 +15,9 @@ test('authenticated shopping UI never surfaces the legacy product name',async({p
  await page.waitForLoadState('networkidle');
  await expect(page.locator('.app-shell')).toBeVisible();
  await expect(page.getByText(/fam-uh-le/i)).toHaveCount(0);
- await expect(page.locator('.brand-mini')).toContainText('FamilyOS');
+ await expect(page.locator('.topbar').getByRole('heading')).toHaveText('Einkauf');
+ expect(await page.locator('.brand-mini').evaluate(node=>getComputedStyle(node,'::before').content)).toBe('"FamilyOS"');
+ await expect(page.locator('.topbar').getByRole('heading')).toHaveAccessibleName('FamilyOS Einkauf');
 });
 
 test('installed manifest is branded FamilyOS',async({request})=>{

@@ -14,6 +14,7 @@ Starte mit **[Erste Schritte](getting-started.md)**. Danach findest du dich in d
 
 | Du möchtest … | Dann lies … |
 | --- | --- |
+| die Sprache ändern | [Sprache wechseln](language.md) |
 | dich anmelden und orientieren | [Erste Schritte](getting-started.md) |
 | Aufgaben anlegen und verteilen | [Aufgaben](tasks.md) |
 | einen Einkauf organisieren | [Einkauf](shopping.md) |
