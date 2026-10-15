@@ -45,9 +45,9 @@ export async function stopSyncAccount(accountId){
 export class SyncEngine{
  constructor(accountId,familyId,transport,key=JSON.stringify([accountId,familyId])){
   Object.assign(this,{accountId,familyId,transport,key});this.store=createLocalSyncStore({accountId,familyId});
-  this.state='idle';this.stopped=false;this.inflight=null;this.abort=new AbortController();
+  this.state='idle';this.serverState='unknown';this.liveState='connecting';this.lastSyncAt=null;this.requestTimeoutMs=15000;this.stopped=false;this.inflight=null;this.abort=new AbortController();
  }
- async ready(){return Boolean(await this.store.get('syncState','cursor'))}
+ async ready(){const saved=await this.store.get('syncState','cursor');this.lastSyncAt=this.lastSyncAt||saved?.last_sync_at||null;return Boolean(saved)}
  async list(kind){return (await this.store.list(TYPE_STORES[kind])).filter(r=>r.data&&!r.deleted).map(r=>({...r.data,_offlinePending:r.sync_status==='pending'}))}
  async get(kind,id){return (await this.list(kind)).find(r=>r.id===id)||null}
  async mutate(kind,id,operation,payload={}){
@@ -79,9 +79,16 @@ export class SyncEngine{
  schedule(){if(!this.stopped){clearTimeout(this.timer);this.timer=setTimeout(()=>this.sync().catch(()=>{}),30)}}
  stop(){this.stopped=true;clearTimeout(this.timer);this.abort.abort();this.state='stopped'}
  sync(){if(this.stopped)return Promise.resolve();if(this.inflight)return this.inflight;this.inflight=this.run().finally(()=>{this.inflight=null});return this.inflight}
+ async send(payload){
+  if(this.stopped||this.abort.signal.aborted)throw new Error('sync_stopped');
+  const controller=new AbortController();let timer;let cancel;
+  const interrupted=new Promise((resolve,reject)=>{cancel=()=>{controller.abort();reject(new Error('sync_stopped'))};this.abort.signal.addEventListener('abort',cancel,{once:true});timer=setTimeout(()=>{controller.abort();reject(new Error('sync_timeout'))},this.requestTimeoutMs)});
+  try{return await Promise.race([this.transport(payload,controller.signal),interrupted])}finally{clearTimeout(timer);this.abort.signal.removeEventListener('abort',cancel)}
+ }
  async run(){
-  if(globalThis.navigator?.onLine===false){this.state='offline';emit(this);return}
+  if(globalThis.navigator?.onLine===false){this.state='offline';this.serverState='unknown';emit(this);return}
   if(!this.transport)throw new Error('sync_transport_missing');this.state='synchronizing';emit(this);
+  let reached=false;
   try{
    const batch=await localLock(this.key,async()=>{
     const seen=new Set();
@@ -89,14 +96,15 @@ export class SyncEngine{
     await this.store.write(rows.map(m=>put('outbox',{...m,state:'sending',attempted:true})));
     return {rows,cursor:(await this.store.get('syncState','cursor'))?.cursor??null,calendar_projection_key:(await this.store.get('meta','projections'))?.data?.calendar_key??null};
    });
-   const r=await this.transport({protocol_version:1,family_id:this.familyId,cursor:batch.cursor,calendar_projection_key:batch.calendar_projection_key,mutations:batch.rows.map(envelope)},this.abort.signal);
+   const r=await this.send({protocol_version:1,family_id:this.familyId,cursor:batch.cursor,calendar_projection_key:batch.calendar_projection_key,mutations:batch.rows.map(envelope)});reached=true;this.serverState='reachable';
    if(this.stopped)return;
    if(r.protocol_version!==1||!['delta','snapshot'].includes(r.mode)||!Number.isSafeInteger(r.cursor))throw new Error('unsupported_sync_protocol');
    await localLock(this.key,()=>this.install(r,batch.rows));if(this.stopped)return;
-   this.state=(await this.store.list('conflicts')).length?'action-required':'synced';emit(this);
+   this.lastSyncAt=new Date().toISOString();this.state=(await this.store.list('conflicts')).length?'action-required':'synced';emit(this);
    if((await this.store.list('outbox')).length)this.schedule();
   }catch(error){
    if(this.stopped)return;
+   this.serverState=[401,403].includes(error.status)?'auth-required':!reached&&(!error.status||error.status>=500)?'unreachable':'reachable';
    this.state=[401,403].includes(error.status)?'auth-required':globalThis.navigator?.onLine===false?'offline':'retry';emit(this);
    if(![401,403,409].includes(error.status)){clearTimeout(this.timer);this.timer=setTimeout(()=>this.sync().catch(()=>{}),10000)}throw error;
   }

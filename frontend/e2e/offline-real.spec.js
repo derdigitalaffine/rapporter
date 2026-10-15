@@ -18,7 +18,7 @@ test('Shopping survives real network loss and reload, then converges once to Pos
  await page.reload();await expect(page.getByText(name,{exact:true})).toBeVisible();
  await context.setOffline(false);
  await expect.poll(async()=>{const response=await page.request.get(`/api/shopping-lists/?family=${family.id}`);const value=await response.json();return (value.results||value).flatMap(list=>list.items).filter(item=>item.name===name).length},{timeout:20000}).toBe(1);
- await expect(page.locator('.offline-sync-pill')).toHaveText('Synced',{timeout:20000});
+ await expect(page.locator('.offline-sync-primary')).toHaveText('Synced',{timeout:20000});
 });
 test('Explicit logout clears account-private normalized entities and outbox',async({page})=>{
  await boot(page);await page.locator('.bottom-nav').getByRole('button',{name:'More',exact:true}).click();await page.getByRole('button',{name:'Sign out',exact:true}).click();
@@ -32,7 +32,7 @@ test('Tasks create, complete and reopen offline, retaining commands through relo
  await page.getByRole('button',{name:'Show completed',exact:true}).click();await expect(row.locator('.smart-check')).toHaveClass(/checked/);
  await page.reload();await page.getByRole('button',{name:'Show completed',exact:true}).click();await expect(row.locator('.smart-check')).toHaveClass(/checked/);await row.locator('.smart-check').click();
  await context.setOffline(false);await expect.poll(async()=>{const response=await page.request.get(`/api/tasks/?family=${family.id}`);const value=await response.json();return (value.results||value).filter(t=>t.title===title&&t.completed_at===null).length},{timeout:20000}).toBe(1);
- await expect(page.locator('.offline-sync-pill')).toHaveText('Synced',{timeout:20000});
+ await expect(page.locator('.offline-sync-primary')).toHaveText('Synced',{timeout:20000});
 });
 test('Calendar native creation survives offline reload and external events remain read-only',async({page,context})=>{
  const family=await boot(page);await page.goto('/?page=calendar&view=list');
@@ -54,7 +54,7 @@ test('Calendar native creation survives offline reload and external events remai
  await expect(page.getByText(title,{exact:true})).toBeVisible();await page.reload();await expect(page.getByText(title,{exact:true})).toBeVisible();
  await page.getByText('Read-only external',{exact:true}).click();const detail=page.getByRole('dialog');await expect(detail.getByRole('button',{name:'Edit event',exact:true})).toHaveCount(0);await detail.locator('.sheet-close').click();
  await context.setOffline(false);await expect.poll(async()=>{const response=await page.request.get(`/api/events/?family=${family.id}&birthdays=0`);const value=await response.json();return (value.results||value).filter(event=>event.title===title).length},{timeout:20000}).toBe(1);
- await expect(page.locator('.offline-sync-pill')).toHaveText('Synced',{timeout:20000});
+ await expect(page.locator('.offline-sync-primary')).toHaveText('Synced',{timeout:20000});
 });
 
 test('two independent clients merge disjoint edits, preserve field conflicts and propagate deletion',async({page,browser})=>{
@@ -87,6 +87,22 @@ test('snapshot reset preserves pending offline create and unsupported protocol c
  },String(family.id));
  await page.reload();await expect(page.getByText(name,{exact:true})).toBeVisible();await context.setOffline(false);
  await expect.poll(async()=>{const response=await page.request.get(`/api/shopping-lists/?family=${family.id}`);const value=await response.json();return (value.results||value).flatMap(list=>list.items).filter(item=>item.name===name).length},{timeout:20000}).toBe(1);
- await expect(page.locator('.offline-sync-pill')).toHaveText('Synced',{timeout:20000});
+ await expect(page.locator('.offline-sync-primary')).toHaveText('Synced',{timeout:20000});
  const response=await page.request.post('/api/sync/',{data:{protocol_version:999,family_id:family.id,cursor:0,mutations:[]}});expect(response.status()).toBe(409);
+});
+
+test('server failure remains visible with browser online; status sheet is responsive and keyboard accessible',async({page},testInfo)=>{
+ await boot(page);const primary=page.locator('.offline-sync-primary'),pill=page.locator('.offline-sync-pill');
+ await expect(primary).toHaveText('Synced',{timeout:20000});
+ await page.route('**/api/sync/',route=>route.abort('connectionrefused'));
+ await page.evaluate(()=>window.dispatchEvent(new CustomEvent('familyos:sync-now')));
+ expect(await page.evaluate(()=>navigator.onLine)).toBeTruthy();await expect(primary).toHaveText('Server unavailable');
+ for(const width of [320,390,1440]){
+  await page.setViewportSize({width,height:844});await pill.click();const dialog=page.getByRole('dialog',{name:'Synchronization',exact:true});await expect(dialog).toBeVisible();
+  await expect(dialog.getByText('Last successful sync',{exact:true})).toBeVisible();await expect(dialog.locator('time')).toBeVisible();
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBeTruthy();
+  await testInfo.attach(`sync-status-${width}`,{body:await page.screenshot(),contentType:'image/png'});
+  await page.keyboard.press('Escape');await expect(dialog).toBeHidden();await expect(pill).toBeFocused();
+ }
+ await page.unroute('**/api/sync/');await page.evaluate(()=>window.dispatchEvent(new CustomEvent('familyos:sync-now')));await expect(primary).toHaveText('Synced',{timeout:20000});
 });

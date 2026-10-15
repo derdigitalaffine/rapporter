@@ -69,3 +69,15 @@ test('leader HTTP completion refreshes follower state without another HTTP reque
  await Promise.resolve();assert.equal(notified,1);assert.equal(b.state,'synced');assert.equal(followerCalls.calls,0);
  first.stop();second.stop();
 });
+
+test('live status requires socket open; disconnect probes HTTP and propagates interruption',async()=>{
+ FakeSocket.instances=[];const e=engine(),coordinator=new LiveSyncCoordinator({accountId:'a',familyId:'f',engine:e,storage:storage(),Channel:null,Socket:FakeSocket,timers}).start();
+ const socket=FakeSocket.instances.at(-1);assert.equal(e.liveState,'connecting');socket.onopen();assert.equal(e.liveState,'connected');
+ const before=e.state.calls;socket.close();assert.equal(e.liveState,'reconnecting');assert.equal(e.state.calls,before+1);
+ coordinator.stop();
+});
+
+test('leader checks HTTP every thirty seconds even while an apparently open socket is idle',()=>{
+ let now=0;const e=engine(),coordinator=new LiveSyncCoordinator({accountId:'a',familyId:'f',engine:e,storage:storage(),Channel:null,Socket:FakeSocket,timers,now:()=>now}).start();
+ const before=e.state.calls;now=29000;coordinator.checkLease();assert.equal(e.state.calls,before);now=30000;coordinator.checkLease();assert.equal(e.state.calls,before+1);coordinator.stop();
+});
