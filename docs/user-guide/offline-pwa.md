@@ -49,3 +49,24 @@ Wenn du wieder online bist:
 3. Kontrolliere besonders wichtige Änderungen einmal in der normalen Ansicht.
 
 Wenn etwas nicht auftaucht, lade die Ansicht neu.
+
+## Lokaler Einkauf und Synchronisierung
+
+Nach einer erfolgreichen Anmeldung lädt FamilyOS die Einkaufslisten vorsorglich
+auf dieses Gerät. Auf Servern mit dem neuen Offline-Protokoll verwenden Lesen und
+Schreiben online wie offline denselben lokalen Speicher. Neue Listen und Artikel,
+Änderungen, Abhaken und Löschen bleiben nach einem Neuladen erhalten. Für große
+Anhänge und andere Fachbereiche gelten weiterhin deren eigene Online-Grenzen.
+
+Der Status oben zeigt Offline, laufenden Abgleich oder zu prüfende Änderungen.
+Bei einer echten Überschneidung bleiben dein Entwurf und der aktuelle Stand
+getrennt erhalten. Öffne den Status, um eine Fassung bewusst zu übernehmen oder
+den Entwurf zu kopieren. Gelöschte oder nicht mehr freigegebene Einträge werden
+nicht still neu angelegt. Eine abgelaufene Anmeldung pausiert nur den Abgleich;
+über den Status kannst du dich erneut anmelden.
+
+Eine ausdrückliche Abmeldung entfernt die privaten Offline-Daten dieses Kontos
+vom Gerät. Melde dich deshalb erst ab, wenn du keine ungesicherten lokalen
+Änderungen mehr benötigst. Alte Einkaufs-Warteschlangen aus einer früheren
+App-Version bleiben bis zur bewussten Migration erhalten; sie werden keinem
+anderen Konto automatisch zugeordnet.

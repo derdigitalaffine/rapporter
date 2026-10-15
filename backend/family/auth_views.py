@@ -123,6 +123,7 @@ def session_view(request):
     return Response(
         {
             "authenticated": True,
+            "offline_sync_protocol": 1,
             "user": {
                 "id": request.user.pk,
                 "username": request.user.username,

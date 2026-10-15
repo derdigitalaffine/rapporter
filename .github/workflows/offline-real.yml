@@ -1,0 +1,55 @@
+name: offline-real
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  offline-real:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: famuhle
+          POSTGRES_USER: famuhle
+          POSTGRES_PASSWORD: offline-test
+        ports: ['5432:5432']
+        options: --health-cmd="pg_isready -U famuhle" --health-interval=5s --health-timeout=5s --health-retries=10
+    env:
+      OFFLINE_E2E: '1'
+      POSTGRES_HOST: 127.0.0.1
+      POSTGRES_DB: famuhle
+      POSTGRES_USER: famuhle
+      POSTGRES_PASSWORD: offline-test
+      DJANGO_SECRET_KEY: offline-ci-only
+      DJANGO_DEBUG: 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - run: pip install -r backend/requirements.txt
+      - run: python backend/manage.py migrate && python scripts/seed-offline-e2e.py
+      - run: python backend/manage.py runserver 127.0.0.1:8000 --noreload > backend-server.log 2>&1 &
+      - working-directory: frontend
+        run: npm ci --no-audit --no-fund && npm run test:offline && npm run build
+      - working-directory: frontend
+        run: npx playwright install --with-deps chromium
+      - working-directory: frontend
+        run: npx playwright test --config playwright.offline.config.js
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: offline-real-debug
+          path: |
+            backend-server.log
+            frontend/test-results

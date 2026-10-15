@@ -1,3 +1,4 @@
+import {offlineEngine,readyOfflineEngine,offlineIdentity} from './offline-runtime';
 import {api} from './api';
 import {deleteShoppingMutation,listShoppingMutations,putShoppingMutation} from './offline-store';
 
@@ -5,6 +6,7 @@ export const SHOPPING_BUDGET_PURCHASE_EVENT='famuhle:shopping-budget-purchase';
 const uuid=()=>globalThis.crypto?.randomUUID?.()||`offline-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
 export async function queueShoppingAdd(familyId,payload){
+  if(offlineEngine(familyId)){const e=await readyOfflineEngine(familyId);const data={...payload};delete data.family;const row=await e.mutate('shopping_item',null,'create',data);return {localId:row.id,payload:data}}
   const localId=`offline-${uuid()}`;
   const mutation={id:uuid(),familyId:String(familyId),type:'add',localId,payload,createdAt:Date.now(),attempts:0,status:'pending'};
   await putShoppingMutation(mutation);return mutation;
@@ -27,10 +29,12 @@ export async function queueShoppingPatch(familyId,targetId,payload){
       // a normal checkbox into a hard failure.
     }
   }
+  if(offlineEngine(familyId)){await (await readyOfflineEngine(familyId)).mutate('shopping_item',target,'update',payload);return {targetId:target}}
   const mutation={id:uuid(),familyId:String(familyId),type:'patch',targetId:target,payload,createdAt:Date.now(),attempts:0,status:'pending'};
   await putShoppingMutation(mutation);return mutation;
 }
 export async function queueShoppingDelete(familyId,targetId){
+  if(offlineEngine(familyId)){await (await readyOfflineEngine(familyId)).mutate('shopping_item',String(targetId),'delete');return {targetId}}
   const target=String(targetId);
   const rows=await listShoppingMutations(familyId);
   if(target.startsWith('offline-')){
@@ -44,6 +48,7 @@ export async function queueShoppingDelete(familyId,targetId){
   await putShoppingMutation(mutation);return mutation;
 }
 export async function queueShoppingTemplateApply(familyId,templateId,shoppingListId){
+  if(offlineEngine(familyId)){const e=await readyOfflineEngine(familyId);const rows=await e.store.list('outbox');if(rows.some(m=>m.entity_id===shoppingListId&&m.command==='apply_template'&&m.args?.template_id===templateId))return {deduplicated:true};await e.mutate('shopping_list',shoppingListId,'command',{command:'apply_template',args:{template_id:templateId}});return {deduplicated:false}}
   const rows=await listShoppingMutations(familyId);
   const duplicate=rows.find(row=>row.type==='template_apply'&&String(row.templateId)===String(templateId)&&String(row.shoppingListId)===String(shoppingListId)&&row.status!=='failed');
   if(duplicate)return {...duplicate,deduplicated:true};
@@ -78,6 +83,7 @@ async function failMutation(mutation,error){
 }
 
 export async function flushShoppingMutations(familyId){
+  if(offlineEngine(familyId)){const e=await readyOfflineEngine(familyId);try{await e.sync()}catch(error){return {synced:0,pending:(await e.store.list('outbox')).length,failed:0,error}}return {synced:1,pending:(await e.store.list('outbox')).length,failed:(await e.store.list('conflicts')).length}}
   const all=await listShoppingMutations(familyId);
   const failedCount=all.filter(m=>m.status==='failed').length;
   if(failedCount)return {synced:0,pending:all.length-failedCount,failed:failedCount,blocked:true};
@@ -112,7 +118,8 @@ export async function flushShoppingMutations(familyId){
 }
 
 export async function retryShoppingMutations(familyId){
+  if(offlineEngine(familyId))return flushShoppingMutations(familyId);
   const rows=await listShoppingMutations(familyId);await Promise.all(rows.map(row=>putShoppingMutation({...row,status:'pending',attempts:0,lastError:''})));return flushShoppingMutations(familyId);
 }
 
-export async function shoppingQueueStatus(familyId){const rows=await listShoppingMutations(familyId);return {rows,pending:rows.filter(row=>row.status!=='failed').length,failed:rows.filter(row=>row.status==='failed').length}}
+export async function shoppingQueueStatus(familyId){if(offlineEngine(familyId)){const e=await readyOfflineEngine(familyId);return {rows:[],pending:(await e.store.list('outbox')).filter(m=>m.entity_type.startsWith('shopping')).length,failed:(await e.store.list('conflicts')).filter(m=>m.mutation?.entity_type?.startsWith('shopping')).length}}const rows=await listShoppingMutations(familyId);return {rows,pending:rows.filter(row=>row.status!=='failed').length,failed:rows.filter(row=>row.status==='failed').length}}

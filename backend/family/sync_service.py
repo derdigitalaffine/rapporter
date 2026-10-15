@@ -156,13 +156,22 @@ def apply_mutation(request, family, mutation):
                 view.perform_destroy(obj)
                 obj.version += 1
             else:
-                if kind != 'task':
-                    raise ValidationError({'command': 'Unsupported domain command.'})
                 command = mutation.get('command')
                 args = mutation.get('args') or {}
+                if kind == 'shopping_list' and command == 'apply_template':
+                    from .shopping_models import ShoppingTemplate
+                    from .shopping_template_views import _apply_template
+                    template = ShoppingTemplate.objects.filter(pk=args.get('template_id'), family=family, archived=False).first()
+                    if not template:
+                        raise ValidationError({'template_id': 'Template is unavailable.'})
+                    _apply_template(template, obj, request.user)
+                elif kind != 'task':
+                    raise ValidationError({'command': 'Unsupported domain command.'})
                 if not isinstance(args, dict):
                     raise ValidationError({'args': 'Expected an object.'})
-                if command in {'complete_task', 'reopen_task'}:
+                if kind == 'shopping_list':
+                    pass
+                elif command in {'complete_task', 'reopen_task'}:
                     from .unified_action_service import execute
                     execute(request.user, f'task:{obj.pk}', {**args, 'operation': 'complete' if command == 'complete_task' else 'reopen', 'request_id': str(mutation_id), 'source': 'ui'})
                 elif command == 'move_task':
