@@ -1,14 +1,17 @@
 # Sync status UI optimization — 2026-10-15
 
-Refs #736 #578 #400 #435 #436.
+Refs #736 #744 #578 #400 #435 #436.
 
 Primary question: are my local changes confirmed by the server, and are live
 updates connected? The previous single label conflated an empty local queue with
 server reachability and did not expose WebSocket lifecycle. A cached historical
 success is not current connection evidence.
 
-The existing header control now has a primary sync/server state and a visible live
-connection line. Its existing sheet uses compact semantic definition rows for
+The existing header control has a constant localized Sync label and a static
+multicolor LED. Routine confirmed empty-queue HTTP checks preserve the LED; only
+meaningful reachability, queue/conflict, live or freshness changes affect it.
+Shape symbols and a stable accessible description supplement colors. Its existing
+sheet uses compact semantic definition rows and a color legend for
 server, live, last success and local changes, followed by one manual check action.
 Conflict review remains in the same canonical sheet. No nested-card hierarchy,
 new component library, new navigation or duplicate data path is introduced.
@@ -28,10 +31,3 @@ new component library, new navigation or duplicate data path is introduced.
 Next owner-prioritized work: #738 family calendar subscriptions and additional iPhone
 profile, reusing the canonical Calendar and shared Settings flow. #599 UI/CI
 baseline repair remains queued afterward; existing domain ownership is retained.
-
-
-Owner hotfix #744 supersedes the two-line changing header presentation: a constant
-localized Sync label and static multicolor LED now carry quiet health. Routine
-empty-queue HTTP checks preserve confirmed LED state; only meaningful reachability,
-queue/conflict, live or freshness changes affect it. Accessible descriptions and
-shape symbols supplement colors; the detailed canonical sheet/legend remains.
