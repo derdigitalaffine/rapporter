@@ -8,6 +8,8 @@ import ActionCapture from './ActionCapture';
 import {CREATE_PAGES,createActionById} from './create-actions';
 import {CREATE_REQUEST_EVENT} from './create-request';
 
+const hasBlockingDialog=()=>Boolean(document.querySelector('.sheet-backdrop:not(.create-palette-backdrop),[role="dialog"][aria-modal="true"]:not(.create-palette-sheet)'));
+
 export default function GlobalCreate({page,family,role,context={},onCreate,suppressed=false,createActions}){
   const {t}=useTranslation();
   const fabRef=useRef(null);const firstActionRef=useRef(null);const pendingAction=useRef(null);const previousSuppressed=useRef(suppressed);
@@ -58,14 +60,16 @@ export default function GlobalCreate({page,family,role,context={},onCreate,suppr
 
   useEffect(()=>{
     const requested=event=>{
-      if(!eligible||suppressed||paletteOpen||externalDialog)return;
+      // Toasts may hide the FAB visually, but they must not swallow an
+      // explicit programmatic create handoff. Only a real modal blocks it.
+      if(!eligible||suppressed||paletteOpen||hasBlockingDialog())return;
       const action=createActionById(event.detail?.id,options);if(!action)return;
       anchorCurrentHistory();
       action.open({open:onCreate,context:{...currentContext(),...(event.detail?.context||{})}});
     };
     window.addEventListener(CREATE_REQUEST_EVENT,requested);
     return()=>window.removeEventListener(CREATE_REQUEST_EVENT,requested);
-  },[eligible,suppressed,paletteOpen,externalDialog,options,onCreate,page,context]);
+  },[eligible,suppressed,paletteOpen,options,onCreate,page,context]);
 
   function currentContext(){
     const next={...context,origin:page};
