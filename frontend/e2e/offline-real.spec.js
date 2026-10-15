@@ -37,8 +37,11 @@ test('Tasks create, complete and reopen offline, retaining commands through relo
 test('Calendar native creation survives offline reload and external events remain read-only',async({page,context})=>{
  const family=await boot(page);await page.goto('/?page=calendar&view=list');
  await expect(page.getByText('Read-only external',{exact:true})).toBeVisible();await context.setOffline(true);
- await page.locator('.global-create-fab').click();await page.getByRole('dialog').getByRole('button',{name:'Event',exact:true}).click();
- const title=`Offline event ${Date.now()}`,editor=page.getByRole('dialog');await editor.getByLabel('Title',{exact:true}).fill(title);await editor.getByRole('button',{name:'Add event',exact:true}).click();
+ await page.locator('.global-create-fab').click();
+ let dialog=page.getByRole('dialog');await expect(dialog).toBeVisible();
+ const eventChoice=dialog.getByRole('button',{name:'Event',exact:true});
+ if(await eventChoice.count()&&await eventChoice.isVisible()){await eventChoice.click();dialog=page.getByRole('dialog');}
+ const title=`Offline event ${Date.now()}`,editor=dialog;await expect(editor.getByLabel('Title',{exact:true})).toBeVisible();await editor.getByLabel('Title',{exact:true}).fill(title);await editor.getByRole('button',{name:'Add event',exact:true}).click();
  await expect(page.getByText(title,{exact:true})).toBeVisible();await page.reload();await expect(page.getByText(title,{exact:true})).toBeVisible();
  await page.getByText('Read-only external',{exact:true}).click();const detail=page.getByRole('dialog');await expect(detail.getByRole('button',{name:'Edit event',exact:true})).toHaveCount(0);await detail.locator('.sheet-close').click();
  await context.setOffline(false);await expect.poll(async()=>{const response=await page.request.get(`/api/events/?family=${family.id}&birthdays=0`);const value=await response.json();return (value.results||value).filter(event=>event.title===title).length},{timeout:20000}).toBe(1);
