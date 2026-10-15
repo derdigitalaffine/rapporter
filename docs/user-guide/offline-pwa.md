@@ -113,3 +113,15 @@ unterbrochen oder nicht verfügbar. Auch ohne Live-Verbindung prüft die App den
 Server regelmäßig und verwendet den normalen Abgleich. In der Statusansicht
 siehst du Erreichbarkeit, Live-Verbindung, letzten Erfolg und wartende Änderungen
 getrennt. „Jetzt prüfen“ stößt einen neuen Abgleich an.
+
+### Ruhige Sync-LED
+
+Der Header zeigt einen konstanten Sync-Schalter mit mehrfarbiger LED statt
+wechselnder Statustexte. Normale Hintergrundabgleiche blinken nicht und ändern
+weder Beschriftung noch bestätigte Farbe. Grün mit Häkchen bedeutet aktuell und
+Live verbunden; Gelb mit Ausrufezeichen weist auf offene Änderungen/Konflikte oder
+eine unterbrochene Live-Verbindung hin. Rot bedeutet Server-/Anmeldeproblem,
+Blau noch nicht bestätigt und Grau offline. Ein Klick zeigt die getrennten
+Server-/Live-Zustände, den letzten bestätigten Abgleich und lokale Änderungen;
+die Farblegende steht im selben Dialog. Fehlende Live-Verbindung wird auch bei
+erfolgreichem HTTP-Abgleich nicht als Grün ausgegeben.

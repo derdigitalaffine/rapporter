@@ -28,3 +28,10 @@ new component library, new navigation or duplicate data path is introduced.
 Next owner-prioritized work: #738 family calendar subscriptions and additional iPhone
 profile, reusing the canonical Calendar and shared Settings flow. #599 UI/CI
 baseline repair remains queued afterward; existing domain ownership is retained.
+
+
+Owner hotfix #744 supersedes the two-line changing header presentation: a constant
+localized Sync label and static multicolor LED now carry quiet health. Routine
+empty-queue HTTP checks preserve confirmed LED state; only meaningful reachability,
+queue/conflict, live or freshness changes affect it. Accessible descriptions and
+shape symbols supplement colors; the detailed canonical sheet/legend remains.
