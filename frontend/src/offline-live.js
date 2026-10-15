@@ -5,13 +5,13 @@ const parse=value=>{try{return JSON.parse(value||'null')}catch{return null}};
 export class LiveSyncCoordinator{
  constructor({accountId,familyId,engine,storage=globalThis.localStorage,Channel=globalThis.BroadcastChannel,Socket=globalThis.WebSocket,now=()=>Date.now(),timers=globalThis}={}){
   Object.assign(this,{accountId:String(accountId),familyId:String(familyId),engine,storage,Channel,Socket,now,timers});
-  this.id=globalThis.crypto?.randomUUID?.()||`${Math.random()}`;this.key=`familyos-sync-leader:${this.accountId}:${this.familyId}`;this.requestKey=`${this.key}:request`;this.channelName=`familyos-sync:${this.accountId}:${this.familyId}`;this.leader=false;this.stopped=false;this.socket=null;
+  this.id=globalThis.crypto?.randomUUID?.()||`${Math.random()}`;this.key=`familyos-sync-leader:${this.accountId}:${this.familyId}`;this.requestKey=`${this.key}:request`;this.stateKey=`${this.key}:state`;this.channelName=`familyos-sync:${this.accountId}:${this.familyId}`;this.leader=false;this.stopped=false;this.socket=null;
  }
  isLeader(){return this.leader&&!this.stopped}
  start(){
   if(this.stopped)return this;this.stopped=false;
-  if(this.Channel){try{this.channel=new this.Channel(this.channelName);this.channel.onmessage=e=>{if(e.data?.type==='sync-request'&&this.isLeader())this.runLeaderSync()}}catch{}}
-  this.storageHandler=e=>{if(e.key===this.requestKey&&this.isLeader())this.runLeaderSync();if(e.key===this.key)this.checkLease()};
+  if(this.Channel){try{this.channel=new this.Channel(this.channelName);this.channel.onmessage=e=>{if(e.data?.type==='sync-request'&&this.isLeader())this.runLeaderSync();if(e.data?.type==='sync-complete'&&!this.isLeader())this.notifyLocal(e.data.state)}}catch{}}
+  this.storageHandler=e=>{if(e.key===this.requestKey&&this.isLeader())this.runLeaderSync();if(e.key===this.key)this.checkLease();if(e.key===this.stateKey&&!this.isLeader())this.notifyLocal(parse(e.newValue)?.state)};
   globalThis.addEventListener?.('storage',this.storageHandler);this.checkLease();this.timer=this.timers.setInterval?.(()=>this.checkLease(),HEARTBEAT_MS);return this;
  }
  checkLease(){
@@ -26,7 +26,8 @@ export class LiveSyncCoordinator{
   try{this.storage?.setItem?.(this.requestKey,JSON.stringify({from:this.id,at:this.now()}))}catch{}
   this.checkLease();
  }
- runLeaderSync(){if(this.isLeader())this.engine.sync({leader:true}).catch(()=>{})}
+ runLeaderSync(){if(this.isLeader())this.engine.sync({leader:true}).then(()=>{if(this.isLeader()){const message={type:'sync-complete',state:this.engine.state,at:this.now()};try{this.channel?.postMessage?.(message)}catch{}try{this.storage?.setItem?.(this.stateKey,JSON.stringify(message))}catch{}}}).catch(()=>{})}
+ notifyLocal(state){if(this.stopped)return;if(typeof state==='string')this.engine.state=state;globalThis.window?.dispatchEvent(new CustomEvent('familyos:sync-changed',{detail:{accountId:this.accountId,familyId:this.familyId,state:this.engine.state}}))}
  openSocket(){
   if(!this.Socket||!this.isLeader()||this.socket)return;
   try{
@@ -39,7 +40,7 @@ export class LiveSyncCoordinator{
  stepDown(){this.leader=false;this.timers.clearTimeout?.(this.syncTimer);try{this.socket?.close?.()}catch{}this.socket=null}
  stop(){
   if(this.stopped)return;this.stopped=true;this.timers.clearInterval?.(this.timer);this.timers.clearTimeout?.(this.syncTimer);this.stepDown();
-  try{const current=parse(this.storage?.getItem?.(this.key));if(current?.owner===this.id)this.storage.removeItem(this.key)}catch{}
+  try{const current=parse(this.storage?.getItem?.(this.key));if(current?.owner===this.id){this.storage.removeItem(this.key);this.storage.removeItem(this.requestKey);this.storage.removeItem(this.stateKey)}}catch{}
   try{this.channel?.close?.()}catch{}globalThis.removeEventListener?.('storage',this.storageHandler);
  }
 }

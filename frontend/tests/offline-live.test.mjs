@@ -60,3 +60,12 @@ test('blocked storage degrades to independent HTTP sync instead of breaking star
  assert.equal(coordinator.isLeader(),true);assert.equal(e.state.calls,1);
  coordinator.requestSync();assert.equal(e.state.calls,2);coordinator.stop();
 });
+
+test('leader HTTP completion refreshes follower state without another HTTP request',async()=>{
+ FakeChannel.all.clear();const shared=storage(),a=engine(),b=engine();a.state='synced';
+ const first=new LiveSyncCoordinator({accountId:'a',familyId:'f',engine:a,storage:shared,Channel:FakeChannel,Socket:null,timers}).start();
+ const second=new LiveSyncCoordinator({accountId:'a',familyId:'f',engine:b,storage:shared,Channel:FakeChannel,Socket:null,timers}).start();
+ const followerCalls=b.state;let notified=0;second.notifyLocal=state=>{notified++;b.state=state};
+ await Promise.resolve();assert.equal(notified,1);assert.equal(b.state,'synced');assert.equal(followerCalls.calls,0);
+ first.stop();second.stop();
+});
