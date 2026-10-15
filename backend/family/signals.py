@@ -20,6 +20,10 @@ def _member_name(membership):return membership.display_name or membership.user.g
 def _calendar_projection_source(source):
     return source.kind in {IntegrationSource.Kind.ICS, IntegrationSource.Kind.WASTE}
 
+def _shopping_targets(shopping_list):
+    from .shopping_access import shopping_notification_user_ids
+    return shopping_notification_user_ids(shopping_list)
+
 @receiver(pre_save,sender=Task)
 def task_before_save(sender,instance,**kwargs):instance._notification_previous=_previous(instance,Task,["title","notes","due_at","completed_at","assignee_id","task_list_id","priority"])
 @receiver(post_save,sender=Task)
@@ -49,7 +53,15 @@ def task_list_after_save(sender,instance,created,**kwargs):
 @receiver(post_save,sender=ShoppingList)
 def shopping_list_after_save(sender,instance,created,**kwargs):
     actor=current_actor()
-    if created and actor and not _system_request():notify_domain_event(instance.family,"shopping.list.created",actor=actor,context={"list":instance.name,"list_id":instance.id})
+    if not created or not actor or _system_request():return
+    list_id=instance.id;actor_id=actor.id
+    def emit():
+        shopping=ShoppingList.objects.filter(id=list_id).select_related("family").first()
+        if not shopping:return
+        from django.contrib.auth import get_user_model
+        actor_row=get_user_model().objects.filter(id=actor_id).first()
+        notify_domain_event(shopping.family,"shopping.list.created",actor=actor_row,context={"list":shopping.name,"list_id":shopping.id},target_users=_shopping_targets(shopping))
+    transaction.on_commit(emit)
 @receiver(pre_save,sender=ShoppingItem)
 def shopping_item_before_save(sender,instance,**kwargs):instance._notification_previous=_previous(instance,ShoppingItem,["name","quantity","category","note","aisle","checked","shopping_list_id"])
 @receiver(post_save,sender=ShoppingItem)
@@ -57,11 +69,11 @@ def shopping_item_after_save(sender,instance,created,**kwargs):
     if instance.birthday_context:return
     remember_entry(instance,bump=created);actor=current_actor() or (instance.added_by if created else None)
     if not actor or _system_request() or (created and instance.added_by_id and instance.added_by_id!=actor.id):return
-    context={"item":instance.name,"item_id":instance.id,"list":instance.shopping_list.name,"list_id":instance.shopping_list_id,"previous_checked":(getattr(instance,"_notification_previous",None) or {}).get("checked")}
-    if created:notify_domain_event(instance.shopping_list.family,"shopping.item.created",actor=actor,context=context);return
+    context={"item":instance.name,"item_id":instance.id,"list":instance.shopping_list.name,"list_id":instance.shopping_list_id,"previous_checked":(getattr(instance,"_notification_previous",None) or {}).get("checked")};targets=_shopping_targets(instance.shopping_list)
+    if created:notify_domain_event(instance.shopping_list.family,"shopping.item.created",actor=actor,context=context,target_users=targets);return
     previous=getattr(instance,"_notification_previous",None) or {}
-    if previous.get("checked")!=instance.checked:notify_domain_event(instance.shopping_list.family,"shopping.item.completed" if instance.checked else "shopping.item.reopened",actor=actor,context=context)
-    elif any(previous.get(field)!=getattr(instance,field) for field in ["name","quantity","category","note","aisle","shopping_list_id"]):notify_domain_event(instance.shopping_list.family,"shopping.item.updated",actor=actor,context=context)
+    if previous.get("checked")!=instance.checked:notify_domain_event(instance.shopping_list.family,"shopping.item.completed" if instance.checked else "shopping.item.reopened",actor=actor,context=context,target_users=targets)
+    elif any(previous.get(field)!=getattr(instance,field) for field in ["name","quantity","category","note","aisle","shopping_list_id"]):notify_domain_event(instance.shopping_list.family,"shopping.item.updated",actor=actor,context=context,target_users=targets)
 @receiver(post_delete,sender=ShoppingItem)
 def shopping_item_after_delete(sender,instance,**kwargs):
     actor=current_actor();path=current_path()
@@ -69,7 +81,7 @@ def shopping_item_after_delete(sender,instance,**kwargs):
     key=f"shopping.items.cleared:{instance.shopping_list_id}"
     if not mark_notification_once(key):return
     shopping=ShoppingList.objects.filter(id=instance.shopping_list_id).select_related("family").first()
-    if shopping:notify_domain_event(shopping.family,"shopping.items.cleared",actor=actor,context={"list":shopping.name,"list_id":shopping.id})
+    if shopping:notify_domain_event(shopping.family,"shopping.items.cleared",actor=actor,context={"list":shopping.name,"list_id":shopping.id},target_users=_shopping_targets(shopping))
 @receiver(pre_save,sender=FamilyEvent)
 def family_event_before_save(sender,instance,**kwargs):instance._notification_previous=_previous(instance,FamilyEvent,["title","starts_at","ends_at","payload","type","source_id"])
 @receiver(post_save,sender=FamilyEvent)

@@ -117,7 +117,7 @@ test('chat history scrolls independently and the composer stays above navigation
  expect(await page.evaluate(()=>document.documentElement.scrollHeight-window.innerHeight)).toBeLessThanOrEqual(1);
 });
 
-test('visual viewport keyboard resize and panning keep app chrome in the visible area',async({page})=>{
+test('visual viewport keyboard resize keeps editable messenger visible without lifting app navigation',async({page})=>{
  await page.setViewportSize({width:390,height:844});
  await page.addInitScript(()=>{
   const viewport=new EventTarget();
@@ -125,16 +125,27 @@ test('visual viewport keyboard resize and panning keep app chrome in the visible
   Object.defineProperty(window,'visualViewport',{configurable:true,value:viewport});
  });
  await boot(page);await openChat(page);
- await page.getByRole('textbox',{name:'Nachricht',exact:true}).focus();
+ const field=page.getByRole('textbox',{name:'Nachricht',exact:true});
+ await field.focus();
  await page.evaluate(()=>{Object.assign(window.visualViewport,{height:440,offsetTop:20});window.visualViewport.dispatchEvent(new Event('resize'));window.visualViewport.dispatchEvent(new Event('scroll'))});
- const nav=page.locator('.bottom-nav'),composer=page.locator('.messenger-composer');
- await expect.poll(async()=>{const box=await nav.boundingBox();return box.y+box.height}).toBeCloseTo(460,0);
- expect((await page.locator('.messenger-shell').boundingBox()).y).toBeCloseTo(20,0);
- const box=await composer.boundingBox();expect(box.y+box.height).toBeLessThanOrEqual((await nav.boundingBox()).y+1);
+ const root=page.locator('html'),nav=page.locator('.bottom-nav'),composer=page.locator('.messenger-composer'),shell=page.locator('.messenger-shell');
+ await expect(root).toHaveAttribute('data-app-keyboard','');
+ await expect(nav).toBeHidden();
+ await expect.poll(()=>shell.evaluate(el=>parseFloat(getComputedStyle(el).paddingBottom))).toBe(0);
+ const shellBox=await shell.boundingBox();
+ expect(shellBox.y).toBeCloseTo(20,0);
+ expect(shellBox.height).toBeCloseTo(440,0);
+ const composerBox=await composer.boundingBox();
+ expect(composerBox.y+composerBox.height).toBeLessThanOrEqual(461);
+ await expect(field).toBeVisible();
  await page.evaluate(()=>{Object.assign(window.visualViewport,{height:844,offsetTop:0});window.visualViewport.dispatchEvent(new Event('resize'))});
+ await expect(root).not.toHaveAttribute('data-app-keyboard','');
+ await expect(nav).toBeVisible();
  await expect.poll(async()=>{const box=await nav.boundingBox();return box.y+box.height}).toBeCloseTo(844,0);
  await page.evaluate(()=>{Object.assign(window.visualViewport,{height:422,offsetTop:80,scale:2});window.visualViewport.dispatchEvent(new Event('resize'))});
- await expect.poll(()=>page.locator('.messenger-shell').evaluate(el=>el.getBoundingClientRect().height)).toBe(844);
+ await expect.poll(()=>shell.evaluate(el=>el.getBoundingClientRect().height)).toBe(844);
+ await expect(root).not.toHaveAttribute('data-app-keyboard','');
+ await expect(nav).toBeVisible();
 });
 
 test('main navigation remains pinned while transformed page content scrolls',async({page})=>{

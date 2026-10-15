@@ -10,6 +10,7 @@ from family.models import Family
 from .child_identity_service import (
     begin_child_login_activation,
     child_profile,
+    guardian_settings_for_family,
     replace_child_guardians,
     require_child_guardian,
     serialize_child_identity,
@@ -29,6 +30,10 @@ class ManagedChildInput(serializers.Serializer):
         if not value:
             raise serializers.ValidationError("Name must not be empty.")
         return value
+
+
+class GuardianSettingsQuery(serializers.Serializer):
+    family = serializers.UUIDField()
 
 
 class GuardianInput(serializers.Serializer):
@@ -93,6 +98,20 @@ def child_identity_detail(request, baby_id):
     baby = child_profile(baby_id)
     require_child_guardian(request.user, baby)
     return Response(serialize_child_identity(baby))
+
+
+@api_view(["GET"])
+def child_guardian_settings(request):
+    serializer = GuardianSettingsQuery(data=request.query_params)
+    serializer.is_valid(raise_exception=True)
+    family = Family.objects.filter(
+        pk=serializer.validated_data["family"],
+        status=Family.Status.ACTIVE,
+        memberships__user=request.user,
+    ).first()
+    if not family:
+        raise NotFound("Family not found.")
+    return Response(guardian_settings_for_family(request.user, family))
 
 
 @api_view(["PUT"])

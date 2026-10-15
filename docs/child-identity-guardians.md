@@ -12,7 +12,7 @@ Turning the Pregnancy & Baby module off does not remove any of these identity re
 
 Family owners and adults can create a managed child directly from **Family → Members → Add → Child without own access**. The only required profile data is the child's display name and birth date. This flow does not create an invitation, does not require an email address and does not enable authentication.
 
-`POST /api/baby/managed-children/` deliberately reuses the canonical managed-child creation service. It is available independently of the optional Pregnancy & Baby module. The creating owner/adult becomes an explicit `ManagedChildGuardian(can_manage_account=true)` for the new child because the create action itself explicitly establishes account-management authority. This does not add the person to the Care Circle and does not grant health or development access.
+`POST /api/baby/managed-children/` deliberately reuses the canonical managed-child creation service. It is available independently of the optional Pregnancy & Baby module. The creating owner/adult becomes an explicit `ManagedChildGuardian(can_manage_account=true)` for the new child because the create action itself explicitly establishes account-management authority. This does not add the person to the Care Circle and does not by itself grant Care Circle health/development access.
 
 Creating a managed child does **not** create a `FamilyRelationship` and does not infer biological, social or legal parenthood from the creator's family role or account-management authority. Family relationships are entered explicitly afterwards in **Familienbeziehungen**.
 
@@ -59,7 +59,24 @@ These concepts must never be inferred from one another:
 
 Owner or Adult role alone is not parenthood. Owner role does grant product-level authority to maintain `FamilyRelationship` records, but that administrative ability is not itself a relationship fact. A biological, legal or custodial relationship does not grant account or health permissions. Care Circle access is not account-management authority. Creating a managed child establishes account-management authority for the creator but no parenthood or family relationship.
 
-A child must retain at least one `ManagedChildGuardian` with `can_manage_account=true`. Guardian membership must belong to the same active family and remain Owner/Adult under the existing #147 policy.
+A child must retain at least one `ManagedChildGuardian` with `can_manage_account=true` after Guardian management. Guardian membership must belong to the same active family and remain Owner/Adult under the existing #147 policy.
+
+## Managing Guardian permissions
+
+Guardian permission is explicit and **per child**. Custody, legal parenthood and the Family Owner role remain separate facts and never grant Guardian access automatically.
+
+The UI has two consistent entry points:
+
+- **Family → child profile → Sorge & Berechtigungen → Guardian-Rechte verwalten** opens the concrete child's Guardian settings;
+- **Settings → Kinder & Berechtigungen** shows the active family's children and their Guardian status in one overview.
+
+Only Owner/Adult memberships can be selected as Guardians. Guardian changes require fresh re-authentication with the current user's password. The update endpoint remains `PUT /api/baby/profiles/<baby-id>/guardians/`.
+
+An existing `ManagedChildGuardian(can_manage_account=true)` is authoritative for subsequent changes. A Family Owner who is **not** a Guardian cannot override an existing account-managing Guardian merely because of the Owner role. If a child has no account-managing Guardian at all, however, an Owner may use the fresh-authenticated write flow to establish the first one. This is a recovery/bootstrap exception for an empty authority state only; it does not make that Owner a Guardian and does not unlock protected child reads unless the Owner is explicitly included in the saved Guardian list.
+
+`GET /api/baby/guardian-settings/?family=<family-id>` is the narrow settings projection. It exposes child identity labels, the explicit Guardian list and whether the current actor may manage/bootstrap that list. It intentionally does **not** expose birth/medical/growth/development/Care Circle payloads. Owners can therefore identify and repair an empty Guardian state without receiving the protected child data that normal Guardian checks guard.
+
+The central action **Für alle Kinder übernehmen** is additive: it adds the selected Owner/Adult as Guardian only to children whose Guardian list the current actor may change. Existing Guardians are preserved, non-manageable children are skipped, and no `FamilyRelationship`, custody field or Care Circle grant is changed.
 
 ## Enabling the child's own login
 
@@ -86,7 +103,8 @@ Potential duplicates with the same family, normalized display name and birth dat
 - Owners can mutate `FamilyRelationship` records without a separate per-child grant;
 - Adult family role alone does not grant relationship mutation or sensitive lineage visibility;
 - child-role readers receive the configured relationship redaction;
-- relationships never grant permissions automatically;
+- relationships and custody never grant permissions automatically;
+- Owner role alone never grants protected child reads; its only Guardian exception is the fresh-authenticated first-manager bootstrap for an otherwise unmanaged child;
 - health access remains governed by Care Circle permissions even for account guardians;
 - there is no automatic role or permission change based on birthday/age;
 - the Child Identity contract is independent of Pediatric Reference Data and Wishlist capability policy.

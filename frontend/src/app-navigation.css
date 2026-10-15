@@ -1,10 +1,15 @@
 .app-shell{
   --app-nav-space:calc(var(--bottom-nav-height,76px) + env(safe-area-inset-bottom));
+  --app-floating-create-height:48px;
+  --app-floating-create-gap:12px;
+  --app-floating-create-space:calc(var(--app-floating-create-height) + var(--app-floating-create-gap) + 24px);
 }
 
 .bottom-nav{
   position:fixed;
-  bottom:var(--app-viewport-bottom,0px);
+  /* Persistent navigation belongs to the layout viewport. The visual
+     viewport is reserved for keyboard-aware modal/content surfaces. */
+  bottom:0;
   grid-template-columns:repeat(var(--bottom-nav-items,5),minmax(0,1fr));
   gap:4px;
   background:var(--surface);
@@ -51,6 +56,34 @@
   color:currentColor;
 }
 
+/* True modal surfaces own the screen. Likewise, while the OS keyboard is
+   visible, persistent app chrome stays out of the interaction surface. */
+html[data-app-modal] .bottom-nav,
+html[data-app-keyboard] .bottom-nav,
+html[data-app-modal] .global-create-controls,
+html[data-app-keyboard] .global-create-controls{
+  visibility:hidden!important;
+  pointer-events:none!important;
+}
+
+/* Modal mounting and MutationObserver reconciliation are not the same browser
+   frame. :has() is the synchronous CSS safety net: app chrome disappears in
+   the very frame an ARIA modal sheet enters the DOM, including on iOS. */
+@supports selector(body:has(*)){
+  body:has(.sheet-backdrop [aria-modal="true"]) .bottom-nav,
+  body:has(.sheet-backdrop [aria-modal="true"]) .global-create-controls{
+    visibility:hidden!important;
+    pointer-events:none!important;
+  }
+}
+
+/* Keyboard-aware page surfaces may use the space normally reserved for hidden
+   navigation. This changes content padding only; navigation itself always
+   remains anchored to the layout viewport. */
+html[data-app-keyboard] .app-shell{
+  --app-nav-space:0px;
+}
+
 @media(max-width:380px){
   .bottom-nav{
     gap:2px;
@@ -74,7 +107,7 @@
 }
 
 @media (orientation:landscape) and (max-width:950px) and (max-height:620px){
-  .app-shell{--bottom-nav-height:66px}
+  .app-shell{--bottom-nav-height:66px;--app-floating-create-gap:10px}
   .bottom-nav button{min-height:52px;padding-block:2px}
 }
 
@@ -93,7 +126,10 @@ html[data-app-standalone] body{
 }
 
 html[data-app-standalone] .app-shell:not(.messenger-shell){
-  height:var(--app-viewport-height,100dvh);
+  /* Keep permanent app chrome on the layout viewport. Shrinking this shell
+     to VisualViewport height is what used to pull the navigation upward and
+     expose opaque bands while iOS opened/closed the keyboard. */
+  height:100%;
   min-height:0;
   display:flex;
   flex-direction:column;
@@ -115,7 +151,8 @@ html[data-app-standalone] .app-shell:not(.messenger-shell)>.content{
 }
 
 html[data-app-standalone] .app-shell.global-create-enabled:not(.messenger-shell)>.content{
-  padding-bottom:calc(var(--app-nav-space) + 92px);
+  padding-bottom:calc(var(--app-nav-space) + var(--app-floating-create-space));
+  scroll-padding-bottom:calc(var(--app-nav-space) + var(--app-floating-create-space));
 }
 
 html[data-app-standalone] .bottom-nav{

@@ -1,6 +1,7 @@
 import {useEffect} from 'react';
 
 const DIALOG_SELECTOR='[role="dialog"][aria-modal="true"],[role="alertdialog"][aria-modal="true"]';
+const MODAL_ROOT_SELECTOR='[data-app-modal-root],.sheet-backdrop,.feedback-dialog-backdrop';
 const FOCUSABLE_SELECTOR='button:not([disabled]),a[href],input:not([disabled]),select:not([disabled]),textarea:not([disabled]),summary,[tabindex]:not([tabindex="-1"])';
 let titleId=0;
 
@@ -10,8 +11,17 @@ function visible(element){
   return style.display!=='none'&&style.visibility!=='hidden'&&element.getClientRects().length>0;
 }
 
-function topDialog(){
-  return [...document.querySelectorAll(DIALOG_SELECTOR)].filter(visible).at(-1)||null;
+function modalRoot(dialog){
+  return dialog?.closest(MODAL_ROOT_SELECTOR)||dialog||null;
+}
+
+function topModal(){
+  const dialog=[...document.querySelectorAll(DIALOG_SELECTOR)].filter(visible).at(-1)||null;
+  return dialog?{dialog,root:modalRoot(dialog)}:null;
+}
+
+function sameModal(left,right){
+  return left?.dialog===right?.dialog&&left?.root===right?.root;
 }
 
 function labelDialog(dialog){
@@ -34,14 +44,14 @@ function initialFocus(dialog){
   return focusables(dialog)[0]||dialog;
 }
 
-function inertOutside(dialog){
+function inertOutside(modalRootElement){
   const changed=[];
-  let node=dialog;
+  let node=modalRootElement;
   while(node&&node!==document.body){
     const parent=node.parentElement;
     if(!parent)break;
     for(const sibling of parent.children){
-      if(sibling===node||sibling.contains(dialog))continue;
+      if(sibling===node||sibling.contains(modalRootElement))continue;
       if(!(sibling instanceof HTMLElement))continue;
       changed.push({element:sibling,inert:sibling.inert,ariaHidden:sibling.getAttribute('aria-hidden')});
       sibling.inert=true;
@@ -61,16 +71,19 @@ function inertOutside(dialog){
 
 export default function AccessibilityManager(){
   useEffect(()=>{
+    const root=document.documentElement;
     let active=null;
     let restoreBackground=()=>{};
     let restoreFocus=null;
     let lastOutsideFocus=document.activeElement instanceof HTMLElement?document.activeElement:null;
     let focusTimer=0;
+    let refreshFrame=0;
 
     function activate(next){
-      if(next===active)return;
+      if(sameModal(next,active))return;
       restoreBackground();
       window.clearTimeout(focusTimer);
+      root.toggleAttribute('data-app-modal',Boolean(next));
       if(!next){
         active=null;
         const target=restoreFocus;
@@ -78,49 +91,58 @@ export default function AccessibilityManager(){
         if(target instanceof HTMLElement&&target.isConnected)target.focus({preventScroll:true});
         return;
       }
+      const dialog=next.dialog;
       if(!active){
         const current=document.activeElement;
-        restoreFocus=lastOutsideFocus instanceof HTMLElement&&lastOutsideFocus.isConnected?lastOutsideFocus:(current instanceof HTMLElement&&!next.contains(current)?current:null);
+        restoreFocus=lastOutsideFocus instanceof HTMLElement&&lastOutsideFocus.isConnected?lastOutsideFocus:(current instanceof HTMLElement&&!dialog.contains(current)?current:null);
       }
       active=next;
-      labelDialog(active);
-      if(!active.hasAttribute('tabindex'))active.setAttribute('tabindex','-1');
-      restoreBackground=inertOutside(active);
-      focusTimer=window.setTimeout(()=>initialFocus(active)?.focus({preventScroll:true}),0);
+      labelDialog(dialog);
+      if(!dialog.hasAttribute('tabindex'))dialog.setAttribute('tabindex','-1');
+      // The portal/backdrop is the modal boundary. Inerting outside only the
+      // inner dialog can leave sibling chrome or a parent sheet pointer-active.
+      restoreBackground=inertOutside(next.root);
+      focusTimer=window.setTimeout(()=>initialFocus(dialog)?.focus({preventScroll:true}),0);
     }
 
-    function refresh(){activate(topDialog())}
+    function refresh(){
+      cancelAnimationFrame(refreshFrame);
+      refreshFrame=requestAnimationFrame(()=>{refreshFrame=0;activate(topModal())});
+    }
     function onFocusIn(event){
       const target=event.target;
-      if(target instanceof HTMLElement&&!topDialog())lastOutsideFocus=target;
+      if(target instanceof HTMLElement&&!topModal())lastOutsideFocus=target;
     }
 
     function onKeyDown(event){
-      if(!active||!active.isConnected)return;
+      const dialog=active?.dialog;
+      if(!dialog||!dialog.isConnected)return;
       if(event.key==='Escape'){
-        const close=active.querySelector('[data-dialog-close],.sheet-close,[data-dialog-cancel]');
+        const close=dialog.querySelector('[data-dialog-close],.sheet-close,[data-dialog-cancel]');
         if(close instanceof HTMLButtonElement&&!close.disabled){event.preventDefault();close.click()}
         return;
       }
       if(event.key!=='Tab')return;
-      const items=focusables(active);
-      if(!items.length){event.preventDefault();active.focus();return}
+      const items=focusables(dialog);
+      if(!items.length){event.preventDefault();dialog.focus();return}
       const first=items[0],last=items.at(-1);
-      if(event.shiftKey&&(document.activeElement===first||!active.contains(document.activeElement))){event.preventDefault();last.focus()}
-      else if(!event.shiftKey&&(document.activeElement===last||!active.contains(document.activeElement))){event.preventDefault();first.focus()}
+      if(event.shiftKey&&(document.activeElement===first||!dialog.contains(document.activeElement))){event.preventDefault();last.focus()}
+      else if(!event.shiftKey&&(document.activeElement===last||!dialog.contains(document.activeElement))){event.preventDefault();first.focus()}
     }
 
     const observer=new MutationObserver(refresh);
-    observer.observe(document.body,{subtree:true,childList:true});
+    observer.observe(document.body,{subtree:true,childList:true,attributes:true,attributeFilter:['aria-modal','hidden']});
     document.addEventListener('focusin',onFocusIn,true);
     document.addEventListener('keydown',onKeyDown,true);
-    refresh();
+    activate(topModal());
     return()=>{
       observer.disconnect();
+      cancelAnimationFrame(refreshFrame);
       document.removeEventListener('focusin',onFocusIn,true);
       document.removeEventListener('keydown',onKeyDown,true);
       window.clearTimeout(focusTimer);
       restoreBackground();
+      root.removeAttribute('data-app-modal');
     };
   },[]);
   return null;
