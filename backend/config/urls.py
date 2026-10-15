@@ -38,7 +38,17 @@ from telemetry.superadmin_views import superadmin_analytics_overview, superadmin
 
 from family.sync_views import sync
 
+from family.calendar_subscription_views import subscriptions, subscription_detail
+from family.calendar_subscription_dav import feed, dav, well_known
+
 urlpatterns = [
+    path(".well-known/caldav", well_known),
+    path("caldav/", dav),
+    path("caldav/<path:path>", dav),
+    path("calendar-feed/<str:token>/family.ics", feed),
+    path("api/calendar-subscriptions/<uuid:family_id>/", subscriptions),
+    path("api/calendar-subscriptions/<uuid:family_id>/<uuid:subscription_id>/", subscription_detail),
+    path("api/calendar-subscriptions/<uuid:family_id>/<uuid:subscription_id>/<str:operation>/", subscription_detail),
     path("api/sync/", sync, name="offline_sync"),
     path("admin/", admin.site.urls),
     path("api/auth/login/", login_view, name="auth_login"),

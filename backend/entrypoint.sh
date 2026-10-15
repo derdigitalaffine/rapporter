@@ -11,7 +11,7 @@ echo "[FamilyOS] bootstrapping global admin and initial household"
 python manage.py bootstrap_famuhle
 
 echo "[FamilyOS] starting ASGI server on 0.0.0.0:8000"
-exec daphne \
+exec python -m config.serve \
   --bind 0.0.0.0 \
   --port 8000 \
   --access-log - \

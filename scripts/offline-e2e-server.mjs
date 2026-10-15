@@ -6,7 +6,7 @@ import {fileURLToPath} from 'node:url';
 const root=resolve(fileURLToPath(new URL('../frontend/dist',import.meta.url)));
 const types={'.html':'text/html','.js':'text/javascript','.css':'text/css','.svg':'image/svg+xml','.png':'image/png','.webp':'image/webp','.woff2':'font/woff2','.json':'application/json','.webmanifest':'application/manifest+json'};
 http.createServer(async(req,res)=>{
- if(req.url.startsWith('/api/')){
+ if(['/api/','/caldav/','/calendar-feed/','/.well-known/caldav'].some(prefix=>req.url.startsWith(prefix))){
   const upstream=http.request({hostname:'127.0.0.1',port:8000,path:req.url,method:req.method,headers:req.headers},r=>{res.writeHead(r.statusCode,r.headers);r.pipe(res)});
   upstream.on('error',()=>{res.writeHead(502);res.end()});req.pipe(upstream);return;
  }

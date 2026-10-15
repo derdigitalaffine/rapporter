@@ -1,7 +1,20 @@
+{
+    # The permanent subscription URL is a bearer credential, including on proxy errors.
+    log default {
+        format filter {
+            wrap json
+            fields {
+                request>uri regexp /calendar-feed/[^/?]+ /calendar-feed/[redacted]
+                request>headers>Referer delete
+            }
+        }
+    }
+}
+
 :80 {
     encode zstd gzip
 
-    @api path /api/* /admin/* /static/*
+    @api path /api/* /admin/* /static/* /caldav /caldav/* /calendar-feed/* /.well-known/caldav
     handle @api {
         reverse_proxy backend:8000 {
             # Caddy receives plain HTTP from the user's reverse proxy. Tell

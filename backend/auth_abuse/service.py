@@ -101,6 +101,8 @@ INVITE_PUBLIC_KEYS = (
 # Stable scope names are part of the API contract. Future auth work (#201/#202)
 # should reuse these entries instead of adding local throttles.
 POLICIES: dict[str, AbusePolicy] = {
+    "calendar.subscription.manage": AbusePolicy("calendar.subscription.manage", WindowPolicy(20, 60), WindowPolicy(100, 3600), AUTHENTICATED_KEYS, 15, 300, "calendar.subscription"),
+    "calendar.subscription.read": AbusePolicy("calendar.subscription.read", WindowPolicy(300, 60), WindowPolicy(5000, 3600), PUBLIC_IDENTIFIER_KEYS, 15, 120, "calendar.subscription"),
     "chat.invite": AbusePolicy("chat.invite", WindowPolicy(3, 300), WindowPolicy(12, 86400), AUTHENTICATED_KEYS, 60, 1800, "chat.invite"),
     "chat.consume": AbusePolicy("chat.consume", WindowPolicy(8, 60), WindowPolicy(30, 3600), PUBLIC_IDENTIFIER_KEYS, 30, 900, "chat.consume"),
     "chat.write": AbusePolicy("chat.write", WindowPolicy(60, 60), WindowPolicy(1000, 3600), AUTHENTICATED_KEYS, 15, 300, "chat.write"),
