@@ -25,3 +25,12 @@ test('Explicit logout clears account-private normalized entities and outbox',asy
  await expect.poll(()=>page.evaluate(()=>localStorage.getItem('familyos-offline-account'))).toBeNull();
  expect(await page.evaluate(()=>new Promise((resolve,reject)=>{const r=indexedDB.open('familyos-local-sync');r.onsuccess=()=>{const db=r.result,tx=db.transaction('outbox','readonly'),read=tx.objectStore('outbox').getAll();read.onsuccess=()=>resolve(read.result.length);tx.oncomplete=()=>db.close()};r.onerror=()=>reject(r.error)}))).toBe(0);
 });
+test('Tasks create, complete and reopen offline, retaining commands through reload',async({page,context})=>{
+ const family=await boot(page);await page.goto('/?page=tasks');await expect(page.getByText('Offline task',{exact:true})).toBeVisible();await context.setOffline(true);
+ const title=`Offline task ${Date.now()}`;const input=page.locator('.smart-input input');await input.fill(title);await input.press('Enter');
+ const row=page.locator('.smart-row').filter({hasText:title});await expect(row).toBeVisible();await row.locator('.smart-check').click();
+ await page.getByRole('button',{name:'Show completed',exact:true}).click();await expect(row.locator('.smart-check')).toHaveClass(/checked/);
+ await page.reload();await page.getByRole('button',{name:'Show completed',exact:true}).click();await expect(row.locator('.smart-check')).toHaveClass(/checked/);await row.locator('.smart-check').click();
+ await context.setOffline(false);await expect.poll(async()=>{const response=await page.request.get(`/api/tasks/?family=${family.id}`);const value=await response.json();return (value.results||value).filter(t=>t.title===title&&t.completed_at===null).length},{timeout:20000}).toBe(1);
+ await expect(page.locator('.offline-sync-pill')).toHaveText('Synced',{timeout:20000});
+});

@@ -1,3 +1,4 @@
+import {SYNC_CHANGED} from './offline-sync-engine';
 import {useCallback,useEffect,useMemo,useRef,useState} from 'react';
 import {useTranslation} from 'react-i18next';
 import {api} from './api';
@@ -106,6 +107,7 @@ export default function TodoHub({family,data,onCreate}){
   }catch(err){setError(err.message||text.loadFailed)}finally{setLoading(false)}
  },[family?.id,text.loadFailed,view]);
  useEffect(()=>{if(view==='today'||view==='upcoming')refresh(view);else setLoading(false)},[view,refresh]);
+ useEffect(()=>{const changed=event=>{if(event.detail?.familyId===String(family?.id))refresh(view)};window.addEventListener(SYNC_CHANGED,changed);return()=>window.removeEventListener(SYNC_CHANGED,changed)},[family?.id,refresh,view]);
  useEffect(()=>{const handler=event=>{if(String(event.detail?.family)===String(family?.id))refresh(view)};window.addEventListener('familyos:actions-changed',handler);return()=>window.removeEventListener('familyos:actions-changed',handler)},[family?.id,refresh,view]);
  useEffect(()=>{setTaskList(data?.task_lists?.[0]?.id||'');setFocus([]);focusFamilyRef.current=''},[family?.id,data?.task_lists]);
  useEffect(()=>{if(lastAction&&!loading)requestAnimationFrame(()=>undoRef.current?.focus())},[lastAction,loading]);

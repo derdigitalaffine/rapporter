@@ -20,7 +20,7 @@ function overlay(server,mutations){
   else if(m.operation==='delete')data=null;
   else if(m.command==='complete_task'&&data)data={...data,completed_at:m.local_time};
   else if(m.command==='reopen_task'&&data)data={...data,completed_at:null};
-  else if(m.command==='move_task'&&data)data={...data,workflow_column:m.args.column_id};
+  else if(m.command==='move_task'&&data)data={...data,workflow_column:m.args.column_id,completed_at:m.args.local_terminal?m.local_time:null};
  }
  return data;
 }
@@ -110,7 +110,7 @@ export class SyncEngine{
    remaining.delete(m.id);ops.push(remove('outbox',m.id));
    if(['conflict','rejected'].includes(result.status))ops.push(put('conflicts',{id:m.id,mutation:m,result,local_data:structuredClone(existing[m.entity_type].get(m.entity_id)?.data),created_at:Date.now()}));
    else for(const later of remaining.values())if(later.entity_type===m.entity_type&&later.entity_id===m.entity_id&&!later.attempted){
-    const safe=m.operation==='create'&&!later.base_version || result.data&&later.operation==='update'&&Object.keys(later.changes).every(key=>JSON.stringify(later.base_data?.[key])===JSON.stringify(result.data[key]));
+    const safe=m.operation==='create'&&!later.base_version || result.data&&later.operation==='update'&&Object.keys(later.changes).every(key=>JSON.stringify(later.base_data?.[key])===JSON.stringify(result.data[key])) || result.data&&m.entity_type==='task'&&later.operation==='command'&&['complete_task','reopen_task','move_task'].includes(later.command);
     if(safe){later.base_version=result.version;ops.push(put('outbox',later))}
    }
    if(result.data)existing[m.entity_type].set(m.entity_id,{id:m.entity_id,version:result.data.version,server_data:result.data});
@@ -142,6 +142,7 @@ export class SyncEngine{
    }
    for(const id of oldIds)ops.push(remove(name,id));
   }
+  if(r.projections)ops.push(put('meta',{id:'projections',data:r.projections}));
   ops.push(put('syncState',{id:'cursor',cursor:r.cursor,protocol_version:1,last_sync_at:new Date().toISOString()}));if(!this.stopped)await this.store.write(ops);
  }
  async resolve(id,choice,manual){
