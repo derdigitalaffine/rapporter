@@ -131,7 +131,10 @@ test('quiet header LED and label stay steady through repeated routine syncs',asy
   const response=page.waitForResponse(r=>r.url().endsWith('/api/sync/')&&r.request().method()==='POST');
   await page.evaluate(()=>window.dispatchEvent(new CustomEvent('familyos:sync-now')));
   await expect(pill.locator('.offline-sync-label')).toHaveText('Sync');await expect(led).toHaveAttribute('data-tone',initialTone);
-  await response;await expect(led).toHaveAttribute('data-tone',initialTone);
+  expect((await response).ok()).toBeTruthy();
+  // The response arrives before IndexedDB reconciliation clears engine.inflight.
+  // Wait for the completed UI state before requesting the next distinct sync.
+  await expectConfirmed(page);await expect(led).toHaveAttribute('data-tone',initialTone);
  }
  const samples=await page.evaluate(()=>{window.__syncIndicatorObserver.disconnect();return window.__syncIndicatorSamples});
  expect(samples.every(row=>row.label==='Sync'&&row.tone===initialTone)).toBeTruthy();
