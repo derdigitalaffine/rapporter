@@ -51,6 +51,13 @@ def serialize(view, obj, kind):
     # Normalize the domain store; never embed private child entities in a parent.
     if kind == 'shopping_list':
         row.pop('items', None)
+        access = row.get('access') or {}
+        if access:
+            row['visibility'] = access.get('visibility')
+            for key in ['visible_members', 'responsible_members']:
+                row[key] = [str(member['id']) for member in access.get(key, [])]
+            if 'audience_group' in access:
+                row['audience_group'] = access['audience_group']
     row['version'] = obj.version
     if kind == 'event':
         row['read_only'] = bool(obj.source_id or obj.type != 'calendar.event')

@@ -12,5 +12,5 @@ http.createServer(async(req,res)=>{
  }
  const path=decodeURIComponent(new URL(req.url,'http://localhost').pathname),file=resolve(root,'.'+path);
  if(!file.startsWith(root+'/')&&file!==root){res.writeHead(403);res.end();return}
- try{const body=await readFile(path==='/'?resolve(root,'index.html'):file);res.writeHead(200,{'Content-Type':types[extname(file)]||'application/octet-stream'});res.end(body)}catch{res.writeHead(200,{'Content-Type':'text/html'});res.end(await readFile(resolve(root,'index.html')))}
+ try{const body=await readFile(path==='/'?resolve(root,'index.html'):file);res.writeHead(200,{'Content-Type':path==='/'?'text/html':types[extname(file)]||'application/octet-stream'});res.end(body)}catch{res.writeHead(200,{'Content-Type':'text/html'});res.end(await readFile(resolve(root,'index.html')))}
 }).listen(4173,'127.0.0.1');

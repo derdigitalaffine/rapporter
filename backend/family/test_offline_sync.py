@@ -130,6 +130,36 @@ class OfflineSyncTests(TestCase):
         self.assertEqual(self.sync([m]).data['mutation_results'][0]['status'],'already_applied')
         self.assertEqual(self.list.items.filter(name='Bread').count(),1)
 
+    def test_access_grant_publishes_parent_and_item_deltas(self):
+        from .shopping_access import set_shopping_access
+        set_shopping_access(self.list,actor=self.user,visibility='private',allow_initialize=True)
+        other=get_user_model().objects.create_user('granted')
+        Membership.objects.create(user=other,family=self.family,role='adult')
+        self.client.force_authenticate(other)
+        snapshot=self.sync();self.assertEqual(snapshot.data['snapshot']['shopping_items'],[])
+        set_shopping_access(self.list,actor=self.user,visibility='family')
+        result=self.sync(cursor=snapshot.data['cursor'])
+        self.assertIn(str(self.item.pk),{row['entity_id'] for row in result.data['changes']})
+        self.assertIn(str(self.list.pk),{row['entity_id'] for row in result.data['changes']})
+
+    def test_overlapping_access_change_conflicts_instead_of_overwriting_new_sharing(self):
+        from .shopping_access import set_shopping_access
+        self.list.refresh_from_db();base=self.list.version
+        set_shopping_access(self.list,actor=self.user,visibility='private',allow_initialize=True)
+        m=self.mutation(entity_type='shopping_list',entity_id=str(self.list.pk),base_version=base,changes={'visibility':'family'})
+        result=self.sync([m]).data['mutation_results'][0]
+        self.assertEqual(result['status'],'conflict',result)
+        self.assertEqual(self.list.access_settings.visibility,'private')
+
+    def test_workflow_metadata_change_journals_parent_projection(self):
+        from .models import TaskWorkflowColumn
+        tasks=TaskList.objects.create(family=self.family,name='Workflow')
+        column=TaskWorkflowColumn.objects.create(task_list=tasks,name='Open',key='open')
+        before=self.sync().data['cursor'];column.name='Ready';column.save()
+        result=self.sync(cursor=before)
+        parent=next(row['data'] for row in result.data['changes'] if row['entity_id']==str(tasks.pk))
+        self.assertEqual(parent['workflow_columns'][0]['name'],'Ready')
+
 
 from concurrent.futures import ThreadPoolExecutor
 from threading import Event
