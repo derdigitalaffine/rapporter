@@ -1,0 +1,62 @@
+name: live-proxy
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  live-proxy:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: famuhle
+          POSTGRES_USER: famuhle
+          POSTGRES_PASSWORD: live-proxy-test
+        ports: ['5432:5432']
+        options: --health-cmd="pg_isready -U famuhle" --health-interval=5s --health-timeout=5s --health-retries=10
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+    env:
+      POSTGRES_HOST: 127.0.0.1
+      POSTGRES_DB: famuhle
+      POSTGRES_USER: famuhle
+      POSTGRES_PASSWORD: live-proxy-test
+      DJANGO_SECRET_KEY: live-proxy-ci-only
+      DJANGO_DEBUG: 'true'
+      OFFLINE_E2E: '1'
+      DJANGO_ALLOWED_HOSTS: familyos.test,127.0.0.1,localhost
+      OFFLINE_LIVE_ENABLED: 'true'
+      OFFLINE_REDIS_URL: redis://127.0.0.1:6379/0
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - run: pip install -r backend/requirements.txt 'websockets>=15,<16'
+      - run: python backend/manage.py migrate && python scripts/seed-offline-e2e.py
+      - working-directory: backend
+        run: daphne --bind 0.0.0.0 --port 8000 --access-log - config.asgi:application > ../live-proxy-backend.log 2>&1 &
+      - run: |
+          for config in Caddyfile Caddyfile.proxy Caddyfile.selfsigned; do
+            docker run --rm -v "$PWD/$config:/etc/caddy/Caddyfile:ro" caddy:2-alpine caddy adapt --config /etc/caddy/Caddyfile --adapter caddyfile > /dev/null
+          done
+          mkdir -p /tmp/live-proxy-site
+          printf '<!doctype html><title>FamilyOS proxy acceptance</title>' > /tmp/live-proxy-site/index.html
+          docker run -d --name live-caddy --network host --add-host backend:127.0.0.1 -e PUBLIC_HOST=familyos.test -e PUBLIC_SCHEME=https -v "$PWD/Caddyfile.proxy:/etc/caddy/Caddyfile:ro" -v /tmp/live-proxy-site:/srv:ro caddy:2-alpine
+          docker run -d --name live-nginx --network host -v "$PWD/scripts/ci/live-proxy-nginx.conf:/etc/nginx/nginx.conf:ro" nginx:alpine
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8080/api/health/ > /dev/null; then break; fi
+            sleep 1
+          done
+      - run: python scripts/ci/live-proxy-check.py
+      - if: failure()
+        run: |
+          cat live-proxy-backend.log
+          docker logs live-caddy
+          docker logs live-nginx
