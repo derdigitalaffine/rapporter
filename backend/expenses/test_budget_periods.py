@@ -262,6 +262,6 @@ class BudgetPeriodTests(TestCase):
         )
         self.assertEqual(response.status_code, 201, response.data)
         self.assertEqual(response.data["rollover_policy"], "carry_positive")
-        self.assertEqual(response.data["carryover_amount"], "0.00")
+        self.assertEqual(response.data["carryover_amount"], Decimal("0.00"))
         self.assertEqual(str(response.data["period_starts_on"]), str(today.replace(day=1)))
         self.assertIsNotNone(response.data["period_ends_on"])
