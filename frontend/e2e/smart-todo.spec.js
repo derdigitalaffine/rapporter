@@ -45,7 +45,10 @@ function focusItems(page){return page.locator('.todo-focus-item')}
 
 test('today prioritizes focus, then creation, then recent activity capture',async({page})=>{
  await boot(page);
- const order=await page.locator('.todo-hub > .todo-focus, .todo-hub > .todo-quick, .todo-hub > .action-capture').evaluateAll(nodes=>nodes.map(node=>node.classList.contains('todo-focus')?'focus':node.classList.contains('todo-quick')?'quick':'capture'));
+ await expect(page.locator('.todo-focus')).toBeVisible();
+ await expect(page.locator('.todo-quick')).toBeVisible();
+ await expect(page.locator('.action-capture')).toBeVisible();
+ const order=await page.locator('.todo-hub').evaluate(hub=>[...hub.children].filter(node=>node.classList.contains('todo-focus')||node.classList.contains('todo-quick')||node.classList.contains('action-capture')).map(node=>node.classList.contains('todo-focus')?'focus':node.classList.contains('todo-quick')?'quick':'capture'));
  expect(order).toEqual(['focus','quick','capture']);
  await expect(page.getByRole('heading',{name:'Als Nächstes'})).toBeVisible();
  await expect(page.locator('.todo-quick')).toContainText('Schnell hinzufügen');
