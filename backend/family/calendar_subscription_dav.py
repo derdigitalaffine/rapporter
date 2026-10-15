@@ -171,7 +171,8 @@ def query_range(root):
     filters = root.findall(q(C, 'filter'))
     for filters_root in filters:
         for node in filters_root.iter():
-            if node.tag not in allowed or (node.tag == q(C, 'comp-filter') and node.get('name') not in ('VCALENDAR', 'VEVENT')):
+            attributes = {'name'} if node.tag == q(C, 'comp-filter') else {'start', 'end'} if node.tag == q(C, 'time-range') else set()
+            if node.tag not in allowed or set(node.attrib) - attributes or (node.tag == q(C, 'comp-filter') and node.get('name') not in ('VCALENDAR', 'VEVENT')):
                 raise ValueError()
     ranges = root.findall('.//' + q(C, 'time-range'))
     if len(ranges) > 1:
@@ -179,10 +180,10 @@ def query_range(root):
     if not ranges:
         return None
     node = ranges[0]
-    if set(node.attrib) != {'start', 'end'}:
+    if not node.attrib or set(node.attrib) - {'start', 'end'}:
         raise ValueError()
-    start, end = [datetime.strptime(node.get(key), '%Y%m%dT%H%M%SZ').replace(tzinfo=dt_timezone.utc) for key in ('start', 'end')]
-    if end <= start or end - start > timedelta(days=1830):
+    start, end = [datetime.strptime(node.get(key), '%Y%m%dT%H%M%SZ').replace(tzinfo=dt_timezone.utc) if node.get(key) else None for key in ('start', 'end')]
+    if start is not None and end is not None and (end <= start or end - start > timedelta(days=1830)):
         raise ValueError()
     return start, end
 

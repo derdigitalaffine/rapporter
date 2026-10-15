@@ -4,7 +4,7 @@ from datetime import date, datetime, timedelta, timezone as dt_timezone
 from icalendar import Calendar, Event, Timezone
 from django.utils import timezone
 from .models import FamilyEvent
-from .action_schedule import _days
+from .action_schedule import _days, local_datetime
 from .calendar_recurrence import family_zone, recurrence_dict, project_event
 
 MAX_RESOURCES = 2000
@@ -40,16 +40,29 @@ def projection(event, start, end):
 
 
 def overlaps(event, start, end):
-    if not recurrence_dict((event.payload or {}).get('recurrence')):
-        return event.starts_at < end and (event.ends_at or event.starts_at + timedelta(seconds=1)) > start
-    # Include occurrences which start before the query but end within it.
-    span = max(timedelta(0), (event.ends_at or event.starts_at) - event.starts_at)
-    if span > timedelta(days=1830):
-        raise CalendarCapacityError()
+    payload = event.payload if isinstance(event.payload, dict) else {}
+    recurrence = recurrence_dict(payload.get('recurrence'))
+    if not recurrence:
+        return (end is None or event.starts_at < end) and (start is None or (event.ends_at or event.starts_at + timedelta(seconds=1)) > start)
+    # Native rules have no UNTIL/COUNT. An open-ended future query intersects
+    # every valid recurring series without expanding an unbounded timeline.
+    if end is None:
+        return True
     zone = family_zone(event.family)
-    for row in projection(event, (start - span).astimezone(zone).date() - timedelta(days=1), end.astimezone(zone).date()):
-        a = datetime.fromisoformat(row['starts_at']); b = datetime.fromisoformat(row['ends_at']) if row.get('ends_at') else a + timedelta(seconds=1)
-        if a < end and b > start:
+    anchor = event.starts_at.astimezone(zone)
+    wall_span = ((event.ends_at.astimezone(zone).replace(tzinfo=None) - anchor.replace(tzinfo=None))
+                 if event.ends_at else timedelta(seconds=1))
+    if wall_span > timedelta(days=1830):
+        raise CalendarCapacityError()
+    after = anchor.date() if start is None else max(anchor.date(), (start - max(timedelta(0), wall_span)).astimezone(zone).date() - timedelta(days=1))
+    schedule = {'anchor_date': anchor.date().isoformat(), 'recurrence': recurrence}
+    for day in _days(schedule, after):
+        occurrence = local_datetime(day, anchor.replace(tzinfo=None).time(), zone)
+        if occurrence >= end:
+            return False
+        naive_end = datetime.combine(day, anchor.replace(tzinfo=None).time()) + wall_span
+        occurrence_end = local_datetime(naive_end.date(), naive_end.time(), zone)
+        if start is None or occurrence_end > start:
             return True
     return False
 

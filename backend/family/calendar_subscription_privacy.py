@@ -1,6 +1,8 @@
 """Never cache private exports or include bearer subscription URLs in app logs."""
 import logging
 import re
+from django.conf import settings
+from django.http import HttpResponse
 from urllib.parse import unquote
 
 FEED_PATTERN = re.compile(r'(/calendar-feed/)[^\s/?#\"<>]+', re.I)
@@ -23,8 +25,12 @@ class CalendarSubscriptionPrivacyMiddleware:
         self.get_response = get_response
 
     def __call__(self, request):
-        result = self.get_response(request)
-        if request.path.startswith(('/calendar-feed/', '/caldav/', '/api/calendar-subscriptions/')):
+        protected = request.path.startswith(('/calendar-feed/', '/caldav/', '/api/calendar-subscriptions/'))
+        if protected and not settings.DEBUG and not request.is_secure():
+            result = HttpResponse(status=403)
+        else:
+            result = self.get_response(request)
+        if protected:
             result['Cache-Control'] = 'private, no-store, max-age=0'
             result['Referrer-Policy'] = 'no-referrer'
             result['X-Robots-Tag'] = 'noindex, nofollow, noarchive'

@@ -19,7 +19,7 @@ from .calendar_subscription_privacy import CalendarSecretFilter, redact
 from .calendar_subscription_ics import CalendarCapacityError, calendar_bytes, overlaps, projection
 
 
-@override_settings(APP_URL='https://calendar.example.test', AUTH_ABUSE_HMAC_KEY='calendar-tests')
+@override_settings(APP_URL='https://calendar.example.test', AUTH_ABUSE_HMAC_KEY='calendar-tests', DEBUG=True)
 class CalendarSubscriptionTests(TestCase):
     def setUp(self):
         self.user = get_user_model().objects.create_user('subscriber', password='calendar-test-password')
@@ -240,3 +240,23 @@ class CalendarSubscriptionTests(TestCase):
         component = Calendar.from_ical(calendar_bytes(self.family, [self.event])).walk('VEVENT')[0]
         self.assertEqual(component.decoded('dtstart').date().isoformat(), '2026-11-02')
         self.assertEqual(component.decoded('dtend').hour, 11)
+
+    def test_rfc_open_ended_time_ranges_work_for_native_calendar_clients(self):
+        self.create()
+        def query(bounds):
+            return self.dav('REPORT', body=f'<c:calendar-query xmlns:c="urn:ietf:params:xml:ns:caldav"><c:filter><c:comp-filter name="VCALENDAR"><c:comp-filter name="VEVENT"><c:time-range {bounds}/></c:comp-filter></c:comp-filter></c:filter></c:calendar-query>')
+        before = query('end="20260323T000000Z"')
+        self.assertEqual(before.status_code, 207); self.assertIn(str(self.event.pk).encode(), before.content)
+        after = query('start="20260401T000000Z"')
+        self.assertEqual(after.status_code, 207); self.assertNotIn(str(self.event.pk).encode(), after.content)
+        self.event.payload = {'recurrence': 'weekly'}; self.event.save()
+        recurring = query('start="20260401T000000Z"')
+        self.assertEqual(recurring.status_code, 207); self.assertIn(str(self.event.pk).encode(), recurring.content)
+
+    def test_production_requires_https_even_for_existing_bearer_links(self):
+        self.create()
+        with override_settings(DEBUG=False):
+            self.assertEqual(self.public.get(self.feed).status_code, 403)
+            self.assertEqual(self.public.get(self.feed, secure=True).status_code, 200)
+            self.assertEqual(self.client.post(self.detail + 'reveal/').status_code, 403)
+            self.assertEqual(self.client.post(self.detail + 'reveal/', secure=True).status_code, 200)
