@@ -2,7 +2,8 @@
 import http from 'node:http';
 import {readFile} from 'node:fs/promises';
 import {resolve,extname} from 'node:path';
-const root=resolve('frontend/dist');
+import {fileURLToPath} from 'node:url';
+const root=resolve(fileURLToPath(new URL('../frontend/dist',import.meta.url)));
 const types={'.html':'text/html','.js':'text/javascript','.css':'text/css','.svg':'image/svg+xml','.png':'image/png','.webp':'image/webp','.woff2':'font/woff2','.json':'application/json','.webmanifest':'application/manifest+json'};
 http.createServer(async(req,res)=>{
  if(req.url.startsWith('/api/')){
