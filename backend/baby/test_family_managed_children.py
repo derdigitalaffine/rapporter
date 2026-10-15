@@ -5,6 +5,7 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 from rest_framework.test import APIClient
 
+from family.family_relationship_models import FamilyRelationship
 from family.models import Family, Membership, UserProfile
 
 from .models import BabyProfile, FamilyModuleSetting, ManagedChildGuardian
@@ -39,11 +40,19 @@ class FamilyManagedChildTests(TestCase):
         payload.update(overrides)
         return self.client_for(user or self.owner).post("/api/baby/managed-children/", payload, format="json")
 
-    def test_owner_creates_child_without_baby_module_or_login(self):
+    def grant_owner_custody(self, baby):
+        return FamilyRelationship.objects.create(
+            family=self.family,
+            child_membership=baby.membership,
+            related_membership=self.owner_membership,
+            kind=FamilyRelationship.Kind.PARENT,
+            has_custody=True,
+            status=FamilyRelationship.Status.ACTIVE,
+        )
+
+    def test_owner_creates_child_without_baby_module_or_inferred_authority(self):
         self.assertFalse(FamilyModuleSetting.objects.filter(family=self.family, enabled=True).exists())
-
         response = self.create_child()
-
         self.assertEqual(response.status_code, 201)
         membership = Membership.objects.get(pk=response.data["membership"])
         baby = BabyProfile.objects.get(pk=response.data["baby"])
@@ -58,7 +67,8 @@ class FamilyManagedChildTests(TestCase):
         self.assertEqual(membership.user.email, "")
         self.assertFalse(membership.user.has_usable_password())
         self.assertEqual(response.data["access_state"], "managed")
-        self.assertTrue(ManagedChildGuardian.objects.filter(baby=baby, membership=self.owner_membership, can_manage_account=True).exists())
+        self.assertFalse(ManagedChildGuardian.objects.filter(baby=baby).exists())
+        self.assertFalse(FamilyRelationship.objects.filter(child_membership=baby.membership).exists())
 
     def test_non_manager_cannot_create_child(self):
         response = self.create_child(user=self.member)
@@ -70,18 +80,17 @@ class FamilyManagedChildTests(TestCase):
         self.assertEqual(response.status_code, 404)
         self.assertFalse(BabyProfile.objects.filter(family=self.other_family).exists())
 
-    def test_family_profile_read_and_patch_syncs_birthday(self):
+    def test_family_profile_read_and_patch_syncs_birthday_for_custodian(self):
         created = self.create_child()
         self.assertEqual(created.status_code, 201)
         baby = BabyProfile.objects.get(pk=created.data["baby"])
         membership = baby.membership
-
+        self.grant_owner_custody(baby)
         client = self.client_for(self.owner)
         read = client.get(f"/api/baby/profiles/{baby.id}/family-profile/")
         self.assertEqual(read.status_code, 200)
         self.assertEqual(set(read.data), {"id", "membership", "display_name", "birth_date"})
         self.assertEqual(read.data["birth_date"], "2021-05-06")
-
         patched = client.patch(
             f"/api/baby/profiles/{baby.id}/family-profile/",
             {"display_name": "Mia Marie", "birth_date": "2021-05-07"},
@@ -96,15 +105,14 @@ class FamilyManagedChildTests(TestCase):
         self.assertEqual(membership.display_name, "Mia Marie")
         self.assertEqual((profile.birth_year, profile.birth_month, profile.birth_day), (2021, 5, 7))
 
-    def test_family_members_compat_profile_path_works_without_baby_module(self):
+    def test_family_members_compat_profile_path_works_for_custodian_without_baby_module(self):
         created = self.create_child()
         baby = BabyProfile.objects.get(pk=created.data["baby"])
+        self.grant_owner_custody(baby)
         client = self.client_for(self.owner)
-
         read = client.get(f"/api/baby/profiles/{baby.id}/")
         self.assertEqual(read.status_code, 200)
         self.assertEqual(set(read.data), {"id", "membership", "display_name", "birth_date"})
-
         patched = client.patch(
             f"/api/baby/profiles/{baby.id}/",
             {"display_name": "Mia Family", "birth_date": "2021-05-08"},
@@ -116,7 +124,6 @@ class FamilyManagedChildTests(TestCase):
         self.assertEqual(baby.display_name, "Mia Family")
         self.assertEqual(baby.birth_date, date(2021, 5, 8))
         self.assertEqual((profile.birth_year, profile.birth_month, profile.birth_day), (2021, 5, 8))
-
         baby_rename = client.patch(
             f"/api/baby/profiles/{baby.id}/",
             {"display_name": "Baby module rename"},
@@ -124,12 +131,11 @@ class FamilyManagedChildTests(TestCase):
         )
         self.assertEqual(baby_rename.status_code, 404)
 
-    def test_non_guardian_cannot_read_or_patch_family_child_profile(self):
+    def test_non_custodian_cannot_read_or_patch_family_child_profile(self):
         created = self.create_child()
         baby_id = created.data["baby"]
         adult = User.objects.create_user(username="other-adult", password="correct-horse-battery-staple")
         Membership.objects.create(family=self.family, user=adult, role=Membership.Role.ADULT, display_name="Other Adult")
         client = self.client_for(adult)
-
         self.assertEqual(client.get(f"/api/baby/profiles/{baby_id}/family-profile/").status_code, 403)
         self.assertEqual(client.patch(f"/api/baby/profiles/{baby_id}/family-profile/", {"birth_date": "2020-01-01"}, format="json").status_code, 403)
