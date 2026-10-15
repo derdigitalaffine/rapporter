@@ -30,11 +30,18 @@ Nicht jeder Bereich verhält sich gleich.
 
 Bereits synchronisierte Karten kannst du offline öffnen. Bearbeiten und Synchronisieren brauchen wieder eine Verbindung.
 
-### Einkauf
+### Einkauf, To-dos und Kalender
 
-Der Einkauf besitzt eine eigene Offline-Queue. Änderungen können dort gepuffert und später synchronisiert werden – **wenn die Offline-Funktion in deiner Ansicht als bereit angezeigt wird**.
+Nach einer erfolgreichen Anmeldung und dem ersten Abgleich stehen deine vorbereiteten
+Einkaufslisten, Aufgaben und Kalenderdaten lokal bereit. Du kannst Einkaufslisten und
+Artikel anlegen, bearbeiten, abhaken und löschen. Aufgaben lassen sich anlegen,
+bearbeiten, erledigen, wieder öffnen und löschen. Eigene FamilyOS-Termine kannst
+du anlegen, bearbeiten und löschen; externe Kalendertermine bleiben schreibgeschützt.
+Der vorbereitete Kalenderzeitraum umfasst 90 vergangene Tage und zwölf Monate voraus.
 
-Steht dort **Offline nicht bereit**, solltest du dich nicht auf Offline-Änderungen verlassen.
+Öffne FamilyOS vor einer längeren Offline-Phase einmal mit Verbindung und warte auf
+„Synchronisiert“. Auf älteren Servern ohne das neue Offline-Protokoll gelten weiterhin
+die dort angezeigten eingeschränkten Möglichkeiten.
 
 ### Andere Bereiche
 
@@ -50,9 +57,9 @@ Wenn du wieder online bist:
 
 Wenn etwas nicht auftaucht, lade die Ansicht neu.
 
-## Lokaler Einkauf und Synchronisierung
+## Lokale Daten und Synchronisierung
 
-Nach einer erfolgreichen Anmeldung lädt FamilyOS die Einkaufslisten vorsorglich
+Nach einer erfolgreichen Anmeldung lädt FamilyOS Einkaufslisten, Aufgaben und Kalender vorsorglich
 auf dieses Gerät. Auf Servern mit dem neuen Offline-Protokoll verwenden Lesen und
 Schreiben online wie offline denselben lokalen Speicher. Neue Listen und Artikel,
 Änderungen, Abhaken und Löschen bleiben nach einem Neuladen erhalten. Für große
@@ -67,6 +74,29 @@ nicht still neu angelegt. Eine abgelaufene Anmeldung pausiert nur den Abgleich;
 
 Eine ausdrückliche Abmeldung entfernt die privaten Offline-Daten dieses Kontos
 vom Gerät. Melde dich deshalb erst ab, wenn du keine ungesicherten lokalen
-Änderungen mehr benötigst. Alte Einkaufs-Warteschlangen aus einer früheren
-App-Version bleiben bis zur bewussten Migration erhalten; sie werden keinem
-anderen Konto automatisch zugeordnet.
+Änderungen mehr benötigst. Alte Einkaufs-Warteschlangen aus einer früheren App-Version werden keinem anderen
+Konto automatisch zugeordnet. Gleiche sie nach Möglichkeit vor dem Upgrade noch
+in der alten Version ab. Eine ausdrückliche Abmeldung entfernt auch diese alten
+lokalen Daten.
+
+### Live-Abgleich und mehrere Tabs
+
+Wenn du online bist, werden Änderungen anderer Familienmitglieder automatisch
+abgerufen. Bei einer unterbrochenen Live-Verbindung funktionieren der normale
+Abgleich beim Wiederverbinden, beim Öffnen der App und „Jetzt abgleichen“ weiter.
+Mehrere Tabs koordinieren den Abgleich; schließt du einen Tab, übernimmt ein anderer.
+Eine Abmeldung entfernt die privaten Offline-Daten dieses Kontos auch in anderen Tabs.
+
+### Speicher und Updates
+
+Die App versucht, dauerhaften Gerätespeicher zu erhalten; dein Browser entscheidet,
+ob er ihn gewährt. Bei knappem Speicher zeigt die Synchronisierungsansicht einen
+Hinweis. Schaffe dann Platz, ohne FamilyOS-Browserdaten zu löschen: Darin können
+noch nicht synchronisierte Entwürfe liegen. App-Updates erhalten ausstehende
+Änderungen und Konflikte. Ein sehr lange nicht geöffnetes Gerät holt automatisch
+einen frischen Stand ab und behält dabei seine ausstehenden Änderungen.
+
+Unterstützt dein Browser Hintergrundabgleich, kann er offene FamilyOS-Fenster zum
+Abgleich anstoßen. Sind alle Fenster geschlossen, wird beim nächsten Öffnen
+abgeglichen. Einkäufe, To-dos und native Termine bleiben im vorbereiteten Umfang
+offline nutzbar; externe Kalendertermine bleiben schreibgeschützt.
