@@ -21,7 +21,7 @@ export class LiveSyncCoordinator{
  }
  writeLease(){try{this.storage?.setItem?.(this.key,JSON.stringify({owner:this.id,expires:this.now()+LEASE_MS}))}catch{}}
  requestSync(){
-  if(this.stopped)return;if(this.isLeader()){clearTimeout(this.syncTimer);this.syncTimer=this.timers.setTimeout?.(()=>this.runLeaderSync(),30);return}
+  if(this.stopped)return;if(this.isLeader()){this.timers.clearTimeout?.(this.syncTimer);this.syncTimer=this.timers.setTimeout?.(()=>this.runLeaderSync(),30);return}
   try{this.channel?.postMessage?.({type:'sync-request'})}catch{}
   try{this.storage?.setItem?.(this.requestKey,JSON.stringify({from:this.id,at:this.now()}))}catch{}
   this.checkLease();
@@ -36,17 +36,36 @@ export class LiveSyncCoordinator{
    socket.onclose=()=>{if(this.socket===socket)this.socket=null};socket.onerror=()=>{};
   }catch{this.socket=null}
  }
- stepDown(){this.leader=false;clearTimeout(this.syncTimer);try{this.socket?.close?.()}catch{}this.socket=null}
+ stepDown(){this.leader=false;this.timers.clearTimeout?.(this.syncTimer);try{this.socket?.close?.()}catch{}this.socket=null}
  stop(){
-  if(this.stopped)return;this.stopped=true;clearInterval(this.timer);clearTimeout(this.syncTimer);this.stepDown();
+  if(this.stopped)return;this.stopped=true;this.timers.clearInterval?.(this.timer);this.timers.clearTimeout?.(this.syncTimer);this.stepDown();
   try{const current=parse(this.storage?.getItem?.(this.key));if(current?.owner===this.id)this.storage.removeItem(this.key)}catch{}
   try{this.channel?.close?.()}catch{}globalThis.removeEventListener?.('storage',this.storageHandler);
  }
 }
 
+function routeEngineThrough(coordinator,engine){
+ if(engine.__liveCoordinator===coordinator)return;
+ if(!engine.__directSync){
+  engine.__directSync=engine.sync.bind(engine);
+  engine.__directSchedule=engine.schedule.bind(engine);
+  engine.sync=(options={})=>{
+   const active=engine.__liveCoordinator;
+   if(!active||options.leader||active.isLeader())return engine.__directSync();
+   active.requestSync();return Promise.resolve();
+  };
+  engine.schedule=()=>{
+   const active=engine.__liveCoordinator;
+   if(active)return active.requestSync();
+   return engine.__directSchedule();
+  };
+ }
+ engine.__liveCoordinator=coordinator;
+}
+
 export function ensureLiveCoordinator(engine,{accountId,familyId}={}){
  const key=`${accountId}:${familyId}`;let coordinator=coordinators.get(key);
  if(!coordinator){coordinator=new LiveSyncCoordinator({accountId,familyId,engine}).start();coordinators.set(key,coordinator)}
- engine.setCoordinator?.(coordinator);return coordinator;
+ routeEngineThrough(coordinator,engine);return coordinator;
 }
-export function stopLiveAccount(accountId){for(const [key,value] of coordinators)if(key.startsWith(`${accountId}:`)){value.stop();coordinators.delete(key)}}
+export function stopLiveAccount(accountId){for(const [key,value] of coordinators)if(key.startsWith(`${accountId}:`)){value.stop();value.engine.__liveCoordinator=null;coordinators.delete(key)}}
