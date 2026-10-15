@@ -237,7 +237,7 @@ class FamilyEventViewSet(BaseFamilyEventViewSet):
             serializer.instance.participants.set(legacy_selection)
 
     def perform_update(self, serializer):
-        if serializer.instance.source_id or serializer.validated_data.get("source"):
+        if serializer.instance.source_id or serializer.instance.external_id or serializer.validated_data.get("source"):
             raise PermissionDenied("Externe Kalendertermine sind schreibgeschützt.")
         if serializer.instance.type in READ_ONLY_EVENT_TYPES or serializer.validated_data.get("type") in READ_ONLY_EVENT_TYPES:
             raise PermissionDenied("Dieser Termin ist hier schreibgeschützt.")
@@ -248,7 +248,7 @@ class FamilyEventViewSet(BaseFamilyEventViewSet):
             serializer.instance.participants.set(legacy_selection)
 
     def perform_destroy(self, instance):
-        if instance.source_id:
+        if instance.source_id or instance.external_id:
             raise PermissionDenied("Externe Kalendertermine sind schreibgeschützt.")
         if instance.type in READ_ONLY_EVENT_TYPES:
             raise PermissionDenied("Dieser Termin muss in seinem Fachbereich gelöscht werden.")

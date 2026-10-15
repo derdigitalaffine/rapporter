@@ -3,7 +3,7 @@ import {isWasteEvent,wasteClass} from './waste-ui';
 export const isHolidayEvent=event=>event?.type==='school.holiday';
 export const isWarningEvent=event=>Boolean(event?.type?.includes('warning'));
 export const isBirthdayEvent=event=>event?.type==='birthday';
-export const isNativeCalendarEvent=event=>!event?.source&&event?.type==='calendar.event';
+export const isNativeCalendarEvent=event=>!event?.read_only&&!event?.source&&!event?.external_id&&event?.type==='calendar.event';
 
 export const calendarSourceRegistry={
  birthday:{icon:'calendar',labelKey:null,tone:'violet'},
