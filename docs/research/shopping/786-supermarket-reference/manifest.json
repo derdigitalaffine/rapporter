@@ -1,0 +1,77 @@
+{
+  "schema_version": 1,
+  "dataset_id": "shopping.de.supermarket-reference.sample",
+  "version": "2026-10-16.1",
+  "data_kind": "chain_and_store_reference",
+  "locale": "de-DE",
+  "country": "DE",
+  "optional": true,
+  "source_policy": "public-reference-only",
+  "sources": [
+    {
+      "namespace": "nsi",
+      "url": "https://github.com/osmlab/name-suggestion-index/blob/main/data/brands/shop/supermarket.json",
+      "revision": "98458cdd8147784c4e3eaf9ace2a95d3ee9cf3f6",
+      "licence": "BSD-3-Clause",
+      "attribution": "name-suggestion-index contributors",
+      "redistribution": "adopt: canonical brand/operator metadata may be redistributed under BSD-3-Clause terms",
+      "role": "brand/operator canonicalization; not a store registry"
+    },
+    {
+      "namespace": "osm",
+      "url": "https://www.openstreetmap.org/copyright",
+      "revision": "live; policy verified 2026-10-16",
+      "licence": "ODbL-1.0",
+      "attribution": "© OpenStreetMap contributors",
+      "redistribution": "adapt with attribution/share-alike review for any distributed derived database",
+      "role": "candidate store POIs; not copied into this sample package"
+    },
+    {
+      "namespace": "wikidata",
+      "url": "https://www.wikidata.org/wiki/Wikidata:Licensing",
+      "revision": "live; identifiers cross-checked through OSM/NSI references",
+      "licence": "CC0-1.0",
+      "attribution": "Wikidata identifiers retained for identity joins",
+      "redistribution": "adopt",
+      "role": "stable brand/operator identity"
+    },
+    {
+      "namespace": "official-store-locators",
+      "url": "per-chain",
+      "revision": "not imported",
+      "licence": "unknown per provider until reviewed",
+      "attribution": "n/a",
+      "redistribution": "defer: no scraping or redistribution without explicit rights",
+      "role": "verification only after provider-specific rights review"
+    }
+  ],
+  "files": [
+    {
+      "path": "chains.csv",
+      "sha256": "252b668b3c411f9909bf86db757cb3e82065d621fde95b9418c8579a005b8e86",
+      "records": 7
+    },
+    {
+      "path": "sampling.csv",
+      "sha256": "6ecc9f2b5a54f19b36cd07f93861473e89a88ce9b74fd28e186dca9b667ee5b0",
+      "records": 2
+    }
+  ],
+  "coverage": {
+    "completeness_claim": false,
+    "chains_in_sample": 7,
+    "real_world_evidence_samples": 2,
+    "importable_store_records": 0,
+    "reason": "No bounded, licence-reviewed Germany store extract is bundled; evidence samples are deliberately non-importable until element-level verification."
+  },
+  "privacy": {
+    "contains_private_household_data": false,
+    "contains_user_or_family_ids": false
+  },
+  "update_policy": {
+    "pin_sources": true,
+    "stable_chain_ids": true,
+    "tombstone_instead_of_silent_delete": true,
+    "manual_overrides_outside_package": true
+  }
+}
