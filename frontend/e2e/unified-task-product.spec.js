@@ -70,6 +70,15 @@ test('workspace search and browser back retain a single task surface',async({pag
  await expect(tabs.getByRole('button',{name:'Heute',exact:true})).toHaveAttribute('aria-current','page');
 });
 
+test('cyclic action pagination stops with an error rather than an endless read',async({page})=>{
+ await installApiMocks(page);
+ let requests=0;
+ await page.route('**/api/actions/?**',route=>{requests++;return route.fulfill({json:{results:[],next:'/api/actions/?family=family-1&scope=all&cursor=loop'}})});
+ await page.goto('/?page=todo');
+ await expect(page.getByRole('alert')).toContainText('To-dos konnten nicht geladen werden.');
+ expect(requests).toBe(2);
+});
+
 test('legacy task deep link opens the same editor inside the unified workspace',async({page})=>{
  await installApiMocks(page);
  await page.goto('/?page=tasks&task=task-1');
