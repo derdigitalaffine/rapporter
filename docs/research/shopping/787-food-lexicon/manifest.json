@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "dataset_id": "shopping.de.food-lexicon.sample",
+  "version": "2026-10-16.1",
+  "data_kind": "food_lexicon_and_eval",
+  "locale": "de-DE",
+  "optional": true,
+  "sources": [
+    {
+      "namespace": "project-authored",
+      "url": "this repository",
+      "revision": "agent/787-food-lexicon",
+      "licence": "repository terms",
+      "decision": "adopt",
+      "role": "All bundled lexicon entries and eval cases are newly authored for this issue; no external corpus text is copied."
+    },
+    {
+      "namespace": "openfoodfacts-taxonomy",
+      "url": "https://github.com/openfoodfacts/openfoodfacts-server/tree/main/taxonomies",
+      "revision": "reviewed 2026-10-16",
+      "licence": "data-licence-not-established-by-software-AGPL-review",
+      "decision": "defer-copy",
+      "role": "Research pointer for DAG/synonym concepts only. Do not infer taxonomy data rights from the server software licence."
+    }
+  ],
+  "files": [
+    {
+      "path": "lexicon.json",
+      "sha256": "a4975cfbdd20b28c29291c9deecac16b8630eed3704ca6308c297fe765862f9f",
+      "records": 15
+    },
+    {
+      "path": "eval-positive.csv",
+      "sha256": "6ccd64199d5efb44c674395574647f5097d0095d279e6a2582dfb6ca77a29be6",
+      "records": 13
+    },
+    {
+      "path": "eval-negative.csv",
+      "sha256": "3bbca7483b779a8e7e03dcce9b9df8198b25cd2825a67725bd7879ebba11623c",
+      "records": 10
+    }
+  ],
+  "quality": {
+    "metric_policy": "computed by evaluate.py; never hard-code claimed model accuracy",
+    "ambiguous_input_policy": "ABSTAIN",
+    "fuzzy_matching": "disabled in sample",
+    "training_eval_separation": "eval inputs include context/quantities/variants and are stored separately from lexicon definitions"
+  },
+  "privacy": {
+    "contains_private_family_corrections": false
+  },
+  "removal": {
+    "safe_to_disable": true,
+    "unknown_items_remain_creatable": true
+  }
+}
