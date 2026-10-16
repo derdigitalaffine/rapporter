@@ -1,6 +1,5 @@
 import plistlib
 import uuid
-from urllib.parse import urlsplit
 from django.db import transaction
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
@@ -62,7 +61,6 @@ def subscriptions(request, family_id):
     sensitive(request)
     data = SubscriptionInput(data=request.data); data.is_valid(raise_exception=True)
     with transaction.atomic():
-        # Lock the family so concurrent creates cannot bypass the per-creator cap.
         Family.objects.select_for_update().get(pk=family.pk)
         if CalendarSubscription.objects.filter(family=family, created_by=request.user, revoked_at__isnull=True).count() >= 10:
             raise serializers.ValidationError({'code': 'subscription_limit'})
@@ -93,14 +91,19 @@ def subscription_detail(request, family_id, subscription_id, operation=''):
             audit(request, grant, 'revealed')
         if operation != 'profile':
             return private(Response(reveal(grant)))
+
+        # A FamilyOS subscription is a read-only ICS feed, not an account whose
+        # password iOS should use for CalDAV writes. Using Apple's subscribed
+        # calendar payload avoids account-validation failures and keeps optional
+        # writable CalDAV connections a separate integration concern.
         credentials = reveal(grant)
-        address = urlsplit(origin())
         account = {
-            'PayloadType': 'com.apple.caldav.account', 'PayloadVersion': 1,
-            'PayloadIdentifier': f'org.familyos.calendar.{grant.pk}.account', 'PayloadUUID': str(uuid.uuid5(grant.pk, 'account')).upper(),
-            'PayloadDisplayName': f'FamilyOS · {family.name}', 'CalDAVAccountDescription': f'FamilyOS · {family.name}',
-            'CalDAVHostName': address.hostname, 'CalDAVPort': address.port or 443, 'CalDAVUseSSL': True,
-            'CalDAVPrincipalURL': credentials['caldav_url'], 'CalDAVUsername': credentials['username'], 'CalDAVPassword': credentials['password'],
+            'PayloadType': 'com.apple.subscribedcalendar.account', 'PayloadVersion': 1,
+            'PayloadIdentifier': f'org.familyos.calendar.{grant.pk}.subscription',
+            'PayloadUUID': str(uuid.uuid5(grant.pk, 'subscription')).upper(),
+            'PayloadDisplayName': f'FamilyOS · {family.name}',
+            'SubCalAccountDescription': f'FamilyOS · {family.name}',
+            'SubCalAccountHostName': credentials['subscription_url'],
         }
         profile = {
             'PayloadType': 'Configuration', 'PayloadVersion': 1,
