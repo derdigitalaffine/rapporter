@@ -30,7 +30,22 @@ This snapshot deliberately reports **coverage evidence, not completeness**.
 - The OSM Germany shops inventory page exposes large spelling/tagging variation (for example separate `Rewe`/`REWE`, many `Netto` variants, and `Penny` variants). Those counts are useful as a warning against name-count “coverage” claims, not as a trustworthy nationwide denominator.
 - No region or chain gets a percentage coverage number until a pinned regional extract and an independently defined denominator are available.
 
-A future production candidate should generate a report with, per source × state/region × chain: source revision, candidate count, matched count, duplicate count, tombstone count, unmatched sample size and reviewed false-positive/false-negative sample. Missing denominator means `coverage_percent = null`, never an invented percentage.
+### Source × region/chain matrix for this snapshot
+
+| Source | Region / chain scope actually evidenced here | Identity evidence | Branch evidence | Importable branches | Coverage % |
+| --- | --- | --- | --- | ---: | --- |
+| NSI pinned snapshot | Germany split for Aldi Nord/Aldi Süd | pinned upstream IDs for the two Aldi variants; additional project chain IDs remain separate from upstream IDs | none; NSI is not a branch register | 0 | `null` |
+| Wikidata IDs retained in `chains.csv` | 7 selected chain identities | identity-join evidence only | none | 0 | n/a |
+| OSM/community evidence | Köln REWE example + Merzig-area Netto naming example | not used as canonical brand identity | 2 `evidence_only` rows without stable OSM element IDs | 0 | `null` |
+| Official store locators | none imported | none | none; rights not reviewed provider-by-provider | 0 | `null` / `defer` |
+
+This matrix intentionally exposes missing evidence. It is not a substitute for a nationwide source × Bundesland × chain report. A future production candidate should generate, per source × state/region × chain: source revision, candidate count, matched count, duplicate count, tombstone count, unmatched sample size and reviewed false-positive/false-negative sample. Missing denominator means `coverage_percent = null`, never an invented percentage.
+
+## Operating cost / update path
+
+The checked-in research package performs no network access and contains only 7 chain rows plus 2 evidence rows, so it has no meaningful runtime operating cost. That does **not** predict production cost. Before promoting a bounded OSM/regional source, record at least compressed download size, parsed row count, wall-clock import time, peak memory, index size, update/delta size and expected refresh cadence. Official locator cost/limits remain unknown while redistribution/API rights are unresolved and therefore stay `defer`.
+
+No background crawler is part of this package. A production source must be a pinned, bounded extract/update path with explicit operator budgets and must never use Nominatim for bulk harvesting.
 
 ## Dedupe and lifecycle contract
 
