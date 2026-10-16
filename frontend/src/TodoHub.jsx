@@ -89,9 +89,9 @@ export default function TodoHub({family,data}){
  const undoRef=useRef(null);
  const focusFamilyRef=useRef('');
 
- const refresh=useCallback(async(targetView=view,{resetFocus=false}={})=>{
+ const refresh=useCallback(async(targetView=view,{resetFocus=false,background=false}={})=>{
   if(!family?.id)return;
-  setLoading(true);setError('');
+  if(!background)setLoading(true);setError('');
   try{
    const scope=targetView==='upcoming'?'upcoming':'today';
    const payload=await api(`/actions/?family=${encodeURIComponent(family.id)}&scope=${scope}`);
@@ -102,11 +102,11 @@ export default function TodoHub({family,data}){
    focusFamilyRef.current=String(family.id);
    if(targetView!=='today')setFocus([]);
    else setFocus(current=>(resetFocus||familyChanged)?incoming:stableFocus(current,incoming));
-  }catch(err){setError(err.message||text.loadFailed)}finally{setLoading(false)}
+  }catch(err){setError(err.message||text.loadFailed)}finally{if(!background)setLoading(false)}
  },[family?.id,text.loadFailed,view]);
  useEffect(()=>{if(view==='today'||view==='upcoming')refresh(view);else setLoading(false)},[view,refresh]);
- useEffect(()=>{const changed=event=>{if(event.detail?.familyId===String(family?.id))refresh(view)};window.addEventListener(SYNC_CHANGED,changed);return()=>window.removeEventListener(SYNC_CHANGED,changed)},[family?.id,refresh,view]);
- useEffect(()=>{const handler=event=>{if(String(event.detail?.family)===String(family?.id))refresh(view)};window.addEventListener('familyos:actions-changed',handler);return()=>window.removeEventListener('familyos:actions-changed',handler)},[family?.id,refresh,view]);
+ useEffect(()=>{const changed=event=>{if(event.detail?.familyId===String(family?.id))refresh(view,{background:true})};window.addEventListener(SYNC_CHANGED,changed);return()=>window.removeEventListener(SYNC_CHANGED,changed)},[family?.id,refresh,view]);
+ useEffect(()=>{const handler=event=>{if(String(event.detail?.family)===String(family?.id))refresh(view,{background:true})};window.addEventListener('familyos:actions-changed',handler);return()=>window.removeEventListener('familyos:actions-changed',handler)},[family?.id,refresh,view]);
  useEffect(()=>{setFocus([]);focusFamilyRef.current=''},[family?.id]);
  useEffect(()=>{if(lastAction&&!loading)requestAnimationFrame(()=>undoRef.current?.focus())},[lastAction,loading]);
 
