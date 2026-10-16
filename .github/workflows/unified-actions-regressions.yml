@@ -50,6 +50,7 @@ jobs:
           python manage.py test family.test_unified_actions family.test_action_capture_route family.test_task_action_product
           family.test_action_projection family.test_routines family.test_task_workflow family.test_smart_todo
           family.test_context_links family.test_action_schedule_recurrence
+          family.test_today_layout family.test_today_overview
 
   browser:
     name: actions / ${{ matrix.project }}
@@ -79,6 +80,7 @@ jobs:
           e2e/pin-interactions.spec.js e2e/pin-type-suggestions.spec.js
           e2e/today-context-widgets.spec.js e2e/today-pin-interactions.spec.js
           e2e/today-quick-actions.spec.js e2e/today-reference-home.spec.js
+          e2e/today-overview.spec.js e2e/today-core-daily.spec.js
       - working-directory: frontend
         run: npm run e2e -- --project=${{ matrix.project }} --reporter=line,github,html e2e/today-create-widget.spec.js --grep "family switch"
       - uses: actions/upload-artifact@v4

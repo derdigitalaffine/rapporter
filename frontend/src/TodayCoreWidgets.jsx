@@ -59,7 +59,7 @@ function focusItems(core,family,language){
  return [...warnings,...actions].sort((a,b)=>a.rank-b.rank||timeValue(a.at)-timeValue(b.at)||a.title.localeCompare(b.title)).slice(0,3);
 }
 
-export function TodaySituation({family,language='de',widgetSize='compact'}){
+export function TodaySituation({family,language='de',widgetSize='compact',summaryOnly=false}){
  const core=useTodayCoreData(family);const l=labels(language);
  const actions=(core.actions||[]).filter(visibleAction);const overdue=actions.filter(item=>item.kind==='routine'&&item.state==='overdue');
  const timeline=timelineData(core,family,language);const next=timeline.timed.find(item=>timeValue(item.at)>=Date.now());const conflicts=conflictCount(core.events,family);
@@ -67,21 +67,22 @@ export function TodaySituation({family,language='de',widgetSize='compact'}){
  const partial=core.actionFailed||core.calendarFailed;
  const calm=!core.loading&&!actions.length&&!conflicts&&!overdue.length&&!partial;
  const nextLabel=next?`${l.next} ${formatDateTime(language,new Date(next.at),{timeStyle:'short'})} · ${next.title}`:'';
+ if(summaryOnly&&!partial&&!conflicts)return null;
  return <section className={`today-situation today-situation-${widgetSize}`} aria-label={l.situation} data-testid="today-situation" data-widget-size={widgetSize}>
   <div className="today-situation-signals">
-   {calm&&<span className="today-situation-signal today-situation-calm"><Icon name="doneAll"/><span>{l.calm}</span></span>}
-   {actions.length>0&&<a className="today-situation-signal" href="/?page=todo"><Icon name="tasks"/><span>{openLabel}</span></a>}
-   {next&&<a className="today-situation-signal" href={next.href}><Icon name="clock"/><span>{nextLabel}</span></a>}
-   {(core.loaded&&!core.calendarFailed)&&<a className={`today-situation-signal${conflicts?' has-alert':''}`} href="/?page=calendar"><Icon name={conflicts?'warning':'calendar'}/><span>{conflicts?conflictLabel:l.noConflicts}</span></a>}
-   {overdue.length>0&&<a className="today-situation-signal" href="/?page=todo"><Icon name="automation"/><span>{overdueLabel}</span></a>}
+   {!summaryOnly&&calm&&<span className="today-situation-signal today-situation-calm"><Icon name="doneAll"/><span>{l.calm}</span></span>}
+   {!summaryOnly&&actions.length>0&&<a className="today-situation-signal" href="/?page=todo"><Icon name="tasks"/><span>{openLabel}</span></a>}
+   {!summaryOnly&&next&&<a className="today-situation-signal" href={next.href}><Icon name="clock"/><span>{nextLabel}</span></a>}
+   {(core.loaded&&!core.calendarFailed&&(!summaryOnly||conflicts>0))&&<a className={`today-situation-signal${conflicts?' has-alert':''}`} href="/?page=calendar"><Icon name={conflicts?'warning':'calendar'}/><span>{conflicts?conflictLabel:l.noConflicts}</span></a>}
+   {!summaryOnly&&overdue.length>0&&<a className="today-situation-signal" href="/?page=todo"><Icon name="automation"/><span>{overdueLabel}</span></a>}
    {partial&&<span className="today-situation-signal has-alert" role="status"><Icon name="warning"/><span>{l.unavailable}</span></span>}
   </div>
  </section>;
 }
 
-export function TodayFocusWidget({family,language='de'}){
+export function TodayFocusWidget({family,language='de',compact=false}){
  const core=useTodayCoreData(family);const l=labels(language);const items=focusItems(core,family,language);
- return <section className="today-section today-focus" data-testid="today-focus"><div className="today-section-head"><div><small>{l.focusKicker}</small><h2>{l.focus}</h2></div><a className="today-link" href="/?page=todo">{l.openTodo} <Icon name="next"/></a></div>
+ return <section className="today-section today-focus" data-testid="today-focus"><div className="today-section-head"><div>{!compact&&<small>{l.focusKicker}</small>}<h2>{compact?(language.startsWith('de')?'Wichtig':'Important'):l.focus}</h2></div><a className="today-link" href="/?page=todo">{l.openTodo} <Icon name="next"/></a></div>
   {items.length?<ol className="today-focus-list">{items.map(item=><li key={item.key}><a href={item.href}><span className="today-focus-icon"><Icon name={item.icon}/></span><span className="grow"><strong>{item.title}</strong><small>{item.reason}</small></span><Icon name="next"/></a></li>)}</ol>:<div className="today-core-empty"><Icon name="doneAll"/><span>{core.loading?'…':l.focusEmpty}</span></div>}
   {(core.actionFailed||core.calendarFailed)&&<small className="today-core-status">{l.focusError}</small>}
  </section>;

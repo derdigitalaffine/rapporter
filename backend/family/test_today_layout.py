@@ -60,7 +60,7 @@ class TodayLayoutTests(TestCase):
         self.assertTrue(all(required <= set(entry) for entry in TODAY_WIDGET_REGISTRY))
         self.assertTrue(all(set(entry['supportedSizes']) <= {'compact', 'medium', 'wide'} for entry in TODAY_WIDGET_REGISTRY))
         self.assertTrue(all(entry['defaultSize'] in entry['supportedSizes'] for entry in TODAY_WIDGET_REGISTRY))
-        self.assertEqual(list(DEFAULT_WIDGET_ORDER[:7]), ['situation', 'focus', 'timeline', 'week', 'todo', 'quick-actions', 'pinboard'])
+        self.assertEqual(list(DEFAULT_WIDGET_ORDER[:8]), ['situation', 'overview', 'focus', 'timeline', 'week', 'todo', 'quick-actions', 'pinboard'])
 
     def test_default_roundtrip_is_v2_and_private(self):
         initial = self.client.get(self.url)
@@ -75,7 +75,7 @@ class TodayLayoutTests(TestCase):
         self.assertNotIn('next', DEFAULT_WIDGET_ORDER)
         self.assertEqual(
             [row['id'] for row in initial.data['widgets'] if row['visible']],
-            ['situation', 'focus', 'timeline', 'week', 'todo', 'quick-actions', 'pinboard', 'games'],
+            ['situation', 'overview', 'focus'],
         )
         self.assertEqual(
             {row['id']: row['size'] for row in initial.data['widgets']},
@@ -146,9 +146,25 @@ class TodayLayoutTests(TestCase):
         self.assertEqual(pinboard_index, timeline_index + 1)
         self.assertFalse(next(row for row in expanded if row['id'] == 'inbox')['visible'])
         self.assertFalse(next(row for row in expanded if row['id'] == 'loyalty')['visible'])
+        self.assertFalse(next(row for row in expanded if row['id'] == 'overview')['visible'])
 
         stored = TodayLayout.objects.get(family=self.family, user=self.user)
         self.assertEqual(stored.widgets, legacy)
+
+    def test_saved_v2_keeps_personal_order_and_visibility_without_new_default(self):
+        custom = [
+            {'id': 'situation', 'visible': True, 'size': 'compact'},
+            {'id': 'shopping', 'visible': True, 'size': 'compact'},
+            {'id': 'focus', 'visible': False, 'size': 'wide'},
+            {'id': 'timeline', 'visible': True, 'size': 'wide'},
+        ]
+        TodayLayout.objects.create(family=self.family, user=self.user, widgets=custom, revision=8)
+        response = self.client.get(self.url)
+        self.assertEqual(response.data['revision'], 8)
+        existing = [row for row in response.data['widgets'] if row['id'] in {entry['id'] for entry in custom}]
+        self.assertEqual(existing, custom)
+        self.assertFalse(next(row for row in response.data['widgets'] if row['id'] == 'overview')['visible'])
+        self.assertEqual(TodayLayout.objects.get().widgets, custom)
 
     def test_v1_put_is_accepted_and_saved_canonically_as_v2(self):
         response = self.client.put(self.url, self.current_v1_payload(), format='json')
@@ -280,7 +296,7 @@ class TodayLayoutTests(TestCase):
         layout = TodayLayout.objects.create(family=self.family, user=self.user, widgets=custom, revision=7)
         introduced = self.client.get(self.url).data
         game = next(row for row in introduced['widgets'] if row['id'] == 'games')
-        self.assertEqual(game, {'id': 'games', 'visible': True, 'size': 'medium'})
+        self.assertEqual(game, {'id': 'games', 'visible': False, 'size': 'medium'})
         self.assertEqual([row for row in introduced['widgets'] if row['id'] != 'games'], custom)
         self.assertEqual(introduced['revision'], 7)
         layout.refresh_from_db()
@@ -297,10 +313,10 @@ class TodayLayoutTests(TestCase):
         status = next(row for row in config['widgets'] if row['id'] == 'situation')
         board = next(row for row in config['widgets'] if row['id'] == 'pinboard')
         self.assertEqual(status, {'id': 'situation', 'visible': True, 'size': 'compact'})
-        self.assertEqual(board, {'id': 'pinboard', 'visible': True, 'size': 'medium'})
+        self.assertEqual(board, {'id': 'pinboard', 'visible': False, 'size': 'medium'})
         config['widgets'].reverse()
         status.update(visible=False, size='medium')
-        board['size'] = 'wide'
+        board.update(visible=True, size='wide')
         saved = self.client.put(self.url, config, format='json')
         self.assertEqual(saved.status_code, 200, saved.data)
         self.assertEqual(saved.data['widgets'], config['widgets'])

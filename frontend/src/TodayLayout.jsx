@@ -70,7 +70,7 @@ export default function TodayLayout({family,header,onboarding,widgets}){
  const editing=Boolean(draft);
  draftRef.current=draft;
 
- const labelFor=id=>s[id]||id;
+ const labelFor=id=>id==='overview'?(language.startsWith('de')?'Überblick':'Overview'):s[id]||id;
  const descriptionFor=id=>s.descriptions[id]||'';
  const builtin=id=>['situation','focus','timeline','tomorrow','family-load','week','pinboard','todo'].includes(id);
  const isProvided=id=>Object.prototype.hasOwnProperty.call(availableWidgets,id);
@@ -217,14 +217,14 @@ export default function TodayLayout({family,header,onboarding,widgets}){
  // Missing module/permission implementations stay in the saved layout but never
  // render a preview or a Library card. This keeps disabled/future widgets lossless.
  const active=(draft||saved.widgets).filter(widget=>widget.visible&&(!['games','pinboard'].includes(widget.id)||loaded===family.id)&&(builtin(widget.id)||availableWidgets[widget.id]));
- const content=widget=>widget.id==='situation'?<TodaySituation family={family} language={language} widgetSize={widget.size}/>:widget.id==='focus'?<TodayFocusWidget family={family} language={language}/>:widget.id==='timeline'?<TodayTimelineWidget family={family} language={language}/>:widget.id==='tomorrow'?<TodayTomorrowWidget family={family} language={language} widgetSize={widget.size}/>:widget.id==='family-load'?<TodayFamilyLoadWidget family={family} language={language} widgetSize={widget.size}/>:widget.id==='week'?<WeekCompassWidget family={family} language={language} settings={widget.settings||settingsFor('week')} compact={widget.size==='compact'}/>:widget.id==='pinboard'?<PinboardTodayWidget family={family} language={language} compact={widget.size==='compact'}/>:widget.id==='todo'?<TodayTodoWidget family={family} language={language} compact={widget.size==='compact'}/>:availableWidgets[widget.id];
+ const content=widget=>widget.id==='situation'?<TodaySituation family={family} language={language} widgetSize={widget.size} summaryOnly={active.some(row=>row.id==='overview')}/>:widget.id==='focus'?<TodayFocusWidget family={family} language={language} compact={active.some(row=>row.id==='overview')}/>:widget.id==='timeline'?<TodayTimelineWidget family={family} language={language}/>:widget.id==='tomorrow'?<TodayTomorrowWidget family={family} language={language} widgetSize={widget.size}/>:widget.id==='family-load'?<TodayFamilyLoadWidget family={family} language={language} widgetSize={widget.size}/>:widget.id==='week'?<WeekCompassWidget family={family} language={language} settings={widget.settings||settingsFor('week')} compact={widget.size==='compact'}/>:widget.id==='pinboard'?<PinboardTodayWidget family={family} language={language} compact={widget.size==='compact'}/>:widget.id==='todo'?<TodayTodoWidget family={family} language={language} compact={widget.size==='compact'}/>:availableWidgets[widget.id];
  const render=widget=>{
   const value=content(widget);const editProps=longPressProps(widget);
   if(isValidElement(value)&&value.type?.todayWidgetSelfManaged)return cloneElement(value,{key:widget.id,widgetSize:widget.size,widgetSettings:widget.settings||settingsFor(widget.id)||undefined,...editProps});
   const legacyMediumClass=widget.size==='medium'?' today-widget-square':'';
   return <div key={widget.id} data-today-widget={widget.id} data-widget-size={widget.size} className={`app-widget today-widget today-widget-${widget.size}${legacyMediumClass}`} {...editProps}>{value}</div>;
  };
- const editAction=<button type="button" ref={editButton} className="secondary today-layout-edit" data-testid="today-layout-edit" disabled={busy||!loaded||editing} onClick={()=>openEditor()}><Icon name="edit" size={15}/><span>{s.edit}</span></button>;
+ const editAction=<button type="button" ref={editButton} className="secondary today-layout-edit" data-testid="today-layout-edit" aria-label={s.edit} title={s.edit} disabled={busy||!loaded||editing} onClick={()=>openEditor()}><Icon name="edit" size={15}/><span>{s.edit}</span></button>;
  const headerWithAction=isValidElement(header)?(()=>{const children=Children.toArray(header.props.children);if(!children.length)return cloneElement(header,{},editAction);const [lead,...rest]=children;return cloneElement(header,{},<div className="today-hero-heading-row">{lead}{editAction}</div>,...rest)})():header;
  const placedDraft=placedRowsFrom(draft);
  const libraryDefinitions=draft?TodayWidgetRegistry.filter(definition=>isAvailableDefinition(definition)&&!draft.find(widget=>widget.id===definition.id)?.visible):[];

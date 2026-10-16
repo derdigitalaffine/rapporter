@@ -37,7 +37,7 @@ export const FEATURE_REGISTRY=Object.freeze([
   defineFeature('profile',{detail:true,load:()=>import('./ProfilePage.jsx')}),
   defineFeature('automations',{detail:true,load:()=>import('./AutomationHub.jsx')}),
   defineFeature('notifications',{detail:true,load:()=>import('./NotificationSettings.jsx')}),
-  defineFeature('loyalty',{detail:true,load:()=>import('./LoyaltyCards.jsx')}),
+  defineFeature('loyalty',{detail:true,queryParams:['card'],load:()=>import('./LoyaltyCards.jsx')}),
 ]);
 
 export const FEATURES_BY_ID=Object.freeze(Object.fromEntries(FEATURE_REGISTRY.map(feature=>[feature.id,feature])));

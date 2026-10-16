@@ -15,12 +15,13 @@ const entry=(id,defaultOrder,{component='external',category='family',supportedSi
 
 export const TodayWidgetRegistry=[
  entry('situation',0,{component:'TodaySituation',category:'planning',supportedSizes:['compact'],defaultSize:'compact',locked:true}),
+ entry('overview',0.5,{category:'planning',supportedSizes:['wide'],defaultSize:'wide'}),
  entry('focus',1,{component:'TodayFocusWidget',category:'planning',defaultSize:'wide'}),
- entry('timeline',2,{component:'TodayTimelineWidget',category:'planning',supportedSizes:TODAY_WIDGET_SIZES,defaultSize:'wide'}),
- entry('week',3,{component:'WeekCompassWidget',category:'planning',supportedSizes:TODAY_WIDGET_SIZES,defaultSize:'medium',settingsSchema:weekSettings}),
- entry('todo',4,{component:'TodayTodoWidget',category:'planning',supportedSizes:TODAY_WIDGET_SIZES,defaultSize:'compact'}),
- entry('quick-actions',5,{component:'TodayQuickActionsWidget',category:'planning',supportedSizes:['compact','wide'],defaultSize:'compact'}),
- entry('pinboard',6,{component:'PinboardTodayWidget',category:'collaboration',supportedSizes:TODAY_WIDGET_SIZES,defaultSize:'medium'}),
+ entry('timeline',2,{component:'TodayTimelineWidget',category:'planning',supportedSizes:TODAY_WIDGET_SIZES,defaultSize:'wide',defaultVisible:false}),
+ entry('week',3,{component:'WeekCompassWidget',category:'planning',supportedSizes:TODAY_WIDGET_SIZES,defaultSize:'medium',settingsSchema:weekSettings,defaultVisible:false}),
+ entry('todo',4,{component:'TodayTodoWidget',category:'planning',supportedSizes:TODAY_WIDGET_SIZES,defaultSize:'compact',defaultVisible:false}),
+ entry('quick-actions',5,{component:'TodayQuickActionsWidget',category:'planning',supportedSizes:['compact','wide'],defaultSize:'compact',defaultVisible:false}),
+ entry('pinboard',6,{component:'PinboardTodayWidget',category:'collaboration',supportedSizes:TODAY_WIDGET_SIZES,defaultSize:'medium',defaultVisible:false}),
  entry('tomorrow',7,{component:'TodayTomorrowWidget',category:'planning',supportedSizes:['compact','medium'],defaultSize:'compact',defaultVisible:false}),
  entry('family-load',8,{component:'TodayFamilyLoadWidget',category:'family',supportedSizes:['compact','medium'],defaultSize:'compact',defaultVisible:false}),
  entry('trip',9,{category:'planning',supportedSizes:TODAY_WIDGET_SIZES,defaultSize:'medium',defaultVisible:false,settingsSchema:tripSettings}),
@@ -114,7 +115,7 @@ function expandKnownWidgets(rows,legacyDefaults){
  if(!seen.has('week')){const timelineIndex=widgets.findIndex(widget=>widget.id==='timeline');widgets.splice(timelineIndex>=0?timelineIndex+1:0,0,{...cleanTodayWidget({id:'week',visible:legacyDefaults,size:defaultSizeFor('week')}),settings:settingsFor('week')});seen.add('week')}
  if(!seen.has('trip')){const focusIndex=widgets.findIndex(widget=>widget.id==='focus');widgets.splice(focusIndex>=0?focusIndex+1:Math.min(1,widgets.length),0,{...cleanTodayWidget({id:'trip',visible:legacyDefaults,size:defaultSizeFor('trip')}),settings:settingsFor('trip')});seen.add('trip')}
  if(!seen.has('pinboard')){const timelineIndex=widgets.findIndex(widget=>widget.id==='timeline');widgets.splice(timelineIndex>=0?timelineIndex+1:Math.min(5,widgets.length),0,cleanTodayWidget({id:'pinboard',visible:legacyDefaults,size:defaultSizeFor('pinboard')}));seen.add('pinboard')}
- TodayWidgetRegistry.forEach(entry=>{if(!seen.has(entry.id)){widgets.push(cleanTodayWidget({id:entry.id,visible:entry.defaultVisible,size:entry.defaultSize}));seen.add(entry.id)}});
+ TodayWidgetRegistry.forEach(entry=>{if(!seen.has(entry.id)){widgets.push(cleanTodayWidget({id:entry.id,visible:entry.id==='overview'?false:entry.defaultVisible,size:entry.defaultSize}));seen.add(entry.id)}});
  const locked=widgets.filter(widget=>TodayWidgetsById[widget.id]?.locked).map(cleanTodayWidget);
  const flexible=widgets.filter(widget=>!TodayWidgetsById[widget.id]?.locked);
  return [...locked,...flexible];
