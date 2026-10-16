@@ -20,7 +20,7 @@ function ToastList() {
       <span className="toast-icon" aria-hidden="true"><Icon name={item.type === 'success' ? 'check' : ['error', 'warning'].includes(item.type) ? 'warning' : 'info'}/></span>
       <Toast.Title className="toast-message"/>
       {item.data?.actionLabel && <Toast.Action className="toast-action" onClick={() => {manager.close(item.id); item.data.onAction?.();}}>{item.data.actionLabel}</Toast.Action>}
-      <Toast.Close className="toast-close" aria-label="Meldung schließen"><Icon name="close"/></Toast.Close>
+      <Toast.Close className="toast-close" aria-hidden={false} aria-label="Meldung schließen"><Icon name="close"/></Toast.Close>
     </Toast.Root>)}
   </Toast.Viewport></Toast.Portal>;
 }
