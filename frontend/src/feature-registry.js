@@ -2,7 +2,7 @@ const defineFeature=(id,{detail=false,familyContext=false,queryParams=[],load=nu
   id,
   detail,
   familyContext,
-  queryParams:Object.freeze([...queryParams]),
+  queryParams:Object.freeze([...(familyContext?['family']:[]),...queryParams]),
   load,
   capability,
 });

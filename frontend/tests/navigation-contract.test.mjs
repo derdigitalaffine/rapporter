@@ -24,6 +24,10 @@ test('expenses do not leak expense selectors to other pages',()=>{
   assert.equal(pageHref('more','https://family.example/?page=expenses&ledger=1&expense=2'),'/?page=more');
   assert.equal(pageHref('expenses','https://family.example/?page=expenses&ledger=1&expense=2'),'/?page=expenses&ledger=1&expense=2');
 });
+test('family deep-link ownership comes from registry metadata',()=>{
+  assert.equal(pageHref('vehicles','https://family.example/?page=vehicles&family=one&vehicle=two'),'/?page=vehicles&family=one&vehicle=two');
+  assert.equal(pageHref('shopping','https://family.example/?page=vehicles&family=one&vehicle=two'),'/?page=shopping');
+});
 test('special auth paths are not routed through the query-page registry',()=>{
   for(const path of ['/invite/example','/verify-email/example','/reset-password/uid/example']){
     assert.equal(new URL(pageHref('home',`https://family.example${path}`),'https://family.example').pathname,path);

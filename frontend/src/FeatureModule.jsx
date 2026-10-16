@@ -26,7 +26,7 @@ export function DeferredModule({load,onBack,...props}){
   const [attempt,setAttempt]=useState(()=>({Component:lazy(load),id:0}));
   const Content=attempt.Component;
   return <ChunkBoundary key={attempt.id} fallback={<FeatureState kind={navigator.onLine===false?'offline':'failed'} onRetry={()=>setAttempt(previous=>({Component:lazy(load),id:previous.id+1}))} onBack={onBack}/>}>
-    <Suspense fallback={<FeatureState kind="pending"/>}><Content {...props} onBack={onBack}/></Suspense>
+    <Suspense fallback={<FeatureState kind="pending" onBack={onBack}/>}><Content {...props} onBack={onBack}/></Suspense>
   </ChunkBoundary>;
 }
 function registeredComponent(feature){

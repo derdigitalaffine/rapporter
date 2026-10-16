@@ -9,6 +9,7 @@
     "release:check": "node scripts/check-familyos-release.mjs",
     "build": "npm run i18n:check && npm run release:check && vite build && vite build --config vite.superadmin.config.js && node scripts/stamp-service-worker.mjs",
     "build:analyze": "node scripts/analyze-bundle.mjs",
+    "bundle:check": "npm run build:analyze && node scripts/check-bundle.mjs",
     "preview": "vite preview --host 0.0.0.0",
     "storybook": "storybook dev -p 6006 --no-open --disable-telemetry",
     "build-storybook": "storybook build --disable-telemetry",
