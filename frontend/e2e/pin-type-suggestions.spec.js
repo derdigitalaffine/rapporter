@@ -7,7 +7,7 @@ import {pinComposerCopy} from '../src/pin-composer-copy.js';
 const LEGACY={task:'task',routine:'routine',calendar_event:'event',shopping_item:'shopping',shopping_list:'shopping_list',document:'document',note:'note_ref',trip:'trip'};
 const storageKey=(user='1',member='member-1',family='family-1')=>'familyos-pin-types:v1:'+JSON.stringify([user,member,family]);
 const form=page=>page.locator('.pin-composer');
-const sourceButton=(page,key)=>form(page).getByRole('button',{name:'Private '+key+' source · Never store this preview',exact:true});
+const sourceButton=(page,key)=>form(page).getByRole('option',{name:'Private '+key+' source · Never store this preview',exact:true});
 async function boot(page,{seed,language='de',user=1,delaySave}={}){
  const fixture=await installApiMocks(page,{language});
  const state={posts:[],reads:[],fail:false,fixture};
