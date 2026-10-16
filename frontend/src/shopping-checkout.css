@@ -6,6 +6,17 @@
 .shopping-checkout-section>label{font-size:.9rem;font-weight:650}
 .shopping-checkout-section>select{width:100%;min-height:48px;padding:.7rem .8rem;border:1px solid var(--line);border-radius:12px;font:inherit}
 .shopping-checkout-section>small{color:var(--muted);line-height:1.4}
+.shopping-store-lookup{border:1px solid var(--line);border-radius:12px;padding:.25rem .7rem}
+.shopping-store-lookup>summary{cursor:pointer;display:flex;align-items:center;min-height:44px;font-weight:650}
+.shopping-store-lookup form{display:grid;gap:.45rem;padding:.25rem 0 .55rem}
+.shopping-store-lookup label{font-size:.9rem;font-weight:650}
+.shopping-store-search-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:.5rem}
+.shopping-store-search-row input{min-width:0;min-height:48px;padding:.7rem .8rem;border:1px solid var(--line);border-radius:12px;font:inherit}
+.shopping-store-search-row button,.shopping-location-button{min-height:48px}
+.shopping-location-button{width:100%;justify-content:center}
+.shopping-store-results{list-style:none;margin:.45rem 0;padding:0;display:grid;gap:.45rem}
+.shopping-store-results button{width:100%;min-height:48px;text-align:left;display:grid;gap:.15rem;padding:.65rem .75rem;border:1px solid var(--line);border-radius:12px;background:var(--surface);font:inherit}
+.shopping-store-results button small,.shopping-store-attribution{color:var(--muted);line-height:1.35}
 .shopping-checkout-actions{display:grid;gap:.65rem}
 .shopping-checkout-actions button{min-height:48px;justify-content:center}
 .shopping-checkout-summary,.shopping-checkout-status{display:flex;min-height:9rem;flex-direction:column;align-items:center;justify-content:center;gap:.65rem;text-align:center}
@@ -18,4 +29,4 @@
 .shopping-completion-items li{display:flex;justify-content:space-between;gap:1rem;padding:.35rem 0;border-top:1px solid var(--line)}
 .shopping-completion-items li small{color:var(--muted)}
 .store-footer .store-finish{font-weight:700}
-@media(max-width:420px){.shopping-checkout-sheet{width:calc(100vw - 1rem)}.store-footer{gap:.35rem}.store-footer button{min-width:0;padding-inline:.55rem}}
+@media(max-width:420px){.shopping-checkout-sheet{width:calc(100vw - 1rem)}.shopping-store-search-row{grid-template-columns:1fr}.store-footer{gap:.35rem}.store-footer button{min-width:0;padding-inline:.55rem}}
