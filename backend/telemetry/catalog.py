@@ -70,6 +70,7 @@ class AuditSpec:
 
 AUDIT_EVENT_SPECS = {
     "calendar.subscription.created": AuditSpec(),
+    "calendar.subscription.updated": AuditSpec(),
     "calendar.subscription.revealed": AuditSpec(),
     "calendar.subscription.profile": AuditSpec(),
     "calendar.subscription.rotated": AuditSpec(),
@@ -141,7 +142,7 @@ def validate_request_id(value):
 def validate_reason(value):
     if value in (None, ""):
         return ""
-    text = str(value)
+    text = str(value or "")
     if text not in REASON_CATEGORIES:
         raise TelemetrySchemaError("invalid_reason")
     return text
