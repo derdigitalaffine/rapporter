@@ -1,3 +1,4 @@
+import json
 from unittest.mock import Mock, patch
 
 import requests
@@ -38,7 +39,8 @@ class ShoppingStoreLocationTests(TestCase):
         response.headers = headers or {}
         response.is_redirect = 300 <= status_code < 400
         response.is_permanent_redirect = status_code in {301, 308}
-        response.json.return_value = payload
+        encoded = json.dumps(payload).encode("utf-8")
+        response.iter_content.return_value = [encoded]
         return response
 
     def _provider_row(self):
@@ -65,6 +67,7 @@ class ShoppingStoreLocationTests(TestCase):
         args, kwargs = get.call_args
         self.assertEqual(args[0], "https://nominatim.example/search")
         self.assertFalse(kwargs["allow_redirects"])
+        self.assertTrue(kwargs["stream"])
         self.assertEqual(kwargs["timeout"], 3.0)
         self.assertEqual(kwargs["headers"]["User-Agent"], "FamilyOS test geocoder")
         self.assertEqual(kwargs["params"]["limit"], 5)
@@ -105,6 +108,18 @@ class ShoppingStoreLocationTests(TestCase):
         )
         self.assertEqual(response.status_code, 503)
         self.assertFalse(get.call_args.kwargs["allow_redirects"])
+
+    @patch("family.shopping_geocoder.requests.get")
+    def test_oversized_stream_is_rejected_even_without_content_length(self, get):
+        response = self._response([])
+        response.iter_content.return_value = [b"x" * 300_000, b"y" * 300_000]
+        get.return_value = response
+        result = self.client.get(
+            f"/api/shopping-store-locations/?family={self.family.id}&mode=search&q=Markt"
+        )
+        self.assertEqual(result.status_code, 503)
+        self.assertEqual(result.data["code"], "store_lookup_unavailable")
+        response.close.assert_called_once()
 
     @patch("family.shopping_geocoder.requests.get")
     def test_lookup_rejects_cross_family_tenant_before_upstream(self, get):
