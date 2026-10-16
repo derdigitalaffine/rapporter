@@ -153,7 +153,7 @@ def parse_resource(resource, family):
     }
 
 
-def _source(connection):
+def ensure_source(connection):
     source = IntegrationSource.objects.filter(
         family=connection.family,
         config__caldav_connection=str(connection.id),
@@ -184,26 +184,17 @@ def _external_id(connection, uid):
 
 
 def _apply_remote_to_native(binding, parsed, seen_at):
-    """Apply a remote edit only when the local event has not changed too.
-
-    If both sides changed since the last acknowledged ETag/version pair, preserve
-    both sides and report a conflict. The old ETag/local_version pair remains the
-    conditional-write baseline so a later PUT cannot silently overwrite remote.
-    """
     event = binding.event
     if event is None:
         return False, False
     remote_changed = bool(parsed["etag"] and parsed["etag"] != binding.etag)
     local_changed = bool(binding.local_version and event.version != binding.local_version)
-
     binding.remote_href_encrypted = encrypt_value(parsed["href"])
     binding.last_seen_at = seen_at
     binding.remote_deleted_at = None
-
     if remote_changed and local_changed:
         binding.save(update_fields=["remote_href_encrypted", "last_seen_at", "remote_deleted_at", "updated_at"])
         return False, True
-
     if remote_changed:
         payload = dict(event.payload or {})
         if parsed["payload"].get("location"):
@@ -222,7 +213,6 @@ def _apply_remote_to_native(binding, parsed, seen_at):
         event.save(update_fields=["title", "starts_at", "ends_at", "payload", "updated_at"])
         event.refresh_from_db(fields=["version"])
         binding.local_version = event.version
-
     if parsed["etag"]:
         binding.etag = parsed["etag"]
     binding.save(update_fields=["etag", "remote_href_encrypted", "last_seen_at", "remote_deleted_at", "local_version", "updated_at"])
@@ -267,7 +257,7 @@ def _upsert_imported(connection, source, parsed, seen_at):
 def pull_remote(connection, start, end):
     if connection.scope != CalDavConnection.Scope.FAMILY or not connection.family_id:
         raise CalDavDiscoveryError("caldav_family_scope_required")
-    source = _source(connection)
+    source = ensure_source(connection)
     seen_at = timezone.now()
     imported = updated = skipped_recurring = conflicts = 0
     for resource in query_resources(connection, start, end):
@@ -276,16 +266,11 @@ def pull_remote(connection, start, end):
             connection=connection,
             remote_uid=parsed["uid"],
         ).first()
-
-        # event=NULL is a local-delete tombstone. Never recreate it during the
-        # pull that precedes DELETE. Preserve the old ETag so DELETE remains
-        # conditional and conflicts if the remote resource changed meanwhile.
         if binding and binding.event_id is None:
             binding.remote_href_encrypted = encrypt_value(parsed["href"])
             binding.last_seen_at = seen_at
             binding.save(update_fields=["remote_href_encrypted", "last_seen_at", "updated_at"])
             continue
-
         if parsed["recurring"]:
             skipped_recurring += 1
             if binding:
@@ -295,7 +280,6 @@ def pull_remote(connection, start, end):
                 binding.last_seen_at = seen_at
                 binding.save(update_fields=["etag", "remote_href_encrypted", "last_seen_at", "updated_at"])
             continue
-
         if binding and binding.event_id and binding.event.source_id is None:
             if connection.access_mode == CalDavConnection.AccessMode.READ_WRITE:
                 changed, conflict = _apply_remote_to_native(binding, parsed, seen_at)
@@ -308,10 +292,8 @@ def pull_remote(connection, start, end):
                 binding.remote_href_encrypted = encrypt_value(parsed["href"])
                 binding.save(update_fields=["last_seen_at", "etag", "remote_href_encrypted", "updated_at"])
             continue
-
         _upsert_imported(connection, source, parsed, seen_at)
         imported += 1
-
     stale = CalDavEventBinding.objects.select_related("event", "event__source").filter(connection=connection).filter(
         Q(last_seen_at__lt=seen_at) | Q(last_seen_at__isnull=True)
     ).filter(
@@ -407,8 +389,7 @@ def _write_binding(connection, event, binding=None):
         "remote_deleted_at": None,
     }
     if binding:
-        for key, value in values.items():
-            setattr(binding, key, value)
+        for key, value in values.items(): setattr(binding, key, value)
         binding.save(update_fields=[*values.keys(), "updated_at"])
         return binding
     return CalDavEventBinding.objects.create(connection=connection, remote_uid=uid, **values)
@@ -437,7 +418,6 @@ def push_local(connection, start, end):
         return {"pushed": 0, "deleted": 0, "skipped_recurring": 0, "conflicts": 0}
     if not connection.calendar_href:
         raise CalDavDiscoveryError("caldav_calendar_not_selected")
-
     pushed = deleted = skipped_recurring = conflicts = 0
     for binding in list(CalDavEventBinding.objects.filter(connection=connection, event__isnull=True)):
         try:
@@ -445,7 +425,6 @@ def push_local(connection, start, end):
             deleted += 1
         except CalDavConflictError:
             conflicts += 1
-
     events = FamilyEvent.objects.filter(
         family=connection.family,
         source__isnull=True,
@@ -454,10 +433,12 @@ def push_local(connection, start, end):
         starts_at__lt=end,
     ).filter(Q(ends_at__gt=start) | Q(ends_at__isnull=True, starts_at__gte=start))
     if connection.member_id:
-        events = events.filter(Q(is_family_event=True) | Q(participants=connection.member_id)).distinct()
+        # Member calendars receive events explicitly assigned to that member plus
+        # whole-family events with no attendance selection. A family event that
+        # names only another member does not leak into this external calendar.
+        events = events.filter(Q(participants=connection.member_id) | Q(is_family_event=True, participants__isnull=True)).distinct()
     else:
         events = events.filter(is_family_event=True)
-
     for event in events:
         binding = CalDavEventBinding.objects.filter(connection=connection, event=event).first()
         if binding and binding.remote_deleted_at:
