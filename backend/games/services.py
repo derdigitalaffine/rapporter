@@ -1,3 +1,5 @@
+import secrets
+
 from django.db import transaction
 from django.utils import timezone
 from .participants import player, player_id, actor_fields, set_player, authorize_personal
@@ -186,9 +188,14 @@ def ensure_quiz_round(match):
     if existing:
         return existing
     used = QuizRound.objects.filter(match=match).values_list("question_id", flat=True)
-    question = QuizQuestion.objects.filter(mode=match.quiz_mode, active=True).exclude(id__in=used).order_by("id").first()
-    if not question:
+    candidate_ids = list(
+        QuizQuestion.objects.filter(mode=match.quiz_mode, active=True)
+        .exclude(id__in=used)
+        .values_list("id", flat=True)
+    )
+    if not candidate_ids:
         raise GameError("quiz_question_unavailable")
+    question = QuizQuestion.objects.get(pk=secrets.choice(candidate_ids))
     return QuizRound.objects.create(match=match, number=match.current_round, question=question)
 
 
