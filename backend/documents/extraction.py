@@ -124,11 +124,30 @@ def _tsv_page(data, page_number, *, psm, language, width, height):
         text_lines.append(" ".join(line_parts))
     text = _normalise_text("\n".join(text_lines))
     mean_confidence = statistics.fmean(confidences) if confidences else 0.0
+    high_confidence_ratio = (
+        sum(1 for confidence in confidences if confidence >= 0.8) / len(confidences)
+        if confidences
+        else 0.0
+    )
+    low_confidence_ratio = (
+        sum(1 for confidence in confidences if confidence < 0.4) / len(confidences)
+        if confidences
+        else 0.0
+    )
+    alnum_ratio = (
+        sum(1 for word in words if any(character.isalnum() for character in word["text"])) / len(words)
+        if words
+        else 0.0
+    )
     return {
         "page": page_number,
         "text": text,
         "language": language,
         "confidence": round(mean_confidence, 4),
+        "high_confidence_ratio": round(high_confidence_ratio, 4),
+        "low_confidence_ratio": round(low_confidence_ratio, 4),
+        "alnum_ratio": round(alnum_ratio, 4),
+        "line_count": len(text_lines),
         "width": width,
         "height": height,
         "words": words,
@@ -138,10 +157,22 @@ def _tsv_page(data, page_number, *, psm, language, width, height):
 
 
 def _candidate_score(page):
+    """Rank OCR layouts by confidence plus generic evidence quality, not domain semantics."""
     if not page["word_count"]:
         return 0.0
-    coverage = min(1.0, page["word_count"] / 20)
-    return page["confidence"] * (0.75 + coverage * 0.25)
+    coverage = min(1.0, page["word_count"] / 24)
+    line_coverage = min(1.0, page.get("line_count", 0) / 6)
+    score = (
+        page["confidence"] * 0.58
+        + coverage * 0.18
+        + page.get("high_confidence_ratio", 0.0) * 0.12
+        + line_coverage * 0.07
+        + page.get("alnum_ratio", 0.0) * 0.05
+        - page.get("low_confidence_ratio", 0.0) * 0.12
+    )
+    if page["word_count"] < 3:
+        score *= 0.82
+    return max(0.0, min(1.0, score))
 
 
 def _ocr_image(image, page_number, *, heartbeat):
@@ -158,27 +189,36 @@ def _ocr_image(image, page_number, *, heartbeat):
             width=prepared.width,
             height=prepared.height,
         )
+        candidate_score = _candidate_score(page)
         candidates.append(
             {
                 "psm": psm,
                 "confidence": page["confidence"],
+                "high_confidence_ratio": page["high_confidence_ratio"],
+                "low_confidence_ratio": page["low_confidence_ratio"],
                 "word_count": page["word_count"],
-                "score": round(_candidate_score(page), 4),
+                "line_count": page["line_count"],
+                "score": round(candidate_score, 4),
             }
         )
-        if best is None or _candidate_score(page) > _candidate_score(best):
+        if best is None or candidate_score > _candidate_score(best):
             best = page
-        # Strong output should not pay for fallback modes. Weak/sparse output
-        # tries alternative layouts deterministically.
-        if page["confidence"] >= 0.82 and page["word_count"] >= 2:
+        # Strong output should not pay for fallback modes. Sparse output must
+        # earn its early exit through the aggregate score rather than mean
+        # token confidence alone.
+        if candidate_score >= 0.82 and page["word_count"] >= 4:
             break
-        if page["confidence"] >= 0.65 and page["word_count"] >= 12:
+        if candidate_score >= 0.72 and page["word_count"] >= 12:
             break
     best = best or {
         "page": page_number,
         "text": "",
         "language": "",
         "confidence": 0.0,
+        "high_confidence_ratio": 0.0,
+        "low_confidence_ratio": 0.0,
+        "alnum_ratio": 0.0,
+        "line_count": 0,
         "width": prepared.width,
         "height": prepared.height,
         "words": [],
@@ -186,6 +226,14 @@ def _ocr_image(image, page_number, *, heartbeat):
         "psm": _psm_candidates(prepared)[0],
     }
     best["psm_candidates"] = candidates
+    best["ocr_workflow"] = {
+        "version": 2,
+        "strategy": "adaptive-psm-evidence-score",
+        "candidate_count": len(candidates),
+        "fallback_used": len(candidates) > 1,
+        "selected_psm": best["psm"],
+        "selected_score": round(_candidate_score(best), 4),
+    }
     best["quality"] = quality
     return best
 
@@ -283,6 +331,7 @@ def _extract_pdf(handle, *, heartbeat):
                 "words": all_words,
                 "psm": [item["psm"] for item in ocr_pages],
                 "psm_candidates": [item["psm_candidates"] for item in ocr_pages],
+                "ocr_workflow": [item["ocr_workflow"] for item in ocr_pages],
                 "quality": [item["quality"] for item in ocr_pages],
             }
             page_results.append(page_data)
