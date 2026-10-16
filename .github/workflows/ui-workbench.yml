@@ -28,7 +28,7 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - run: npm run test:stories
       - run: npm run test:workbench
-      - run: npm run e2e -- e2e/interaction-primitives.spec.js
+      - run: npm run e2e -- e2e/interaction-primitives.spec.js e2e/pin-composer.spec.js
       - uses: actions/upload-artifact@v4
         if: always()
         with:

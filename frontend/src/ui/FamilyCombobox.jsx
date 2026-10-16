@@ -19,7 +19,7 @@ export default function FamilyCombobox({label, description, items = [], selected
     {selected.length > 0 && <ul className="entity-picker__selected" aria-label={selectionLabel || `${label}: Auswahl`}>
       {selected.map(item => <li key={String(getItemId(item))}><span>{getItemLabel(item)}</span><button type="button" className="secondary" disabled={disabled} aria-label={getRemoveLabel?.(item) ?? `${getItemLabel(item)} ${removeLabel}`} onClick={() => onChange?.(selectedIds.filter(value => String(value) !== String(getItemId(item))))}>{removeLabel}</button></li>)}
     </ul>}
-    <Combobox.Root inline open items={available} filter={null} value={null} inputValue={query || ''} onInputValueChange={setQuery} disabled={disabled} itemToStringLabel={getItemLabel} onValueChange={item => {
+    <Combobox.Root inline open items={available} filter={null} value={null} inputValue={query || ''} onInputValueChange={(value,details) => {if(details.reason==='input-change')setQuery(value); else details.cancel();}} disabled={disabled} itemToStringLabel={getItemLabel} onValueChange={item => {
       if (!item) return;
       onChange?.(multiple ? [...selectedIds, getItemId(item)] : [getItemId(item)]);
       if (clearQueryOnChoose) setQuery('');
