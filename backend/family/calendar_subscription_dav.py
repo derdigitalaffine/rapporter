@@ -1,26 +1,35 @@
-"""Bounded read-only CalDAV subset: discovery, ETag listing, query/multiget, GET.
+"""Bounded CalDAV endpoint for the FamilyOS family calendar.
 
-No scheduling, ACL mutations, sync-token or write capability is advertised.
+The calendar is scoped by a revocable CalendarSubscription credential. Reads only
+project native family-shared events; PUT and DELETE write those same resources
+back to FamilyOS with HTTP conditional request protection.
 """
 import base64
 import binascii
 import hashlib
-from datetime import datetime, timedelta, timezone as dt_timezone
+from datetime import date, datetime, time, timedelta, timezone as dt_timezone
 from urllib.parse import urlsplit
 from uuid import UUID
 from xml.etree import ElementTree as ET
+
+from django.db import transaction
 from django.http import HttpResponse
 from django.views.decorators.csrf import csrf_exempt
-from django.utils import timezone
+from icalendar import Calendar
+
 from auth_abuse.service import enforce
+from .calendar_recurrence import family_zone
 from .calendar_subscription_service import resolve_token, origin
 from .calendar_subscription_ics import shared_events, calendar_bytes, overlaps, CalendarCapacityError, MAX_BYTES
 from .calendar_subscription_views import private
+from .models import FamilyEvent
 
 D = 'DAV:'
 C = 'urn:ietf:params:xml:ns:caldav'
 CS = 'http://calendarserver.org/ns/'
+CALDAV_DETAIL_LEVEL = 'full'
 ET.register_namespace('d', D); ET.register_namespace('c', C); ET.register_namespace('cs', CS)
+
 
 def q(namespace, name):
     return f'{{{namespace}}}{name}'
@@ -34,7 +43,7 @@ def element(namespace, name, text=None):
 def response(data=b'', status=200, content_type='application/xml; charset=utf-8'):
     result = private(HttpResponse(data, status=status, content_type=content_type))
     result['DAV'] = '1, calendar-access'
-    result['Allow'] = 'OPTIONS, PROPFIND, REPORT, GET, HEAD'
+    result['Allow'] = 'OPTIONS, PROPFIND, REPORT, GET, HEAD, PUT, DELETE'
     return result
 
 
@@ -46,8 +55,16 @@ def limited(request, identifier):
     return result
 
 
-def ics_response(request, grant, events):
-    data = calendar_bytes(grant.family, events, grant.detail_level)
+def event_data(grant, event):
+    return calendar_bytes(grant.family, [event], CALDAV_DETAIL_LEVEL)
+
+
+def event_etag(grant, event):
+    return '"' + hashlib.sha256(event_data(grant, event)).hexdigest() + '"'
+
+
+def ics_response(request, grant, events, detail_level=None):
+    data = calendar_bytes(grant.family, events, detail_level or grant.detail_level)
     etag = '"' + hashlib.sha256(data).hexdigest() + '"'
     result = response(b'' if request.method == 'HEAD' else data, content_type='text/calendar; charset=utf-8')
     if request.headers.get('If-None-Match') in (etag, '*'):
@@ -124,7 +141,8 @@ def props_for(grant, path, kind, etag=None, data=None):
     add(C, 'calendar-home-set', child=element(D, 'href', home))
     add(D, 'owner', child=element(D, 'href', principal))
     privileges = add(D, 'current-user-privilege-set')
-    privilege = ET.SubElement(privileges, q(D, 'privilege')); privilege.append(element(D, 'read'))
+    for name in (('read',) if kind not in ('calendar', 'event') else ('read', 'write')):
+        privilege = ET.SubElement(privileges, q(D, 'privilege')); privilege.append(element(D, name))
     reports = add(D, 'supported-report-set')
     if kind == 'calendar':
         for name in ('calendar-query', 'calendar-multiget'):
@@ -132,7 +150,7 @@ def props_for(grant, path, kind, etag=None, data=None):
         components = add(C, 'supported-calendar-component-set'); ET.SubElement(components, q(C, 'comp'), {'name': 'VEVENT'})
         formats = add(C, 'supported-calendar-data'); ET.SubElement(formats, q(C, 'calendar-data'), {'content-type': 'text/calendar', 'version': '2.0'})
         add(CS, 'getctag', etag)
-        add(C, 'max-resource-size', str(8 * 1024 * 1024))
+        add(C, 'max-resource-size', str(MAX_BYTES))
     if etag:
         add(D, 'getetag', etag)
     if data is not None:
@@ -185,6 +203,112 @@ def query_range(root):
     return start, end
 
 
+def _aware(value, zone):
+    if isinstance(value, datetime):
+        return value.replace(tzinfo=zone) if value.tzinfo is None else value
+    if isinstance(value, date):
+        return datetime.combine(value, time.min, zone)
+    raise ValueError()
+
+
+def _parse_put(grant, existing, body):
+    if not body or len(body) > MAX_BYTES or b'\x00' in body:
+        raise ValueError()
+    calendar = Calendar.from_ical(body)
+    events = calendar.walk('VEVENT')
+    if len(events) != 1:
+        raise ValueError()
+    component = events[0]
+    if any(name in component for name in ('RRULE', 'RDATE', 'EXDATE', 'RECURRENCE-ID')):
+        raise NotImplementedError()
+    if 'DTSTART' not in component:
+        raise ValueError()
+    zone = family_zone(grant.family)
+    raw_start = component.decoded('DTSTART')
+    raw_end = component.decoded('DTEND') if 'DTEND' in component else None
+    all_day = isinstance(raw_start, date) and not isinstance(raw_start, datetime)
+    start = _aware(raw_start, zone)
+    if raw_end is None:
+        end = start + (timedelta(days=1) if all_day else timedelta(hours=1))
+    else:
+        end = _aware(raw_end, zone)
+    if end <= start:
+        raise ValueError()
+    summary = str(component.get('SUMMARY') or '').strip()[:200] or 'Termin'
+    payload = dict(existing.payload) if existing is not None and isinstance(existing.payload, dict) else {}
+    payload['provider'] = 'FamilyOS'
+    uid = str(component.get('UID') or '').strip()
+    if uid:
+        payload['caldav_uid'] = uid[:255]
+    if all_day:
+        payload['all_day'] = True
+        payload['date_start'] = raw_start.isoformat()
+        raw_end_date = raw_end if isinstance(raw_end, date) and not isinstance(raw_end, datetime) else raw_start + timedelta(days=1)
+        payload['date_end_exclusive'] = raw_end_date.isoformat()
+    else:
+        payload.pop('all_day', None); payload.pop('date_start', None); payload.pop('date_end_exclusive', None)
+    if 'LOCATION' in component:
+        payload['location'] = str(component.get('LOCATION') or '')[:500]
+    if 'DESCRIPTION' in component:
+        payload['description'] = str(component.get('DESCRIPTION') or '')[:4000]
+    return summary, start, end, payload
+
+
+def _put_event(request, grant, event_id, existing):
+    current = event_etag(grant, existing) if existing is not None else None
+    if request.headers.get('If-None-Match') == '*' and existing is not None:
+        return response(status=412)
+    if request.headers.get('If-Match') and request.headers.get('If-Match') != current:
+        return response(status=412)
+    try:
+        title, starts_at, ends_at, payload = _parse_put(grant, existing, request.body)
+    except NotImplementedError:
+        return response(status=409)
+    except (ValueError, TypeError, KeyError):
+        return response(status=400)
+    with transaction.atomic():
+        locked = FamilyEvent.objects.select_for_update().filter(pk=event_id, family=grant.family).first()
+        if existing is None and locked is not None:
+            return response(status=412)
+        if existing is not None and (locked is None or event_etag(grant, locked) != current):
+            return response(status=412)
+        if locked is not None and (locked.source_id or locked.external_id or locked.type != 'calendar.event' or not locked.is_family_event):
+            return response(status=403)
+        if locked is None:
+            event = FamilyEvent(id=event_id, family=grant.family, type='calendar.event', title=title,
+                                starts_at=starts_at, ends_at=ends_at, actionable=False,
+                                payload=payload, is_family_event=True)
+            event.save(force_insert=True)
+            status = 201
+        else:
+            event = locked
+            event.title = title; event.starts_at = starts_at; event.ends_at = ends_at; event.payload = payload
+            event.is_family_event = True
+            event.save(update_fields=['title', 'starts_at', 'ends_at', 'payload', 'is_family_event', 'updated_at'])
+            status = 204
+    result = response(status=status, content_type='text/calendar; charset=utf-8')
+    result['ETag'] = event_etag(grant, event)
+    return result
+
+
+def _delete_event(request, grant, existing):
+    if existing is None:
+        return response(status=404)
+    current = event_etag(grant, existing)
+    if request.headers.get('If-Match') and request.headers.get('If-Match') != current:
+        return response(status=412)
+    with transaction.atomic():
+        locked = FamilyEvent.objects.select_for_update().filter(pk=existing.pk, family=grant.family).first()
+        if locked is None:
+            return response(status=404)
+        if event_etag(grant, locked) != current:
+            return response(status=412)
+        if locked.source_id or locked.external_id or locked.type != 'calendar.event' or not locked.is_family_event:
+            return response(status=403)
+        locked.delete()
+    return response(status=204)
+
+
 @csrf_exempt
 def dav(request, path=''):
     blocked = limited(request, request.META.get('REMOTE_ADDR', 'unknown'))
@@ -207,7 +331,7 @@ def dav(request, path=''):
             pass
     if kind is None:
         return response(status=404)
-    if request.method not in ('OPTIONS', 'PROPFIND', 'REPORT', 'GET', 'HEAD'):
+    if request.method not in ('OPTIONS', 'PROPFIND', 'REPORT', 'GET', 'HEAD', 'PUT', 'DELETE'):
         return response(status=403)
     if request.method == 'OPTIONS':
         return response()
@@ -217,16 +341,24 @@ def dav(request, path=''):
         def resource(event):
             href = calendar + str(event.pk) + '.ics'
             if href not in resources:
-                data = calendar_bytes(grant.family, [event], grant.detail_level); etag = '"' + hashlib.sha256(data).hexdigest() + '"'
+                data = event_data(grant, event); etag = '"' + hashlib.sha256(data).hexdigest() + '"'
                 resources[href] = props_for(grant, href, 'event', etag, data)
             return href, resources[href]
         target = next((event for event in events if event.pk == event_id), None) if kind == 'event' else None
+        if request.method == 'PUT':
+            if kind != 'event':
+                return response(status=403)
+            return _put_event(request, grant, event_id, target)
+        if request.method == 'DELETE':
+            if kind != 'event':
+                return response(status=403)
+            return _delete_event(request, grant, target)
         if kind == 'event' and target is None:
             return response(status=404)
         if request.method in ('GET', 'HEAD'):
             if kind not in ('event', 'calendar'):
                 return response(status=405)
-            return ics_response(request, grant, [target] if target else events)
+            return ics_response(request, grant, [target] if target else events, CALDAV_DETAIL_LEVEL)
         if request.method == 'PROPFIND':
             depth = request.headers.get('Depth', 'infinity')
             if depth not in ('0', '1'):
@@ -235,7 +367,7 @@ def dav(request, path=''):
             if root.tag != q(D, 'propfind') or root.find(q(D, 'propname')) is not None:
                 return response(status=400)
             prop = root.find(q(D, 'prop')); requested = [node.tag for node in prop] if prop is not None else None
-            stamp = hashlib.sha256(calendar_bytes(grant.family, events, grant.detail_level)).hexdigest()
+            stamp = hashlib.sha256(calendar_bytes(grant.family, events, CALDAV_DETAIL_LEVEL)).hexdigest()
             rows = [resource(target)] if target else [(actual, props_for(grant, actual, kind, stamp))]
             if depth == '1':
                 if kind == 'root': rows.append((principal, props_for(grant, principal, 'principal')))

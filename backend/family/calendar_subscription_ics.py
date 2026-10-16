@@ -2,7 +2,6 @@
 from functools import lru_cache
 from datetime import date, datetime, timedelta, timezone as dt_timezone
 from icalendar import Calendar, Event, Timezone
-from django.db.models import Q
 from django.utils import timezone
 from .models import FamilyEvent
 from .action_schedule import _days, local_datetime
@@ -18,8 +17,9 @@ class CalendarCapacityError(Exception): pass
 
 def shared_events(grant, member=None):
     # Every exported event must already be explicitly shared with the whole
-    # family. The optional member feed only splits that safe set by attendance;
-    # it never widens export to personal/selected-only events.
+    # family. `is_family_event=True` means it applies to every family member;
+    # participant rows are additional planning metadata and must never hide a
+    # family event from another member's calendar projection.
     query = FamilyEvent.objects.filter(
         family_id=grant.family_id,
         source__isnull=True,
@@ -28,9 +28,6 @@ def shared_events(grant, member=None):
         external_id='',
         starts_at__isnull=False,
     )
-    if member is not None:
-        # No attendance selection means the event applies to every member.
-        query = query.filter(Q(participants=member) | Q(participants__isnull=True)).distinct()
     rows = list(query.select_related('family').order_by('id')[:MAX_RESOURCES + 1])
     if len(rows) > MAX_RESOURCES: raise CalendarCapacityError()
     return rows
@@ -67,7 +64,8 @@ def overlaps(event, start, end):
 
 def event_component(event, detail_level='title'):
     zone = family_zone(event.family); payload = event.payload if isinstance(event.payload, dict) else {}; component = Event()
-    component.add('uid', f'{event.pk}@familyos'); component.add('dtstamp', event.updated_at.astimezone(dt_timezone.utc)); component.add('last-modified', event.updated_at.astimezone(dt_timezone.utc))
+    uid = payload.get('caldav_uid') if isinstance(payload.get('caldav_uid'), str) and payload.get('caldav_uid').strip() else f'{event.pk}@familyos'
+    component.add('uid', uid[:255]); component.add('dtstamp', event.updated_at.astimezone(dt_timezone.utc)); component.add('last-modified', event.updated_at.astimezone(dt_timezone.utc))
     component.add('summary', 'Belegt' if detail_level == 'availability' else event.title)
     all_day = bool(payload.get('all_day')); start = event.starts_at.astimezone(zone); end = event.ends_at.astimezone(zone) if event.ends_at else None
     recurrence = recurrence_dict(payload.get('recurrence')); shift = timedelta(0)

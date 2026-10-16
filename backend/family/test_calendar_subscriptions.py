@@ -10,7 +10,7 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
-from icalendar import Calendar
+from icalendar import Calendar, Event
 from auth_sessions.models import AuthSession
 from telemetry.models import AuditEvent
 from .models import Family, Membership, FamilyEvent, IntegrationSource
@@ -49,8 +49,8 @@ class CalendarSubscriptionTests(TestCase):
         self.auth = 'Basic ' + base64.b64encode(f"{self.grant['username']}:{self.grant['password']}".encode()).decode()
         return response
 
-    def dav(self, method='PROPFIND', path=None, body='', **headers):
-        return self.public.generic(method, path or self.home, body, content_type='application/xml', HTTP_AUTHORIZATION=self.auth, **headers)
+    def dav(self, method='PROPFIND', path=None, body='', content_type='application/xml', **headers):
+        return self.public.generic(method, path or self.home, body, content_type=content_type, HTTP_AUTHORIZATION=self.auth, **headers)
 
     def test_permanent_secret_is_encrypted_not_in_lists_and_feed_is_current(self):
         self.create()
@@ -158,7 +158,7 @@ class CalendarSubscriptionTests(TestCase):
         wrong = 'Basic ' + base64.b64encode(b'subscriber:calendar-test-password').decode()
         self.assertEqual(self.public.generic('PROPFIND', '/caldav/', HTTP_AUTHORIZATION=wrong, HTTP_DEPTH='0').status_code, 401)
 
-    def test_profile_uses_native_apple_subscribed_calendar_payload(self):
+    def test_profile_uses_native_apple_caldav_payload(self):
         self.create()
         response = self.client.get(self.detail + 'profile/')
         self.assertEqual(response.status_code, 200)
@@ -167,12 +167,14 @@ class CalendarSubscriptionTests(TestCase):
         self.assertEqual(profile['PayloadType'], 'Configuration')
         self.assertEqual(len(profile['PayloadContent']), 1)
         account = profile['PayloadContent'][0]
-        self.assertEqual(account['PayloadType'], 'com.apple.subscribedcalendar.account')
-        self.assertEqual(account['SubCalAccountHostName'], self.grant['subscription_url'])
-        self.assertIn(self.grant['password'], account['SubCalAccountHostName'])
-        self.assertNotIn('CalDAVPassword', account)
-        self.assertNotIn('CalDAVPrincipalURL', account)
-        self.assertNotIn('CalDAVUsername', account)
+        self.assertEqual(account['PayloadType'], 'com.apple.caldav.account')
+        self.assertEqual(account['CalDAVHostName'], 'calendar.example.test')
+        self.assertEqual(account['CalDAVPort'], 443)
+        self.assertTrue(account['CalDAVUseSSL'])
+        self.assertEqual(account['CalDAVPrincipalURL'], self.grant['caldav_url'])
+        self.assertEqual(account['CalDAVUsername'], self.grant['username'])
+        self.assertEqual(account['CalDAVPassword'], self.grant['password'])
+        self.assertNotIn('SubCalAccountHostName', account)
         self.assertNotIn('calendar-test-password', str(profile))
         self.assertEqual(self.public.get(self.feed).status_code, 200)
         self.assertEqual(AuditEvent.objects.filter(event_key='calendar.subscription.profile').count(), 1)
@@ -194,6 +196,7 @@ class CalendarSubscriptionTests(TestCase):
         self.assertEqual(self.dav(HTTP_DEPTH='infinity').status_code, 403)
         listing = self.dav(HTTP_DEPTH='1'); self.assertEqual(listing.status_code, 207)
         self.assertIn(str(self.event.pk).encode(), listing.content)
+        self.assertIn(b'<d:write', listing.content)
         self.assertNotIn(b'sync-token', listing.content)
         query = '<c:calendar-query xmlns:c="urn:ietf:params:xml:ns:caldav" xmlns:d="DAV:"><d:prop><d:getetag/><c:calendar-data/></d:prop><c:filter><c:comp-filter name="VCALENDAR"><c:comp-filter name="VEVENT"><c:time-range start="20260322T000000Z" end="20260323T000000Z"/></c:comp-filter></c:comp-filter></c:filter></c:calendar-query>'
         report = self.dav('REPORT', body=query); self.assertEqual(report.status_code, 207)
@@ -203,8 +206,58 @@ class CalendarSubscriptionTests(TestCase):
         body = f'<c:calendar-multiget xmlns:c="urn:ietf:params:xml:ns:caldav" xmlns:d="DAV:"><d:prop><c:calendar-data/></d:prop><d:href>{href}</d:href></c:calendar-multiget>'
         self.assertEqual(self.dav('REPORT', body=body).status_code, 207)
         self.assertEqual(self.dav('REPORT', body=body.replace(href, '/caldav/other/home/family/stolen.ics')).status_code, 403)
-        for method in ('PUT', 'DELETE', 'MKCALENDAR', 'PROPPATCH', 'ACL'):
+        for method in ('MKCALENDAR', 'PROPPATCH', 'ACL'):
             self.assertEqual(self.dav(method).status_code, 403)
+        self.assertEqual(self.dav('PUT').status_code, 403)
+        self.assertEqual(self.dav('DELETE').status_code, 403)
+
+    def test_caldav_query_returns_family_events_across_days(self):
+        second = self.make_event(
+            'Tomorrow',
+            starts_at=self.start + timedelta(days=1),
+            ends_at=self.start + timedelta(days=1, hours=1),
+        )
+        self.create()
+        query = '<c:calendar-query xmlns:c="urn:ietf:params:xml:ns:caldav"><c:filter><c:comp-filter name="VCALENDAR"><c:comp-filter name="VEVENT"><c:time-range start="20260322T000000Z" end="20260324T000000Z"/></c:comp-filter></c:comp-filter></c:filter></c:calendar-query>'
+        response = self.dav('REPORT', body=query)
+        self.assertEqual(response.status_code, 207)
+        self.assertIn(str(self.event.pk).encode(), response.content)
+        self.assertIn(str(second.pk).encode(), response.content)
+
+    def test_dav_put_update_delete_roundtrip_with_etag(self):
+        self.create()
+        event_id = uuid4()
+        path = self.home + str(event_id) + '.ics'
+
+        def body(summary, start):
+            calendar = Calendar(); calendar.add('version', '2.0'); calendar.add('prodid', '-//iPhone test//EN')
+            component = Event(); component.add('uid', 'iphone-stable-uid@example.test'); component.add('summary', summary)
+            component.add('dtstart', start); component.add('dtend', start + timedelta(hours=1))
+            calendar.add_component(component)
+            return calendar.to_ical()
+
+        created = self.dav('PUT', path=path, body=body('Created on iPhone', self.start + timedelta(days=2)),
+                           content_type='text/calendar', HTTP_IF_NONE_MATCH='*')
+        self.assertEqual(created.status_code, 201)
+        self.assertIn('ETag', created)
+        stored = FamilyEvent.objects.get(pk=event_id)
+        self.assertEqual(stored.title, 'Created on iPhone')
+        self.assertTrue(stored.is_family_event)
+        self.assertEqual(stored.payload['caldav_uid'], 'iphone-stable-uid@example.test')
+        fetched = self.dav('GET', path=path)
+        parsed = Calendar.from_ical(fetched.content).walk('VEVENT')[0]
+        self.assertEqual(str(parsed['UID']), 'iphone-stable-uid@example.test')
+
+        updated = self.dav('PUT', path=path, body=body('Changed on iPhone', self.start + timedelta(days=3)),
+                           content_type='text/calendar', HTTP_IF_MATCH=created['ETag'])
+        self.assertEqual(updated.status_code, 204)
+        self.assertEqual(FamilyEvent.objects.get(pk=event_id).title, 'Changed on iPhone')
+        stale = self.dav('PUT', path=path, body=body('Stale', self.start + timedelta(days=4)),
+                         content_type='text/calendar', HTTP_IF_MATCH=created['ETag'])
+        self.assertEqual(stale.status_code, 412)
+        deleted = self.dav('DELETE', path=path, HTTP_IF_MATCH=updated['ETag'])
+        self.assertEqual(deleted.status_code, 204)
+        self.assertFalse(FamilyEvent.objects.filter(pk=event_id).exists())
 
     def test_bounded_xml_and_unsupported_filters_fail_closed(self):
         self.create()
@@ -278,6 +331,8 @@ class CalendarSubscriptionTests(TestCase):
             self.assertEqual(self.client.post(self.detail + 'reveal/', secure=True).status_code, 200)
 
     def test_whole_family_flag_is_independent_of_attendance_selection(self):
+        other_user = get_user_model().objects.create_user('other-family-member')
+        other_member = Membership.objects.create(family=self.family, user=other_user, role='adult')
         self.event.participants.add(self.membership)
         self.create()
         response = self.public.get(self.feed)
@@ -286,3 +341,9 @@ class CalendarSubscriptionTests(TestCase):
         self.assertEqual(len(components), 1)
         self.assertNotIn('ATTENDEE', components[0])
         self.assertNotIn('ORGANIZER', components[0])
+        member_feed = f"/calendar-feed/{self.grant['password']}/member/{other_member.pk}.ics"
+        member_response = self.public.get(member_feed)
+        self.assertEqual(member_response.status_code, 200)
+        member_components = Calendar.from_ical(member_response.content).walk('VEVENT')
+        self.assertEqual(len(member_components), 1)
+        self.assertEqual(str(member_components[0]['SUMMARY']), self.event.title)
