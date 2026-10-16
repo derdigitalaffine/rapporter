@@ -71,6 +71,12 @@ class CalDavConnectionSerializer(serializers.ModelSerializer):
                 raise PermissionDenied("Nur Owner/Adults dürfen Family-Integrationen verwalten.")
             if member is not None and member.family_id != family.id:
                 raise ValidationError({"member": "Das Mitglied muss zur gewählten Familie gehören."})
+            if member is not None:
+                duplicate = CalDavConnection.objects.filter(family=family, member=member)
+                if self.instance is not None:
+                    duplicate = duplicate.exclude(pk=self.instance.pk)
+                if duplicate.exists():
+                    raise ValidationError({"member": "Für dieses Familienmitglied ist bereits ein CalDAV-Kalender verbunden."})
         else:
             raise ValidationError({"scope": "Ungültiger Connection-Scope."})
 
@@ -111,7 +117,6 @@ class CalDavConnectionSerializer(serializers.ModelSerializer):
         if encrypted is not None:
             validated_data["credentials_encrypted"] = encrypted
             validated_data["last_error_code"] = ""
-            # Credentials can point to a different account; force explicit re-selection.
             validated_data["calendar_href"] = ""
         return super().update(instance, validated_data)
 
