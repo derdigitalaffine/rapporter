@@ -80,7 +80,7 @@ class CalDavEventBinding(TimestampedModel):
     """Private remote identity/ETag state; remote hrefs never enter FamilyEvent payloads."""
 
     connection = models.ForeignKey(CalDavConnection, on_delete=models.CASCADE, related_name="event_bindings")
-    event = models.ForeignKey(FamilyEvent, on_delete=models.CASCADE, related_name="caldav_bindings")
+    event = models.ForeignKey(FamilyEvent, null=True, blank=True, on_delete=models.SET_NULL, related_name="caldav_bindings")
     remote_uid = models.CharField(max_length=255)
     remote_href_encrypted = models.TextField(editable=False)
     etag = models.CharField(max_length=512, blank=True)
