@@ -249,18 +249,18 @@ test('budget planning · nested envelopes and miscellaneous can be planned at ev
  }
  await page.getByRole('button',{name:'Sonstiges planen: Mobilität / Bahn',exact:true}).click();
  const dialog=page.getByRole('dialog',{name:'Kostenbereich bearbeiten',exact:true});
- await expect(dialog.getByLabel('Sonstiges (EUR)',{exact:true})).toHaveValue('40.00');
+ await expect(dialog.getByRole('textbox',{name:'Sonstiges (EUR)',exact:true})).toHaveValue('40.00');
  await expect(dialog.getByLabel('Übergeordnetes Budget',{exact:true})).toHaveValue('mobility');
  expect(await dialog.getByLabel('Übergeordnetes Budget').locator('option').allTextContents()).toEqual(['Direkt im Gesamtbudget','Mobilität']);
- await dialog.getByLabel('Sonstiges (EUR)',{exact:true}).fill('50,01');
+ await dialog.getByRole('textbox',{name:'Sonstiges (EUR)',exact:true}).fill('50,01');
  await dialog.getByRole('button',{name:'Budget speichern',exact:true}).click();
  expect(store.writes.at(-1).body).toMatchObject({amount:'110.01',expected_children_amount:'60.00',parent:'mobility'});
  await expect(page.getByTestId('budget-misc-rail')).toContainText('50,01');
  await planner.getByRole('button',{name:'Unterbudget hinzufügen: Mobilität',exact:true}).click();
  const create=page.getByRole('dialog',{name:'Kostenbereich hinzufügen',exact:true});
  await expect(create.getByLabel('Übergeordnetes Budget')).toHaveValue('mobility');
- await create.getByLabel('Kostenbereich',{exact:true}).fill('Fahrrad');
- await create.getByLabel('Geplant (EUR)',{exact:true}).fill('30');
+ await create.getByRole('textbox',{name:'Kostenbereich',exact:true}).fill('Fahrrad');
+ await create.getByRole('textbox',{name:'Geplant (EUR)',exact:true}).fill('30');
  await create.getByRole('button',{name:'Budget speichern',exact:true}).click();
  expect(store.writes.at(-1).body.parent).toBe('mobility');
  await page.getByRole('button',{name:'Sonstiges planen: Familie',exact:true}).click();

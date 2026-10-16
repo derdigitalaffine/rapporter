@@ -86,14 +86,17 @@ def budget_hierarchy(ledger, budget_data, summary):
         child_plan = money(sum((money(active[b]['amount']) for b in children[key]), ZERO))
         miscellaneous = None if planned is None else money(planned - child_plan)
         carry = money(row.get('carryover_amount') or ZERO)
+        child_carry = money(sum((money(active[b].get('carryover_amount') or ZERO) for b in children[key]), ZERO))
+        misc_carry = money(carry - child_carry)
         available = None if planned is None else money(planned + carry - spent - reserved)
         misc_spent, misc_reserved = money(spent - child_spent), money(reserved - child_reserved)
-        misc_available = None if miscellaneous is None else money(miscellaneous + carry - misc_spent - misc_reserved)
+        misc_available = None if miscellaneous is None else money(miscellaneous + misc_carry - misc_spent - misc_reserved)
         return {
             'parent': parents.get(key), 'children_amount': str(child_plan),
             'miscellaneous_amount': None if miscellaneous is None else str(miscellaneous),
             'spent_amount': str(spent), 'reserved_amount': str(reserved),
             'available_amount': None if available is None else str(available),
+            'miscellaneous_carryover_amount': str(misc_carry),
             'miscellaneous_spent_amount': str(misc_spent),
             'miscellaneous_reserved_amount': str(misc_reserved),
             'miscellaneous_available_amount': None if misc_available is None else str(misc_available),

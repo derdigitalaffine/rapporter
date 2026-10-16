@@ -288,3 +288,23 @@ class BudgetPeriodTests(TestCase):
         configure_current_period(recurring, rollover_policy=ExpenseBudgetPeriod.RolloverPolicy.CARRY_POSITIVE, as_of=date(2026, 1, 1))
         february = ensure_budget_period(recurring, as_of=date(2026, 2, 1))
         self.assertEqual(february.carryover_amount, Decimal('87.66'))
+
+    def test_carryover_availability_is_not_double_counted_across_hierarchy(self):
+        parent, child = self.budget(amount='100.00'), self.budget(amount='50.00')
+        child.parent = parent
+        child.save()
+        for budget, carry in [(parent, '20.00'), (child, '10.00')]:
+            period = configure_current_period(budget)
+            period.carryover_amount = Decimal(carry)
+            period.save()
+        self.ledger.budget_amount = Decimal('1000.00')
+        self.ledger.save()
+        data = self.client.get(f'/api/expense-ledgers/{self.ledger.id}/budget-summary/').data
+        rows = {row['id']: row['hierarchy'] for row in data['budgets']}
+        p, c = rows[str(parent.id)], rows[str(child.id)]
+        self.assertEqual(p['available_amount'], '120.00')
+        self.assertEqual(c['available_amount'], '60.00')
+        self.assertEqual(p['miscellaneous_available_amount'], '60.00')
+        self.assertEqual(p['miscellaneous_carryover_amount'], '10.00')
+        root = data['hierarchy']
+        self.assertEqual(Decimal(root['miscellaneous_available_amount']) + Decimal(p['available_amount']), Decimal(root['available_amount']))

@@ -51,7 +51,10 @@ Summen eines Knotens verwenden dessen eigene Periodengrenzen in Familienzeit,
 auch wenn Unterbudgets andere Zeiträume haben. Positive Überträge eines
 Elternrahmens berücksichtigen auch tatsächliche Ausgaben seiner Nachkommen;
 Vormerkungen bleiben wie bisher separat. Ein Übertrag gehört zum Rahmen und
-wird dessen Sonstiges zugeordnet, nicht nochmals aus Kindern addiert.
+wird nicht nochmals aus Kindern addiert: der Sonstiges-Übertrag ist der
+Rahmenübertrag minus direkte Kinderüberträge (kann negativ sein). Dadurch
+bleibt auch Verfügbarkeit bei gleichen Zeiträumen summenkonsistent. Das
+additive Feld `miscellaneous_carryover_amount` macht diesen Anteil sichtbar.
 
 Der Root behält den bestehenden Allzeit-/Basiswährungsvertrag. Nicht zugeordnete
 Ausgaben und Vormerkungen liegen in Root-Sonstiges. Fremdwährungs-Ausgaben

@@ -96,7 +96,8 @@ test('expenses budget · shared spend appears in soft overall and sub-budget pro
  await expect(card).toContainText('40,00');
  await expect(card).toContainText('2,50');
  await expect(card).toContainText('über Budget');
- await card.locator('summary').click();
+ const tree=card.locator('.budget-tree-root');
+ if(await tree.getAttribute('open')===null)await tree.locator(':scope > summary').click();
  await expect(card.getByText('Haushalt',{exact:true})).toBeVisible();
  await expect(card).toContainText('12,50');
  await expect(card).toContainText('Budgetüberschreitungen blockieren keine Ausgabe.');
@@ -115,7 +116,8 @@ test('expenses budget · ledger switch refreshes progress and reports unconverte
  await expect(card).toContainText('Urlaub');
  await expect(card).toContainText('120,00');
  await expect(card).toContainText('800,00');
- await card.locator('summary').click();
+ const tree=card.locator('.budget-tree-root');
+ if(await tree.getAttribute('open')===null)await tree.locator(':scope > summary').click();
  await expect(card.getByText('Reisebudget',{exact:true})).toBeVisible();
  await expect(card).toContainText('680,00');
  await expect(card).toContainText('1 Fremdwährungs-Ausgabe ist noch nicht im Budget enthalten.');
