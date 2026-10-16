@@ -74,7 +74,10 @@ for(const viewport of [{width:390,height:844},{width:844,height:390}])test(`stan
  const nav=page.locator('.bottom-nav');
  await nav.getByRole('button',{name:'To-dos',exact:true}).click();
  await expect(page.locator('.todo-hub')).toBeVisible();
- await page.locator('#todo-quick-title').fill('PWA task');
+ await page.locator('.todo-capture > summary').click();
+ const capture=page.locator('.todo-capture').getByRole('textbox',{name:'Ich habe gerade …',exact:true});
+ await capture.fill('PWA task');
+ await capture.blur();
  await nav.getByRole('button',{name:'Mehr',exact:true}).click();
  await expect(page).toHaveURL(/page=more/);
  await page.goBack();await expect(page.locator('.todo-hub')).toBeVisible();
@@ -89,12 +92,16 @@ for(const viewport of [{width:390,height:844},{width:844,height:390}])test(`stan
 test('standalone keyboard resize keeps editing usable without moving persistent navigation',async({page})=>{
  await boot(page,{visualViewport:true});
  await page.locator('.bottom-nav').getByRole('button',{name:'To-dos',exact:true}).click();
- const field=page.locator('#todo-quick-title');await field.focus();
+ await page.locator('.todo-capture > summary').click();
+ const field=page.locator('.todo-capture').getByRole('textbox',{name:'Ich habe gerade …',exact:true});await field.focus();
  await page.evaluate(()=>{Object.assign(window.visualViewport,{height:440,offsetTop:0});window.visualViewport.dispatchEvent(new Event('resize'))});
  await expect.poll(()=>page.evaluate(()=>document.documentElement.hasAttribute('data-app-keyboard'))).toBe(true);
  await expect.poll(()=>page.evaluate(()=>getComputedStyle(document.documentElement).getPropertyValue('--app-viewport-height').trim())).toBe('440px');
  await expect.poll(()=>page.locator('.bottom-nav').evaluate(el=>el.getBoundingClientRect().bottom)).toBeCloseTo(844,0);
  await field.fill('Keyboard stays usable');await expect(field).toHaveValue('Keyboard stays usable');
+ // Synthetic viewport events do not perform the OS keyboard's native reveal.
+ // Exercise the current scrolled capture field without moving app chrome.
+ await field.evaluate(el=>el.scrollIntoView({block:'start',behavior:'instant'}));
  const box=await field.boundingBox();expect(box.y+box.height).toBeLessThanOrEqual(440);
  expect(await page.evaluate(()=>window.scrollY)).toBe(0);
 

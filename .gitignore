@@ -11,6 +11,7 @@ coverage/
 frontend/storybook-static/
 frontend/workbench-report/
 frontend/workbench-results/
+frontend/bundle-report.json
 postgres_data/
 caddy_data/
 caddy_config/

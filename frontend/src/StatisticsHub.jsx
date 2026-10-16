@@ -6,6 +6,8 @@ import {FormField,FormRow} from './form-primitives';
 import {appLocale} from './locale';
 import './statistics-i18n';
 import './statistics.css';
+import StatisticsAccessState from './StatisticsAccessState';
+import {featureAvailability} from './feature-registry';
 
 const RANGES=['7d','30d','90d','365d'];
 const VIEWS=['overview','contributions','tasks','routines','shopping'];
@@ -17,10 +19,8 @@ function queryFor(family,filters){const p=new URLSearchParams({family:String(fam
 function safeCsv(value){const text=String(value??'');return `"${(/^[=+@\-\t\r]/.test(text)?"'":"")+text.replaceAll('"','""')}"`}
 
 export default function StatisticsHub({family,entitlements,role,onBack}){
- const {t}=useTranslation();
- if(!family||!entitlements)return <p role="status">{t('pleaseWait')}</p>;
- if(role==='guest')return <section className="card statistics-state"><Icon name="lock"/><h1>{t('statisticsUi.title')}</h1><p>{t('statisticsUi.guest')}</p><button className="secondary" onClick={onBack}>{t('statisticsUi.back')}</button></section>;
- if(!entitlements.capabilities?.includes('statistics'))return <section className="card statistics-state"><span className="entitlement-tier">Premium</span><h1>{t('statisticsUi.title')}</h1><p>{t('statisticsUi.subtitle')}</p><p>{t('statisticsUi.locked')}</p><button className="primary" onClick={onBack}>{t('statisticsUi.access')}</button></section>;
+ const availability=family?featureAvailability('statistics',{entitlements,role}):'pending';
+ if(availability!=='available')return <StatisticsAccessState kind={availability} onBack={onBack}/>;
  return <StatisticsContent key={family.id} family={family} onBack={onBack}/>;
 }
 

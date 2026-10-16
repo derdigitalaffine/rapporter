@@ -1,11 +1,10 @@
-import {useEffect,useRef} from 'react';
+import {lazy,useEffect,useRef} from 'react';
 import VehicleEditor from './VehicleEditor';
 import BirthdayEditor from './BirthdayEditor';
 import {TaskEditor,ShoppingEditor} from './SmartEditors';
 import ListEditor from './ListEditor';
 import EventEditor from './EventEditor';
 import RoutineEditor from './RoutineEditor';
-import LoyaltyCardEditor from './LoyaltyCardEditor';
 import ExpenseEditor from './ExpenseEditor';
 import ContractEditor from './ContractEditor';
 import CorrespondenceEditor from './CorrespondenceEditor';
@@ -14,6 +13,9 @@ import {BabyCreateSheet,PetCreateSheet} from './ModuleCreateSheets';
 import {CREATE_ACTIONS} from './create-actions';
 import {api} from './api';
 import {toast} from './feedback';
+
+// A common task creation must not wake the specialist barcode renderer.
+const LoyaltyCardEditor=lazy(()=>import('./LoyaltyCardEditor.jsx'));
 
 function CreatePageRedirect({page,params,openModule}){
   const opened=useRef(false);
