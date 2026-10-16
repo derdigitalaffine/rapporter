@@ -200,6 +200,7 @@ test('child appointment rejection shows server reason, survives reload and retri
  expect(await serverRows()).toHaveLength(0);
  await page.reload();await pill.click();dialog=page.getByRole('dialog',{name:'Synchronization',exact:true});
  await expect(dialog.locator('.offline-sync-summary')).toHaveText('Server errors');await expect(dialog.locator('.offline-sync-conflict')).toContainText(title);
+ await dialog.locator('.offline-sync-conflict').scrollIntoViewIfNeeded();
  const screenshotPath=testInfo.outputPath('sync-status-server-rejection.png');await page.screenshot({path:screenshotPath});await testInfo.attach('sync-status-server-rejection',{path:screenshotPath,contentType:'image/png'});
  const grant=await page.request.post('/api/family-relationships/',{data:{family:family.id,child_membership:child.id,related_membership:owner.id,kind:'parent',has_custody:true,status:'active'}});
  expect(grant.status()).toBe(201);const relationship=await grant.json();
