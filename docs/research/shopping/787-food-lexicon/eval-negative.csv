@@ -1,0 +1,11 @@
+case_id,group,input,expected_id,reason
+n01,compound,Milchreis,ABSTAIN,"word-root collision"
+n02,compound,Tomatensaft,ABSTAIN,"not fresh/canned tomato"
+n03,ambiguous,Basilikum,ABSTAIN,"fresh/dried/frozen unknown"
+n04,ambiguous,Kräuter,ABSTAIN,"state unknown"
+n05,unknown,Reiniger,ABSTAIN,"unknown non-food term remains addable"
+n06,typo,Tommaten,ABSTAIN,"conservative matcher does not invent fuzzy truth"
+n07,ambiguous,"H-Milch oder Hafermilch",ABSTAIN,"two concepts present"
+n08,ambiguous,"Apfel oder Apfelsaft",ABSTAIN,"two concepts present"
+n09,quantity,"2 x 500 g",ABSTAIN,"no product semantics"
+n10,compound,Brotaufstrich,ABSTAIN,"negative boundary/semantic case"
