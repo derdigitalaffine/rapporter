@@ -1,13 +1,17 @@
 from django.conf import settings
 from django.db import models
 
-from .models import Family, TimestampedModel
+from .models import Family, Membership, TimestampedModel
 
 
 class CalDavConnection(TimestampedModel):
     class Scope(models.TextChoices):
         PERSONAL = "personal", "Personal"
         FAMILY = "family", "Family"
+
+    class AccessMode(models.TextChoices):
+        READ = "read", "Read only"
+        READ_WRITE = "read_write", "Read and write"
 
     scope = models.CharField(max_length=16, choices=Scope.choices)
     name = models.CharField(max_length=120)
@@ -25,6 +29,16 @@ class CalDavConnection(TimestampedModel):
         on_delete=models.CASCADE,
         related_name="caldav_connections",
     )
+    member = models.ForeignKey(
+        Membership,
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name="caldav_connections",
+        help_text="Optional family member whose external calendar this connection projects.",
+    )
+    access_mode = models.CharField(max_length=16, choices=AccessMode.choices, default=AccessMode.READ)
+    calendar_href = models.TextField(blank=True, editable=False)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         null=True,
@@ -41,10 +55,15 @@ class CalDavConnection(TimestampedModel):
         constraints = [
             models.CheckConstraint(
                 condition=(
-                    models.Q(scope="personal", owner__isnull=False, family__isnull=True)
+                    models.Q(scope="personal", owner__isnull=False, family__isnull=True, member__isnull=True)
                     | models.Q(scope="family", owner__isnull=True, family__isnull=False)
                 ),
                 name="caldav_scope_owner_exactly_one",
+            ),
+            models.UniqueConstraint(
+                fields=["family", "member"],
+                condition=models.Q(member__isnull=False),
+                name="caldav_one_calendar_per_member",
             ),
         ]
         indexes = [
