@@ -3,6 +3,8 @@ import {expect, userEvent, within, waitFor} from 'storybook/test';
 import FamilyCombobox from '../src/ui/FamilyCombobox';
 import FeedbackHost, {confirmAction, toast} from '../src/feedback';
 import AccessibilityManager from '../src/AccessibilityManager';
+import FamilySheet from '../src/ui/FamilySheet';
+import OverlayPortal from '../src/OverlayPortal';
 
 export default {title: 'FamilyOS/Interactions'};
 const items = [{id: 9001, name: 'Alexandra Beispiel mit einem sehr langen Doppelnamen'}, {id: 9002, name: 'Robin Beispiel'}];
@@ -51,3 +53,29 @@ export const ToastDeduplication = {
     await userEvent.click(body.getByRole('button', {name: 'Meldung schließen'}));
   },
 };
+
+function NestedConfirmation({legacy = false}) {
+  const [open, setOpen] = useState(false);
+  const [result, setResult] = useState('');
+  const content = <><h2 id="nested-sheet-title">Gemeinsame Liste</h2><button className="primary" onClick={async () => setResult(await confirmAction({title: 'Liste archivieren?'}) ? 'Archiviert' : 'Behalten')}>Archivieren</button><button type="button" className="sheet-close" aria-label="Schließen" onClick={() => setOpen(false)}>×</button><p role="status">{result}</p></>;
+  return <><AccessibilityManager/><FeedbackHost/><button className="primary" onClick={() => setOpen(true)}>Liste öffnen</button>{open && (legacy ? <OverlayPortal><div className="sheet-backdrop"><section className="quick-sheet" role="dialog" aria-modal="true" aria-labelledby="nested-sheet-title">{content}</section></div></OverlayPortal> : <FamilySheet labelledBy="nested-sheet-title" onClose={() => setOpen(false)}>{content}</FamilySheet>)}</>;
+}
+async function testNested({canvasElement}) {
+  const canvas = within(canvasElement), body = within(canvasElement.ownerDocument.body);
+  const trigger = canvas.getByRole('button', {name: 'Liste öffnen'});
+  await userEvent.click(trigger);
+  const parent = within(await body.findByRole('dialog', {name: 'Gemeinsame Liste'}));
+  const action = parent.getByRole('button', {name: 'Archivieren'});
+  await userEvent.click(action);
+  const confirm = within(await body.findByRole('alertdialog'));
+  await waitFor(() => expect(confirm.getByRole('button', {name: 'Abbrechen'})).toHaveFocus());
+  await userEvent.tab({shift: true});
+  await expect(confirm.getByRole('button', {name: 'Bestätigen'})).toHaveFocus();
+  await userEvent.keyboard('{Escape}');
+  await waitFor(() => expect(action).toHaveFocus());
+  await expect(parent.getByRole('status')).toHaveTextContent('Behalten');
+  await userEvent.click(parent.getByRole('button', {name: 'Schließen'}));
+  await waitFor(() => expect(trigger).toHaveFocus());
+}
+export const ManagedSheetConfirmation = {render: () => <NestedConfirmation/>, play: testNested};
+export const LegacySheetConfirmation = {render: () => <NestedConfirmation legacy/>, play: testNested};
