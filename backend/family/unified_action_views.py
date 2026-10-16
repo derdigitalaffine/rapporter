@@ -154,6 +154,8 @@ def quick_capture(request):
         raise ValidationError({'icon': 'Choose an approved icon.'})
     if data.get('create_new') is not True:
         raise ValidationError({'create_new': 'Explicitly choose to create a new action.'})
+    if data.get('create_kind', 'routine') not in {'task', 'routine'}:
+        raise ValidationError({'create_kind': 'Choose a supported action kind.'})
     with transaction.atomic():
         # Membership lock serializes the create+complete retry without a second object.
         Membership.objects.select_for_update().get(pk=membership.pk)
@@ -161,15 +163,27 @@ def quick_capture(request):
         if receipt:
             if receipt.actor_id != request.user.id:
                 raise PermissionDenied()
-            return Response(payload(receipt.completion))
-        routine = Routine.objects.create(family=family, name=title.strip(), icon=data.get('icon') or icon_suggestions(title)[0], reminder_enabled=False)
-        row = mirror(routine)
+            action = receipt.action
+            receipt_id = f'task:{action.legacy_task_id}' if action.legacy_task_id else f'routine:{action.legacy_routine_id}'
+            resolve(request.user, receipt_id)
+            if receipt.original_title != title.strip() or (data.get('create_kind', 'routine') == 'task') != bool(action.legacy_task_id):
+                raise ValidationError({'request_id': 'Key already used for another capture.'})
+            return Response({**payload(receipt.completion), 'action_id': receipt_id})
+        if data.get('create_kind') == 'task':
+            from .models import TaskList
+            task_list, _ = TaskList.objects.get_or_create(family=family, name='Allgemein', defaults={'icon': 'list-check'})
+            obj = Task.objects.create(family=family, title=title.strip(), task_list=task_list, created_by=request.user)
+        else:
+            obj = Routine.objects.create(family=family, name=title.strip(), icon=data.get('icon') or icon_suggestions(title)[0], reminder_enabled=False)
+        row = mirror(obj)
+        row.icon = data.get('icon') or icon_suggestions(title)[0]
         row.schedule = normalize_schedule({'mode': 'learning'}, family.timezone)
-        row.save(update_fields=['schedule', 'updated_at'])
-        result = execute(request.user, f'routine:{routine.id}', {**data, 'source': 'quick_capture'})
+        row.save(update_fields=['schedule', 'icon', 'updated_at'])
+        typed_id = f'task:{obj.id}' if isinstance(obj, Task) else f'routine:{obj.id}'
+        result = execute(request.user, typed_id, {**data, 'source': 'quick_capture'})
         completion = ActionCompletion.objects.get(pk=result['id'])
         ActionCapture.objects.create(family=family, request_id=request_id, actor=request.user, action=row, completion=completion, original_title=title.strip())
-        return Response({**result, 'action_id': f'routine:{routine.id}'}, status=201)
+        return Response({**result, 'action_id': typed_id}, status=201)
 
 
 @api_view(['GET', 'POST'])

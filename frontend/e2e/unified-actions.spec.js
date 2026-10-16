@@ -30,20 +30,20 @@ async function boot(page){
 }
 
 test('capture chooses existing action explicitly with duration and undo',async({page})=>{
- const requests=await boot(page);const capture=page.getByRole('region',{name:'Ich habe gerade …'});
+ const requests=await boot(page);await page.getByRole('button',{name:'Ich habe gerade …',exact:true}).click();const capture=page.getByRole('region',{name:'Ich habe gerade …'});
  await capture.getByLabel('Ich habe gerade …',{exact:true}).fill('Müll rausgebracht');
  await capture.getByText('Dauer und Vorschläge',{exact:true}).click();await capture.getByLabel('Dauer (optional)').selectOption('10');
- await capture.getByRole('button',{name:'Müll rausbringen',exact:true}).click();
+ await capture.getByRole('button',{name:/Müll rausbringen/}).click();
  await expect.poll(()=>requests.at(-1)?.action_id).toBe('task:task-1');expect(requests.at(-1).duration_minutes).toBe(10);
  await capture.getByRole('button',{name:'Rückgängig',exact:true}).click();
  await expect.poll(()=>requests.at(-1)?.operation).toBe('undo');expect(requests.at(-1).completion_id).toBe('completion-1');
 });
 
 test('new capture requires explicit create and retains original title',async({page})=>{
- const requests=await boot(page);const capture=page.getByRole('region',{name:'Ich habe gerade …'});
+ const requests=await boot(page);await page.getByRole('button',{name:'Ich habe gerade …',exact:true}).click();const capture=page.getByRole('region',{name:'Ich habe gerade …'});
  await capture.getByLabel('Ich habe gerade …',{exact:true}).fill('Betten gemacht');
  await capture.getByRole('button',{name:'Neu anlegen und jetzt erledigen'}).click();
- await expect.poll(()=>requests.at(-1)?.create_new).toBe(true);expect(requests.at(-1).title).toBe('Betten gemacht');expect(requests.at(-1).request_id).toMatch(/^[0-9a-f-]{36}$/);
+ await expect.poll(()=>requests.at(-1)?.create_new).toBe(true);expect(requests.at(-1).create_kind).toBe('task');expect(requests.at(-1).title).toBe('Betten gemacht');expect(requests.at(-1).request_id).toMatch(/^[0-9a-f-]{36}$/);
 });
 
 test('schedule editor shares server-authoritative recurrence UX with calendar events',async({page})=>{

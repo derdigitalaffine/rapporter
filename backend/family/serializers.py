@@ -126,7 +126,17 @@ class TaskListSerializer(serializers.ModelSerializer):
         fields = ["id", "version", "family", "name", "icon", "archived", "sort_order", "workflow_enabled", "workflow_columns", "open_count", "done_count", "created_at", "updated_at"]
 
 
+class ActionScheduleField(serializers.JSONField):
+    def get_attribute(self, instance):
+        from .unified_action_models import Action
+        try:
+            return instance.unified_action.schedule
+        except Action.DoesNotExist:
+            return {}
+
+
 class TaskSerializer(serializers.ModelSerializer):
+    action_schedule = ActionScheduleField(required=False)
     workflow_status = serializers.CharField(source="workflow_column.name", read_only=True)
     assignee_name = serializers.CharField(source="assignee.username", read_only=True)
     list_name = serializers.CharField(source="task_list.name", read_only=True)
@@ -143,7 +153,37 @@ class TaskSerializer(serializers.ModelSerializer):
         column = attrs.get("workflow_column")
         if column and (not task_list or not task_list.workflow_enabled or column.task_list_id != task_list.id or column.archived):
             raise serializers.ValidationError({"workflow_column": "Column does not belong to this active workflow."})
+        if 'action_schedule' in attrs and not isinstance(attrs['action_schedule'], dict):
+            raise serializers.ValidationError({'action_schedule': 'Expected an object.'})
+        if 'action_schedule' in attrs and attrs['action_schedule']:
+            from .action_schedule import normalize_schedule
+            try:
+                attrs['action_schedule'] = normalize_schedule(attrs['action_schedule'], family.timezone)
+            except (ValueError, TypeError, AttributeError) as exc:
+                raise serializers.ValidationError({'action_schedule': str(exc)})
         return attrs
+
+    def _save_schedule(self, instance, schedule):
+        if schedule is not None:
+            from .unified_action_service import mirror, domain_event
+            row = mirror(instance)
+            row.schedule = schedule
+            row.save(update_fields=['schedule', 'updated_at'])
+            instance.unified_action = row
+            domain_event(row, 'action.schedule_changed', f'schedule:{row.updated_at.isoformat()}')
+        return instance
+
+    def create(self, validated_data):
+        from django.db import transaction
+        schedule = validated_data.pop('action_schedule', None)
+        with transaction.atomic():
+            return self._save_schedule(super().create(validated_data), schedule)
+
+    def update(self, instance, validated_data):
+        from django.db import transaction
+        schedule = validated_data.pop('action_schedule', None)
+        with transaction.atomic():
+            return self._save_schedule(super().update(instance, validated_data), schedule)
 
     class Meta:
         model = Task

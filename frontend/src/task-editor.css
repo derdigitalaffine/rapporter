@@ -1,0 +1,8 @@
+.task-date-presets{display:flex;flex-wrap:wrap;gap:6px}
+.task-date-presets button{display:inline-flex;align-items:center;gap:6px;min-height:44px;padding:6px 10px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--text);font-size:14px}
+.task-existing-actions{display:grid;gap:4px;border-inline-start:2px solid var(--border);padding-inline-start:10px}
+.task-existing-actions>span{font-size:13px;color:var(--muted)}
+.task-existing-actions a{display:flex;align-items:center;gap:8px;min-height:44px;color:inherit;text-decoration:none}
+.task-existing-actions a span{flex:1;min-width:0;overflow-wrap:anywhere}
+.task-planning-fields{min-width:0;display:grid;gap:12px}
+.task-date-presets button:focus-visible,.task-existing-actions a:focus-visible{outline:3px solid var(--accent);outline-offset:2px}

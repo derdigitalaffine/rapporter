@@ -103,7 +103,7 @@ class TaskListViewSet(FamilyScopedViewSet):
 
 
 class TaskViewSet(FamilyScopedViewSet):
-    queryset = Task.objects.select_related("task_list", "assignee", "workflow_column").all().order_by("completed_at", "due_at", "-created_at")
+    queryset = Task.objects.select_related("task_list", "assignee", "workflow_column", "unified_action").all().order_by("completed_at", "due_at", "-created_at")
     serializer_class = TaskSerializer
 
     def perform_create(self, serializer):

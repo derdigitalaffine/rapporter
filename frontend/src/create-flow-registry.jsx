@@ -4,7 +4,6 @@ import BirthdayEditor from './BirthdayEditor';
 import {TaskEditor,ShoppingEditor} from './SmartEditors';
 import ListEditor from './ListEditor';
 import EventEditor from './EventEditor';
-import RoutineEditor from './RoutineEditor';
 import ExpenseEditor from './ExpenseEditor';
 import ContractEditor from './ContractEditor';
 import CorrespondenceEditor from './CorrespondenceEditor';
@@ -61,7 +60,7 @@ const renderers={
   wish:({family,context,onClose,savedWithoutClose})=><WishlistEditor family={family} context={context} onClose={onClose} onSaved={savedWithoutClose}/>,
   taskList:({family,onClose,saved})=><ListEditor type="task" family={family} onClose={onClose} onSaved={saved}/>,
   shoppingList:({family,onClose,saved})=><ListEditor type="shopping" family={family} onClose={onClose} onSaved={saved}/>,
-  routine:({family,onClose,saved})=><RoutineEditor family={family} onClose={onClose} onSaved={saved}/>,
+  routine:({family,taskLists,taskListId,onClose,saved})=><TaskEditor family={family} lists={taskLists} members={family.memberships||[]} defaultListId={taskListId} initialSchedule={{mode:'static',recurrence:{frequency:'weekly',interval:1}}} onClose={onClose} onSaved={saved}/>,
   message:({openModule})=><CreatePageRedirect page="inbox" params={{compose:'1'}} openModule={openModule}/>,
   loyalty:({family,onClose,saved})=><LoyaltyCardEditor family={family} onClose={onClose} onSaved={saved}/>,
 };
