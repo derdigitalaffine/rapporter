@@ -98,10 +98,10 @@ export default function TodoHub({family,data,onCreate,onChanged,currentUserId,us
   try{
    const scope=scopeForView(targetView,completed);
    const payload=await api(`/actions/?family=${encodeURIComponent(family.id)}&scope=${scope}`);
-   const rows=[...unwrapActions(payload)];let next=payload?.next;
-   while(next){const url=new URL(next,location.origin);if(url.origin!==location.origin||url.pathname!=='/api/actions/'||url.searchParams.get('family')!==String(family.id))throw new Error(text.loadFailed);const page=await api(`${url.pathname.slice(4)}${url.search}`);rows.push(...unwrapActions(page));next=page.next;if(revision!==requestRevision.current)return;}
+   const rows=[...unwrapActions(payload)];let next=payload?.next;const seen=new Set();
+   while(next){const url=new URL(next,location.origin);if(url.origin!==location.origin||url.pathname!=='/api/actions/'||url.searchParams.get('family')!==String(family.id)||url.searchParams.get('scope')!==scope||seen.has(url.href))throw new Error(text.loadFailed);seen.add(url.href);const page=await api(`${url.pathname.slice(4)}${url.search}`);rows.push(...unwrapActions(page));next=page.next;if(revision!==requestRevision.current)return;}
    if(revision!==requestRevision.current)return;
-   setActions(rows);
+   setActions(rows.filter(item=>String(item.family||family.id)===String(family.id)));
    if(payload?.preferences)setPreferences(payload.preferences);
    const incoming=Array.isArray(payload?.focus)?payload.focus:[];
    const familyChanged=focusFamilyRef.current!==String(family.id);
