@@ -11,11 +11,12 @@ Upload / Kamera / PDF
 → documents: OCR-Evidence, Geometrie, OCR-Confidence, Quality-Metadaten
 → expenses: Receipt-Parser v2
 → semantische Kandidaten + Semantic-Confidence + Reconciliation
-→ Review
+→ Expense API: bounded Review-Payload
+→ Frontend: erklärbare Review-UI
 → bestätigte Expense-Daten
 ```
 
-Andere Domains dürfen den Document-Core konsumieren, aber keinen eigenen Tesseract-/OCR-Worker als zweite Wahrheit aufbauen.
+Andere Domains dürfen den Document-Core konsumieren, aber keinen eigenen Tesseract-/OCR-Worker als zweite Wahrheit aufbauen. Dasselbe gilt für den Browser: das Frontend zeigt und bestätigt Server-Evidence, führt aber keine parallele Receipt-OCR oder semantische Neuinterpretation aus.
 
 ## OCR-Arbeitskopie
 
@@ -37,6 +38,8 @@ Drei Signale dürfen nicht vermischt werden:
 2. **Semantic confidence**: kommt aus `expenses.ocr.parse_receipt_text` und beschreibt, wie plausibel ein gelesener Wert als Merchant/Datum/Total/etc. ist.
 3. **Reconciliation**: vergleicht voneinander unabhängige erkannte Werte. Abweichungen erzeugen Review-Signale; Werte werden niemals verändert, um sie passend zu machen.
 
+Der Expense-Adapter projiziert aus den generischen Page-Confidences ein gebundenes Receipt-`ocr_confidence`-Signal. Dieses Signal bleibt getrennt von den feldbezogenen `field_confidences` und der Reconciliation.
+
 ## Receipt structured data v2
 
 Der bestehende kompatible Vertrag `merchant`, `date`, `total`, `currency` bleibt erhalten. Additiv liefert der Expense-Adapter:
@@ -52,6 +55,32 @@ Der bestehende kompatible Vertrag `merchant`, `date`, `total`, `currency` bleibt
 - `review.reasons`, unter anderem `ocr_confidence_low`, `total_missing`, `total_confidence_low`, `total_ambiguous` und `reconciliation_mismatch`.
 
 Jedes strukturierte Feld hält Raw-Evidence und normalisierten Wert getrennt. Währung wird nur aus expliziten Signalen wie `€`, `EUR`, `USD`, `GBP`, `£` oder `CHF` abgeleitet; ohne Signal bleibt sie unbekannt.
+
+## API- und Frontend-Review-Vertrag
+
+`ReceiptExtractionSerializer` veröffentlicht `structured_data` nur für `schema_version: 2` und nur über eine explizite Allowlist. Öffentlich sind:
+
+- `schema_version`, `extractor_version`;
+- `ocr_confidence`, `semantic_confidence`;
+- `fields` mit Raw-/Normalized-Evidence;
+- `total_candidates`;
+- `line_items`;
+- `reconciliation`;
+- `review`.
+
+Interne/debug-spezifische Structured-Data-Schlüssel werden nicht automatisch durchgereicht. Quality-Warnungen bleiben separat auf die bestehende kleine Public-Allowlist begrenzt.
+
+Der Receipt-Review im Frontend zeigt für v2:
+
+- OCR-Lesbarkeit und semantische Sicherheit getrennt;
+- konkrete Review-Gründe statt eines generischen Erfolgszustands;
+- optional Uhrzeit, Beleg-/Transaktionsnummer, Subtotal und Steuer;
+- Reconciliation einschließlich Mismatch-Hinweis und erkannter Positionssumme;
+- Line-Item-Kandidaten nur als aufklappbare Review-Hilfe;
+- Raw-Evidence und normalisierte Werte als aufklappbare, erklärbare Details;
+- konkurrierende Total-Kandidaten, wenn mehrere vorhanden sind.
+
+Line Items, Evidence und Reconciliation sind **read-only Review-Signale**. Beim Speichern sendet der bestehende Expense-Formularpfad weiterhin nur bestätigte Buchungsfelder; `structured_data`, `line_items` und `reconciliation` werden nicht als Buchungsdaten vom Browser zurückgeschrieben. Legacy-Receipts ohne v2-Schema behalten die bisherige Review-UI ohne leeren Intelligence-Block.
 
 ## Total-Ranking und Negativregeln
 
@@ -75,10 +104,14 @@ Ein Mismatch bleibt sichtbar und verändert weder Total noch Tax noch Subtotal.
 
 Keine Migration ist nötig. Die neuen Felder liegen additiv in `ReceiptExtraction.structured_data` und `field_confidences`; der alte Merchant/Date/Total/Currency-Vertrag bleibt erhalten. Bei Parser-Regression kann die strukturierte v2-Auswertung zurückgerollt werden, ohne den Document-Worker, kanonische Dateien oder Raw-OCR anzutasten.
 
+Das Frontend ist schema-gated: `ReceiptIntelligenceReview` rendert nur v2-Payloads. Dadurch kann die neue Review-Oberfläche unabhängig zurückgerollt werden, während alte Receipts und der vorhandene Kernformularpfad unverändert funktionieren.
+
 ## Nicht-Ziele
 
 - kein Cloud-OCR/LLM im Standardpfad;
 - kein zweiter Receipt-/Knowledge-/School-/Pet-OCR-Worker;
+- kein Browser-OCR oder clientseitige semantische Receipt-Auswertung;
 - kein Überschreiben von Raw-Evidence durch Normalisierung;
+- keine automatische positionsgenaue Split-/Budget-Buchung aus Line Items;
 - keine behauptete 100%-Erkennung;
 - keine automatische Veröffentlichung unsicherer Buchungsdaten ohne Review.
