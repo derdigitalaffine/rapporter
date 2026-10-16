@@ -11,7 +11,7 @@ from uuid import UUID
 from django.db.models import prefetch_related_objects
 from icalendar import Calendar, vCalAddress
 
-from .calendar_subscription_ics import calendar_bytes
+from .calendar_subscription_ics import CalendarCapacityError, MAX_BYTES, calendar_bytes
 from .models import Membership
 
 ADDRESS_DOMAIN = 'members.familyos.invalid'
@@ -72,7 +72,10 @@ def calendar_bytes_with_participants(grant, events, detail_level='full'):
             attendee.params['ROLE'] = 'REQ-PARTICIPANT'
             attendee.params['SCHEDULE-AGENT'] = 'NONE'
             component.add('ATTENDEE', attendee, encode=0)
-    return calendar.to_ical()
+    data = calendar.to_ical()
+    if len(data) > MAX_BYTES:
+        raise CalendarCapacityError()
+    return data
 
 
 def _values(component, name):
