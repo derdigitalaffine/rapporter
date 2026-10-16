@@ -39,7 +39,7 @@ class CalDavSyncTests(TestCase):
             member=self.member,
             created_by=self.user,
             access_mode=CalDavConnection.AccessMode.READ_WRITE,
-            calendar_href="https://calendar.example.test/calendars/alex/",
+            calendar_href_encrypted=encrypt_value("https://calendar.example.test/calendars/alex/"),
             credentials_encrypted=encrypt_credentials(
                 server_url="https://calendar.example.test/dav",
                 username="alex@example.test",
@@ -243,8 +243,9 @@ class CalDavSelectionApiTests(TestCase):
 
     @patch("family.caldav_views.discover_calendars")
     def test_discovery_returns_opaque_key_and_selection_stays_server_side(self, discover):
+        private_href = "https://calendar.example.test/calendars/alice/private-token/"
         discover.return_value = [{
-            "href": "https://calendar.example.test/calendars/alice/private/",
+            "href": private_href,
             "display_name": "Privat",
             "components": ["VEVENT"],
             "sync_token_supported": True,
@@ -263,7 +264,10 @@ class CalDavSelectionApiTests(TestCase):
         )
         self.assertEqual(selected.status_code, 200, selected.data)
         row = CalDavConnection.objects.get(id=self.connection_id)
-        self.assertEqual(row.calendar_href, "https://calendar.example.test/calendars/alice/private/")
+        self.assertEqual(row.calendar_href, private_href)
+        self.assertNotIn("private-token", row.calendar_href_encrypted)
+        self.assertNotIn("calendar.example.test", row.calendar_href_encrypted)
         detail = self.client.get(f"/api/caldav-connections/{self.connection_id}/")
         self.assertTrue(detail.data["calendar_selected"])
         self.assertNotIn("calendar_href", detail.data)
+        self.assertNotIn("calendar_href_encrypted", detail.data)
