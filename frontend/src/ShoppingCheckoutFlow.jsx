@@ -1,4 +1,4 @@
-import {useEffect,useState} from 'react';
+import {useEffect,useRef,useState} from 'react';
 import {useTranslation} from 'react-i18next';
 import {api} from './api';
 import {Icon} from './icons';
@@ -24,6 +24,12 @@ export default function ShoppingCheckoutFlow({list,sessionId,openCount,onClose,o
  const [storeId,setStoreId]=useState('');
  const [storesLoading,setStoresLoading]=useState(false);
  const [storeLoadFailed,setStoreLoadFailed]=useState(false);
+ const [locationQuery,setLocationQuery]=useState('');
+ const [lookupResults,setLookupResults]=useState([]);
+ const [lookupBusy,setLookupBusy]=useState(false);
+ const [lookupError,setLookupError]=useState('');
+ const [lookupAttribution,setLookupAttribution]=useState('');
+ const lookupAbort=useRef(null);
 
  useEffect(()=>{
   if(!list?.family){setStores([]);setStoreId('');return}
@@ -44,7 +50,50 @@ export default function ShoppingCheckoutFlow({list,sessionId,openCount,onClose,o
    .finally(()=>{if(alive)setStoresLoading(false)});
   return()=>{alive=false};
  },[list?.family,list?.id]);
+ useEffect(()=>()=>lookupAbort.current?.abort(),[]);
 
+ async function lookupLocation(params){
+  if(!list?.family)return;
+  lookupAbort.current?.abort();
+  const controller=new AbortController();lookupAbort.current=controller;
+  setLookupBusy(true);setLookupError('');setLookupResults([]);setLookupAttribution('');
+  try{
+   const payload=await api(`/shopping-store-locations/?family=${encodeURIComponent(list.family)}&${params}`,{signal:controller.signal});
+   setLookupResults(payload?.results||[]);setLookupAttribution(payload?.attribution||'');
+   if(!(payload?.results||[]).length)setLookupError(t('shoppingCheckout.storeSearchEmpty'));
+  }catch(err){
+   if(err?.name!=='AbortError')setLookupError(t('shoppingCheckout.storeSearchFailed'));
+  }finally{
+   if(lookupAbort.current===controller){lookupAbort.current=null;setLookupBusy(false)}
+  }
+ }
+ function searchLocation(event){
+  event?.preventDefault();
+  const query=locationQuery.trim();
+  if(query.length<3){setLookupError(t('shoppingCheckout.storeSearchMin'));return}
+  lookupLocation(`mode=search&q=${encodeURIComponent(query)}`);
+ }
+ function useCurrentLocation(){
+  if(!navigator.geolocation){setLookupError(t('shoppingCheckout.locationUnsupported'));return}
+  setLookupBusy(true);setLookupError('');setLookupResults([]);
+  navigator.geolocation.getCurrentPosition(
+   position=>lookupLocation(`mode=reverse&lat=${encodeURIComponent(position.coords.latitude)}&lon=${encodeURIComponent(position.coords.longitude)}`),
+   ()=>{setLookupBusy(false);setLookupError(t('shoppingCheckout.locationFailed'))},
+   {enableHighAccuracy:false,maximumAge:60000,timeout:8000},
+  );
+ }
+ async function chooseLocation(candidate){
+  if(!candidate||lookupBusy)return;
+  setLookupBusy(true);setLookupError('');
+  try{
+   const payload=await api('/shopping-store-locations/resolve/',{method:'POST',body:JSON.stringify({family:list.family,shopping_list:list.id,...candidate})});
+   const store=payload?.store;
+   if(!store?.id)throw new Error('invalid_store');
+   setStores(current=>current.some(row=>String(row.id)===String(store.id))?current:[...current,store]);
+   setStoreId(store.id);setLookupResults([]);setLookupAttribution('');
+  }catch{setLookupError(t('shoppingCheckout.storeResolveFailed'))}
+  finally{setLookupBusy(false)}
+ }
  async function complete(openItems='keep'){
   if(busy||!list?.id||!sessionId)return;
   setBusy(true);setError('');setStage('finishing');
@@ -85,7 +134,7 @@ export default function ShoppingCheckoutFlow({list,sessionId,openCount,onClose,o
  const purchased=completion?.completion?.purchased_count||0;
  const stillOpen=completion?.completion?.open_count??openCount;
  return <div className="sheet-backdrop shopping-checkout-backdrop" onMouseDown={event=>{if(event.target===event.currentTarget&&!busy&&stage==='review')onClose?.()}}><section className="quick-sheet shopping-checkout-sheet" role="dialog" aria-modal="true" aria-labelledby="shopping-checkout-title"><div className="sheet-handle"/>
-  {stage==='review'&&<><div className="sheet-head"><div><small>{list?.name}</small><h2 id="shopping-checkout-title">{t('shoppingCheckout.reviewTitle')}</h2></div><button className="sheet-close" onClick={onClose} aria-label={t('shoppingCheckout.cancel')}><Icon name="close"/></button></div><div className="shopping-checkout-section"><strong>{t('shoppingCheckout.storeTitle')}</strong><label htmlFor="shopping-checkout-store">{t('shoppingCheckout.storeLabel')}</label><select id="shopping-checkout-store" value={storeId} onChange={event=>setStoreId(event.target.value)} disabled={busy||storesLoading}><option value="">{storesLoading?t('shoppingCheckout.storeLoading'):t('shoppingCheckout.noStore')}</option>{stores.map(store=><option key={store.id} value={store.id}>{store.display_label}{store.address?` · ${store.address}`:''}</option>)}</select>{list?.store&&!storeId&&<small>{t('shoppingCheckout.currentStore',{store:list.store})}</small>}{storeLoadFailed&&<small role="status">{t('shoppingCheckout.storeLoadFailed')}</small>}</div>{openCount>0?<div className="shopping-checkout-section"><strong>{t('shoppingCheckout.openTitle',{count:openCount})}</strong><p>{t('shoppingCheckout.openHint')}</p>{error&&<p className="error" role="alert">{error}</p>}<div className="shopping-checkout-actions"><button className="primary" disabled={busy} onClick={()=>complete('keep')}><Icon name="check"/>{t('shoppingCheckout.keepOpen')}</button><button className="secondary" disabled={busy} onClick={()=>complete('remove')}><Icon name="delete"/>{t('shoppingCheckout.removeOpen')}</button><button className="text-button" disabled={busy} onClick={onClose}>{t('shoppingCheckout.cancel')}</button></div></div>:<div className="shopping-checkout-section">{error&&<p className="error" role="alert">{error}</p>}<div className="shopping-checkout-actions"><button className="primary" disabled={busy} onClick={()=>complete('keep')}><Icon name="check"/>{t('shoppingCheckout.finish')}</button><button className="text-button" disabled={busy} onClick={onClose}>{t('shoppingCheckout.cancel')}</button></div></div>}</>}
+  {stage==='review'&&<><div className="sheet-head"><div><small>{list?.name}</small><h2 id="shopping-checkout-title">{t('shoppingCheckout.reviewTitle')}</h2></div><button className="sheet-close" onClick={onClose} aria-label={t('shoppingCheckout.cancel')}><Icon name="close"/></button></div><div className="shopping-checkout-section"><strong>{t('shoppingCheckout.storeTitle')}</strong><label htmlFor="shopping-checkout-store">{t('shoppingCheckout.storeLabel')}</label><select id="shopping-checkout-store" value={storeId} onChange={event=>setStoreId(event.target.value)} disabled={busy||storesLoading||lookupBusy}><option value="">{storesLoading?t('shoppingCheckout.storeLoading'):t('shoppingCheckout.noStore')}</option>{stores.map(store=><option key={store.id} value={store.id}>{store.display_label}{store.address?` · ${store.address}`:''}</option>)}</select>{list?.store&&!storeId&&<small>{t('shoppingCheckout.currentStore',{store:list.store})}</small>}{storeLoadFailed&&<small role="status">{t('shoppingCheckout.storeLoadFailed')}</small>}<details className="shopping-store-lookup"><summary>{t('shoppingCheckout.otherStore')}</summary><form onSubmit={searchLocation}><label htmlFor="shopping-store-query">{t('shoppingCheckout.storeSearchLabel')}</label><div className="shopping-store-search-row"><input id="shopping-store-query" value={locationQuery} onChange={event=>setLocationQuery(event.target.value)} placeholder={t('shoppingCheckout.storeSearchPlaceholder')} autoComplete="off"/><button type="submit" className="secondary" disabled={lookupBusy}>{t('shoppingCheckout.searchStore')}</button></div></form><button type="button" className="text-button shopping-location-button" onClick={useCurrentLocation} disabled={lookupBusy}>{t('shoppingCheckout.useLocation')}</button><small>{t('shoppingCheckout.locationPrivacy')}</small>{lookupBusy&&<small role="status">{t('shoppingCheckout.storeSearching')}</small>}{lookupError&&<p className="error" role="alert">{lookupError}</p>}{lookupResults.length>0&&<ul className="shopping-store-results">{lookupResults.map(result=><li key={`${result.provider}:${result.provider_ref}`}><button type="button" onClick={()=>chooseLocation(result)} disabled={lookupBusy}><strong>{result.display_label}</strong>{result.address&&<small>{result.address}</small>}</button></li>)}</ul>}{lookupAttribution&&<small className="shopping-store-attribution">{lookupAttribution}</small>}</details></div>{openCount>0?<div className="shopping-checkout-section"><strong>{t('shoppingCheckout.openTitle',{count:openCount})}</strong><p>{t('shoppingCheckout.openHint')}</p>{error&&<p className="error" role="alert">{error}</p>}<div className="shopping-checkout-actions"><button className="primary" disabled={busy||lookupBusy} onClick={()=>complete('keep')}><Icon name="check"/>{t('shoppingCheckout.keepOpen')}</button><button className="secondary" disabled={busy||lookupBusy} onClick={()=>complete('remove')}><Icon name="delete"/>{t('shoppingCheckout.removeOpen')}</button><button className="text-button" disabled={busy} onClick={onClose}>{t('shoppingCheckout.cancel')}</button></div></div>:<div className="shopping-checkout-section">{error&&<p className="error" role="alert">{error}</p>}<div className="shopping-checkout-actions"><button className="primary" disabled={busy||lookupBusy} onClick={()=>complete('keep')}><Icon name="check"/>{t('shoppingCheckout.finish')}</button><button className="text-button" disabled={busy} onClick={onClose}>{t('shoppingCheckout.cancel')}</button></div></div>}</>}
   {stage==='finishing'&&<div className="shopping-checkout-status" role="status"><Icon name="refresh" size={30}/><strong id="shopping-checkout-title">{t('shoppingCheckout.finishing')}</strong></div>}
   {stage==='done'&&<><div className="sheet-head"><div><small>{list?.name}</small><h2 id="shopping-checkout-title">{t('shoppingCheckout.doneTitle')}</h2></div></div><div className="shopping-checkout-summary" role="status"><Icon name="doneAll" size={34}/><strong>{t('shoppingCheckout.doneSummaryDetailed',{purchased,open:stillOpen})}</strong></div><p>{t('shoppingCheckout.expenseHint')}</p>{error&&<p className="error" role="alert">{error}</p>}<div className="shopping-checkout-actions"><button className="primary" disabled={busy} onClick={()=>openExpense('receipt')}><Icon name="receipt"/>{t('shoppingCheckout.receipt')}</button><button className="secondary" disabled={busy} onClick={()=>openExpense('quick')}><Icon name="edit"/>{t('shoppingCheckout.amount')}</button><button className="text-button" disabled={busy} onClick={onClose}>{t('shoppingCheckout.withoutExpense')}</button></div></>}
  </section></div>;
