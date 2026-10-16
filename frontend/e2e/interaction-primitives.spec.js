@@ -1,0 +1,29 @@
+import {test,expect} from '@playwright/test';
+import AxeBuilder from '@axe-core/playwright';
+import {installApiMocks} from './mock-api';
+
+test('canonical list creation restores global trigger after palette unmount',async({page},testInfo)=>{
+  await installApiMocks(page);
+  await page.goto('/');
+  const trigger=page.locator('.global-create-fab');
+  await expect(trigger).toBeVisible();
+  await trigger.click();
+  const palette=page.getByRole('dialog',{name:'Neu hinzufügen'});
+  await palette.getByRole('button',{name:'Alle Aktionen'}).click();
+  await palette.getByRole('button',{name:'Aufgabenliste',exact:true}).click();
+  const sheet=page.getByRole('dialog').filter({has:page.locator('#list-name')});
+  await expect(sheet).toBeVisible();
+  await expect(sheet).toHaveAttribute('data-family-overlay-owner','base-ui');
+  await expect(sheet).toHaveAttribute('aria-modal','true');
+  await sheet.getByRole('textbox',{name:/Name/}).fill('Sommerferienplanung mit sehr langem Namen');
+  const save=sheet.getByRole('button',{name:'Speichern',exact:true});
+  await expect(save).toBeEnabled();
+  await save.scrollIntoViewIfNeeded();
+  const box=await save.boundingBox(),viewport=page.viewportSize();
+  expect(box.y).toBeGreaterThanOrEqual(0);expect(box.y+box.height).toBeLessThanOrEqual(viewport.height);
+  expect((await new AxeBuilder({page}).withTags(['wcag2a','wcag2aa','wcag21aa']).analyze()).violations).toEqual([]);
+  await testInfo.attach('canonical-list-sheet',{body:await page.screenshot({fullPage:true}),contentType:'image/png'});
+  await sheet.getByRole('button',{name:'Abbrechen',exact:true}).click();
+  await expect(sheet).toHaveCount(0);
+  await expect(trigger).toBeFocused();
+});

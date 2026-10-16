@@ -137,7 +137,10 @@ export default function AccessibilityManager(){
     }
 
     const observer=new MutationObserver(refresh);
-    function yieldOwnership(){restoreBackground();restoreBackground=()=>{};window.clearTimeout(focusTimer);}
+    function yieldOwnership(event){
+      if(event.detail)event.detail.returnFocus=restoreFocus||lastOutsideFocus;
+      restoreBackground();restoreBackground=()=>{};window.clearTimeout(focusTimer);
+    }
     document.addEventListener('familyos:managed-overlay-mount',yieldOwnership);
     observer.observe(document.body,{subtree:true,childList:true,attributes:true,attributeFilter:['aria-modal','hidden']});
     document.addEventListener('focusin',onFocusIn,true);
