@@ -43,6 +43,10 @@ def audit(request, grant, action):
                        family=grant.family, target_type='export', target_id=str(grant.pk))
 
 
+def member_label(member):
+    return (member.display_name or member.user.get_full_name() or member.user.get_username()).strip()
+
+
 class SubscriptionInput(serializers.Serializer):
     name = serializers.CharField(max_length=80, trim_whitespace=True)
     detail_level = serializers.ChoiceField(choices=CalendarSubscription.DetailLevel.choices, default=CalendarSubscription.DetailLevel.TITLE)
@@ -102,21 +106,28 @@ def subscription_detail(request, family_id, subscription_id, operation=''):
             audit(request, grant, 'revealed')
         if operation != 'profile':
             return private(Response(reveal(grant)))
+
         credentials = reveal(grant)
-        account = {
-            'PayloadType': 'com.apple.subscribedcalendar.account', 'PayloadVersion': 1,
-            'PayloadIdentifier': f'org.familyos.calendar.{grant.pk}.subscription',
-            'PayloadUUID': str(uuid.uuid5(grant.pk, 'subscription')).upper(),
-            'PayloadDisplayName': f'FamilyOS · {family.name}',
-            'SubCalAccountDescription': f'FamilyOS · {family.name}',
-            'SubCalAccountHostName': credentials['subscription_url'],
-        }
+        token = credentials['password']
+        base = origin()
+        members = list(Membership.objects.filter(family=family, user__is_active=True).select_related('user').order_by('created_at', 'id'))
+        accounts = []
+        for member in members:
+            label = member_label(member)
+            accounts.append({
+                'PayloadType': 'com.apple.subscribedcalendar.account', 'PayloadVersion': 1,
+                'PayloadIdentifier': f'org.familyos.calendar.{grant.pk}.member.{member.pk}',
+                'PayloadUUID': str(uuid.uuid5(grant.pk, f'member:{member.pk}')).upper(),
+                'PayloadDisplayName': f'FamilyOS · {label}',
+                'SubCalAccountDescription': f'FamilyOS · {family.name} · {label}',
+                'SubCalAccountHostName': f'{base}/calendar-feed/{token}/member/{member.pk}.ics',
+            })
         profile = {
             'PayloadType': 'Configuration', 'PayloadVersion': 1,
             'PayloadIdentifier': f'org.familyos.calendar.{grant.pk}', 'PayloadUUID': str(grant.pk).upper(),
             'PayloadDisplayName': f'FamilyOS · {family.name}', 'PayloadOrganization': 'FamilyOS',
-            'PayloadDescription': 'Read-only shared family calendar. Revoke access in FamilyOS Calendar → Calendar subscriptions.',
-            'PayloadRemovalDisallowed': False, 'PayloadContent': [account],
+            'PayloadDescription': 'Read-only FamilyOS calendars split by family member. Revoke access in FamilyOS Calendar → Calendar subscriptions.',
+            'PayloadRemovalDisallowed': False, 'PayloadContent': accounts,
         }
         audit(request, grant, 'profile')
         response = HttpResponse(plistlib.dumps(profile), content_type='application/x-apple-aspen-config')
