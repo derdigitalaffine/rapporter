@@ -45,7 +45,7 @@ Superadmin build/output remains separate.
 `feature-registry.js` is the one page truth: IDs, detail/family/query ownership,
 optional `load: () => import('./Hub.jsx')` and existing UI capability gates.
 `FeatureModule` derives adapters from that registry. App only binds its existing
-hub props to those adapters; it has no separate loader switch/map. The six small
+hub props to those adapters; it has no separate loader switch/map. The eight
 core routes stay eager. App's family/detail decisions now consume registry
 metadata rather than duplicate lists. Query cleanup consumes the same metadata,
 including expense selectors and contextual family IDs.

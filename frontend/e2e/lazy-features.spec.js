@@ -39,3 +39,12 @@ test('known capability lock does not request the feature chunk',async({page})=>{
   await expect(page.getByText('Dieser Bereich ist in deinem Tarif nicht enthalten.',{exact:true})).toBeVisible();
   expect(chunks).toEqual([]);
 });
+test('transient chunk failure has a working retry path',async({page})=>{
+  await installApiMocks(page);
+  await page.route('**/assets/TravelHub-*.js',route=>route.abort('failed'));
+  await page.goto('/?page=trips');
+  await expect(page.getByRole('alert').filter({hasText:'konnte nicht geladen'})).toBeVisible();
+  await page.unroute('**/assets/TravelHub-*.js');
+  await page.getByRole('button',{name:'Erneut versuchen',exact:true}).click();
+  await expect(page.locator('.travel-hub')).toBeVisible();
+});
