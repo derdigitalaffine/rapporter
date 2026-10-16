@@ -99,6 +99,9 @@ test('standalone keyboard resize keeps editing usable without moving persistent 
  await expect.poll(()=>page.evaluate(()=>getComputedStyle(document.documentElement).getPropertyValue('--app-viewport-height').trim())).toBe('440px');
  await expect.poll(()=>page.locator('.bottom-nav').evaluate(el=>el.getBoundingClientRect().bottom)).toBeCloseTo(844,0);
  await field.fill('Keyboard stays usable');await expect(field).toHaveValue('Keyboard stays usable');
+ // Synthetic viewport events do not perform the OS keyboard's native reveal.
+ // Exercise the current scrolled capture field without moving app chrome.
+ await field.evaluate(el=>el.scrollIntoView({block:'start',behavior:'instant'}));
  const box=await field.boundingBox();expect(box.y+box.height).toBeLessThanOrEqual(440);
  expect(await page.evaluate(()=>window.scrollY)).toBe(0);
 

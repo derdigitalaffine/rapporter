@@ -19,7 +19,6 @@ function queryFor(family,filters){const p=new URLSearchParams({family:String(fam
 function safeCsv(value){const text=String(value??'');return `"${(/^[=+@\-\t\r]/.test(text)?"'":"")+text.replaceAll('"','""')}"`}
 
 export default function StatisticsHub({family,entitlements,role,onBack}){
- const {t}=useTranslation();
  const availability=family?featureAvailability('statistics',{entitlements,role}):'pending';
  if(availability!=='available')return <StatisticsAccessState kind={availability} onBack={onBack}/>;
  return <StatisticsContent key={family.id} family={family} onBack={onBack}/>;
