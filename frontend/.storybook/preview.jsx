@@ -27,8 +27,8 @@ export default {
   parameters: {
     layout: 'fullscreen',
     a11y: {test: 'error'},
-    viewport: {options: Object.fromEntries([320, 390, 1024, 1440].map(width => [String(width), {
-      name: `${width}px`, styles: {width: `${width}px`, height: '900px'}, type: width < 600 ? 'mobile' : 'desktop',
+    viewport: {options: Object.fromEntries([[320,568], [390,844], [1024,768], [1440,900]].map(([width,height]) => [String(width), {
+      name: `${width}px`, styles: {width: `${width}px`, height: `${height}px`}, type: width < 600 ? 'mobile' : 'desktop',
     }]))},
   },
   beforeEach: async () => {
