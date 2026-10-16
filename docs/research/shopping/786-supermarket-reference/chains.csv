@@ -1,0 +1,8 @@
+chain_id,canonical_name,aliases,operator_scope,country_region,wikidata_id,nsi_id,source_status
+de.aldi-nord,Aldi Nord,"Aldi|Aldi Nord",Aldi Nord,DE excluding Aldi Süd region,Q41171373,aldi-813759,verified
+de.aldi-sued,Aldi Süd,"Aldi|Aldi Süd|ALDI SÜD",Aldi Süd,Aldi Süd region,Q41171672,aldisud-e4a24f,verified
+de.lidl,Lidl,"LIDL",Lidl,DE,Q151954,,verified-brand-id
+de.netto-salling,Netto,"Netto mit Hund|Netto",Salling Group,DE selected regions,Q552652,,verified-brand-id
+de.netto-marken-discount,Netto Marken-Discount,"Netto Marken Discount|Netto Markendiscount|Netto",Netto Marken-Discount,DE,Q879858,,verified-brand-id
+de.penny,PENNY,"Penny|Penny Markt|PENNY Markt",PENNY,DE,Q284688,,verified-brand-id
+de.rewe,REWE,"Rewe|REWE City|REWE Center",REWE,DE,Q16968817,,verified-brand-id
