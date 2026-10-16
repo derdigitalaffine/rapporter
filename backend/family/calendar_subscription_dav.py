@@ -2,7 +2,9 @@
 
 The calendar is scoped by a revocable CalendarSubscription credential. Reads only
 project native family-shared events; PUT and DELETE write those same resources
-back to FamilyOS with HTTP conditional request protection.
+back to FamilyOS with HTTP conditional request protection. Family memberships are
+exposed as searchable CalDAV principals and ATTENDEE values, but no scheduling
+inbox/outbox or invitation delivery is implemented.
 """
 import base64
 import binascii
@@ -21,6 +23,16 @@ from auth_abuse.service import enforce
 from .calendar_recurrence import family_zone
 from .calendar_subscription_service import resolve_token, origin
 from .calendar_subscription_ics import shared_events, calendar_bytes, overlaps, CalendarCapacityError, MAX_BYTES
+from .calendar_subscription_participants import (
+    UnknownFamilyAttendee,
+    active_members,
+    attendee_memberships,
+    calendar_bytes_with_participants,
+    member_calendar_address,
+    member_calendar_urn,
+    member_label,
+    member_principal_path,
+)
 from .calendar_subscription_views import private
 from .models import FamilyEvent
 
@@ -56,15 +68,18 @@ def limited(request, identifier):
 
 
 def event_data(grant, event):
-    return calendar_bytes(grant.family, [event], CALDAV_DETAIL_LEVEL)
+    return calendar_bytes_with_participants(grant, [event], CALDAV_DETAIL_LEVEL)
 
 
 def event_etag(grant, event):
     return '"' + hashlib.sha256(event_data(grant, event)).hexdigest() + '"'
 
 
-def ics_response(request, grant, events, detail_level=None):
-    data = calendar_bytes(grant.family, events, detail_level or grant.detail_level)
+def ics_response(request, grant, events, detail_level=None, include_participants=False):
+    data = (
+        calendar_bytes_with_participants(grant, events, detail_level or grant.detail_level)
+        if include_participants else calendar_bytes(grant.family, events, detail_level or grant.detail_level)
+    )
     etag = '"' + hashlib.sha256(data).hexdigest() + '"'
     result = response(b'' if request.method == 'HEAD' else data, content_type='text/calendar; charset=utf-8')
     if request.headers.get('If-None-Match') in (etag, '*'):
@@ -118,8 +133,13 @@ def xml_body(request):
     return root
 
 
-def props_for(grant, path, kind, etag=None, data=None):
+def _owner_member(grant):
+    return next((member for member in active_members(grant) if member.user_id == grant.created_by_id), None)
+
+
+def props_for(grant, path, kind, etag=None, data=None, member=None):
     principal = f'/caldav/{grant.pk}/principal/'
+    principals = f'/caldav/{grant.pk}/principals/'
     home = f'/caldav/{grant.pk}/home/'
     values = {}
     def add(ns, name, text=None, child=None):
@@ -131,15 +151,24 @@ def props_for(grant, path, kind, etag=None, data=None):
     resource = add(D, 'resourcetype')
     if kind != 'event':
         resource.append(element(D, 'collection'))
-    if kind == 'principal':
+    if kind in ('principal', 'member-principal'):
         resource.append(element(D, 'principal'))
     if kind == 'calendar':
         resource.append(element(C, 'calendar'))
-    add(D, 'displayname', grant.family.name if kind == 'calendar' else 'FamilyOS')
+    display = member_label(member) if member is not None else grant.family.name if kind == 'calendar' else 'FamilyOS'
+    add(D, 'displayname', display)
     add(D, 'current-user-principal', child=element(D, 'href', principal))
-    add(D, 'principal-URL', child=element(D, 'href', principal))
+    principal_url = member_principal_path(grant, member) if member is not None else principal
+    add(D, 'principal-URL', child=element(D, 'href', principal_url))
+    collection_set = add(D, 'principal-collection-set'); collection_set.append(element(D, 'href', principals))
     add(C, 'calendar-home-set', child=element(D, 'href', home))
     add(D, 'owner', child=element(D, 'href', principal))
+    identity = member if member is not None else _owner_member(grant) if kind == 'principal' else None
+    if identity is not None:
+        addresses = add(C, 'calendar-user-address-set')
+        for value in (member_calendar_address(identity), member_calendar_urn(identity), member_principal_path(grant, identity)):
+            addresses.append(element(D, 'href', value))
+        add(C, 'calendar-user-type', 'INDIVIDUAL')
     privileges = add(D, 'current-user-privilege-set')
     for name in (('read',) if kind not in ('calendar', 'event') else ('read', 'write')):
         privilege = ET.SubElement(privileges, q(D, 'privilege')); privilege.append(element(D, name))
@@ -151,6 +180,9 @@ def props_for(grant, path, kind, etag=None, data=None):
         formats = add(C, 'supported-calendar-data'); ET.SubElement(formats, q(C, 'calendar-data'), {'content-type': 'text/calendar', 'version': '2.0'})
         add(CS, 'getctag', etag)
         add(C, 'max-resource-size', str(MAX_BYTES))
+    if kind in ('root', 'principal', 'principal-collection'):
+        for name in ('principal-property-search', 'principal-search-property-set'):
+            supported = ET.SubElement(reports, q(D, 'supported-report')); report = ET.SubElement(supported, q(D, 'report')); report.append(element(D, name))
     if etag:
         add(D, 'getetag', etag)
     if data is not None:
@@ -203,6 +235,55 @@ def query_range(root):
     return start, end
 
 
+def _principal_value(member, tag):
+    if tag == q(D, 'displayname'):
+        return member_label(member)
+    if tag == q(C, 'calendar-user-address-set'):
+        return ' '.join((member_calendar_address(member), member_calendar_urn(member)))
+    if tag == q(C, 'calendar-user-type'):
+        return 'INDIVIDUAL'
+    raise ValueError()
+
+
+def principal_property_search(root, grant):
+    if root.tag != q(D, 'principal-property-search') or root.attrib:
+        raise ValueError()
+    searches = root.findall(q(D, 'property-search'))
+    if not searches or len(searches) > 5:
+        raise ValueError()
+    criteria = []
+    allowed = {q(D, 'displayname'), q(C, 'calendar-user-address-set'), q(C, 'calendar-user-type')}
+    for search in searches:
+        prop = search.find(q(D, 'prop')); match = search.find(q(D, 'match'))
+        if prop is None or match is None or len(prop) != 1 or prop[0].tag not in allowed or set(match.attrib) - {'caseless'}:
+            raise ValueError()
+        criteria.append((prop[0].tag, (match.text or '').casefold()))
+    requested_node = root.find(q(D, 'prop'))
+    requested = [node.tag for node in requested_node] if requested_node is not None else list(allowed)
+    if any(tag not in allowed and tag not in {q(D, 'resourcetype'), q(D, 'principal-URL')} for tag in requested):
+        raise ValueError()
+    rows = []
+    for member in active_members(grant):
+        if all(match in _principal_value(member, tag).casefold() for tag, match in criteria):
+            rows.append((member_principal_path(grant, member), props_for(grant, member_principal_path(grant, member), 'member-principal', member=member)))
+        if len(rows) >= 100:
+            break
+    return multistatus(rows, requested)
+
+
+def principal_search_property_set():
+    root = element(D, 'principal-search-property-set')
+    for namespace, name, description in (
+        (D, 'displayname', 'Family member name'),
+        (C, 'calendar-user-address-set', 'Family member calendar address'),
+        (C, 'calendar-user-type', 'Calendar user type'),
+    ):
+        item = ET.SubElement(root, q(D, 'principal-search-property'))
+        prop = ET.SubElement(item, q(D, 'prop')); prop.append(element(namespace, name))
+        ET.SubElement(item, q(D, 'description'), {'{http://www.w3.org/XML/1998/namespace}lang': 'en'}).text = description
+    return response(ET.tostring(root, encoding='utf-8', xml_declaration=True))
+
+
 def _aware(value, zone):
     if isinstance(value, datetime):
         return value.replace(tzinfo=zone) if value.tzinfo is None else value
@@ -251,7 +332,8 @@ def _parse_put(grant, existing, body):
         payload['location'] = str(component.get('LOCATION') or '')[:500]
     if 'DESCRIPTION' in component:
         payload['description'] = str(component.get('DESCRIPTION') or '')[:4000]
-    return summary, start, end, payload
+    participants = attendee_memberships(grant, component)
+    return summary, start, end, payload, participants
 
 
 def _put_event(request, grant, event_id, existing):
@@ -261,7 +343,9 @@ def _put_event(request, grant, event_id, existing):
     if request.headers.get('If-Match') and request.headers.get('If-Match') != current:
         return response(status=412)
     try:
-        title, starts_at, ends_at, payload = _parse_put(grant, existing, request.body)
+        title, starts_at, ends_at, payload, participants = _parse_put(grant, existing, request.body)
+    except UnknownFamilyAttendee:
+        return response(status=409)
     except NotImplementedError:
         return response(status=409)
     except (ValueError, TypeError, KeyError):
@@ -286,6 +370,7 @@ def _put_event(request, grant, event_id, existing):
             event.is_family_event = True
             event.save(update_fields=['title', 'starts_at', 'ends_at', 'payload', 'is_family_event', 'updated_at'])
             status = 204
+        event.participants.set(participants)
     result = response(status=status, content_type='text/calendar; charset=utf-8')
     result['ETag'] = event_etag(grant, event)
     return result
@@ -318,10 +403,20 @@ def dav(request, path=''):
     if grant is None:
         result = response(status=401); result['WWW-Authenticate'] = 'Basic realm="FamilyOS calendar", charset="UTF-8"'; return result
     principal = f'/caldav/{grant.pk}/principal/'
+    principals = f'/caldav/{grant.pk}/principals/'
     home = f'/caldav/{grant.pk}/home/'
     calendar = home + 'family/'
     actual = '/caldav/' + path
-    kind = {'/caldav/': 'root', principal: 'principal', home: 'home', calendar: 'calendar'}.get(actual)
+    kind = {'/caldav/': 'root', principal: 'principal', principals: 'principal-collection', home: 'home', calendar: 'calendar'}.get(actual)
+    member = None
+    if kind is None and actual.startswith(principals) and actual.endswith('/'):
+        try:
+            member_id = UUID(actual[len(principals):-1])
+            member = next((row for row in active_members(grant) if row.pk == member_id), None)
+            if member is not None:
+                kind = 'member-principal'
+        except ValueError:
+            pass
     event_id = None
     if actual.startswith(calendar) and actual.endswith('.ics'):
         try:
@@ -358,7 +453,7 @@ def dav(request, path=''):
         if request.method in ('GET', 'HEAD'):
             if kind not in ('event', 'calendar'):
                 return response(status=405)
-            return ics_response(request, grant, [target] if target else events, CALDAV_DETAIL_LEVEL)
+            return ics_response(request, grant, [target] if target else events, CALDAV_DETAIL_LEVEL, include_participants=True)
         if request.method == 'PROPFIND':
             depth = request.headers.get('Depth', 'infinity')
             if depth not in ('0', '1'):
@@ -367,17 +462,27 @@ def dav(request, path=''):
             if root.tag != q(D, 'propfind') or root.find(q(D, 'propname')) is not None:
                 return response(status=400)
             prop = root.find(q(D, 'prop')); requested = [node.tag for node in prop] if prop is not None else None
-            stamp = hashlib.sha256(calendar_bytes(grant.family, events, CALDAV_DETAIL_LEVEL)).hexdigest()
-            rows = [resource(target)] if target else [(actual, props_for(grant, actual, kind, stamp))]
+            stamp = hashlib.sha256(calendar_bytes_with_participants(grant, events, CALDAV_DETAIL_LEVEL)).hexdigest()
+            rows = [resource(target)] if target else [(actual, props_for(grant, actual, kind, stamp, member=member))]
             if depth == '1':
-                if kind == 'root': rows.append((principal, props_for(grant, principal, 'principal')))
-                if kind == 'principal': rows.append((home, props_for(grant, home, 'home')))
+                if kind == 'root':
+                    rows.append((principal, props_for(grant, principal, 'principal')))
+                    rows.append((principals, props_for(grant, principals, 'principal-collection')))
+                if kind == 'principal':
+                    rows.append((home, props_for(grant, home, 'home')))
+                    rows.append((principals, props_for(grant, principals, 'principal-collection')))
+                if kind == 'principal-collection':
+                    rows.extend((member_principal_path(grant, row), props_for(grant, member_principal_path(grant, row), 'member-principal', member=row)) for row in active_members(grant))
                 if kind == 'home': rows.append((calendar, props_for(grant, calendar, 'calendar', stamp)))
                 if kind == 'calendar': rows.extend(resource(event) for event in events)
             return multistatus(rows, requested)
+        root = xml_body(request)
+        if root.tag == q(D, 'principal-property-search') and kind in ('root', 'principal', 'principal-collection'):
+            return principal_property_search(root, grant)
+        if root.tag == q(D, 'principal-search-property-set') and kind in ('root', 'principal', 'principal-collection'):
+            return principal_search_property_set()
         if kind != 'calendar':
             return response(status=403)
-        root = xml_body(request)
         prop = root.find(q(D, 'prop')); requested = [node.tag for node in prop] if prop is not None else [q(D, 'getetag'), q(C, 'calendar-data')]
         if any(list(node) or node.attrib for node in (prop if prop is not None else [])):
             return response(status=403)
