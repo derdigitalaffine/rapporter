@@ -1,4 +1,5 @@
 from decimal import Decimal, InvalidOperation
+from uuid import UUID
 
 from django.conf import settings
 from django.db import transaction
@@ -13,8 +14,18 @@ from .shopping_geocoder import ShoppingGeocoderError, attribution, reverse_store
 from .shopping_models import ShoppingListStoreProfile, ShoppingStore
 
 
+def _uuid(value):
+    try:
+        return UUID(str(value))
+    except (TypeError, ValueError, AttributeError):
+        return None
+
+
 def _family_for_user(user, family_id):
-    family = Family.objects.filter(id=family_id, status=Family.Status.ACTIVE).first()
+    family_uuid = _uuid(family_id)
+    if not family_uuid:
+        return None
+    family = Family.objects.filter(id=family_uuid, status=Family.Status.ACTIVE).first()
     if not family or not Membership.objects.filter(family=family, user=user).exists():
         return None
     return family
@@ -81,9 +92,12 @@ def shopping_store_location_resolve(request):
     family = _family_for_user(request.user, request.data.get("family"))
     if not family:
         return Response({"detail": "Familie nicht gefunden."}, status=status.HTTP_404_NOT_FOUND)
+    list_uuid = _uuid(request.data.get("shopping_list"))
+    if not list_uuid:
+        return Response({"detail": "Einkaufsliste nicht gefunden."}, status=status.HTTP_404_NOT_FOUND)
     shopping_list = visible_shopping_lists(
         request.user,
-        ShoppingList.objects.filter(id=request.data.get("shopping_list"), family=family, archived=False),
+        ShoppingList.objects.filter(id=list_uuid, family=family, archived=False),
     ).first()
     if not shopping_list:
         return Response({"detail": "Einkaufsliste nicht gefunden."}, status=status.HTTP_404_NOT_FOUND)
@@ -116,7 +130,6 @@ def shopping_store_location_resolve(request):
         if not store.active:
             store.active = True
             update_fields.append("active")
-        # Keep family-authored labels intact; only fill provider metadata that was blank.
         for field, value in (("address", address), ("latitude", latitude), ("longitude", longitude)):
             if not getattr(store, field) and value:
                 setattr(store, field, value)
