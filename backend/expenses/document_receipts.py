@@ -58,6 +58,21 @@ def _public_quality_warnings(value):
     return sorted(found)
 
 
+def _receipt_ocr_confidence(value):
+    """Derive a bounded page-level OCR signal without adding receipt semantics to Documents."""
+    pages = (value or {}).get("pages", []) if isinstance(value, dict) else []
+    confidences = []
+    for page in pages if isinstance(pages, list) else []:
+        if not isinstance(page, dict):
+            continue
+        candidate = page.get("confidence")
+        if isinstance(candidate, (int, float)):
+            confidences.append(max(0.0, min(1.0, float(candidate))))
+    if not confidences:
+        return None
+    return round(sum(confidences) / len(confidences), 4)
+
+
 def canonicalize_receipt_upload(upload):
     """Apply receipt admission policy; all quality detection belongs to Documents."""
     size = getattr(upload, "size", None)
@@ -326,12 +341,18 @@ def _consume_receipt_processing_run(run, link):
         if run.status not in {DocumentProcessingRun.Status.REVIEW, DocumentProcessingRun.Status.READY}:
             return
 
-        parsed = parse_receipt_text((run.normalized_text or "")[:MAX_RECEIPT_TEXT_CHARS])
+        parsed = parse_receipt_text(
+            (run.normalized_text or "")[:MAX_RECEIPT_TEXT_CHARS],
+            ocr_confidence=_receipt_ocr_confidence(run.quality_data),
+        )
         extraction.raw_text = (run.normalized_text or "")[:MAX_RECEIPT_TEXT_CHARS]
         extraction.merchant = parsed["merchant"]
         extraction.date = parsed["date"]
         extraction.total = parsed["total"]
+        extraction.subtotal = parsed["subtotal"]
+        extraction.tax = parsed["tax"]
         extraction.currency = parsed["currency"]
+        extraction.parser_version = parsed["structured_data"].get("extractor_version", extraction.parser_version)
         extraction.field_confidences = parsed["field_confidences"]
         extraction.structured_data = {
             **(extraction.structured_data or {}),
@@ -347,7 +368,10 @@ def _consume_receipt_processing_run(run, link):
                 "merchant",
                 "date",
                 "total",
+                "subtotal",
+                "tax",
                 "currency",
+                "parser_version",
                 "field_confidences",
                 "structured_data",
                 "status",
