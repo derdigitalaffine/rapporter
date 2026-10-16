@@ -64,7 +64,8 @@ def overlaps(event, start, end):
 
 def event_component(event, detail_level='title'):
     zone = family_zone(event.family); payload = event.payload if isinstance(event.payload, dict) else {}; component = Event()
-    component.add('uid', f'{event.pk}@familyos'); component.add('dtstamp', event.updated_at.astimezone(dt_timezone.utc)); component.add('last-modified', event.updated_at.astimezone(dt_timezone.utc))
+    uid = payload.get('caldav_uid') if isinstance(payload.get('caldav_uid'), str) and payload.get('caldav_uid').strip() else f'{event.pk}@familyos'
+    component.add('uid', uid[:255]); component.add('dtstamp', event.updated_at.astimezone(dt_timezone.utc)); component.add('last-modified', event.updated_at.astimezone(dt_timezone.utc))
     component.add('summary', 'Belegt' if detail_level == 'availability' else event.title)
     all_day = bool(payload.get('all_day')); start = event.starts_at.astimezone(zone); end = event.ends_at.astimezone(zone) if event.ends_at else None
     recurrence = recurrence_dict(payload.get('recurrence')); shift = timedelta(0)
