@@ -12,8 +12,8 @@ const REASON_KEYS={
  reconciliation_mismatch:'reconciliation_mismatch',
 };
 
-function percent(value){const number=Number(value);return Number.isFinite(number)?Math.round(Math.max(0,Math.min(1,number))*100):null}
-function toneFor(value){const number=Number(value);if(!Number.isFinite(number))return'';if(number>=.82)return'good';if(number>=.55)return'warn';return'low'}
+function percent(value){if(value===null||value===undefined||value==='')return null;const number=Number(value);return Number.isFinite(number)?Math.round(Math.max(0,Math.min(1,number))*100):null}
+function toneFor(value){if(value===null||value===undefined||value==='')return'';const number=Number(value);if(!Number.isFinite(number))return'';if(number>=.82)return'good';if(number>=.55)return'warn';return'low'}
 function money(value,currency,locale){if(value===null||value===undefined||value==='')return'';const number=Number(value);if(!Number.isFinite(number))return String(value);try{return new Intl.NumberFormat(locale||'de',{style:'currency',currency:currency||'EUR'}).format(number)}catch{return `${number.toFixed(2)} ${currency||''}`.trim()}}
 function evidenceValue(entry){return entry?.normalized??entry?.value??''}
 
