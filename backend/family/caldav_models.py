@@ -1,7 +1,7 @@
 from django.conf import settings
 from django.db import models
 
-from .models import Family, Membership, TimestampedModel
+from .models import Family, FamilyEvent, Membership, TimestampedModel
 
 
 class CalDavConnection(TimestampedModel):
@@ -74,3 +74,23 @@ class CalDavConnection(TimestampedModel):
     @property
     def credential_state(self):
         return "configured" if self.credentials_encrypted else "missing"
+
+
+class CalDavEventBinding(TimestampedModel):
+    """Private remote identity/ETag state; remote hrefs never enter FamilyEvent payloads."""
+
+    connection = models.ForeignKey(CalDavConnection, on_delete=models.CASCADE, related_name="event_bindings")
+    event = models.ForeignKey(FamilyEvent, on_delete=models.CASCADE, related_name="caldav_bindings")
+    remote_uid = models.CharField(max_length=255)
+    remote_href_encrypted = models.TextField(editable=False)
+    etag = models.CharField(max_length=512, blank=True)
+    local_version = models.PositiveBigIntegerField(default=0)
+    last_seen_at = models.DateTimeField(null=True, blank=True)
+    remote_deleted_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["connection", "remote_uid"], name="caldav_binding_connection_uid_uniq"),
+            models.UniqueConstraint(fields=["connection", "event"], name="caldav_binding_connection_event_uniq"),
+        ]
+        indexes = [models.Index(fields=["connection", "last_seen_at"], name="caldav_binding_seen_idx")]
