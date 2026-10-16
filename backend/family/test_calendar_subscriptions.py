@@ -38,8 +38,8 @@ class CalendarSubscriptionTests(TestCase):
         values.update(kwargs)
         return FamilyEvent.objects.create(**values)
 
-    def create(self):
-        response = self.client.post(self.path, {'name': 'My iPhone'}, format='json')
+    def create(self, detail_level='title'):
+        response = self.client.post(self.path, {'name': 'My iPhone', 'detail_level': detail_level}, format='json')
         self.assertEqual(response.status_code, 201, response.data)
         self.assertIn('no-store', response['Cache-Control'])
         self.grant = response.data
@@ -90,6 +90,21 @@ class CalendarSubscriptionTests(TestCase):
         self.assertEqual(str(events[0]['SUMMARY']), self.event.title)
         self.assertEqual(self.dav('GET', self.home + str(alien.pk) + '.ics').status_code, 404)
 
+    def test_detail_level_is_enforced_server_side(self):
+        self.create('availability')
+        event = Calendar.from_ical(self.public.get(self.feed).content).walk('VEVENT')[0]
+        self.assertEqual(str(event['SUMMARY']), 'Belegt')
+        self.assertNotIn('LOCATION', event)
+        self.assertNotIn('DESCRIPTION', event)
+        listing = self.client.get(self.path).data['subscriptions']
+        self.assertEqual(listing[0]['detail_level'], 'availability')
+
+        self.create('full')
+        event = Calendar.from_ical(self.public.get(self.feed).content).walk('VEVENT')[0]
+        self.assertEqual(str(event['SUMMARY']), self.event.title)
+        self.assertEqual(str(event['LOCATION']), 'Never exported')
+        self.assertNotIn('DESCRIPTION', event)
+
     def test_revoke_and_rotation_invalidate_old_feed_and_profile_credentials(self):
         self.create()
         new = self.client.post(self.detail + 'rotate/'); self.assertEqual(new.status_code, 200)
@@ -127,7 +142,6 @@ class CalendarSubscriptionTests(TestCase):
             self.assertIn('no-store', result['Cache-Control'])
         self.assertEqual(self.client.get(self.detail + 'profile/').status_code, 403)
         self.assertEqual(self.client.post(self.path, {'name': 'New'}, format='json').status_code, 403)
-        # Revocation remains available even when freshness has expired.
         other = get_user_model().objects.create_user('other')
         Membership.objects.create(user=other, family=self.family, role='adult')
         client = APIClient(); client.force_authenticate(other)
@@ -144,7 +158,7 @@ class CalendarSubscriptionTests(TestCase):
         wrong = 'Basic ' + base64.b64encode(b'subscriber:calendar-test-password').decode()
         self.assertEqual(self.public.generic('PROPFIND', '/caldav/', HTTP_AUTHORIZATION=wrong, HTTP_DEPTH='0').status_code, 401)
 
-    def test_profile_is_additional_valid_apple_caldav_payload_with_same_grant(self):
+    def test_profile_uses_native_apple_subscribed_calendar_payload(self):
         self.create()
         response = self.client.get(self.detail + 'profile/')
         self.assertEqual(response.status_code, 200)
@@ -153,10 +167,13 @@ class CalendarSubscriptionTests(TestCase):
         self.assertEqual(profile['PayloadType'], 'Configuration')
         self.assertEqual(len(profile['PayloadContent']), 1)
         account = profile['PayloadContent'][0]
-        self.assertEqual(account['PayloadType'], 'com.apple.caldav.account')
-        self.assertTrue(account['CalDAVUseSSL']); self.assertEqual(account['CalDAVPort'], 443)
-        self.assertEqual(account['CalDAVPrincipalURL'], self.grant['caldav_url'])
-        self.assertEqual(account['CalDAVPassword'], self.grant['password'])
+        self.assertEqual(account['PayloadType'], 'com.apple.subscribedcalendar.account')
+        self.assertEqual(account['SubCalAccountHostName'], self.grant['subscription_url'])
+        self.assertIn(self.grant['password'], account['SubCalAccountHostName'])
+        self.assertNotIn('CalDAVPassword', account)
+        self.assertNotIn('CalDAVPrincipalURL', account)
+        self.assertNotIn('CalDAVUsername', account)
+        self.assertNotIn('calendar-test-password', str(profile))
         self.assertEqual(self.public.get(self.feed).status_code, 200)
         self.assertEqual(AuditEvent.objects.filter(event_key='calendar.subscription.profile').count(), 1)
         audit_data = str(list(AuditEvent.objects.values('metadata', 'target_id')))
@@ -165,7 +182,6 @@ class CalendarSubscriptionTests(TestCase):
     @override_settings(APP_URL='http://untrusted.example')
     def test_insecure_canonical_origin_refuses_create_without_host_fallback(self):
         response = self.client.post(self.path, {'name': 'Device'}, format='json', HTTP_HOST='attacker.test')
-        # Django Host checking can reject before application validation too.
         self.assertIn(response.status_code, (400, 403))
         self.assertFalse(CalendarSubscription.objects.exists())
 

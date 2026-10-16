@@ -5,9 +5,15 @@ from .models import Family, TimestampedModel
 
 
 class CalendarSubscription(TimestampedModel):
+    class DetailLevel(models.TextChoices):
+        AVAILABILITY = 'availability', 'Availability only'
+        TITLE = 'title', 'Title and time'
+        FULL = 'full', 'Full safe details'
+
     family = models.ForeignKey(Family, on_delete=models.CASCADE, related_name='calendar_subscriptions')
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='calendar_subscriptions')
     name = models.CharField(max_length=80)
+    detail_level = models.CharField(max_length=16, choices=DetailLevel.choices, default=DetailLevel.TITLE)
     token_digest = models.CharField(max_length=64, unique=True)
     credentials_encrypted = models.TextField()
     revoked_at = models.DateTimeField(null=True, blank=True)

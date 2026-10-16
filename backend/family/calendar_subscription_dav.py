@@ -47,7 +47,7 @@ def limited(request, identifier):
 
 
 def ics_response(request, grant, events):
-    data = calendar_bytes(grant.family, events)
+    data = calendar_bytes(grant.family, events, grant.detail_level)
     etag = '"' + hashlib.sha256(data).hexdigest() + '"'
     result = response(b'' if request.method == 'HEAD' else data, content_type='text/calendar; charset=utf-8')
     if request.headers.get('If-None-Match') in (etag, '*'):
@@ -89,7 +89,6 @@ def xml_body(request):
     if int(request.META.get('CONTENT_LENGTH') or 0) > 65536:
         raise ValueError()
     body = request.body
-    # Reject declarations/entities (including encoded XML) and deeply nested input.
     if len(body) > 65536 or b'<!' in body or b'\x00' in body:
         raise ValueError()
     root = ET.fromstring(body)
@@ -165,8 +164,6 @@ def multistatus(rows, requested):
 
 
 def query_range(root):
-    # Explicitly reject unsupported filters/expansion instead of over-sharing a
-    # broader result while pretending to have applied the requested restriction.
     allowed = {q(C, 'filter'), q(C, 'comp-filter'), q(C, 'time-range')}
     filters = root.findall(q(C, 'filter'))
     for filters_root in filters:
@@ -220,7 +217,7 @@ def dav(request, path=''):
         def resource(event):
             href = calendar + str(event.pk) + '.ics'
             if href not in resources:
-                data = calendar_bytes(grant.family, [event]); etag = '"' + hashlib.sha256(data).hexdigest() + '"'
+                data = calendar_bytes(grant.family, [event], grant.detail_level); etag = '"' + hashlib.sha256(data).hexdigest() + '"'
                 resources[href] = props_for(grant, href, 'event', etag, data)
             return href, resources[href]
         target = next((event for event in events if event.pk == event_id), None) if kind == 'event' else None
@@ -238,7 +235,7 @@ def dav(request, path=''):
             if root.tag != q(D, 'propfind') or root.find(q(D, 'propname')) is not None:
                 return response(status=400)
             prop = root.find(q(D, 'prop')); requested = [node.tag for node in prop] if prop is not None else None
-            stamp = hashlib.sha256(calendar_bytes(grant.family, events)).hexdigest()
+            stamp = hashlib.sha256(calendar_bytes(grant.family, events, grant.detail_level)).hexdigest()
             rows = [resource(target)] if target else [(actual, props_for(grant, actual, kind, stamp))]
             if depth == '1':
                 if kind == 'root': rows.append((principal, props_for(grant, principal, 'principal')))
@@ -263,7 +260,6 @@ def dav(request, path=''):
             by_path = {calendar + str(event.pk) + '.ics': event for event in events}; rows = []
             for node in hrefs:
                 parsed = urlsplit(node.text or '')
-                # Do not follow URLs or allow a different grant/family resource.
                 if parsed.query or parsed.fragment or (parsed.netloc and parsed.netloc != urlsplit(origin()).netloc):
                     return response(status=403)
                 href = parsed.path

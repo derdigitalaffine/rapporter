@@ -1,13 +1,17 @@
 from django.conf import settings
 from django.db import models
 
-from .models import Family, TimestampedModel
+from .models import Family, FamilyEvent, Membership, TimestampedModel
 
 
 class CalDavConnection(TimestampedModel):
     class Scope(models.TextChoices):
         PERSONAL = "personal", "Personal"
         FAMILY = "family", "Family"
+
+    class AccessMode(models.TextChoices):
+        READ = "read", "Read only"
+        READ_WRITE = "read_write", "Read and write"
 
     scope = models.CharField(max_length=16, choices=Scope.choices)
     name = models.CharField(max_length=120)
@@ -25,6 +29,16 @@ class CalDavConnection(TimestampedModel):
         on_delete=models.CASCADE,
         related_name="caldav_connections",
     )
+    member = models.ForeignKey(
+        Membership,
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name="caldav_connections",
+        help_text="Optional family member whose external calendar this connection projects.",
+    )
+    access_mode = models.CharField(max_length=16, choices=AccessMode.choices, default=AccessMode.READ)
+    calendar_href_encrypted = models.TextField(blank=True, editable=False)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         null=True,
@@ -41,10 +55,15 @@ class CalDavConnection(TimestampedModel):
         constraints = [
             models.CheckConstraint(
                 condition=(
-                    models.Q(scope="personal", owner__isnull=False, family__isnull=True)
+                    models.Q(scope="personal", owner__isnull=False, family__isnull=True, member__isnull=True)
                     | models.Q(scope="family", owner__isnull=True, family__isnull=False)
                 ),
                 name="caldav_scope_owner_exactly_one",
+            ),
+            models.UniqueConstraint(
+                fields=["family", "member"],
+                condition=models.Q(member__isnull=False),
+                name="caldav_one_calendar_per_member",
             ),
         ]
         indexes = [
@@ -55,3 +74,38 @@ class CalDavConnection(TimestampedModel):
     @property
     def credential_state(self):
         return "configured" if self.credentials_encrypted else "missing"
+
+    @property
+    def calendar_href(self):
+        if not self.calendar_href_encrypted:
+            return ""
+        from .caldav_secrets import decrypt_value
+        return decrypt_value(self.calendar_href_encrypted)
+
+    @calendar_href.setter
+    def calendar_href(self, value):
+        if not value:
+            self.calendar_href_encrypted = ""
+            return
+        from .caldav_secrets import encrypt_value
+        self.calendar_href_encrypted = encrypt_value(value)
+
+
+class CalDavEventBinding(TimestampedModel):
+    """Private remote identity/ETag state; remote hrefs never enter FamilyEvent payloads."""
+
+    connection = models.ForeignKey(CalDavConnection, on_delete=models.CASCADE, related_name="event_bindings")
+    event = models.ForeignKey(FamilyEvent, null=True, blank=True, on_delete=models.SET_NULL, related_name="caldav_bindings")
+    remote_uid = models.CharField(max_length=255)
+    remote_href_encrypted = models.TextField(editable=False)
+    etag = models.CharField(max_length=512, blank=True)
+    local_version = models.PositiveBigIntegerField(default=0)
+    last_seen_at = models.DateTimeField(null=True, blank=True)
+    remote_deleted_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["connection", "remote_uid"], name="caldav_binding_connection_uid_uniq"),
+            models.UniqueConstraint(fields=["connection", "event"], name="caldav_binding_connection_event_uniq"),
+        ]
+        indexes = [models.Index(fields=["connection", "last_seen_at"], name="caldav_binding_seen_idx")]

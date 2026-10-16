@@ -1,3 +1,7 @@
+import hashlib
+import hmac
+
+from django.conf import settings
 from django.db import models
 from django.utils import timezone
 from rest_framework import serializers, viewsets
@@ -8,14 +12,35 @@ from rest_framework.response import Response
 from .caldav_discovery import CalDavDiscoveryError, discover_calendars
 from .caldav_models import CalDavConnection
 from .caldav_secrets import decrypt_credentials, encrypt_credentials
-from .models import Family, Membership
+from .caldav_sync import ensure_source, sync_connection
+from .models import Family, IntegrationSource, Membership
 
 
 MANAGER_ROLES = {Membership.Role.OWNER, Membership.Role.ADULT}
 
 
+def calendar_key(connection, href):
+    secret = settings.SECRET_KEY.encode("utf-8")
+    value = f"{connection.id}:{href}".encode("utf-8")
+    return hmac.new(secret, value, hashlib.sha256).hexdigest()[:32]
+
+
+def reset_projection(connection):
+    """Forget local projection/bindings without mutating the old remote calendar."""
+    if connection.family_id:
+        sources = IntegrationSource.objects.filter(
+            family=connection.family,
+            config__caldav_connection=str(connection.id),
+        )
+        for source in sources:
+            source.events.all().delete()
+            source.delete()
+    connection.event_bindings.all().delete()
+
+
 class CalDavConnectionSerializer(serializers.ModelSerializer):
     credential_state = serializers.CharField(read_only=True)
+    calendar_selected = serializers.SerializerMethodField()
     server_url = serializers.CharField(write_only=True, required=False, allow_blank=False, max_length=2048)
     username = serializers.CharField(write_only=True, required=False, allow_blank=True, max_length=512)
     password = serializers.CharField(write_only=True, required=False, allow_blank=True, max_length=2048, trim_whitespace=False)
@@ -23,11 +48,14 @@ class CalDavConnectionSerializer(serializers.ModelSerializer):
     class Meta:
         model = CalDavConnection
         fields = [
-            "id", "scope", "name", "family", "enabled", "credential_state",
-            "server_url", "username", "password", "last_discovered_at",
-            "last_error_code", "created_at", "updated_at",
+            "id", "scope", "name", "family", "member", "access_mode",
+            "enabled", "credential_state", "calendar_selected", "server_url", "username", "password",
+            "last_discovered_at", "last_error_code", "created_at", "updated_at",
         ]
         read_only_fields = ["last_discovered_at", "last_error_code", "created_at", "updated_at"]
+
+    def get_calendar_selected(self, instance):
+        return bool(instance.calendar_href_encrypted)
 
     def _family_membership(self, family):
         return Membership.objects.filter(
@@ -40,19 +68,30 @@ class CalDavConnectionSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         scope = attrs.get("scope", getattr(self.instance, "scope", None))
         family = attrs.get("family", getattr(self.instance, "family", None))
+        member = attrs.get("member", getattr(self.instance, "member", None))
         if self.instance is not None:
             if "scope" in attrs and attrs["scope"] != self.instance.scope:
                 raise ValidationError({"scope": "Der Connection-Scope kann nicht direkt geändert werden."})
             if "family" in attrs and attrs["family"] != self.instance.family:
                 raise ValidationError({"family": "Die Connection-Familie kann nicht direkt geändert werden."})
+            if "member" in attrs and attrs["member"] != self.instance.member:
+                raise ValidationError({"member": "Das Familienmitglied kann nach dem Verbinden nicht gewechselt werden. Lege dafür eine neue Verbindung an."})
         if scope == CalDavConnection.Scope.PERSONAL:
-            if family is not None:
-                raise ValidationError({"family": "Persönliche Connections besitzen keine Family-Zuordnung."})
+            if family is not None or member is not None:
+                raise ValidationError({"family": "Persönliche Connections besitzen keine Family- oder Mitglied-Zuordnung."})
         elif scope == CalDavConnection.Scope.FAMILY:
             if family is None:
                 raise ValidationError({"family": "Für Family-Connections ist eine Familie erforderlich."})
             if not self._family_membership(family):
                 raise PermissionDenied("Nur Owner/Adults dürfen Family-Integrationen verwalten.")
+            if member is not None and member.family_id != family.id:
+                raise ValidationError({"member": "Das Mitglied muss zur gewählten Familie gehören."})
+            if member is not None:
+                duplicate = CalDavConnection.objects.filter(family=family, member=member)
+                if self.instance is not None:
+                    duplicate = duplicate.exclude(pk=self.instance.pk)
+                if duplicate.exists():
+                    raise ValidationError({"member": "Für dieses Familienmitglied ist bereits ein CalDAV-Kalender verbunden."})
         else:
             raise ValidationError({"scope": "Ungültiger Connection-Scope."})
 
@@ -91,18 +130,15 @@ class CalDavConnectionSerializer(serializers.ModelSerializer):
     def update(self, instance, validated_data):
         encrypted = self._credentials(validated_data)
         if encrypted is not None:
+            reset_projection(instance)
             validated_data["credentials_encrypted"] = encrypted
             validated_data["last_error_code"] = ""
+            validated_data["calendar_href_encrypted"] = ""
         return super().update(instance, validated_data)
 
 
 class CalDavConnectionViewSet(viewsets.ModelViewSet):
     serializer_class = CalDavConnectionSerializer
-    # The global ActiveTenantFilterBackend assumes every model with a `family`
-    # field is family-scoped. CalDAV intentionally supports personal rows with
-    # family=NULL, so applying that backend would hide them after creation.
-    # This viewset performs the equivalent active-family restriction explicitly
-    # below while keeping personal visibility owner-scoped.
     filter_backends = []
     http_method_names = ["get", "post", "patch", "delete", "head", "options"]
 
@@ -115,20 +151,13 @@ class CalDavConnectionViewSet(viewsets.ModelViewSet):
         ).values_list("family_id", flat=True)
         return CalDavConnection.objects.filter(
             models.Q(scope=CalDavConnection.Scope.PERSONAL, owner=user, family__isnull=True)
-            | models.Q(
-                scope=CalDavConnection.Scope.FAMILY,
-                owner__isnull=True,
-                family_id__in=managed_family_ids,
-                family__status=Family.Status.ACTIVE,
-            )
+            | models.Q(scope=CalDavConnection.Scope.FAMILY, owner__isnull=True, family_id__in=managed_family_ids, family__status=Family.Status.ACTIVE)
         ).distinct()
 
-    @action(detail=True, methods=["post"])
-    def discover(self, request, pk=None):
-        connection = self.get_object()
+    def _discover(self, connection):
         try:
             credentials = decrypt_credentials(connection.credentials_encrypted)
-            calendars = discover_calendars(**credentials)
+            return discover_calendars(**credentials)
         except CalDavDiscoveryError as exc:
             code = str(exc)
             connection.last_error_code = code
@@ -140,15 +169,22 @@ class CalDavConnectionViewSet(viewsets.ModelViewSet):
             connection.save(update_fields=["last_error_code", "updated_at"])
             raise ValidationError({"detail": code})
 
+    @action(detail=True, methods=["post"])
+    def discover(self, request, pk=None):
+        connection = self.get_object()
+        calendars = self._discover(connection)
         connection.last_discovered_at = timezone.now()
         connection.last_error_code = ""
         connection.save(update_fields=["last_discovered_at", "last_error_code", "updated_at"])
         return Response({
             "connection": str(connection.id),
             "credential_state": connection.credential_state,
+            "access_mode": connection.access_mode,
+            "member": str(connection.member_id) if connection.member_id else None,
             "calendar_count": len(calendars),
             "calendars": [
                 {
+                    "calendar_key": calendar_key(connection, row["href"]),
                     "display_name": row["display_name"],
                     "components": row["components"],
                     "sync_token_supported": row["sync_token_supported"],
@@ -156,3 +192,52 @@ class CalDavConnectionViewSet(viewsets.ModelViewSet):
                 for row in calendars
             ],
         })
+
+    @action(detail=True, methods=["post"], url_path="select-calendar")
+    def select_calendar(self, request, pk=None):
+        connection = self.get_object()
+        key = str(request.data.get("calendar_key") or "")
+        if not key:
+            raise ValidationError({"calendar_key": "Kalenderauswahl fehlt."})
+        calendars = self._discover(connection)
+        selected = next((row for row in calendars if hmac.compare_digest(calendar_key(connection, row["href"]), key)), None)
+        if not selected:
+            raise ValidationError({"calendar_key": "Kalender wurde nicht in der aktuellen Discovery gefunden."})
+        components = set(selected.get("components") or [])
+        if components and "VEVENT" not in components:
+            raise ValidationError({"calendar_key": "Diese Collection unterstützt keine Termine."})
+        old_href = connection.calendar_href if connection.calendar_href_encrypted else ""
+        if old_href and old_href != selected["href"]:
+            reset_projection(connection)
+        connection.calendar_href = selected["href"]
+        connection.last_discovered_at = timezone.now()
+        connection.last_error_code = ""
+        connection.save(update_fields=["calendar_href_encrypted", "last_discovered_at", "last_error_code", "updated_at"])
+        if connection.scope == CalDavConnection.Scope.FAMILY:
+            ensure_source(connection)
+        return Response({
+            "id": str(connection.id),
+            "calendar_selected": True,
+            "display_name": selected.get("display_name") or connection.name,
+            "access_mode": connection.access_mode,
+        })
+
+    @action(detail=True, methods=["post"])
+    def sync(self, request, pk=None):
+        connection = self.get_object()
+        if connection.scope != CalDavConnection.Scope.FAMILY:
+            raise ValidationError({"detail": "caldav_family_scope_required"})
+        try:
+            result = sync_connection(connection)
+        except (CalDavDiscoveryError, ValueError) as exc:
+            code = str(exc)
+            connection.last_error_code = code[:64]
+            connection.save(update_fields=["last_error_code", "updated_at"])
+            raise ValidationError({"detail": code})
+        connection.last_error_code = "caldav_conflict" if result.get("conflicts") else ""
+        connection.save(update_fields=["last_error_code", "updated_at"])
+        return Response({"connection": str(connection.id), "access_mode": connection.access_mode, **result})
+
+    def perform_destroy(self, instance):
+        reset_projection(instance)
+        super().perform_destroy(instance)

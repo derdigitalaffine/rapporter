@@ -1,46 +1,63 @@
-# Familienkalender abonnieren
+# Familienkalender in anderen Kalender-Apps
 
-Im **Kalender → Kalender abonnieren** oder unter **Einstellungen →
-Kalender-Abonnements** öffnest du dieselbe Verwaltung. Owner und erwachsene
-Familienmitglieder verwalten ihre eigenen Abos. Gib einen Gerätenamen ein und
-wähle **Abo-Link erstellen**. Bei Bedarf bestätigst du deine Identität erneut mit
-Passkey oder Kontopasswort.
+FamilyOS trennt zwei Funktionen bewusst voneinander:
 
-Der angezeigte **dauerhafte Abo-Link** ist kein Einmal-Login. Du kannst ihn kopieren
-und in einer Kalender-App als Kalender-Abonnement hinzufügen oder **In Kalender-App
-öffnen** wählen. Die App ruft den Kalender regelmäßig ab. Aktualisierungen können
-je nach Kalender-App verzögert erscheinen.
+1. **Kalender abonnieren** ist ein einfacher, widerrufbarer **Nur-Lesen-Link**. Dafür ist kein CalDAV-Konto nötig.
+2. **Apple Kalender & CalDAV** ist optional. Damit kann pro Familienmitglied genau ein externer Kalender verbunden und – wenn ausdrücklich gewählt – auch beschrieben werden.
 
-**Jeder mit diesem Link kann die freigegebenen Termine lesen.** Behandle ihn wie
-ein Passwort. Enthalten sind ausschließlich ausdrücklich gemeinsame eigene
-Familientermine; die Personenauswahl beschreibt die Teilnahme und ändert die
-ausdrückliche Familienmarkierung nicht. Termine ohne Familienmarkierung, importierte
-Kalender, Gesundheitsinformationen und geschützte Daten werden nicht exportiert.
-Übertragen werden Titel, Zeiten und Serien; Orte und Notizen bleiben in FamilyOS.
+## Kalender abonnieren
 
-## Zusätzlich: iPhone und iPad
+Im Kalender ist **Abonnieren** nur eine dezente Zusatzaktion. Dieselbe Verwaltung findest du unter **Einstellungen → Kalender-Abonnements**. Owner und erwachsene Familienmitglieder verwalten ihre eigenen Abo-Links.
 
-Der sichtbare Link bleibt verfügbar. **iPhone-Profil herunterladen** ist eine
-zusätzliche Einrichtungsmöglichkeit: Öffne FamilyOS in Safari, lade das Profil
-herunter und bestätige die Installation in **Einstellungen → Allgemein → VPN und
-Geräteverwaltung**. iOS kann das unsignierte Profil entsprechend kennzeichnen.
-Das Profil fügt nur ein lesendes Kalenderkonto hinzu. Es installiert keine
-Geräteverwaltung oder Zertifikate. Ein Download bestätigt noch keine Installation.
+Beim Erstellen wählst du einen Namen und die **freigegebene Detailtiefe**:
 
-Alternativ kannst du den Abo-Link verwenden oder unter **CalDAV manuell einrichten**
-die gesonderte Principal-URL, den Benutzernamen und das Abo-Passwort übernehmen.
-Das Abo-Passwort ist nicht dein FamilyOS-Kontopasswort.
+- **Nur Belegt-Zeiten** – Titel, Ort und Notizen werden nicht übertragen.
+- **Titel und Zeit** – Titel und Terminzeit werden übertragen.
+- **Titel, Zeit und Ort** – zusätzlich darf der Ort übertragen werden.
+
+Die Detailtiefe kann später am bestehenden Link geändert werden. Der Link bleibt dabei gleich und muss nicht neu eingerichtet werden. Die neue Stufe wirkt beim nächsten Abruf der Kalender-App. Notizen, Dokumente, Gesundheitsdaten, importierte Kalender und andere beliebige Event-Payloads werden in keiner Stufe exportiert.
+
+Der angezeigte dauerhafte Link ist ein Zugangsschlüssel. **Jeder mit diesem Link kann die dafür freigegebenen Termine lesen**, bis du ihn widerrufst. Behandle ihn deshalb wie ein Passwort.
+
+Exportiert werden ausschließlich eigene FamilyOS-Termine, die ausdrücklich für die ganze Familie markiert sind. Persönliche bzw. nur ausgewählte Termine ohne Familienfreigabe und importierte Kalender bleiben ausgeschlossen.
+
+## iPhone und iPad
+
+**Auf iPhone/iPad installieren** lädt ein Apple-Konfigurationsprofil für **abonnierte Kalender**. Es richtet keinen beschreibbaren CalDAV-Account ein und enthält keine CalDAV-Zugangsdaten.
+
+Bei einer Familie mit mehreren aktiven Mitgliedern enthält das Profil **einen lesenden Kalender pro Familienmitglied**. Dabei wird die bestehende Familienfreigabe nicht erweitert:
+
+- Familientermine ohne Teilnehmerauswahl erscheinen bei allen Mitgliedern.
+- Familientermine mit Teilnehmerauswahl erscheinen nur in den Kalendern der ausgewählten Mitglieder.
+- Termine ohne Familienfreigabe erscheinen in keinem dieser Abo-Kalender.
+
+Öffne FamilyOS in Safari, lade das Profil und bestätige die Installation anschließend in den iOS/iPadOS-Einstellungen. Das Profil ist kein Geräte-Management-Profil; es fügt nur abonnierte Kalender hinzu. Ein Download allein bedeutet noch nicht, dass das Profil installiert wurde.
+
+## Optional: Apple Kalender / CalDAV verbinden
+
+Unter **Einstellungen → Apple Kalender & CalDAV** kannst du optional pro Familienmitglied eine CalDAV-Verbindung einrichten. Das Abo oben funktioniert auch ohne diese Verbindung.
+
+Für eine Verbindung brauchst du Server-Adresse, Benutzername und das vom Anbieter vorgesehene Passwort bzw. App-spezifische Passwort. FamilyOS zeigt die gespeicherten Zugangsdaten und die private Remote-Kalender-URL später nicht wieder an.
+
+Nach der Anmeldung sucht FamilyOS serverseitig nach den verfügbaren Kalendern. Du wählst einen Kalender aus und legst den Modus fest:
+
+- **Nur lesen** – Remote-Termine werden in FamilyOS eingeblendet; FamilyOS schreibt nichts zurück.
+- **Lesen & Schreiben** – zusätzlich werden passende FamilyOS-Termine dieses Familienmitglieds in den ausgewählten Remote-Kalender geschrieben.
+
+Pro Familienmitglied kann höchstens ein Remote-Kalender verbunden sein. Wechselst du Zugangsdaten oder den ausgewählten Remote-Kalender, verwirft FamilyOS die alte lokale Projektion und synchronisiert die neue Verbindung sauber neu.
+
+### Was im Schreibmodus passiert
+
+Neue einfache Termine werden mit einer stabilen UID angelegt. Änderungen und Löschungen werden nur mit dem zuletzt bekannten ETag (`If-Match`) geschrieben. Hat sich der Termin auf der Gegenseite inzwischen ebenfalls geändert, meldet FamilyOS einen Konflikt statt eine Seite still zu überschreiben.
+
+Wiederkehrende **Remote-Termine** werden im abgefragten Zeitraum serverseitig expandiert und lesbar in FamilyOS projiziert. Das Zurückschreiben von FamilyOS-Serienterminen, Einladungen/Teilnehmern und iTIP-Scheduling ist in diesem ersten Write-Slice bewusst deaktiviert.
 
 ## Zugriff beenden oder erneuern
 
-**Link widerrufen** beendet zukünftige Abrufe sowohl über den Link als auch über
-das zugehörige Profil. Bereits heruntergeladene Kopien können auf anderen Geräten
-bleiben. Entferne das Konto oder Abo bei Bedarf zusätzlich in deiner Kalender-App.
+**Link widerrufen** beendet künftige Abo-Abrufe über diesen Link und die daraus installierten Apple-Abo-Kalender. Bereits heruntergeladene Kopien können auf Geräten verbleiben.
 
-**Neuen Link erzeugen** ersetzt den alten Schlüssel nach Bestätigung. Der alte
-Link und die Zugangsdaten im alten Profil werden sofort ungültig. Binde den neuen
-Link oder das neue Profil auf allen gewünschten Geräten erneut ein.
+**Neuen Link erzeugen** macht den bisherigen Abo-Schlüssel ungültig. Geräte, die den alten Link bzw. das alte Profil verwenden, müssen anschließend neu eingerichtet werden.
 
-Voraussetzung ist eine vom Betreiber konfigurierte öffentliche HTTPS-App-Adresse
-mit gültigem Zertifikat. Quartalsserien zeigen das kanonische Zeitfenster von einem
-Jahr Vergangenheit bis drei Jahre Zukunft, das beim Abruf weiterwandert.
+Eine CalDAV-Verbindung wird separat entfernt. Dabei löscht FamilyOS die zugehörige lokale Import-Projektion und gespeicherten Verbindungsinformationen; andere FamilyOS-Termine bleiben bestehen.
+
+Voraussetzung für abonnierte Kalender ist eine vom Betreiber konfigurierte öffentliche HTTPS-App-Adresse mit gültigem Zertifikat.
