@@ -26,7 +26,7 @@ export const CaptureDetails={render:()=> <CaptureDialog/>,play:async({canvasElem
  await userEvent.click(trigger);
  const dialog=within(await body.findByRole('dialog'));
  await userEvent.click(dialog.getByRole('button',{name:'Dauer und Vorschläge'}));
- const duration=dialog.getByLabel('Dauer (optional)');
+ const duration=dialog.getByLabelText('Dauer (optional)');
  await expect(duration).toBeVisible();
  await userEvent.selectOptions(duration,'10');
  await expect(duration).toHaveValue('10');
@@ -58,7 +58,7 @@ export const EditDialog={
    const box=action.getBoundingClientRect();const hit=action.ownerDocument.elementFromPoint(box.x+box.width/2,box.y+box.height/2);
    expect(action.contains(hit)).toBe(true);
   });
-  await expect(dialog.getByLabel('Notizen')).toHaveValue('Weitere Informationen');
+  await expect(dialog.getByLabelText('Notizen')).toHaveValue('Weitere Informationen');
   await userEvent.click(dialog.getByRole('button',{name:'Schließen'}));
   await waitFor(()=>expect(trigger).toHaveFocus());
  }
