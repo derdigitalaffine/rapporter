@@ -1,13 +1,12 @@
 """CalDAV adapter into canonical FamilyEvent rows.
 
-The remote server performs the date filtering through RFC 4791 calendar-query.
+The remote server performs date filtering through RFC 4791 calendar-query.
 FamilyEvent stays canonical. Private remote href/ETag identity lives in
 CalDavEventBinding and never enters API-visible event payloads.
 """
 import hashlib
 from datetime import date, datetime, time, timedelta, timezone as dt_timezone
 from urllib.parse import urljoin
-from xml.etree import ElementTree as ET
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from django.db.models import Q
@@ -148,9 +147,11 @@ def _source(connection):
     if source:
         changed = []
         if source.name != connection.name:
-            source.name = connection.name; changed.append("name")
+            source.name = connection.name
+            changed.append("name")
         if source.enabled != connection.enabled:
-            source.enabled = connection.enabled; changed.append("enabled")
+            source.enabled = connection.enabled
+            changed.append("enabled")
         if changed:
             source.save(update_fields=[*changed, "updated_at"])
         return source
@@ -169,11 +170,27 @@ def _external_id(connection, uid):
 
 
 def _apply_remote_to_native(binding, parsed, seen_at):
+    """Apply a remote edit only when the local event has not changed too.
+
+    If both sides changed since the last acknowledged ETag/version pair, preserve
+    both sides and report a conflict. The old ETag/local_version pair remains the
+    conditional-write baseline so a later PUT cannot silently overwrite remote.
+    """
     event = binding.event
     if event is None:
-        return False
-    changed = bool(binding.etag and parsed["etag"] and binding.etag != parsed["etag"])
-    if changed:
+        return False, False
+    remote_changed = bool(parsed["etag"] and parsed["etag"] != binding.etag)
+    local_changed = bool(binding.local_version and event.version != binding.local_version)
+
+    binding.remote_href_encrypted = encrypt_value(parsed["href"])
+    binding.last_seen_at = seen_at
+    binding.remote_deleted_at = None
+
+    if remote_changed and local_changed:
+        binding.save(update_fields=["remote_href_encrypted", "last_seen_at", "remote_deleted_at", "updated_at"])
+        return False, True
+
+    if remote_changed:
         payload = dict(event.payload or {})
         if parsed["payload"].get("location"):
             payload["location"] = parsed["payload"]["location"]
@@ -190,13 +207,12 @@ def _apply_remote_to_native(binding, parsed, seen_at):
         event.payload = payload
         event.save(update_fields=["title", "starts_at", "ends_at", "payload", "updated_at"])
         event.refresh_from_db(fields=["version"])
-    binding.etag = parsed["etag"]
-    binding.remote_href_encrypted = encrypt_value(parsed["href"])
-    binding.last_seen_at = seen_at
-    binding.remote_deleted_at = None
-    binding.local_version = event.version
+        binding.local_version = event.version
+
+    if parsed["etag"]:
+        binding.etag = parsed["etag"]
     binding.save(update_fields=["etag", "remote_href_encrypted", "last_seen_at", "remote_deleted_at", "local_version", "updated_at"])
-    return changed
+    return remote_changed, False
 
 
 def _upsert_imported(connection, source, parsed, seen_at):
@@ -246,23 +262,39 @@ def pull_remote(connection, start, end):
             connection=connection,
             remote_uid=parsed["uid"],
         ).first()
+
+        # event=NULL is a local-delete tombstone. Never recreate it during the
+        # pull that precedes DELETE. Preserve the old ETag so DELETE remains
+        # conditional and conflicts if the remote resource changed meanwhile.
+        if binding and binding.event_id is None:
+            binding.remote_href_encrypted = encrypt_value(parsed["href"])
+            binding.last_seen_at = seen_at
+            binding.save(update_fields=["remote_href_encrypted", "last_seen_at", "updated_at"])
+            continue
+
         if parsed["recurring"]:
             skipped_recurring += 1
             if binding:
-                binding.etag = parsed["etag"]
+                if parsed["etag"]:
+                    binding.etag = parsed["etag"]
                 binding.remote_href_encrypted = encrypt_value(parsed["href"])
                 binding.last_seen_at = seen_at
                 binding.save(update_fields=["etag", "remote_href_encrypted", "last_seen_at", "updated_at"])
             continue
+
         if binding and binding.event_id and binding.event.source_id is None:
             if connection.access_mode == CalDavConnection.AccessMode.READ_WRITE:
-                updated += int(_apply_remote_to_native(binding, parsed, seen_at))
+                changed, conflict = _apply_remote_to_native(binding, parsed, seen_at)
+                updated += int(changed)
+                conflicts += int(conflict)
             else:
                 binding.last_seen_at = seen_at
-                binding.etag = parsed["etag"]
+                if parsed["etag"]:
+                    binding.etag = parsed["etag"]
                 binding.remote_href_encrypted = encrypt_value(parsed["href"])
                 binding.save(update_fields=["last_seen_at", "etag", "remote_href_encrypted", "updated_at"])
             continue
+
         _upsert_imported(connection, source, parsed, seen_at)
         imported += 1
 
@@ -361,7 +393,8 @@ def _write_binding(connection, event, binding=None):
         "remote_deleted_at": None,
     }
     if binding:
-        for key, value in values.items(): setattr(binding, key, value)
+        for key, value in values.items():
+            setattr(binding, key, value)
         binding.save(update_fields=[*values.keys(), "updated_at"])
         return binding
     return CalDavEventBinding.objects.create(connection=connection, remote_uid=uid, **values)
@@ -394,7 +427,8 @@ def push_local(connection, start, end):
     pushed = deleted = skipped_recurring = conflicts = 0
     for binding in list(CalDavEventBinding.objects.filter(connection=connection, event__isnull=True)):
         try:
-            _delete_tombstone(binding); deleted += 1
+            _delete_tombstone(binding)
+            deleted += 1
         except CalDavConflictError:
             conflicts += 1
 
@@ -421,7 +455,8 @@ def push_local(connection, start, end):
         if binding and binding.local_version == event.version:
             continue
         try:
-            _write_binding(connection, event, binding); pushed += 1
+            _write_binding(connection, event, binding)
+            pushed += 1
         except CalDavConflictError:
             conflicts += 1
     return {"pushed": pushed, "deleted": deleted, "skipped_recurring": skipped_recurring, "conflicts": conflicts}
