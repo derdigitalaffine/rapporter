@@ -77,13 +77,13 @@ export default function AccessibilityManager(){
     let active=null;
     let restoreBackground=()=>{};
     let restoreFocus=null;
+    let legacySession=false;
     let lastOutsideFocus=document.activeElement instanceof HTMLElement?document.activeElement:null;
     let focusTimer=0;
     let refreshFrame=0;
 
     function activate(next){
       if(sameModal(next,active))return;
-      const wasManaged=active?.dialog.hasAttribute('data-family-overlay-owner');
       restoreBackground();
       restoreBackground=()=>{};
       window.clearTimeout(focusTimer);
@@ -92,7 +92,8 @@ export default function AccessibilityManager(){
         active=null;
         const target=restoreFocus;
         restoreFocus=null;
-        if(!wasManaged&&target instanceof HTMLElement&&target.isConnected)target.focus({preventScroll:true});
+        if(legacySession&&target instanceof HTMLElement&&target.isConnected)target.focus({preventScroll:true});
+        legacySession=false;
         return;
       }
       const dialog=next.dialog;
@@ -102,6 +103,7 @@ export default function AccessibilityManager(){
       }
       active=next;
       if(dialog.hasAttribute('data-family-overlay-owner'))return;
+      legacySession=true;
       labelDialog(dialog);
       if(!dialog.hasAttribute('tabindex'))dialog.setAttribute('tabindex','-1');
       // The portal/backdrop is the modal boundary. Inerting outside only the
