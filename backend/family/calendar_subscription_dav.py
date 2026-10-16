@@ -27,6 +27,7 @@ from .models import FamilyEvent
 D = 'DAV:'
 C = 'urn:ietf:params:xml:ns:caldav'
 CS = 'http://calendarserver.org/ns/'
+CALDAV_DETAIL_LEVEL = 'full'
 ET.register_namespace('d', D); ET.register_namespace('c', C); ET.register_namespace('cs', CS)
 
 
@@ -55,15 +56,15 @@ def limited(request, identifier):
 
 
 def event_data(grant, event):
-    return calendar_bytes(grant.family, [event], grant.detail_level)
+    return calendar_bytes(grant.family, [event], CALDAV_DETAIL_LEVEL)
 
 
 def event_etag(grant, event):
     return '"' + hashlib.sha256(event_data(grant, event)).hexdigest() + '"'
 
 
-def ics_response(request, grant, events):
-    data = calendar_bytes(grant.family, events, grant.detail_level)
+def ics_response(request, grant, events, detail_level=None):
+    data = calendar_bytes(grant.family, events, detail_level or grant.detail_level)
     etag = '"' + hashlib.sha256(data).hexdigest() + '"'
     result = response(b'' if request.method == 'HEAD' else data, content_type='text/calendar; charset=utf-8')
     if request.headers.get('If-None-Match') in (etag, '*'):
@@ -234,8 +235,6 @@ def _parse_put(grant, existing, body):
     if end <= start:
         raise ValueError()
     summary = str(component.get('SUMMARY') or '').strip()[:200] or 'Termin'
-    if existing is not None and grant.detail_level == 'availability':
-        summary = existing.title
     payload = dict(existing.payload) if existing is not None and isinstance(existing.payload, dict) else {}
     payload['provider'] = 'FamilyOS'
     uid = str(component.get('UID') or '').strip()
@@ -359,7 +358,7 @@ def dav(request, path=''):
         if request.method in ('GET', 'HEAD'):
             if kind not in ('event', 'calendar'):
                 return response(status=405)
-            return ics_response(request, grant, [target] if target else events)
+            return ics_response(request, grant, [target] if target else events, CALDAV_DETAIL_LEVEL)
         if request.method == 'PROPFIND':
             depth = request.headers.get('Depth', 'infinity')
             if depth not in ('0', '1'):
@@ -368,7 +367,7 @@ def dav(request, path=''):
             if root.tag != q(D, 'propfind') or root.find(q(D, 'propname')) is not None:
                 return response(status=400)
             prop = root.find(q(D, 'prop')); requested = [node.tag for node in prop] if prop is not None else None
-            stamp = hashlib.sha256(calendar_bytes(grant.family, events, grant.detail_level)).hexdigest()
+            stamp = hashlib.sha256(calendar_bytes(grant.family, events, CALDAV_DETAIL_LEVEL)).hexdigest()
             rows = [resource(target)] if target else [(actual, props_for(grant, actual, kind, stamp))]
             if depth == '1':
                 if kind == 'root': rows.append((principal, props_for(grant, principal, 'principal')))
