@@ -1,0 +1,45 @@
+import React from 'react';
+import '@fontsource-variable/nunito';
+import i18n from '../src/brand-i18n';
+import '../src/ux-i18n';
+import '../src/additional-language-i18n';
+import '../src/styles.css';
+import '../src/sheets.css';
+import '../src/smart.css';
+import '../src/smart-extra.css';
+import '../src/automation-guided.css';
+import '../src/design-system.css';
+import {applyAppearance} from '../src/appearance';
+import '../src/appearance.css';
+import '../src/form-primitives.css';
+import '../src/feedback.css';
+import '../src/accessibility.css';
+import '../src/today-home.css';
+import '../src/responsive.css';
+import '../src/mobile-safety.css';
+import '../src/app-navigation.css';
+import '../src/layers.css';
+import './workbench.css';
+
+export default {
+  parameters: {
+    layout: 'fullscreen',
+    a11y: {test: 'error'},
+    viewport: {options: Object.fromEntries([320, 390, 1024, 1440].map(width => [String(width), {
+      name: `${width}px`, styles: {width: `${width}px`, height: '900px'}, type: width < 600 ? 'mobile' : 'desktop',
+    }]))},
+  },
+  beforeEach: async () => {
+    await i18n.changeLanguage('de');
+    applyAppearance({profile: 'green', highContrast: false});
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (input, options) => {
+      const url = new URL(typeof input === 'string' ? input : input.url, location.href);
+      if (url.pathname === '/api/auth/session/') return Promise.resolve(Response.json({user: {id: 9001}}));
+      if (url.pathname.startsWith('/api/')) return Promise.reject(new Error(`Unconfigured workbench fixture: ${url.pathname}`));
+      return originalFetch(input, options);
+    };
+    return () => { globalThis.fetch = originalFetch; };
+  },
+  decorators: [Story => <main className="workbench-layout"><Story/></main>],
+};
