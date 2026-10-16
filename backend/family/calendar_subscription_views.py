@@ -48,6 +48,10 @@ class SubscriptionInput(serializers.Serializer):
     detail_level = serializers.ChoiceField(choices=CalendarSubscription.DetailLevel.choices, default=CalendarSubscription.DetailLevel.TITLE)
 
 
+class SubscriptionUpdateInput(serializers.Serializer):
+    detail_level = serializers.ChoiceField(choices=CalendarSubscription.DetailLevel.choices)
+
+
 @api_view(['GET', 'POST'])
 def subscriptions(request, family_id):
     family = manage(request, family_id)
@@ -71,7 +75,7 @@ def subscriptions(request, family_id):
     return private(Response(reveal(grant), status=201))
 
 
-@api_view(['POST', 'DELETE', 'GET'])
+@api_view(['POST', 'DELETE', 'GET', 'PATCH'])
 def subscription_detail(request, family_id, subscription_id, operation=''):
     family = manage(request, family_id)
     with transaction.atomic():
@@ -82,6 +86,13 @@ def subscription_detail(request, family_id, subscription_id, operation=''):
             grant.save(update_fields=['revoked_at', 'credentials_encrypted', 'updated_at'])
             audit(request, grant, 'revoked')
             return private(Response(status=204))
+        if request.method == 'PATCH' and not operation:
+            sensitive(request)
+            data = SubscriptionUpdateInput(data=request.data); data.is_valid(raise_exception=True)
+            grant.detail_level = data.validated_data['detail_level']
+            grant.save(update_fields=['detail_level', 'updated_at'])
+            audit(request, grant, 'updated')
+            return private(Response(metadata(grant)))
         if operation not in ('reveal', 'rotate', 'profile') or (operation == 'profile') != (request.method == 'GET'):
             return private(Response(status=405))
         sensitive(request)
