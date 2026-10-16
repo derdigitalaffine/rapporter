@@ -52,7 +52,7 @@ class Migration(migrations.Migration):
                 ('last_seen_at', models.DateTimeField(blank=True, null=True)),
                 ('remote_deleted_at', models.DateTimeField(blank=True, null=True)),
                 ('connection', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='event_bindings', to='family.caldavconnection')),
-                ('event', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='caldav_bindings', to='family.familyevent')),
+                ('event', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='caldav_bindings', to='family.familyevent')),
             ],
         ),
         migrations.AddConstraint(
