@@ -25,6 +25,19 @@ def calendar_key(connection, href):
     return hmac.new(secret, value, hashlib.sha256).hexdigest()[:32]
 
 
+def reset_projection(connection):
+    """Forget local projection/bindings without mutating the old remote calendar."""
+    if connection.family_id:
+        sources = IntegrationSource.objects.filter(
+            family=connection.family,
+            config__caldav_connection=str(connection.id),
+        )
+        for source in sources:
+            source.events.all().delete()
+            source.delete()
+    connection.event_bindings.all().delete()
+
+
 class CalDavConnectionSerializer(serializers.ModelSerializer):
     credential_state = serializers.CharField(read_only=True)
     calendar_selected = serializers.SerializerMethodField()
@@ -61,6 +74,8 @@ class CalDavConnectionSerializer(serializers.ModelSerializer):
                 raise ValidationError({"scope": "Der Connection-Scope kann nicht direkt geändert werden."})
             if "family" in attrs and attrs["family"] != self.instance.family:
                 raise ValidationError({"family": "Die Connection-Familie kann nicht direkt geändert werden."})
+            if "member" in attrs and attrs["member"] != self.instance.member:
+                raise ValidationError({"member": "Das Familienmitglied kann nach dem Verbinden nicht gewechselt werden. Lege dafür eine neue Verbindung an."})
         if scope == CalDavConnection.Scope.PERSONAL:
             if family is not None or member is not None:
                 raise ValidationError({"family": "Persönliche Connections besitzen keine Family- oder Mitglied-Zuordnung."})
@@ -115,6 +130,7 @@ class CalDavConnectionSerializer(serializers.ModelSerializer):
     def update(self, instance, validated_data):
         encrypted = self._credentials(validated_data)
         if encrypted is not None:
+            reset_projection(instance)
             validated_data["credentials_encrypted"] = encrypted
             validated_data["last_error_code"] = ""
             validated_data["calendar_href_encrypted"] = ""
@@ -190,6 +206,9 @@ class CalDavConnectionViewSet(viewsets.ModelViewSet):
         components = set(selected.get("components") or [])
         if components and "VEVENT" not in components:
             raise ValidationError({"calendar_key": "Diese Collection unterstützt keine Termine."})
+        old_href = connection.calendar_href if connection.calendar_href_encrypted else ""
+        if old_href and old_href != selected["href"]:
+            reset_projection(connection)
         connection.calendar_href = selected["href"]
         connection.last_discovered_at = timezone.now()
         connection.last_error_code = ""
@@ -218,12 +237,5 @@ class CalDavConnectionViewSet(viewsets.ModelViewSet):
         return Response({"connection": str(connection.id), "access_mode": connection.access_mode, **result})
 
     def perform_destroy(self, instance):
-        if instance.family_id:
-            sources = IntegrationSource.objects.filter(
-                family=instance.family,
-                config__caldav_connection=str(instance.id),
-            )
-            for source in sources:
-                source.events.all().delete()
-                source.delete()
+        reset_projection(instance)
         super().perform_destroy(instance)
