@@ -38,7 +38,7 @@ class CalDavConnection(TimestampedModel):
         help_text="Optional family member whose external calendar this connection projects.",
     )
     access_mode = models.CharField(max_length=16, choices=AccessMode.choices, default=AccessMode.READ)
-    calendar_href = models.TextField(blank=True, editable=False)
+    calendar_href_encrypted = models.TextField(blank=True, editable=False)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         null=True,
@@ -74,6 +74,21 @@ class CalDavConnection(TimestampedModel):
     @property
     def credential_state(self):
         return "configured" if self.credentials_encrypted else "missing"
+
+    @property
+    def calendar_href(self):
+        if not self.calendar_href_encrypted:
+            return ""
+        from .caldav_secrets import decrypt_value
+        return decrypt_value(self.calendar_href_encrypted)
+
+    @calendar_href.setter
+    def calendar_href(self, value):
+        if not value:
+            self.calendar_href_encrypted = ""
+            return
+        from .caldav_secrets import encrypt_value
+        self.calendar_href_encrypted = encrypt_value(value)
 
 
 class CalDavEventBinding(TimestampedModel):
