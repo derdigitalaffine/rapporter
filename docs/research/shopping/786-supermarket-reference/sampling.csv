@@ -1,0 +1,3 @@
+sample_id,chain_id,source_namespace,source_id,public_place_hint,latitude,longitude,verified_at,confidence,status,evidence_note
+sample.rewe-koeln-suelzburg,de.rewe,osm-community-example,forum-2018-rewe-city-suelzburgstrasse,"Köln, Sülzburgstraße",50.9175529,6.9249005,2026-10-16,0.60,evidence_only,"Real OSM/Nominatim example cited in OSM community; no OSM element id captured, therefore not importable."
+sample.netto-merzig-area,de.netto-marken-discount,osm-changeset-example,changeset-76839217,"Germany, map center 49.44540/6.64742",49.44540,6.64742,2026-10-16,0.45,evidence_only,"OSM community discussion links a concrete changeset about Netto naming; chain/store identity requires element-level re-verification before import."
