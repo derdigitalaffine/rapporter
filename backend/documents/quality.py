@@ -6,6 +6,9 @@ from PIL import Image, ImageFilter, ImageOps, ImageStat
 
 MAX_SKEW_SAMPLE_DIMENSION = 480
 SKEW_CANDIDATES = (-3.0, -2.0, -1.0, 0.0, 1.0, 2.0, 3.0)
+MIN_OCR_SHORT_EDGE = 900
+MAX_OCR_UPSCALE_FACTOR = 2.0
+MAX_OCR_WORKING_DIMENSION = 3000
 
 
 def assess_image(image):
@@ -93,8 +96,25 @@ def estimate_skew(image):
     return float(best_angle)
 
 
+def _bounded_ocr_upscale(image):
+    """Upscale only the transient OCR copy when a scan is genuinely small."""
+    short_edge = min(image.size)
+    if short_edge <= 0 or short_edge >= MIN_OCR_SHORT_EDGE:
+        return image, 1.0
+    requested = MIN_OCR_SHORT_EDGE / short_edge
+    dimension_cap = MAX_OCR_WORKING_DIMENSION / max(image.size)
+    factor = min(MAX_OCR_UPSCALE_FACTOR, requested, dimension_cap)
+    if factor <= 1.05:
+        return image, 1.0
+    resized = image.resize(
+        (max(1, round(image.width * factor)), max(1, round(image.height * factor))),
+        Image.Resampling.LANCZOS,
+    )
+    return resized, factor
+
+
 def prepare_for_ocr(image):
-    """Build a transient OCR view plus quality/preprocessing metadata."""
+    """Build a bounded transient OCR view plus explicit preprocessing metadata."""
     oriented = ImageOps.exif_transpose(image).convert("RGB")
     quality = assess_image(oriented)
     gray = ImageOps.grayscale(oriented)
@@ -102,10 +122,17 @@ def prepare_for_ocr(image):
     if angle:
         gray = gray.rotate(angle, resample=Image.Resampling.BICUBIC, expand=True, fillcolor=255)
     gray = ImageOps.autocontrast(gray, cutoff=1)
+    gray, upscale_factor = _bounded_ocr_upscale(gray)
     quality["preprocessing"] = {
+        "workflow_version": 2,
         "exif_transposed": True,
         "deskew_degrees": angle,
         "contrast": "autocontrast-1pct",
+        "upscale_factor": round(upscale_factor, 3),
+        "ocr_working_size": [gray.width, gray.height],
+        "canonical_unchanged": True,
         "destructive_thresholding": False,
+        "rotation_fallback": "not-applied",
+        "threshold_fallback": "not-applied",
     }
     return gray, quality
