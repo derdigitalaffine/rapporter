@@ -169,8 +169,11 @@ class CalendarSubscriptionTests(TestCase):
         account = profile['PayloadContent'][0]
         self.assertEqual(account['PayloadType'], 'com.apple.subscribedcalendar.account')
         self.assertEqual(account['SubCalAccountHostName'], self.grant['subscription_url'])
+        self.assertIn(self.grant['password'], account['SubCalAccountHostName'])
         self.assertNotIn('CalDAVPassword', account)
-        self.assertNotIn(self.grant['password'], str(account))
+        self.assertNotIn('CalDAVPrincipalURL', account)
+        self.assertNotIn('CalDAVUsername', account)
+        self.assertNotIn('calendar-test-password', str(profile))
         self.assertEqual(self.public.get(self.feed).status_code, 200)
         self.assertEqual(AuditEvent.objects.filter(event_key='calendar.subscription.profile').count(), 1)
         audit_data = str(list(AuditEvent.objects.values('metadata', 'target_id')))
