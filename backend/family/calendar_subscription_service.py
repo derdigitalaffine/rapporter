@@ -49,7 +49,6 @@ def resolve_token(token, username=None):
     grant = CalendarSubscription.objects.select_related('family', 'created_by').filter(token_digest=digest(token)).first()
     if not authorized(grant) or (username is not None and username != str(grant.pk)):
         return None
-    # Bounded usage writes, not request or token logging.
     now = timezone.now()
     if grant.last_used_at is None or (now - grant.last_used_at).total_seconds() >= 300:
         CalendarSubscription.objects.filter(pk=grant.pk).update(last_used_at=now)
@@ -58,7 +57,8 @@ def resolve_token(token, username=None):
 
 def metadata(grant):
     return {'id': str(grant.pk), 'family': str(grant.family_id), 'name': grant.name,
-            'created_at': grant.created_at, 'revoked_at': grant.revoked_at, 'last_used_at': grant.last_used_at}
+            'detail_level': grant.detail_level, 'created_at': grant.created_at,
+            'revoked_at': grant.revoked_at, 'last_used_at': grant.last_used_at}
 
 
 def reveal(grant):
