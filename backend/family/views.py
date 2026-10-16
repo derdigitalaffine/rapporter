@@ -103,7 +103,7 @@ class TaskListViewSet(FamilyScopedViewSet):
 
 
 class TaskViewSet(FamilyScopedViewSet):
-    queryset = Task.objects.select_related("task_list", "assignee", "workflow_column").all().order_by("completed_at", "due_at", "-created_at")
+    queryset = Task.objects.select_related("task_list", "assignee", "workflow_column", "unified_action").all().order_by("completed_at", "due_at", "-created_at")
     serializer_class = TaskSerializer
 
     def perform_create(self, serializer):
@@ -446,7 +446,7 @@ def health(request):
 def dashboard(request):
     families = list(Family.objects.filter(memberships__user=request.user).values_list("id", flat=True))
     now = timezone.now()
-    tasks = Task.objects.exclude(hidden_from_user=request.user).filter(family_id__in=families, completed_at__isnull=True).select_related("task_list", "assignee").order_by("due_at", "-created_at")[:12]
+    tasks = Task.objects.exclude(hidden_from_user=request.user).filter(family_id__in=families, completed_at__isnull=True).select_related("task_list", "assignee", "unified_action").order_by("due_at", "-created_at")[:12]
     events = FamilyEvent.objects.filter(family_id__in=families, starts_at__gte=now).order_by("starts_at")[:12]
     routines = Routine.objects.filter(family_id__in=families, active=True).select_related("family").prefetch_related("logs")[:8]
     shopping = ShoppingList.objects.filter(family_id__in=families, archived=False).prefetch_related("items").order_by("sort_order", "created_at")[:8]

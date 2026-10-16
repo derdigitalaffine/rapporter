@@ -18,8 +18,8 @@ export const FEATURE_REGISTRY=Object.freeze([
   defineFeature('wishlists',{detail:true,familyContext:true,queryParams:['wishlist'],load:()=>import('./WishlistsHub.jsx')}),
   defineFeature('games',{detail:true,familyContext:true,queryParams:['game','task'],load:()=>import('./GamesHub.jsx')}),
   defineFeature('home'),
-  defineFeature('todo',{queryParams:['todo']}),
-  defineFeature('tasks',{familyContext:true,queryParams:['task']}),
+  defineFeature('todo',{queryParams:['todo','task','routine','list','mode','view']}),
+  defineFeature('tasks',{familyContext:true,queryParams:['task','list','mode','view']}),
   defineFeature('shopping',{queryParams:['mode','list','item']}),
   defineFeature('routines',{familyContext:true,queryParams:['routine']}),
   defineFeature('baby',{familyContext:true,capability:'pregnancy_baby',load:()=>import('./PregnancyBabyHub.jsx')}),
@@ -37,7 +37,7 @@ export const FEATURE_REGISTRY=Object.freeze([
   defineFeature('profile',{detail:true,load:()=>import('./ProfilePage.jsx')}),
   defineFeature('automations',{detail:true,load:()=>import('./AutomationHub.jsx')}),
   defineFeature('notifications',{detail:true,load:()=>import('./NotificationSettings.jsx')}),
-  defineFeature('loyalty',{detail:true,load:()=>import('./LoyaltyCards.jsx')}),
+  defineFeature('loyalty',{detail:true,queryParams:['card'],load:()=>import('./LoyaltyCards.jsx')}),
 ]);
 
 export const FEATURES_BY_ID=Object.freeze(Object.fromEntries(FEATURE_REGISTRY.map(feature=>[feature.id,feature])));

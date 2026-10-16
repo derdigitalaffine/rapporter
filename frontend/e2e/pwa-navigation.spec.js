@@ -72,12 +72,14 @@ test('transient iOS visual viewport changes do not lift app chrome',async({page}
 for(const viewport of [{width:390,height:844},{width:844,height:390}])test(`standalone navigation and forms remain reachable at ${viewport.width}x${viewport.height}`,async({page})=>{
  await boot(page,{viewport});
  const nav=page.locator('.bottom-nav');
- await nav.getByRole('button',{name:'To-dos',exact:true}).click();
+ await nav.getByRole('button',{name:'Aufgaben',exact:true}).click();
  await expect(page.locator('.todo-hub')).toBeVisible();
- await page.locator('.todo-capture > summary').click();
- const capture=page.locator('.todo-capture').getByRole('textbox',{name:'Ich habe gerade …',exact:true});
+ await page.getByRole('button',{name:'Ich habe gerade …',exact:true}).click();
+ const capture=page.getByRole('dialog').getByRole('textbox',{name:'Ich habe gerade …',exact:true});
  await capture.fill('PWA task');
  await capture.blur();
+ await page.getByRole('dialog').getByRole('button',{name:'Schließen',exact:true}).click();
+ await page.getByRole('alertdialog').getByRole('button',{name:'Verwerfen',exact:true}).click();
  await nav.getByRole('button',{name:'Mehr',exact:true}).click();
  await expect(page).toHaveURL(/page=more/);
  await page.goBack();await expect(page.locator('.todo-hub')).toBeVisible();
@@ -91,9 +93,9 @@ for(const viewport of [{width:390,height:844},{width:844,height:390}])test(`stan
 
 test('standalone keyboard resize keeps editing usable without moving persistent navigation',async({page})=>{
  await boot(page,{visualViewport:true});
- await page.locator('.bottom-nav').getByRole('button',{name:'To-dos',exact:true}).click();
- await page.locator('.todo-capture > summary').click();
- const field=page.locator('.todo-capture').getByRole('textbox',{name:'Ich habe gerade …',exact:true});await field.focus();
+ await page.locator('.bottom-nav').getByRole('button',{name:'Aufgaben',exact:true}).click();
+ await page.getByRole('button',{name:'Ich habe gerade …',exact:true}).click();
+ const field=page.getByRole('dialog').getByRole('textbox',{name:'Ich habe gerade …',exact:true});await field.focus();
  await page.evaluate(()=>{Object.assign(window.visualViewport,{height:440,offsetTop:0});window.visualViewport.dispatchEvent(new Event('resize'))});
  await expect.poll(()=>page.evaluate(()=>document.documentElement.hasAttribute('data-app-keyboard'))).toBe(true);
  await expect.poll(()=>page.evaluate(()=>getComputedStyle(document.documentElement).getPropertyValue('--app-viewport-height').trim())).toBe('440px');

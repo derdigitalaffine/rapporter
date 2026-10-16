@@ -7,9 +7,10 @@ from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 
 from .birthdays import project
-from .models import AutomationRule, Family, FamilyEvent, InboxItem, IntegrationSource, Routine, ShoppingList, Task, TaskList
+from .models import AutomationRule, BoardPost, Family, FamilyEvent, InboxItem, IntegrationSource, Routine, ShoppingItem, ShoppingList, Task, TaskList
 from .serializers import FamilyEventSerializer, RoutineSerializer, ShoppingListSerializer, TaskListSerializer, TaskSerializer
 from .shopping_access import visible_shopping_lists
+from .pin_visibility import pin_scope_queryset
 from .weather_service import weather_payload
 
 
@@ -54,7 +55,7 @@ def dashboard(request):
     tasks = Task.objects.exclude(hidden_from_user=request.user).filter(
         family=family,
         completed_at__isnull=True,
-    ).select_related("task_list", "assignee").order_by("due_at", "-created_at")[:12]
+    ).select_related("task_list", "assignee", "unified_action").order_by("due_at", "-created_at")[:12]
 
     upcoming = FamilyEvent.objects.filter(
         family=family,
@@ -87,6 +88,10 @@ def dashboard(request):
 
     return Response({
         "family": str(family.id),
+        "overview": {
+            "shopping_open_count": ShoppingItem.objects.filter(shopping_list__in=visible_shopping_lists(request.user, ShoppingList.objects.filter(family=family, archived=False)), checked=False).exclude(hidden_from_user=request.user).count(),
+            "pin_count": pin_scope_queryset(request.user, BoardPost.objects.filter(family=family)).count(),
+        },
         "tasks": TaskSerializer(tasks, many=True).data,
         "task_lists": TaskListSerializer(task_lists, many=True, context={"request":request}).data,
         "events": FamilyEventSerializer(events, many=True).data,

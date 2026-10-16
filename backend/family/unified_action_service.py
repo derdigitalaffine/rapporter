@@ -123,7 +123,7 @@ def execute(user, typed_id, data):
             raise ValidationError({'request_id': 'Key already used for another operation.'})
         return payload(receipt.completion) if receipt.completion else {'undone': True}
     completion = None
-    repeating_task = isinstance(obj, Task) and row.schedule.get('recurrence', {}).get('frequency') in {'daily','weekly','monthly','yearly'}
+    repeating_task = isinstance(obj, Task) and row.schedule.get('recurrence', {}).get('frequency') in {'daily','weekly','monthly','quarterly','yearly'}
     already_complete = isinstance(obj, Task) and bool(obj.completed_at) and not repeating_task
     if operation == 'complete':
         if isinstance(obj, FamilyEvent):
@@ -142,7 +142,7 @@ def execute(user, typed_id, data):
         else:
             obj.completed_at = timezone.now()
             obj.save(update_fields=['completed_at', 'updated_at'])
-            completion = row.completions.filter(undone_at__isnull=True).order_by('-occurred_at').first()
+            completion = row.completions.filter(undone_at__isnull=True, occurred_at=obj.completed_at).first()
         # Do not change attribution/duration when another command already completed a task.
         if completion and not already_complete and (isinstance(obj, (Routine, FamilyEvent)) or completion.actor_id in {None, user.id}):
             if not completion.request_id:

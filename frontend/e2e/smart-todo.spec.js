@@ -36,11 +36,11 @@ async function boot(page){
  const state=await installSmartMocks(page);
  await page.goto('/?page=todo');
  await page.waitForLoadState('networkidle');
- await expect(page.getByRole('heading',{name:'To-dos'})).toBeVisible();
+ await expect(page.getByRole('heading',{name:'Aufgaben'})).toBeVisible();
  return state;
 }
 
-function todoTabs(page){return page.locator('nav[aria-label="To-dos"]')}
+function todoTabs(page){return page.locator('nav[aria-label="Aufgaben"]')}
 function focusItems(page){return page.locator('.todo-focus-item')}
 
 test('today prioritizes focus, then creation, then recent activity capture',async({page})=>{

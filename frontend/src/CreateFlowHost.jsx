@@ -13,7 +13,7 @@ export default function CreateFlowHost({userId,action,family,data,context={},onC
  const shoppingLists=[...(data?.shopping_lists||[]).filter(list=>!list.archived),...(createdShoppingList?[createdShoppingList]:[])].filter((list,index,all)=>all.findIndex(row=>String(row.id)===String(list.id))===index);
  const selectedTaskList=taskLists.find(list=>context.activeListLabel?.includes(list.name));
  const selectedShoppingList=shoppingLists.find(list=>context.activeListLabel?.includes(list.name));
- const taskListId=selectedTaskList?.id||(context.taskListId&&context.taskListId!=='all'?context.taskListId:taskLists[0]?.id||'');
+ const taskListId=selectedTaskList?.id||(context.taskListId&&context.taskListId!=='all'?context.taskListId:'');
  const shoppingList=selectedShoppingList||(context.shoppingListId&&context.shoppingListId!=='all'?shoppingLists.find(list=>String(list.id)===String(context.shoppingListId)):shoppingLists[0]);
  function learnSuccessfulCreate(){
   const origin=typeof context.origin==='string'?context.origin:'';

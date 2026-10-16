@@ -69,6 +69,7 @@ export async function installApiMocks(page,{authenticated=true,language='de',dis
     }
     if(/^\/tasks\/[^/]+\/$/.test(path)){
       const id=idFrom(path,'/tasks/');const index=state.tasks.findIndex(item=>String(item.id)===String(id));
+      if(method==='GET')return index<0?json(route,{detail:'Not found'},404):json(route,state.tasks[index]);
       if(method==='PATCH'){state.tasks[index]={...state.tasks[index],...body};const list=state.taskLists.find(item=>item.id===state.tasks[index].task_list);state.tasks[index].list_name=list?.name||'';return json(route,state.tasks[index])}
       if(method==='DELETE'){if(index>=0)state.tasks.splice(index,1);return empty(route)}
     }
