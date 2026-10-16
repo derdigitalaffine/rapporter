@@ -47,8 +47,8 @@ jobs:
         run: python manage.py makemigrations --check --dry-run && python manage.py migrate && python manage.py check
       - working-directory: backend
         run: >-
-          python manage.py test family.test_unified_actions family.test_action_projection
-          family.test_routines family.test_task_workflow family.test_smart_todo
+          python manage.py test family.test_unified_actions family.test_action_capture_route
+          family.test_action_projection family.test_routines family.test_task_workflow family.test_smart_todo
           family.test_context_links family.test_action_schedule_recurrence
 
   browser:
