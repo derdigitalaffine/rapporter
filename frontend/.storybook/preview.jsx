@@ -31,6 +31,7 @@ export default {
   },
   beforeEach: async () => {
     await i18n.changeLanguage('de');
+    document.documentElement.lang = 'de';
     applyAppearance({profile: 'green', highContrast: false});
     const originalFetch = globalThis.fetch;
     globalThis.fetch = (input, options) => {
@@ -41,5 +42,5 @@ export default {
     };
     return () => { globalThis.fetch = originalFetch; };
   },
-  decorators: [Story => <main className="workbench-layout"><Story/></main>],
+  decorators: [(Story, context) => <main className="workbench-layout"><h1 className="form-sr-only">{context.name}</h1><Story/></main>],
 };
