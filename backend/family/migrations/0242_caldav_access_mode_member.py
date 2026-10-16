@@ -1,3 +1,4 @@
+import uuid
 from django.db import migrations, models
 import django.db.models.deletion
 
@@ -37,5 +38,33 @@ class Migration(migrations.Migration):
         migrations.AddConstraint(
             model_name='caldavconnection',
             constraint=models.UniqueConstraint(condition=models.Q(('member__isnull', False)), fields=('family', 'member'), name='caldav_one_calendar_per_member'),
+        ),
+        migrations.CreateModel(
+            name='CalDavEventBinding',
+            fields=[
+                ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
+                ('created_at', models.DateTimeField(auto_now_add=True)),
+                ('updated_at', models.DateTimeField(auto_now=True)),
+                ('remote_uid', models.CharField(max_length=255)),
+                ('remote_href_encrypted', models.TextField(editable=False)),
+                ('etag', models.CharField(blank=True, max_length=512)),
+                ('local_version', models.PositiveBigIntegerField(default=0)),
+                ('last_seen_at', models.DateTimeField(blank=True, null=True)),
+                ('remote_deleted_at', models.DateTimeField(blank=True, null=True)),
+                ('connection', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='event_bindings', to='family.caldavconnection')),
+                ('event', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='caldav_bindings', to='family.familyevent')),
+            ],
+        ),
+        migrations.AddConstraint(
+            model_name='caldaveventbinding',
+            constraint=models.UniqueConstraint(fields=('connection', 'remote_uid'), name='caldav_binding_connection_uid_uniq'),
+        ),
+        migrations.AddConstraint(
+            model_name='caldaveventbinding',
+            constraint=models.UniqueConstraint(fields=('connection', 'event'), name='caldav_binding_connection_event_uniq'),
+        ),
+        migrations.AddIndex(
+            model_name='caldaveventbinding',
+            index=models.Index(fields=['connection', 'last_seen_at'], name='caldav_binding_seen_idx'),
         ),
     ]
