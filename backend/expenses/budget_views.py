@@ -15,6 +15,7 @@ from .budget_services import ledger_budget_summary, replace_budget_allocations
 from .commitment_models import BudgetCommitment
 from .models import Expense, ExpenseBudget, ExpenseLedger, get_default_expense_ledger
 from .money import money
+from .hierarchy_services import budget_hierarchy
 from .participant_services import can_manage_participant_plans, participant_plan_payload, replace_participant_plans
 from .serializers import ExpenseLedgerSerializer
 
@@ -206,8 +207,10 @@ def expense_ledger_budget_summary(request, ledger_id):
         row["available_amount"] = str(available)
         row["over_available"] = available < Decimal("0.00")
 
+    hierarchy = budget_hierarchy(ledger, budget_data, summary)
     return Response(
         {
+            "hierarchy": hierarchy,
             "family": str(ledger.family_id),
             "ledger": str(ledger.id),
             "currency": summary["currency"],

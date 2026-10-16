@@ -6,6 +6,7 @@ from rest_framework import serializers
 from family.models import Membership
 from .models import ExpenseBudget, ExpenseLedger
 from .money import money
+from .hierarchy_services import check_child_plan
 from .participant_services import (
     can_manage_participant_plans,
     current_plan_signature,
@@ -49,6 +50,7 @@ class ParticipantPlanWriteSerializer(serializers.Serializer):
 
 
 class ExpenseBudgetSerializer(RevisionCheckedPlanningSerializer):
+    expected_children_amount = LocalizedDecimalField(max_digits=16, decimal_places=2, write_only=True, required=False)
     client_request_id = serializers.UUIDField(write_only=True, required=False, allow_null=True)
     participant_plans = ParticipantPlanWriteSerializer(many=True, write_only=True, required=False)
     amount = LocalizedDecimalField(max_digits=12, decimal_places=2)
@@ -139,6 +141,7 @@ class ExpenseBudgetSerializer(RevisionCheckedPlanningSerializer):
 
     @transaction.atomic
     def create(self, validated_data):
+        validated_data.pop("expected_children_amount", None)
         participant_plans = validated_data.pop("participant_plans", serializers.empty)
         rollover_policy = validated_data.pop("_rollover_policy", None)
         ledger = ExpenseLedger.objects.select_for_update().get(pk=validated_data["ledger"].pk)
@@ -158,6 +161,9 @@ class ExpenseBudgetSerializer(RevisionCheckedPlanningSerializer):
                 if participant_plans is not serializers.empty and requested_plan_signature(participant_plans) != current_plan_signature(existing):
                     raise BudgetPlanningConflict()
                 return existing
+        if validated_data.get("parent"):
+            validated_data["parent"] = ExpenseBudget.objects.get(pk=validated_data["parent"].pk)
+        self.validate(validated_data)
         created = super().create(validated_data)
         configure_current_period(created, rollover_policy=rollover_policy)
         self._replace_plans(created, participant_plans)
@@ -165,6 +171,15 @@ class ExpenseBudgetSerializer(RevisionCheckedPlanningSerializer):
 
     @transaction.atomic
     def update(self, instance, validated_data):
+        # Serialize hierarchy edits with creation on the ledger before checking
+        # parents again. Two concurrent moves must not create a cycle.
+        ExpenseLedger.objects.select_for_update().get(pk=instance.ledger_id)
+        instance = ExpenseBudget.objects.select_for_update().get(pk=instance.pk)
+        self.instance = instance
+        if validated_data.get("parent"):
+            validated_data["parent"] = ExpenseBudget.objects.select_related("parent").get(pk=validated_data["parent"].pk)
+        self.validate(validated_data)
+        check_child_plan(instance, validated_data.pop("expected_children_amount", None))
         participant_plans = validated_data.pop("participant_plans", serializers.empty)
         rollover_policy = validated_data.pop("_rollover_policy", None)
         validated_data.pop("client_request_id", None)
@@ -232,7 +247,11 @@ class ExpenseBudgetSerializer(RevisionCheckedPlanningSerializer):
             if parent.family_id != family.id or parent.ledger_id != ledger.id or parent.archived:
                 raise serializers.ValidationError({"parent": "Übergeordnetes Budget ist nicht verfügbar."})
             current = parent
+            seen = set()
             while current is not None:
+                if current.id in seen:
+                    raise serializers.ValidationError({"parent": "Budgets dürfen keinen Zyklus bilden."})
+                seen.add(current.id)
                 if self.instance and current.id == self.instance.id:
                     raise serializers.ValidationError({"parent": "Budgets dürfen keinen Zyklus bilden."})
                 current = current.parent
@@ -264,6 +283,7 @@ class ExpenseBudgetSerializer(RevisionCheckedPlanningSerializer):
             "amount",
             "estimated_amount",
             "expected_updated_at",
+            "expected_children_amount",
             "client_request_id",
             "participant_plans",
             "currency",

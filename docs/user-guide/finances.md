@@ -72,3 +72,30 @@ Die neue Budgetplanung ist additiv zu bestehenden Buchungen, Ausgabenanteilen un
 PDFs werden validiert und unverändert gespeichert, ohne Bildverkleinerung. Passwortgeschützte, ungültige oder mehr als 300 Seiten lange PDFs werden abgelehnt. Nach der Verarbeitung prüft ihr erkannte Angaben und ergänzt fehlende Werte manuell. **Beleg öffnen** zeigt das Bild oder PDF im Browser; dort kann es auch heruntergeladen werden. Belege sind privat, familiengebunden und werden nicht im Offline-Cache gespeichert.
 
 Die größeren Smartphone-Bilder werden auch bei Profil-/Familienbildern, Pinnwand, Messenger und anderen vorhandenen Bild-Uploads serverseitig normalisiert. Die jeweiligen Berechtigungen und Speicherorte bleiben erhalten.
+
+### Budgets auf mehreren Ebenen planen
+
+In **Geld & Finanzen → Budgets** stehen verfügbarer Betrag und die wichtigsten
+Aktionen oben. Kostenbereiche lassen sich über **Übergeordnetes Budget** einordnen.
+**Aufteilung & Unterbudgets** zeigt die nächste Ebene; **Unterbudget hinzufügen**
+ordnet den neuen Bereich direkt dort ein. Die Ausgaben- und Vormerkungseditoren
+zeigen den vollständigen Budgetpfad.
+
+Jeder Planrahmen enthält seine Unterbudgets und **Sonstiges**. Beispiel: Mobilität
+300 €, darin Bahn 100 € und Sonstiges 200 €. Bahn kann wiederum Pendeln 60 € und
+Sonstiges 40 € enthalten. Mit **Sonstiges planen** planst du direkt auf jeder Ebene:
+50 € Sonstiges bei Bahn plus 60 € Pendeln ergibt einen Bahn-Rahmen von 110 €.
+Direkt einem Bereich zugeordnete Ausgaben zählen zu dessen Sonstiges; ohne
+Budgetzuordnung zählen sie zum Sonstiges des Gesamtbudgets.
+
+Eltern zeigen Ausgaben und Vormerkungen ihrer gesamten Unterstruktur, ohne sie
+doppelt zu zählen. Die Ausgabensumme richtet sich nach dem Zeitraum des jeweils
+angezeigten Elternbudgets. Bei unterschiedlichen Zeiträumen können deshalb die
+angezeigten Kinderwerte von der Elternsumme abweichen. Geplante Rahmen werden
+nicht automatisch auf einen anderen Zeitraum umgerechnet. Übersteigen die
+Unterbudgets den Rahmen, erscheint ein Hinweis mit negativem Sonstiges. Du
+entscheidest, ob du den Rahmen oder die Unterbudgets anpasst.
+
+Wurde während deiner Eingabe der Rahmen oder die Unterbudgetsumme geändert,
+bleiben deine Eingaben bei einem Konflikt erhalten. Lade bewusst den aktuellen
+Stand. Budgetplanung benötigt weiterhin eine Verbindung zum Server.

@@ -265,3 +265,26 @@ class BudgetPeriodTests(TestCase):
         self.assertEqual(response.data["carryover_amount"], Decimal("0.00"))
         self.assertEqual(str(response.data["period_starts_on"]), str(today.replace(day=1)))
         self.assertIsNotNone(response.data["period_ends_on"])
+
+    def test_hierarchy_uses_parent_bounds_and_carryover_counts_descendant_spending(self):
+        parent = self.budget(amount='100.00', period_type=ExpenseBudget.PeriodType.DATE_RANGE)
+        parent.starts_on, parent.ends_on = date(2026, 1, 1), date(2026, 1, 31)
+        parent.save()
+        child = self.budget(amount='50.00', period_type=ExpenseBudget.PeriodType.DATE_RANGE)
+        child.starts_on, child.ends_on = date(2026, 2, 1), date(2026, 2, 28)
+        child.parent = parent
+        child.save()
+        self.spend(child, '12.34', date(2026, 1, 10))
+        self.spend(child, '23.45', date(2026, 2, 10))
+        response = self.client.get(f'/api/expense-ledgers/{self.ledger.id}/budget-summary/')
+        rows = {row['id']: row for row in response.data['budgets']}
+        self.assertEqual(rows[str(parent.id)]['hierarchy']['spent_amount'], '12.34')
+        self.assertEqual(rows[str(child.id)]['hierarchy']['spent_amount'], '23.45')
+        self.assertEqual(rows[str(parent.id)]['hierarchy']['miscellaneous_spent_amount'], '0.00')
+        self.assertEqual(response.data['hierarchy']['spent_amount'], '35.79')
+        recurring = self.budget(amount='100.00')
+        child.parent = recurring
+        child.save()
+        configure_current_period(recurring, rollover_policy=ExpenseBudgetPeriod.RolloverPolicy.CARRY_POSITIVE, as_of=date(2026, 1, 1))
+        february = ensure_budget_period(recurring, as_of=date(2026, 2, 1))
+        self.assertEqual(february.carryover_amount, Decimal('87.66'))

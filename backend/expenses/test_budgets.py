@@ -429,3 +429,85 @@ class ExpenseBudgetCoreTests(TestCase):
                 response = self.client.get(url)
                 self.assertEqual(response.status_code, 200, response.data)
             self.assertEqual(len(queries), expected_count)
+
+    def test_hierarchy_sums_descendants_and_miscellaneous_without_double_counting(self):
+        from .commitment_models import BudgetCommitment
+        self.ledger.budget_amount = Decimal('1000.00')
+        self.ledger.save()
+        parent = self._budget('Mobilität', '300.00')
+        child = self._budget('Bahn', '100.00')
+        child.parent = parent
+        child.save()
+        grandchild = self._budget('Pendeln', '60.00')
+        grandchild.parent = child
+        grandchild.save()
+        for budget, value in [(parent, '10.01'), (child, '20.02'), (grandchild, '30.03')]:
+            expense = self._expense(value)
+            ExpenseBudgetAllocation.objects.create(expense=expense, budget=budget, amount_in_budget_currency=value)
+        self._expense('5.04')
+        for budget, value in [(None, '3.01'), (parent, '4.02'), (grandchild, '5.03')]:
+            BudgetCommitment.objects.create(family=self.family, ledger=self.ledger, budget=budget, amount=value, currency='EUR', source_type='shopping_item', source_id=uuid4())
+        response = self.client.get(f'/api/expense-ledgers/{self.ledger.id}/budget-summary/')
+        self.assertEqual(response.status_code, 200, response.data)
+        rows = {row['name']: row for row in response.data['budgets']}
+        h = rows['Mobilität']['hierarchy']
+        self.assertEqual(h['spent_amount'], '60.06')
+        self.assertEqual(h['reserved_amount'], '9.05')
+        self.assertEqual(h['available_amount'], '230.89')
+        self.assertEqual(h['miscellaneous_amount'], '200.00')
+        self.assertEqual(h['miscellaneous_spent_amount'], '10.01')
+        self.assertEqual(h['miscellaneous_reserved_amount'], '4.02')
+        self.assertEqual(rows['Bahn']['hierarchy']['miscellaneous_amount'], '40.00')
+        self.assertEqual(rows['Pendeln']['hierarchy']['miscellaneous_amount'], '60.00')
+        root = response.data['hierarchy']
+        self.assertEqual(root['children_amount'], '300.00')
+        self.assertEqual(root['miscellaneous_amount'], '700.00')
+        self.assertEqual(root['miscellaneous_spent_amount'], '5.04')
+        self.assertEqual(root['miscellaneous_reserved_amount'], '3.01')
+        self.assertEqual(response.data['spent_amount'], '65.10')
+        self.assertNotIn('participant_plans', str(response.data))
+
+    def test_hierarchy_overplanning_and_archived_intermediates_remain_visible(self):
+        parent = self._budget('Parent', '10.00')
+        archived = self._budget('Archived', '5.00', archived=True)
+        archived.parent = parent
+        archived.save()
+        child = self._budget('Child', '20.01')
+        child.parent = archived
+        child.save()
+        expense = self._expense('2.01')
+        ExpenseBudgetAllocation.objects.create(expense=expense, budget=archived, amount_in_budget_currency='2.01')
+        data = self.client.get(f'/api/expense-ledgers/{self.ledger.id}/budget-summary/').data
+        rows = {row['name']: row for row in data['budgets']}
+        self.assertEqual(rows['Child']['hierarchy']['parent'], str(parent.id))
+        self.assertEqual(rows['Parent']['hierarchy']['miscellaneous_amount'], '-10.01')
+        self.assertTrue(rows['Parent']['hierarchy']['overplanned'])
+        self.assertEqual(rows['Parent']['hierarchy']['miscellaneous_spent_amount'], '2.01')
+        self.assertEqual(data['hierarchy']['miscellaneous_amount'], None)
+
+    def test_miscellaneous_plan_rejects_stale_child_total_on_parent_and_root(self):
+        parent = self._budget('Parent', '100.00')
+        child = self._budget('Child', '20.00')
+        child.parent = parent
+        child.save()
+        for url, amount_field, expected in [
+            (f'/api/expense-budgets/{parent.id}/', 'amount', '19.99'),
+            (f'/api/expense-ledgers/{self.ledger.id}/', 'budget_amount', '99.99'),
+        ]:
+            response = self.client.patch(url, {amount_field: '150.00', 'expected_children_amount': expected}, format='json')
+            self.assertEqual(response.status_code, 409, response.data)
+        response = self.client.patch(f'/api/expense-budgets/{parent.id}/', {'amount': '150.00', 'expected_children_amount': '20.00'}, format='json')
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertNotIn('expected_children_amount', response.data)
+
+    def test_parent_move_rejects_cycle_and_foreign_parent_without_changes(self):
+        parent = self._budget('Parent')
+        child = self._budget('Child')
+        child.parent = parent
+        child.save()
+        foreign = ExpenseBudget.objects.create(family=self.foreign_family, ledger=self.foreign_ledger, name='Foreign', amount='1.00')
+        for target in [child, parent, foreign]:
+            response = self.client.patch(f'/api/expense-budgets/{parent.id}/', {'parent': str(target.id)}, format='json')
+            self.assertEqual(response.status_code, 400, response.data)
+        parent.refresh_from_db()
+        self.assertIsNone(parent.parent_id)

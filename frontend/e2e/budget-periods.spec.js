@@ -39,7 +39,7 @@ test('finance · period and carryover stay progressive inside the existing budge
  await page.waitForLoadState('networkidle');
  const planner=page.getByRole('region',{name:'Budget',exact:true});
  const categories=planner.locator('details.finance-collapsible').first();
- await categories.locator('summary').click();
+ if(await categories.getAttribute('open')===null)await categories.locator(':scope > summary').click();
  await planner.getByRole('button',{name:'Kostenbereich hinzufügen',exact:true}).click();
  const dialog=page.getByRole('dialog',{name:'Kostenbereich hinzufügen'});
  await dialog.getByRole('textbox',{name:'Kostenbereich',exact:true}).fill('Freizeit');
