@@ -1,4 +1,5 @@
-from datetime import datetime, timedelta, timezone as utc
+import plistlib
+from datetime import datetime, timezone as utc
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
@@ -14,7 +15,7 @@ class CalendarSubscriptionDetailUpdateTests(TestCase):
     def setUp(self):
         self.user = get_user_model().objects.create_user('detail-owner', password='calendar-test-password')
         self.family = Family.objects.create(name='Detail Family', slug='detail-family', timezone='Europe/Berlin')
-        Membership.objects.create(family=self.family, user=self.user, role=Membership.Role.OWNER)
+        self.membership = Membership.objects.create(family=self.family, user=self.user, role=Membership.Role.OWNER, display_name='Alex')
         self.event = FamilyEvent.objects.create(
             family=self.family,
             type='calendar.event',
@@ -29,6 +30,19 @@ class CalendarSubscriptionDetailUpdateTests(TestCase):
         self.assertEqual(login.status_code, 200, login.data)
         self.public = APIClient()
         self.path = f'/api/calendar-subscriptions/{self.family.pk}/'
+
+    def make_event(self, title, *, family_event=True, participant=None):
+        event = FamilyEvent.objects.create(
+            family=self.family,
+            type='calendar.event',
+            title=title,
+            starts_at=datetime(2026, 10, 21, 8, tzinfo=utc.utc),
+            ends_at=datetime(2026, 10, 21, 9, tzinfo=utc.utc),
+            is_family_event=family_event,
+        )
+        if participant is not None:
+            event.participants.add(participant)
+        return event
 
     def test_detail_level_changes_existing_link_without_rotating_token(self):
         created = self.client.post(self.path, {'name': 'Existing iPhone', 'detail_level': 'title'}, format='json')
@@ -69,3 +83,39 @@ class CalendarSubscriptionDetailUpdateTests(TestCase):
         self.assertEqual(rejected.status_code, 400)
         listing = self.client.get(self.path)
         self.assertEqual(listing.data['subscriptions'][0]['detail_level'], 'title')
+
+    def test_apple_profile_installs_one_safe_calendar_per_active_family_member(self):
+        other_user = get_user_model().objects.create_user('detail-sam')
+        sam = Membership.objects.create(family=self.family, user=other_user, role=Membership.Role.CHILD, display_name='Sam')
+        alex_only = self.make_event('Alex appointment', participant=self.membership)
+        sam_only = self.make_event('Sam appointment', participant=sam)
+        selected_private = self.make_event('Sam private selected', family_event=False, participant=sam)
+
+        created = self.client.post(self.path, {'name': 'Family iPhones', 'detail_level': 'title'}, format='json')
+        self.assertEqual(created.status_code, 201, created.data)
+        detail = self.path + created.data['id'] + '/'
+        profile_response = self.client.get(detail + 'profile/')
+        self.assertEqual(profile_response.status_code, 200)
+        profile = plistlib.loads(profile_response.content)
+        self.assertEqual(len(profile['PayloadContent']), 2)
+        accounts = {item['PayloadDisplayName']: item for item in profile['PayloadContent']}
+        self.assertEqual(set(accounts), {'FamilyOS · Alex', 'FamilyOS · Sam'})
+
+        alex_url = accounts['FamilyOS · Alex']['SubCalAccountHostName']
+        sam_url = accounts['FamilyOS · Sam']['SubCalAccountHostName']
+        self.assertIn(f'/member/{self.membership.pk}.ics', alex_url)
+        self.assertIn(f'/member/{sam.pk}.ics', sam_url)
+        self.assertNotEqual(alex_url, sam_url)
+
+        alex_calendar = Calendar.from_ical(self.public.get(alex_url.replace('https://calendar.example.test', '')).content)
+        sam_calendar = Calendar.from_ical(self.public.get(sam_url.replace('https://calendar.example.test', '')).content)
+        alex_titles = {str(event['SUMMARY']) for event in alex_calendar.walk('VEVENT')}
+        sam_titles = {str(event['SUMMARY']) for event in sam_calendar.walk('VEVENT')}
+        self.assertIn(self.event.title, alex_titles)
+        self.assertIn(self.event.title, sam_titles)
+        self.assertIn(alex_only.title, alex_titles)
+        self.assertNotIn(alex_only.title, sam_titles)
+        self.assertIn(sam_only.title, sam_titles)
+        self.assertNotIn(sam_only.title, alex_titles)
+        self.assertNotIn(selected_private.title, alex_titles)
+        self.assertNotIn(selected_private.title, sam_titles)
