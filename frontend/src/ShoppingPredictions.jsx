@@ -10,6 +10,8 @@ import ShoppingBudgetCommitment from './ShoppingBudgetCommitment';
 import {SHOPPING_BUDGET_PURCHASE_EVENT} from './shopping-offline';
 import './shopping-predictions.css';
 
+const isStoreMode=()=>new URLSearchParams(location.search).get('mode')==='store';
+
 function PredictionPanel({family,onAccepted}){
  const {t}=useTranslation();const [rows,setRows]=useState([]);const [busy,setBusy]=useState('');
  async function load(){if(!family){setRows([]);return}try{const result=await api(`/shopping-predictions/?family=${encodeURIComponent(family.id)}`);setRows(result?.suggestions||[])}catch{setRows([])}}
@@ -23,7 +25,13 @@ function PredictionPanel({family,onAccepted}){
 
 export default function SmartShoppingPredicted({family,onChanged,...props}){
  const [revision,setRevision]=useState(0);
+ const [storeMode,setStoreMode]=useState(isStoreMode);
  async function accepted(){setRevision(value=>value+1);await onChanged?.()}
+ useEffect(()=>{
+  const syncMode=()=>setStoreMode(isStoreMode());
+  window.addEventListener('popstate',syncMode);
+  return()=>window.removeEventListener('popstate',syncMode);
+ },[]);
  useEffect(()=>{
   const openExpense=async event=>{
    const detail=event.detail||{};
@@ -51,5 +59,6 @@ export default function SmartShoppingPredicted({family,onChanged,...props}){
   window.addEventListener(SHOPPING_BUDGET_PURCHASE_EVENT,openExpense);
   return()=>window.removeEventListener(SHOPPING_BUDGET_PURCHASE_EVENT,openExpense);
  },[family?.id]);
- return <div className="shopping-prediction-shell"><PredictionPanel family={family} onAccepted={accepted}/><ShoppingBudgetCommitment key={`budget-${family?.id||'none'}-${revision}`} family={family} onChanged={accepted}/><SmartShopping key={`${family?.id||'none'}-${revision}`} family={family} onChanged={onChanged} {...props}/></div>
+ const syncModeAfterShoppingAction=()=>setStoreMode(isStoreMode());
+ return <div className="shopping-prediction-shell" onClick={syncModeAfterShoppingAction}>{!storeMode&&<><PredictionPanel family={family} onAccepted={accepted}/><ShoppingBudgetCommitment key={`budget-${family?.id||'none'}-${revision}`} family={family} onChanged={accepted}/></>}<SmartShopping key={`${family?.id||'none'}-${revision}`} family={family} onChanged={onChanged} {...props}/></div>
 }
