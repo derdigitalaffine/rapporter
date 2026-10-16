@@ -1,7 +1,8 @@
-"""Read-only projection of explicit shared native FamilyEvents (no participants/payload dumps)."""
+"""Read-only projection of explicit native FamilyEvents with a strict export allow-list."""
 from functools import lru_cache
 from datetime import date, datetime, timedelta, timezone as dt_timezone
 from icalendar import Calendar, Event, Timezone
+from django.db.models import Q
 from django.utils import timezone
 from .models import FamilyEvent
 from .action_schedule import _days, local_datetime
@@ -15,9 +16,23 @@ WEEKDAYS = ['MO', 'TU', 'WE', 'TH', 'FR', 'SA', 'SU']
 class CalendarCapacityError(Exception): pass
 
 
-def shared_events(grant):
-    rows = list(FamilyEvent.objects.filter(family_id=grant.family_id, source__isnull=True,
-        type='calendar.event', is_family_event=True, external_id='', starts_at__isnull=False).select_related('family').order_by('id')[:MAX_RESOURCES + 1])
+def shared_events(grant, member=None):
+    # Family feed: only explicitly whole-family native events.
+    # Member feed: those family events plus native events explicitly assigned to
+    # that member. Imports, health rows and orphaned external identities remain
+    # excluded regardless of feed shape.
+    query = FamilyEvent.objects.filter(
+        family_id=grant.family_id,
+        source__isnull=True,
+        type='calendar.event',
+        external_id='',
+        starts_at__isnull=False,
+    )
+    if member is None:
+        query = query.filter(is_family_event=True)
+    else:
+        query = query.filter(Q(is_family_event=True) | Q(participants=member)).distinct()
+    rows = list(query.select_related('family').order_by('id')[:MAX_RESOURCES + 1])
     if len(rows) > MAX_RESOURCES: raise CalendarCapacityError()
     return rows
 
