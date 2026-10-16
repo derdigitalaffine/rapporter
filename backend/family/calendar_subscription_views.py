@@ -1,5 +1,6 @@
 import plistlib
 import uuid
+from urllib.parse import urlsplit
 from django.db import transaction
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
@@ -108,27 +109,27 @@ def subscription_detail(request, family_id, subscription_id, operation=''):
             return private(Response(reveal(grant)))
 
         credentials = reveal(grant)
-        token = credentials['password']
-        base = origin()
-        members = list(Membership.objects.filter(family=family, user__is_active=True).select_related('user').order_by('created_at', 'id'))
-        accounts = []
-        for member in members:
-            label = member_label(member)
-            feed_url = credentials['subscription_url'] if len(members) == 1 else f'{base}/calendar-feed/{token}/member/{member.pk}.ics'
-            accounts.append({
-                'PayloadType': 'com.apple.subscribedcalendar.account', 'PayloadVersion': 1,
-                'PayloadIdentifier': f'org.familyos.calendar.{grant.pk}.member.{member.pk}',
-                'PayloadUUID': str(uuid.uuid5(grant.pk, f'member:{member.pk}')).upper(),
-                'PayloadDisplayName': f'FamilyOS · {label}',
-                'SubCalAccountDescription': f'FamilyOS · {family.name} · {label}',
-                'SubCalAccountHostName': feed_url,
-            })
+        parsed = urlsplit(origin())
+        account = {
+            'PayloadType': 'com.apple.caldav.account',
+            'PayloadVersion': 1,
+            'PayloadIdentifier': f'org.familyos.calendar.{grant.pk}.caldav',
+            'PayloadUUID': str(uuid.uuid5(grant.pk, 'caldav')).upper(),
+            'PayloadDisplayName': f'FamilyOS · {family.name}',
+            'CalDAVAccountDescription': f'FamilyOS · {family.name}',
+            'CalDAVHostName': parsed.hostname,
+            'CalDAVPort': parsed.port or 443,
+            'CalDAVUseSSL': True,
+            'CalDAVUsername': credentials['username'],
+            'CalDAVPassword': credentials['password'],
+            'CalDAVPrincipalURL': credentials['caldav_url'],
+        }
         profile = {
             'PayloadType': 'Configuration', 'PayloadVersion': 1,
             'PayloadIdentifier': f'org.familyos.calendar.{grant.pk}', 'PayloadUUID': str(grant.pk).upper(),
             'PayloadDisplayName': f'FamilyOS · {family.name}', 'PayloadOrganization': 'FamilyOS',
-            'PayloadDescription': 'Read-only FamilyOS calendars split by family member. Revoke access in FamilyOS Calendar → Calendar subscriptions.',
-            'PayloadRemovalDisallowed': False, 'PayloadContent': accounts,
+            'PayloadDescription': 'FamilyOS CalDAV calendar. Changes made in Apple Calendar are synchronized back to FamilyOS.',
+            'PayloadRemovalDisallowed': False, 'PayloadContent': [account],
         }
         audit(request, grant, 'profile')
         response = HttpResponse(plistlib.dumps(profile), content_type='application/x-apple-aspen-config')
