@@ -31,9 +31,10 @@ export const Toast = {
     await userEvent.click(canvas.getByRole('button', {name: 'Archivieren'}));
     await userEvent.click(await body.findByRole('button', {name: 'Rückgängig'}));
     await expect(canvas.getByRole('status')).toHaveTextContent('Wiederhergestellt');
+    await waitFor(() => expect(body.queryByText('Liste archiviert.')).not.toBeInTheDocument());
     await userEvent.click(canvas.getByRole('button', {name: 'Archivieren'}));
     await userEvent.click(await body.findByRole('button', {name: 'Meldung schließen'}));
-    await expect(body.queryByText('Liste archiviert.')).not.toBeInTheDocument();
+    await waitFor(() => expect(body.queryByText('Liste archiviert.')).not.toBeInTheDocument());
   },
 };
 export const QuickCreate = {
