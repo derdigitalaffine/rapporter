@@ -11,7 +11,7 @@ async function allTodayActions(familyId){
  const payload=await api(`/actions/?family=${encodeURIComponent(familyId)}&scope=today`);
  const rows=[...unwrap(payload)];let next=payload?.next;
  const seen=new Set();
- while(next){const url=new URL(next,location.origin);if(url.origin!==location.origin||url.pathname!=='/api/actions/'||url.searchParams.get('family')!==familyId||seen.has(url.href))throw new Error('invalid_action_page');seen.add(url.href);const page=await api(`${url.pathname.slice(4)}${url.search}`);rows.push(...unwrap(page));next=page.next;}
+ while(next){const url=new URL(next,location.origin);if(url.origin!==location.origin||url.pathname!=='/api/actions/'||url.searchParams.get('family')!==familyId||url.searchParams.get('scope')!=='today'||seen.has(url.href))throw new Error('invalid_action_page');seen.add(url.href);const page=await api(`${url.pathname.slice(4)}${url.search}`);rows.push(...unwrap(page));next=page.next;}
  return rows;
 }
 
