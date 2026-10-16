@@ -102,9 +102,12 @@ class CalendarSubscriptionDetailUpdateTests(TestCase):
         account = profile['PayloadContent'][0]
         self.assertEqual(account['PayloadType'], 'com.apple.caldav.account')
         self.assertEqual(account['PayloadDisplayName'], 'FamilyOS · Detail Family')
+        self.assertEqual(account['CalDAVHostName'], 'calendar.example.test')
+        self.assertEqual(account['CalDAVPort'], 443)
+        self.assertTrue(account['CalDAVUseSSL'])
         self.assertEqual(account['CalDAVUsername'], created.data['username'])
         self.assertEqual(account['CalDAVPassword'], created.data['password'])
-        self.assertEqual(account['CalDAVPrincipalURL'], created.data['caldav_url'])
+        self.assertNotIn('CalDAVPrincipalURL', account)
         self.assertNotIn('SubCalAccountHostName', account)
 
         auth = 'Basic ' + base64.b64encode(f"{created.data['username']}:{created.data['password']}".encode()).decode()

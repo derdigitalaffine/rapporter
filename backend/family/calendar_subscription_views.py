@@ -122,7 +122,6 @@ def subscription_detail(request, family_id, subscription_id, operation=''):
             'CalDAVUseSSL': True,
             'CalDAVUsername': credentials['username'],
             'CalDAVPassword': credentials['password'],
-            'CalDAVPrincipalURL': credentials['caldav_url'],
         }
         profile = {
             'PayloadType': 'Configuration', 'PayloadVersion': 1,
