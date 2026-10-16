@@ -33,3 +33,45 @@ Migration `expenses.0011` is additive: nullable estimate/retry-key columns and n
 ## Remaining Slices
 
 Personal limits and planned participant cost shares require their own explicit privacy/permission contract; they must never use ExpenseShare or Settlement as planning storage. Travel variants/confirmation (#668), extended preparation/destination sources (#670), and Pinboard priority/contact cards (#667) remain separate consumers. No automatic sum, distribution or decision is implied by this foundation.
+
+## Hierarchische Planrahmen und Sonstiges (#749)
+
+`ExpenseLedger` bleibt die Wurzel. `ExpenseBudget.parent` ordnet Kostenbereiche
+beliebig tief im selben Ledger an. Bestehende `amount`-Werte sind inklusive
+Planrahmen: **Planrahmen = direkte Unterbudgetrahmen + Sonstiges**. Es gibt
+keine zusätzlichen Sonstiges-Datensätze und keine versteckte Root-Budgetzeile.
+Ein negativer Rest zeigt Überplanung; er wird nicht auf null gekappt.
+
+`budget-summary` ergänzt bei Root und aktiven Budgetzeilen ein `hierarchy`-Objekt:
+`parent`, `children_amount`, `miscellaneous_amount`, kumulierte `spent_amount`,
+`reserved_amount`, `available_amount`, direkte `miscellaneous_spent_amount`,
+`miscellaneous_reserved_amount`, `miscellaneous_available_amount`, `overplanned`
+und `over_available`. Bisherige direkte Zeilenfelder bleiben kompatibel.
+Summen eines Knotens verwenden dessen eigene Periodengrenzen in Familienzeit,
+auch wenn Unterbudgets andere Zeiträume haben. Positive Überträge eines
+Elternrahmens berücksichtigen auch tatsächliche Ausgaben seiner Nachkommen;
+Vormerkungen bleiben wie bisher separat. Ein Übertrag gehört zum Rahmen und
+wird nicht nochmals aus Kindern addiert: der Sonstiges-Übertrag ist der
+Rahmenübertrag minus direkte Kinderüberträge (kann negativ sein). Dadurch
+bleibt auch Verfügbarkeit bei gleichen Zeiträumen summenkonsistent. Das
+additive Feld `miscellaneous_carryover_amount` macht diesen Anteil sichtbar.
+
+Der Root behält den bestehenden Allzeit-/Basiswährungsvertrag. Nicht zugeordnete
+Ausgaben und Vormerkungen liegen in Root-Sonstiges. Fremdwährungs-Ausgaben
+bleiben dort unkonvertiert ausgeschlossen und werden weiterhin separat gemeldet;
+explizite Budget-Allocations in Budgetwährung bleiben im jeweiligen Budget sichtbar.
+Archivierte Zwischenknoten sind in der aktiven Darstellung transparent: aktive
+Kinder rücken zum nächsten aktiven Vorfahren; direkte historische Zuordnungen
+bleiben dort in Sonstiges erhalten. Archivieren löscht keine Ausgabe.
+
+„Sonstiges planen“ verwendet dieselben Form-Primitives und speichert den
+inklusiven Betrag centgenau als Sonstiges + direkte Unterbudgetrahmen.
+`expected_children_amount` ist optional/write-only und verhindert unter dem
+Ledger-Lock einen stillen Überschreibfehler, falls sich die Unterbudgetsumme
+inzwischen geändert hat (HTTP 409). Bestehende Revision- und Retry-Verträge
+bleiben bestehen. Elternwechsel werden nach dem Ledger-Lock erneut geprüft;
+parallele Gegenbewegungen können keinen Zyklus erzeugen.
+
+Keine Schema-/Bestandsdatenmigration. Rollback entfernt UI/Response-Erweiterung;
+Elternreferenzen und inklusive Beträge bleiben im bisherigen kanonischen Modell.
+Teilnehmerlimits bleiben ausschließlich in der bisherigen permission-aware API.

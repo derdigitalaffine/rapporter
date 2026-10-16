@@ -18,3 +18,11 @@
 @media(min-width:640px){.finance-section-nav{grid-template-columns:repeat(5,minmax(0,1fr))}}
 @media(min-width:900px){.finance-overview-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.finance-settlement-grid{grid-template-columns:minmax(0,1fr) minmax(0,1fr);align-items:start}}
 @media(max-width:520px){.finance-view-head>.secondary{width:100%;justify-content:center}.finance-overview-grid{gap:12px}}
+/* Primary actions and spendable funds lead on touch screens. */
+.finance-available{display:grid;gap:4px;padding:12px;border-radius:var(--radius-md);background:var(--green-soft)}
+.finance-available>strong{font-size:1.6rem;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.finance-hub .expenses-toolbar{min-width:0}.finance-hub .expenses-toolbar select{min-height:44px;min-width:0;max-width:100%}
+.finance-hub .expenses-toolbar .primary{min-height:48px;justify-content:center}
+.finance-hub .finance-collapsible>summary{min-height:44px;box-sizing:border-box}
+.finance-hub .finance-section-nav-item{overflow-wrap:anywhere}
+@media(max-width:639px){.finance-section-nav{grid-template-columns:repeat(6,minmax(0,1fr))}.finance-section-nav-item{grid-column:span 2}.finance-section-nav-item:nth-last-child(-n+2){grid-column:span 3}.finance-hub .expenses-toolbar{display:grid;grid-template-columns:2fr 1fr;width:100%}.finance-hub .expenses-toolbar .primary{grid-column:1/-1;grid-row:1}.finance-overview-grid{gap:12px}}

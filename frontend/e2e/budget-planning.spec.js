@@ -53,8 +53,8 @@ async function boot(page,{ledger='ledger-home',standalone=false,language='de'}={
 
 async function openCategories(planner){
  await expect(planner.getByRole('button',{name:'Budget planen',exact:true})).toBeEnabled();
- const details=planner.locator('details');
- if(await details.getAttribute('open')===null)await details.locator('summary').click();
+ const details=planner.locator('details.budget-tree-root');
+ if(await details.getAttribute('open')===null)await details.locator(':scope > summary').click();
  await expect(details).toHaveAttribute('open','');
 }
 
@@ -220,4 +220,52 @@ test('budget planning · responsive and standalone keyboard flow stays within th
  await expect(planner).toContainText('250,00');
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1)).toBe(true);
  await planner.screenshot({path:testInfo.outputPath('budget-overview-zoom-layout.png')});
+});
+
+test('budget planning · nested envelopes and miscellaneous can be planned at every level',async({page},testInfo)=>{
+ const {store,planner}=await boot(page);
+ Object.assign(store.ledgers[0],{budget_amount:'1000.00'});
+ store.budgets.push(...[
+  {id:'mobility',name:'Mobilität',parent:null,amount:'300.00'},
+  {id:'rail',name:'Bahn',parent:'mobility',amount:'100.00'},
+  {id:'commute',name:'Pendeln',parent:'rail',amount:'60.00'},
+ ].map(row=>({...row,family:'family-1',ledger:'ledger-home',currency:'EUR',period_type:'open',spent_amount:'0.00',remaining_amount:row.amount,updated_at:'2026-10-14T10:00:00Z'})));
+ await page.reload();
+ await expect(planner.getByRole('button',{name:'Kostenbereich bearbeiten: Mobilität',exact:true})).toBeVisible();
+ const node=id=>planner.locator(`[data-budget-id="${id}"]`);
+ await node('mobility').locator(':scope > details > summary').click();
+ await node('rail').locator(':scope > details > summary').click();
+ await node('commute').locator(':scope > details > summary').click();
+ await expect(page.getByTestId('budget-misc-root')).toContainText('700,00');
+ await expect(page.getByTestId('budget-misc-mobility')).toContainText('200,00');
+ await expect(page.getByTestId('budget-misc-rail')).toContainText('40,00');
+ await expect(page.getByTestId('budget-misc-commute')).toContainText('60,00');
+ for(const width of [320,390,720,1440]){
+  await page.setViewportSize({width,height:844});
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+  const button=page.getByRole('button',{name:'Sonstiges planen: Mobilität / Bahn',exact:true});
+  const box=await button.boundingBox();expect(box.height).toBeGreaterThanOrEqual(44);
+  await planner.screenshot({path:testInfo.outputPath(`finance-hierarchy-${width}.png`)});
+ }
+ await page.getByRole('button',{name:'Sonstiges planen: Mobilität / Bahn',exact:true}).click();
+ const dialog=page.getByRole('dialog',{name:'Kostenbereich bearbeiten',exact:true});
+ await expect(dialog.getByRole('textbox',{name:'Sonstiges (EUR)',exact:true})).toHaveValue('40.00');
+ await expect(dialog.getByLabel('Übergeordnetes Budget',{exact:true})).toHaveValue('mobility');
+ expect(await dialog.getByLabel('Übergeordnetes Budget').locator('option').allTextContents()).toEqual(['Direkt im Gesamtbudget','Mobilität']);
+ await dialog.getByRole('textbox',{name:'Sonstiges (EUR)',exact:true}).fill('50,01');
+ await dialog.getByRole('button',{name:'Budget speichern',exact:true}).click();
+ expect(store.writes.at(-1).body).toMatchObject({amount:'110.01',expected_children_amount:'60.00',parent:'mobility'});
+ await expect(page.getByTestId('budget-misc-rail')).toContainText('50,01');
+ await planner.getByRole('button',{name:'Unterbudget hinzufügen: Mobilität',exact:true}).click();
+ const create=page.getByRole('dialog',{name:'Kostenbereich hinzufügen',exact:true});
+ await expect(create.getByLabel('Übergeordnetes Budget')).toHaveValue('mobility');
+ await create.getByRole('textbox',{name:'Kostenbereich',exact:true}).fill('Fahrrad');
+ await create.getByRole('textbox',{name:'Geplant (EUR)',exact:true}).fill('30');
+ await create.getByRole('button',{name:'Budget speichern',exact:true}).click();
+ expect(store.writes.at(-1).body.parent).toBe('mobility');
+ await page.getByRole('button',{name:'Sonstiges planen: Familie',exact:true}).click();
+ const root=page.getByRole('dialog',{name:'Gesamtbudget planen',exact:true});
+ await root.getByLabel('Sonstiges (EUR)',{exact:true}).fill('750');
+ await root.getByRole('button',{name:'Budget speichern',exact:true}).click();
+ expect(store.writes.at(-1).body).toMatchObject({budget_amount:'1050.00',expected_children_amount:'300.00'});
 });

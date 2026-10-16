@@ -45,7 +45,7 @@ test('finance · participant limits and planned shares stay planning-only in the
  await page.waitForLoadState('networkidle');
  const planner=page.getByRole('region',{name:'Budget',exact:true});
  const categories=planner.locator('details.finance-collapsible').first();
- await categories.locator('summary').click();
+ if(await categories.getAttribute('open')===null)await categories.locator(':scope > summary').click();
  await planner.getByRole('button',{name:'Kostenbereich hinzufügen',exact:true}).click();
  const dialog=page.getByRole('dialog',{name:'Kostenbereich hinzufügen'});
  await dialog.getByRole('textbox',{name:'Kostenbereich',exact:true}).fill('Freizeit');
@@ -163,7 +163,7 @@ test('finance · teen sees own personal limit and shared planned shares read-onl
  await page.goto('/?page=expenses&ledger=ledger-home');
  await page.waitForLoadState('networkidle');
  const planner=page.getByRole('region',{name:'Budget',exact:true});
- const categories=planner.locator('details.finance-collapsible').first();await categories.locator('summary').click();
+ const categories=planner.locator('details.finance-collapsible').first();if(await categories.getAttribute('open')===null)await categories.locator(':scope > summary').click();
  await planner.getByRole('button',{name:'Kostenbereich bearbeiten: Freizeit',exact:true}).click();
  const dialog=page.getByRole('dialog',{name:'Kostenbereich bearbeiten'});
  const participants=dialog.locator('details.budget-participant-settings');

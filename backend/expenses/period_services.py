@@ -43,12 +43,24 @@ def _next_bounds(period_type, prior_end):
     return _calendar_bounds(period_type, prior_end + timedelta(days=1))
 
 
-def _spent_for_bounds(budget, starts_on=None, ends_on=None):
+def _spent_for_bounds(budget, starts_on=None, ends_on=None, *, include_descendants=False):
     cached = getattr(budget, "_budget_spent_amount", None)
-    if starts_on is None and ends_on is None and cached is not None:
+    if not include_descendants and starts_on is None and ends_on is None and cached is not None:
         return money(cached)
 
-    allocations = budget.allocations.filter(expense__status=Expense.Status.POSTED)
+    if include_descendants:
+        from .models import ExpenseBudgetAllocation
+        edges = list(ExpenseBudget.objects.filter(ledger=budget.ledger, family=budget.family).values_list("id", "parent_id"))
+        ids, pending = {budget.pk}, [budget.pk]
+        while pending:
+            parent = pending.pop()
+            for key, parent_id in edges:
+                if parent_id == parent and key not in ids:
+                    ids.add(key)
+                    pending.append(key)
+        allocations = ExpenseBudgetAllocation.objects.filter(budget_id__in=ids, expense__status=Expense.Status.POSTED)
+    else:
+        allocations = budget.allocations.filter(expense__status=Expense.Status.POSTED)
     family_tz = _family_timezone(budget)
     if starts_on:
         starts_at = datetime.combine(starts_on, time.min).replace(tzinfo=family_tz)
@@ -83,7 +95,7 @@ def close_current_period(budget):
 def _carry_from_period(period):
     if period.rollover_policy != ExpenseBudgetPeriod.RolloverPolicy.CARRY_POSITIVE:
         return Decimal("0.00")
-    spent = _spent_for_bounds(period.budget, period.starts_on, period.ends_on)
+    spent = _spent_for_bounds(period.budget, period.starts_on, period.ends_on, include_descendants=True)
     unused = money(period.planned_amount + period.carryover_amount - spent)
     return money(max(unused, Decimal("0.00")))
 

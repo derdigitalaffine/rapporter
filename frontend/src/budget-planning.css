@@ -34,3 +34,18 @@
 .budget-planning-sheet .sheet-head small{letter-spacing:0;text-transform:none}
 @media(min-width:640px){.budget-planning-sheet .form-actions>.primary{width:auto}}
 @media(max-width:520px){.budget-planning-facts{grid-template-columns:minmax(0,1fr)}.budget-planning-facts>div{display:flex;justify-content:space-between;align-items:baseline;gap:var(--space-3)}.budget-planning-facts dd{text-align:right}.budget-planner .budget-progress-head{flex-wrap:wrap}.budget-period-settings,.budget-participant-settings{padding-inline:var(--space-2)}.budget-participant-money{grid-template-columns:minmax(0,1fr)}}
+.budget-tree{list-style:none;margin:0;padding:0;display:grid;gap:12px;min-width:0}
+.budget-node{border:1px solid var(--line);border-radius:var(--radius-md);padding:12px;min-width:0;background:var(--surface)}
+.budget-node>.budget-planning-row{border-top:0;padding-top:0;align-items:start}
+.budget-node-plan{font-size:.9rem;font-variant-numeric:tabular-nums}
+.budget-node-details>summary{min-height:44px;padding:12px 0;cursor:pointer;font-weight:700;overflow-wrap:anywhere}
+.budget-node-body{display:grid;gap:12px;min-width:0}
+.budget-node .budget-node{border-inline-start:3px solid var(--green);padding:8px}
+.budget-node .budget-planning-row-actions{flex-direction:column}
+.budget-misc{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;padding:12px 0;border-top:1px dashed var(--line);min-width:0}
+.budget-misc>div{display:grid;gap:4px;min-width:0;overflow-wrap:anywhere}.budget-misc small{color:var(--muted)}
+.budget-misc button{min-height:44px;max-width:100%;white-space:normal}
+.budget-warning{color:var(--danger);margin:0;font-size:.85rem;overflow-wrap:anywhere}
+.budget-primary-fact{padding:12px;border-radius:var(--radius-md);background:var(--green-soft);color:var(--ink)}.budget-primary-fact dd{font-size:1.35rem}
+.budget-planner select{min-width:0;max-width:100%;min-height:44px}
+@media(max-width:520px){.budget-node{padding:8px}.budget-tree .budget-tree{gap:8px}.budget-node .budget-node{padding-inline:6px}.budget-misc>button{width:100%}.budget-primary-fact{margin-bottom:4px}}

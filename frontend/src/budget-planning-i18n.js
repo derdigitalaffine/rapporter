@@ -1,6 +1,7 @@
 import i18n from './create-i18n';
 
 const de={
+ miscellaneous:'Sonstiges',planMisc:'Sonstiges planen',parent:'Übergeordnetes Budget',rootLevel:'Direkt im Gesamtbudget',addChild:'Unterbudget hinzufügen',breakdown:'Aufteilung & Unterbudgets',hierarchyHint:'Jeder Rahmen enthält seine Unterbudgets und Sonstiges. Summen gelten jeweils im Zeitraum des übergeordneten Budgets.',overplanned:'Die Unterbudgets übersteigen diesen Planrahmen. Bitte passe den Rahmen oder die Unterbudgets an.',miscPlanHint:'Sonstiges sind die Mittel direkt auf dieser Ebene. Der Gesamtplan ergibt sich aus Sonstiges plus Unterbudgets.',childrenPlanned:'Unterbudgets zusammen',totalPlanned:'Planrahmen gesamt',
  plan:'Budget planen',editOverall:'Gesamtbudget planen',editCategory:'Kostenbereich bearbeiten',newCategory:'Kostenbereich hinzufügen',name:'Kostenbereich',
  overallPlanned:'Geplantes Gesamtbudget',planned:'Geplant',estimated:'Schätzung (optional)',actual:'Ausgegeben',reserved:'Vorgemerkt',available:'Verfügbar',carryover:'Übertrag',notPlanned:'Noch offen',
  save:'Budget speichern',saved:'Budgetplanung gespeichert.',empty:'Noch kein Budget geplant.',
@@ -14,6 +15,7 @@ const de={
  participantPlanning:'Teilnehmerplanung',participantOptional:'Optional',participantLoading:'Teilnehmerplanung wird geladen …',participantLoadFailed:'Teilnehmerplanung konnte nicht geladen werden. Andere Budgetangaben können weiterhin gespeichert werden.',participantHint:'Limit und geplanter Kostenanteil sind nur Planung. Sie erzeugen keine Ausgabe, Schuld oder Abrechnung.',participantReadOnly:'Diese Teilnehmerplanung ist nur lesbar. Persönliche Limits werden nur der betroffenen Person und Erwachsenen angezeigt.',personalLimit:'Persönliches Limit',plannedShare:'Geplanter Kostenanteil',plannedShareTotal:'Geplante Kostenanteile zusammen',plannedShareDifference:'Abweichung zum Budget',plannedShareHint:'Die Summe darf vom Budget abweichen und blockiert das Speichern nicht.',participantCount:'{{count}} geplant',noParticipants:'Keine Personen verfügbar.',
 };
 const en={
+ miscellaneous:'Miscellaneous',planMisc:'Plan miscellaneous',parent:'Parent budget',rootLevel:'Directly in overall budget',addChild:'Add sub-budget',breakdown:'Breakdown & sub-budgets',hierarchyHint:'Each envelope includes its sub-budgets and miscellaneous. Totals use the parent budget’s period.',overplanned:'Sub-budgets exceed this envelope. Adjust the envelope or its sub-budgets.',miscPlanHint:'Miscellaneous is money planned directly at this level. The total envelope is miscellaneous plus sub-budgets.',childrenPlanned:'Sub-budgets total',totalPlanned:'Total envelope',
  plan:'Plan budget',editOverall:'Plan overall budget',editCategory:'Edit cost category',newCategory:'Add cost category',name:'Cost category',
  overallPlanned:'Planned overall budget',planned:'Planned',estimated:'Estimate (optional)',actual:'Spent',reserved:'Reserved',available:'Available',carryover:'Carryover',notPlanned:'Not set yet',
  save:'Save budget',saved:'Budget plan saved.',empty:'No budget planned yet.',

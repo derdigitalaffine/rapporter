@@ -53,3 +53,24 @@ class BudgetPlanningConcurrencyTests(TransactionTestCase):
         self.assertEqual([code for code, _ in results], [201, 201], results)
         self.assertEqual(results[0][1]["id"], results[1][1]["id"])
         self.assertEqual(ExpenseBudget.objects.filter(ledger=self.ledger).count(), 1)
+
+    def test_concurrent_opposite_parent_moves_cannot_create_cycle(self):
+        budgets = [ExpenseBudget.objects.create(family=self.family, ledger=self.ledger, name=name, amount='100.00') for name in ['A', 'B']]
+        barrier = Barrier(2)
+        def move(pair):
+            close_old_connections()
+            try:
+                client = APIClient()
+                client.force_authenticate(self.user)
+                budget, parent = pair
+                barrier.wait(timeout=10)
+                response = client.patch(f'/api/expense-budgets/{budget.id}/', {'parent': str(parent.id)}, format='json')
+                return response.status_code, response.data
+            finally:
+                close_old_connections()
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            results = list(pool.map(move, [budgets, budgets[::-1]]))
+        self.assertEqual(sorted(code for code, _ in results), [200, 400], results)
+        for budget in budgets:
+            budget.refresh_from_db()
+        self.assertFalse(budgets[0].parent_id == budgets[1].id and budgets[1].parent_id == budgets[0].id)

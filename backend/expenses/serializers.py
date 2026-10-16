@@ -125,6 +125,19 @@ def _ledger_default_values(ledger):
 
 
 class ExpenseLedgerSerializer(RevisionCheckedPlanningSerializer):
+    expected_children_amount = LocalizedDecimalField(max_digits=16, decimal_places=2, write_only=True, required=False)
+
+    def create(self, validated_data):
+        validated_data.pop("expected_children_amount", None)
+        return super().create(validated_data)
+
+    @transaction.atomic
+    def update(self, instance, validated_data):
+        from .hierarchy_services import check_child_plan
+        current = ExpenseLedger.objects.select_for_update().get(pk=instance.pk)
+        check_child_plan(current, validated_data.pop("expected_children_amount", None))
+        return super().update(current, validated_data)
+
     estimated_amount = LocalizedDecimalField(
         max_digits=12, decimal_places=2, allow_null=True, required=False, min_value=Decimal("0.00"),
     )
@@ -201,6 +214,7 @@ class ExpenseLedgerSerializer(RevisionCheckedPlanningSerializer):
             "budget_amount",
             "estimated_amount",
             "expected_updated_at",
+            "expected_children_amount",
             "is_default",
             "archived",
             "default_split_type",
