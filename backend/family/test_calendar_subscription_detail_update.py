@@ -1,3 +1,4 @@
+import base64
 import plistlib
 from datetime import datetime, timezone as utc
 
@@ -84,7 +85,7 @@ class CalendarSubscriptionDetailUpdateTests(TestCase):
         listing = self.client.get(self.path)
         self.assertEqual(listing.data['subscriptions'][0]['detail_level'], 'title')
 
-    def test_apple_profile_installs_one_safe_calendar_per_active_family_member(self):
+    def test_apple_profile_installs_one_writable_family_caldav_account(self):
         other_user = get_user_model().objects.create_user('detail-sam')
         sam = Membership.objects.create(family=self.family, user=other_user, role=Membership.Role.CHILD, display_name='Sam')
         alex_only = self.make_event('Alex appointment', participant=self.membership)
@@ -97,25 +98,21 @@ class CalendarSubscriptionDetailUpdateTests(TestCase):
         profile_response = self.client.get(detail + 'profile/')
         self.assertEqual(profile_response.status_code, 200)
         profile = plistlib.loads(profile_response.content)
-        self.assertEqual(len(profile['PayloadContent']), 2)
-        accounts = {item['PayloadDisplayName']: item for item in profile['PayloadContent']}
-        self.assertEqual(set(accounts), {'FamilyOS · Alex', 'FamilyOS · Sam'})
+        self.assertEqual(len(profile['PayloadContent']), 1)
+        account = profile['PayloadContent'][0]
+        self.assertEqual(account['PayloadType'], 'com.apple.caldav.account')
+        self.assertEqual(account['PayloadDisplayName'], 'FamilyOS · Detail Family')
+        self.assertEqual(account['CalDAVUsername'], created.data['username'])
+        self.assertEqual(account['CalDAVPassword'], created.data['password'])
+        self.assertEqual(account['CalDAVPrincipalURL'], created.data['caldav_url'])
+        self.assertNotIn('SubCalAccountHostName', account)
 
-        alex_url = accounts['FamilyOS · Alex']['SubCalAccountHostName']
-        sam_url = accounts['FamilyOS · Sam']['SubCalAccountHostName']
-        self.assertIn(f'/member/{self.membership.pk}.ics', alex_url)
-        self.assertIn(f'/member/{sam.pk}.ics', sam_url)
-        self.assertNotEqual(alex_url, sam_url)
-
-        alex_calendar = Calendar.from_ical(self.public.get(alex_url.replace('https://calendar.example.test', '')).content)
-        sam_calendar = Calendar.from_ical(self.public.get(sam_url.replace('https://calendar.example.test', '')).content)
-        alex_titles = {str(event['SUMMARY']) for event in alex_calendar.walk('VEVENT')}
-        sam_titles = {str(event['SUMMARY']) for event in sam_calendar.walk('VEVENT')}
-        self.assertIn(self.event.title, alex_titles)
-        self.assertIn(self.event.title, sam_titles)
-        self.assertIn(alex_only.title, alex_titles)
-        self.assertNotIn(alex_only.title, sam_titles)
-        self.assertIn(sam_only.title, sam_titles)
-        self.assertNotIn(sam_only.title, alex_titles)
-        self.assertNotIn(selected_private.title, alex_titles)
-        self.assertNotIn(selected_private.title, sam_titles)
+        auth = 'Basic ' + base64.b64encode(f"{created.data['username']}:{created.data['password']}".encode()).decode()
+        calendar_path = f"/caldav/{created.data['id']}/home/family/"
+        calendar_response = self.public.get(calendar_path, HTTP_AUTHORIZATION=auth)
+        self.assertEqual(calendar_response.status_code, 200)
+        titles = {str(event['SUMMARY']) for event in Calendar.from_ical(calendar_response.content).walk('VEVENT')}
+        self.assertIn(self.event.title, titles)
+        self.assertIn(alex_only.title, titles)
+        self.assertIn(sam_only.title, titles)
+        self.assertNotIn(selected_private.title, titles)
