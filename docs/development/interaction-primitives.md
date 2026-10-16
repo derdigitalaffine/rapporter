@@ -54,6 +54,12 @@ legacy sheets. Never translate/resize the permanent PWA navigation from a
 VisualViewport scroll. The sheet action row stays reachable/sticky while its
 content scrolls. Explicit Cancel/Close work without drag or swipe.
 
+Installed non-messenger page content also reserves the existing keyboard inset
+as bottom scroll space. This lets a low capture field scroll fully above the
+keyboard without resizing the shell or displacing its header/navigation. The
+remote synthetic viewport test checks reachability, stable chrome and immediate
+keyboard-dismissal recovery; it is not physical software-keyboard evidence.
+
 ## Evidence and Rollout
 
 The #754 workbench exercises production adapters plus headless picker states,

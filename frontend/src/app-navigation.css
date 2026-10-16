@@ -155,6 +155,12 @@ html[data-app-standalone] .app-shell.global-create-enabled:not(.messenger-shell)
   scroll-padding-bottom:calc(var(--app-nav-space) + var(--app-floating-create-space));
 }
 
+/* Reserve scroll space above the keyboard without moving permanent chrome. */
+html[data-app-standalone][data-app-keyboard] .app-shell:not(.messenger-shell)>.content{
+  padding-bottom:calc(var(--app-keyboard-inset,0px) + 24px);
+  scroll-padding-bottom:calc(var(--app-keyboard-inset,0px) + 24px);
+}
+
 html[data-app-standalone] .bottom-nav{
   left:0;
   right:0;
