@@ -136,6 +136,6 @@ export async function apiDownload(path){
 setSyncTransport(async(payload,signal)=>{
  let response=await request('/sync/',{method:'POST',body:JSON.stringify(payload),signal});
  if(response.status===401&&await refreshAccess())response=await request('/sync/',{method:'POST',body:JSON.stringify(payload),signal});
- if(!response.ok)throw Object.assign(new Error(`sync_${response.status}`),{status:response.status});
+ if(!response.ok){let payload=null;try{payload=await response.json()}catch{}throw apiError(response,payload)}
  return response.json();
 });

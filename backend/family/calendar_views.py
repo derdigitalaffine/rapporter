@@ -62,15 +62,9 @@ def _validate_guardian(target, family, request):
     if target.role != Membership.Role.CHILD or target.user_id == request.user.id:
         return
 
-    from baby.models import ManagedChildGuardian
+    from baby.child_identity_service import require_child_membership_guardian
 
-    actor = Membership.objects.filter(family=family, user=request.user).first()
-    if not actor or not ManagedChildGuardian.objects.filter(
-        baby__membership=target,
-        baby__family=family,
-        membership=actor,
-    ).exists():
-        raise PermissionDenied("Nur ein expliziter Guardian darf Termine für dieses Kind anlegen oder ändern.")
+    require_child_membership_guardian(request.user, target)
 
 
 def _legacy_participant_selection(serializer, family):

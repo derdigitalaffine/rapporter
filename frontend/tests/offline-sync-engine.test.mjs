@@ -60,3 +60,35 @@ test('keeping a conflict draft updates the local entity immediately and durably 
  assert.equal(row.data.name,'Tea');assert.equal(row.server_data.name,'Coffee');assert.equal(row.sync_status,'pending');
  assert.deepEqual(await e.store.list('conflicts'),[]);const [retry]=await e.store.list('outbox');assert.notEqual(retry.id,sent[0].id);assert.equal(retry.base_version,2);assert.equal(retry.attempted,false);
 });
+
+
+test('rejected appointment survives reopening and explicit retry keeps final UUID and latest draft',async()=>{
+ const e=engine();e.schedule=()=>{};
+ const event=await e.mutate('event',null,'create',{type:'calendar.event',family:'family',title:'Child visit',participants:['child'],starts_at:'2026-10-20T10:00:00Z'});
+ const sent=await e.store.list('outbox');
+ await e.store.write(sent.map(m=>({store:'outbox',type:'put',value:{...m,attempted:true,state:'sending'}})));
+ await e.mutate('event',event.id,'update',{title:'Latest child visit'});
+ await e.install({...snapshot(),mutation_results:[{mutation_id:sent[0].id,status:'rejected',code:'permission_denied',http_status:403,errors:'Custody required'}]},sent);
+ const reopened=createLocalSyncStore({accountId:e.accountId,familyId:e.familyId});
+ const entry=(await reopened.list('conflicts')).find(row=>row.id===sent[0].id);
+ assert.equal(entry.result.http_status,403);assert.equal(entry.local_data.title,'Latest child visit');
+ assert.equal((await reopened.list('outbox')).length,0);
+ await e.resolve(entry.id,'retry');
+ const [retry]=await reopened.list('outbox');
+ assert.equal(retry.entity_id,event.id);assert.notEqual(retry.mutation_id,sent[0].id);assert.equal(retry.data.title,'Latest child visit');assert.deepEqual(retry.data.participants,['child']);
+ assert.equal(retry.attempted,false);assert.equal((await e.get('event',event.id)).title,'Latest child visit');
+ // No implicit resolution of any other local work preserved for this entity.
+ assert.equal((await reopened.list('conflicts')).length,1);
+ e.transport=async payload=>{const m=payload.mutations[0],data={...m.data,id:m.entity_id,version:1};return {...snapshot(),visibility:{...empty(),event:[event.id]},snapshot:{events:[data]},mutation_results:[{mutation_id:m.mutation_id,status:'applied',version:1,data}]}};
+ await e.sync();assert.equal((await reopened.list('outbox')).length,0);assert.equal((await e.list('event')).length,1);
+});
+
+test('unavailable UUIDs and genuine conflicts cannot be replayed as new appointments',async()=>{
+ const e=engine();e.schedule=()=>{};
+ for(const result of [{status:'rejected',code:'id_unavailable'},{status:'conflict',code:'deleted_or_unavailable'}]){
+  const id=crypto.randomUUID(),m={id,mutation_id:id,entity_id:crypto.randomUUID(),entity_type:'event',operation:'create',data:{type:'calendar.event',title:'Keep safely'}};
+  await e.store.write([{store:'conflicts',type:'put',value:{id,mutation:m,result,local_data:m.data}}]);
+  await assert.rejects(e.resolve(id,'retry'),/sync_retry_unavailable/);assert.ok(await e.store.get('conflicts',id));
+ }
+ assert.equal((await e.store.list('outbox')).length,0);
+});

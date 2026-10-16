@@ -125,3 +125,19 @@ Blau noch nicht bestätigt und Grau offline. Ein Klick zeigt die getrennten
 Server-/Live-Zustände, den letzten bestätigten Abgleich und lokale Änderungen;
 die Farblegende steht im selben Dialog. Fehlende Live-Verbindung wird auch bei
 erfolgreichem HTTP-Abgleich nicht als Grün ausgegeben.
+
+### Serverfehler bei einem Termin
+
+Wenn der Server eine Änderung ablehnt, steht in den Sync-Details **Serverfehler**
+mit der konkreten Serverantwort und – soweit verfügbar – dem HTTP-Status. Das ist
+von einem Versionskonflikt zu unterscheiden. Der Entwurf bleibt auf diesem Gerät
+auch nach einem Neustart erhalten; lösche zum Beheben des Fehlers keine App-Daten.
+
+Bei einem abgelehnten neuen eigenen Termin kannst du nach Klärung des Grundes
+**Entwurf erneut senden** wählen. Zum Beispiel wird bereits gespeichertes aktives
+Sorgerecht jetzt auch für Kindertermine ohne alte Guardian-Zuordnung berücksichtigt.
+Der Server prüft beim erneuten Senden die aktuellen Rechte. Der Termin behält seine
+Kennung, damit Wiederholungen keine doppelten Termine erzeugen. Dies umgeht weder
+eine entzogene Berechtigung noch einen echten Versionskonflikt. Unzugängliche
+Servereinträge werden nicht automatisch als neue Termine angelegt. Du kannst den
+lokalen Entwurf vor einer manuellen Bearbeitung weiterhin kopieren.

@@ -45,22 +45,31 @@ def _bootstrap_guardian_allowed(membership, baby):
     ).exists()
 
 
-def _custody_guardian_allowed(membership, baby):
-    """Return whether stored custody grants full child authority.
-
-    Custody is derived at read time so already stored ``has_custody=True`` rows
-    become effective immediately without a Guardian backfill. Only an active
-    adult/owner membership in the same family can be an effective authority.
-    """
-    if not baby.membership_id or membership.role not in MANAGER_ROLES:
+def membership_has_child_custody(membership, child):
+    """Read existing custody directly, including identities predating BabyProfile."""
+    if (membership.family_id != child.family_id or membership.role not in MANAGER_ROLES
+            or child.role != Membership.Role.CHILD or child.family.status != "active"):
         return False
     return FamilyRelationship.objects.filter(
-        family=baby.family,
-        child_membership_id=baby.membership_id,
-        related_membership=membership,
-        has_custody=True,
+        family_id=child.family_id, child_membership=child,
+        related_membership=membership, has_custody=True,
         status=FamilyRelationship.Status.ACTIVE,
     ).exists()
+
+
+def _custody_guardian_allowed(membership, baby):
+    return bool(baby.membership_id and membership_has_child_custody(membership, baby.membership))
+
+
+def require_child_membership_guardian(user, child, *, manage=False):
+    """Canonical authority for membership-based consumers; no backfill needed."""
+    membership = active_membership(user, child.family)
+    if membership_has_child_custody(membership, child):
+        return membership, _custody_authority(membership)
+    baby = BabyProfile.objects.filter(family=child.family, membership=child).first()
+    if baby:
+        return require_child_guardian(user, baby, manage=manage)
+    raise PermissionDenied("Sorgerecht oder eine bestehende Guardian-Berechtigung ist für dieses Kind erforderlich.")
 
 
 def _custody_authority(membership):

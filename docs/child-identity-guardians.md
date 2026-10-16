@@ -89,3 +89,18 @@ The authorization rule here answers who may access and act within FamilyOS's pro
 ## Migration direction
 
 The target state contains one user-facing source of full child authority: **Sorgerecht**. Once all consumers use the central policy and legacy data has been reviewed, the technical Guardian compatibility model and endpoint can be removed in a later Contract step without changing the custody semantics established by #717.
+## Calendar compatibility correction (#747)
+
+Native calendar writes through REST and offline sync now consume the same central
+custody authority. This also works for historical child memberships without a
+BabyProfile: an active stored custody relationship is sufficient; no new Guardian
+row or user-driven backfill is required. Multiple custodians retain full child
+and account-management authority. Revocation/inactive custody takes effect on the
+next write unless a separately retained legacy grant still authorizes that actor.
+Decorative child-profile editing preserves its existing Owner exception and now
+accepts custody through this same helper for other authorized adults.
+
+Deployment is code-only: no schema or destructive data migration, no inferred
+custody and no new Guardian rows for existing custody. Keep existing custody and
+legacy rows when rolling back; rollback restores the old consumer bug, so do not
+roll back merely to recover local drafts.

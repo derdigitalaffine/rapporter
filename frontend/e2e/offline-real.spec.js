@@ -101,13 +101,14 @@ test('snapshot reset preserves pending offline create and unsupported protocol c
 test('server failure remains visible with browser online; status sheet is responsive and keyboard accessible',async({page},testInfo)=>{
  await boot(page);const pill=page.locator('.offline-sync-pill'),led=pill.locator('.offline-sync-led');
  await expectConfirmed(page);await expect(pill.locator('.offline-sync-label')).toHaveText('Sync');
- await page.route('**/api/sync/',route=>route.abort('connectionrefused'));
+ await page.route('**/api/sync/',route=>route.fulfill({status:503,json:{detail:'The server is temporarily unavailable.'}}));
  await page.evaluate(()=>window.dispatchEvent(new CustomEvent('familyos:sync-now')));
  expect(await page.evaluate(()=>navigator.onLine)).toBeTruthy();await expect(led).toHaveAttribute('data-tone','error');await expect(pill.locator('.offline-sync-label')).toHaveText('Sync');
  for(const width of [320,390,1440]){
   await page.setViewportSize({width,height:844});await pill.click();const dialog=page.getByRole('dialog',{name:'Synchronization',exact:true});await expect(dialog).toBeVisible();
   await expect(dialog.locator('.offline-sync-summary')).toHaveText('Server unavailable');
   await expect(dialog.getByText('Last successful sync',{exact:true})).toBeVisible();await expect(dialog.locator('time')).toBeVisible();
+  await expect(dialog.getByText('Server response: HTTP 503',{exact:true})).toBeVisible();await expect(dialog.getByText('The server is temporarily unavailable.',{exact:true})).toBeVisible();
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBeTruthy();
   const screenshotPath=testInfo.outputPath(`sync-status-${width}.png`);
   await page.screenshot({path:screenshotPath});await testInfo.attach(`sync-status-${width}`,{path:screenshotPath,contentType:'image/png'});
@@ -174,4 +175,45 @@ test('family subscription uses one Calendar/Settings flow with permanent link, a
   await dialog.getByRole('button',{name:'Revoke link',exact:true}).click();const confirmation=page.getByRole('alertdialog');await expect(confirmation).toBeVisible();await confirmation.getByRole('button',{name:'Revoke link',exact:true}).click();
   await expect(dialog.getByText('Test iPhone',{exact:true})).toHaveCount(0);expect((await page.request.get(path)).status()).toBe(404);
  }finally{await page.request.delete(`/api/calendar-subscriptions/${family.id}/${id}/`)}
+});
+
+test('child appointment rejection shows server reason, survives reload and retries after custody is granted',async({page},testInfo)=>{
+ const family=await boot(page),child=family.memberships.find(row=>row.role==='child'),owner=family.memberships.find(row=>row.role==='owner');
+ expect(child).toBeTruthy();expect(owner).toBeTruthy();
+ await page.goto('/?page=calendar&view=list');await expect(page.getByText('Read-only external',{exact:true})).toBeVisible();
+ await page.locator('.global-create-fab').click();let editor=page.getByRole('dialog');
+ if(!await editor.getByRole('textbox',{name:'Title',exact:true}).count()){
+  let choice=editor.getByRole('button',{name:/^Event(?:\s|$)/});
+  if(!await choice.count())await editor.getByRole('button',{name:'All actions',exact:true}).click();
+  await editor.getByRole('button',{name:/^Event(?:\s|$)/}).first().click();editor=page.getByRole('dialog');
+ }
+ const title=`Custody draft ${Date.now()}`;
+ await editor.getByRole('textbox',{name:'Title',exact:true}).fill(title);
+ await editor.getByText('Offline Child',{exact:true}).click();
+ await expect(editor.getByRole('checkbox',{name:'Offline Child',exact:true})).toBeChecked();
+ await editor.getByRole('button',{name:'Save',exact:true}).click();await expect(editor).toBeHidden();
+ const pill=page.locator('.offline-sync-pill');await pill.click();
+ let dialog=page.getByRole('dialog',{name:'Synchronization',exact:true});
+ await expect(dialog.locator('.offline-sync-summary')).toHaveText('Server errors');
+ await expect(dialog.getByText('Server response: HTTP 403',{exact:true})).toBeVisible();
+ await expect(dialog.locator('.offline-sync-conflict')).toContainText('Sorgerecht');
+ await expect(dialog.getByText(/not a version conflict/)).toBeVisible();
+ const serverRows=async()=>{const r=await page.request.get(`/api/events/?family=${family.id}&birthdays=0`);expect(r.ok()).toBeTruthy();const rows=await r.json();return (rows.results||rows).filter(row=>row.title===title)};
+ expect(await serverRows()).toHaveLength(0);
+ await page.reload();await pill.click();dialog=page.getByRole('dialog',{name:'Synchronization',exact:true});
+ await expect(dialog.locator('.offline-sync-summary')).toHaveText('Server errors');await expect(dialog.locator('.offline-sync-conflict')).toContainText(title);
+ await dialog.locator('.offline-sync-conflict').scrollIntoViewIfNeeded();
+ const screenshotPath=testInfo.outputPath('sync-status-server-rejection.png');await page.screenshot({path:screenshotPath});await testInfo.attach('sync-status-server-rejection',{path:screenshotPath,contentType:'image/png'});
+ const grant=await page.request.post('/api/family-relationships/',{data:{family:family.id,child_membership:child.id,related_membership:owner.id,kind:'parent',has_custody:true,status:'active'}});
+ expect(grant.status()).toBe(201);const relationship=await grant.json();
+ try{
+  await dialog.getByRole('button',{name:'Submit draft again',exact:true}).click();
+  await expect.poll(async()=> (await serverRows()).length,{timeout:20000}).toBe(1);
+  await expect(dialog.locator('.offline-sync-conflict')).toHaveCount(0);
+  await dialog.getByRole('button',{name:'Close',exact:true}).click();await page.reload();await expect(page.getByText(title,{exact:true})).toBeVisible();
+  expect(await serverRows()).toHaveLength(1);
+ }finally{
+  for(const row of await serverRows())await page.request.delete(`/api/events/${row.id}/`);
+  await page.request.delete(`/api/family-relationships/${relationship.id}/`);
+ }
 });

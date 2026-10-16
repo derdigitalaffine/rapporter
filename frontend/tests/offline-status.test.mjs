@@ -50,3 +50,30 @@ test('quiet LED remains steady during routine empty-queue checks and preserves r
  assert.equal(syncIndicator({...health,state:'synchronizing',serverState:'unknown'}),'checking');
  assert.equal(syncIndicator({...health,state:'synced',lastSyncAt:new Date(Date.now()-60001).toISOString()}),'checking');
 });
+
+
+test('server rejection presentation preserves bounded error details and differs from field conflicts',async()=>{
+ const {rejectionLines,canRetryRejectedCreate}=await import('../src/offline-rejections.js');
+ const result={status:'rejected',code:'permission_denied',http_status:403,errors:{participants:['Custody required'],detail:'Denied'}};
+ assert.deepEqual(rejectionLines(result),['participants: Custody required','Denied']);
+ assert.equal(syncStatus({conflicts:0,rejected:1}),'rejected');assert.equal(syncStatus({conflicts:1}),'attention');
+ assert.ok(canRetryRejectedCreate({result,mutation:{entity_type:'event',operation:'create',data:{type:'calendar.event'}}}));
+ assert.equal(rejectionLines({errors:Array(100).fill('error')}).length,20);
+});
+
+test('HTTP permission failures preserve server reason across reload without pretending the session expired',async()=>{
+ const account=crypto.randomUUID();let fail=true;
+ const e=new SyncEngine(account,'family',async()=>{
+  if(fail)throw Object.assign(new Error('Family access denied'),{status:403,code:'permission_denied'});
+  return {protocol_version:1,mode:'snapshot',cursor:1,visibility:Object.fromEntries(Object.keys(TYPE_STORES).map(k=>[k,[]])),snapshot:{}};
+ });e.schedule=()=>{};
+ try{
+  await e.mutate('event',null,'create',{type:'calendar.event',title:'Saved locally'});
+  await assert.rejects(e.sync(),/Family access denied/);
+  assert.equal(e.serverState,'reachable');assert.equal(e.state,'request-error');
+  assert.equal((await e.store.get('syncState','lastError')).error.message,'Family access denied');
+  assert.equal((await e.store.list('outbox')).length,1);assert.equal((await e.store.list('conflicts')).length,0);
+  assert.equal(syncStatus({requestError:e.lastError,serverState:'reachable'}),'rejected');
+  fail=false;await e.sync();assert.equal(e.lastError,null);assert.equal(await e.store.get('syncState','lastError'),null);
+ }finally{e.stop();await clearLocalSyncAccount(account)}
+});

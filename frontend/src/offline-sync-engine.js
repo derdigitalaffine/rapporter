@@ -1,3 +1,4 @@
+import {canRetryRejectedCreate} from './offline-rejections.js';
 import {createLocalSyncStore,clearLocalSyncAccount} from './local-sync-store.js';
 export const SYNC_CHANGED='familyos:sync-changed';
 export const TYPE_STORES=Object.freeze({task_list:'taskLists',task:'tasks',shopping_list:'shoppingLists',shopping_item:'shoppingItems',event:'events'});
@@ -45,7 +46,7 @@ export async function stopSyncAccount(accountId){
 export class SyncEngine{
  constructor(accountId,familyId,transport,key=JSON.stringify([accountId,familyId])){
   Object.assign(this,{accountId,familyId,transport,key});this.store=createLocalSyncStore({accountId,familyId});
-  this.state='idle';this.serverState='unknown';this.liveState='connecting';this.lastSyncAt=null;this.requestTimeoutMs=15000;this.stopped=false;this.inflight=null;this.abort=new AbortController();
+  this.lastError=null;this.state='idle';this.serverState='unknown';this.liveState='connecting';this.lastSyncAt=null;this.requestTimeoutMs=15000;this.stopped=false;this.inflight=null;this.abort=new AbortController();
  }
  async ready(){const saved=await this.store.get('syncState','cursor');this.lastSyncAt=this.lastSyncAt||saved?.last_sync_at||null;return Boolean(saved)}
  async list(kind){return (await this.store.list(TYPE_STORES[kind])).filter(r=>r.data&&!r.deleted).map(r=>({...r.data,_offlinePending:r.sync_status==='pending'}))}
@@ -100,12 +101,15 @@ export class SyncEngine{
    if(this.stopped)return;
    if(r.protocol_version!==1||!['delta','snapshot'].includes(r.mode)||!Number.isSafeInteger(r.cursor))throw new Error('unsupported_sync_protocol');
    await localLock(this.key,()=>this.install(r,batch.rows));if(this.stopped)return;
-   this.lastSyncAt=new Date().toISOString();this.state=(await this.store.list('conflicts')).length?'action-required':'synced';emit(this);
+   this.lastError=null;this.lastSyncAt=new Date().toISOString();this.state=(await this.store.list('conflicts')).length?'action-required':'synced';emit(this);
    if((await this.store.list('outbox')).length)this.schedule();
   }catch(error){
    if(this.stopped)return;
-   this.serverState=[401,403].includes(error.status)?'auth-required':!reached&&(!error.status||error.status>=500)?'unreachable':'reachable';
-   this.state=[401,403].includes(error.status)?'auth-required':globalThis.navigator?.onLine===false?'offline':'retry';emit(this);
+   const needsAuth=error.status===401||(error.status===403&&['reauth_required','authentication_required','not_authenticated','token_not_valid'].includes(error.code));
+   this.lastError={http_status:Number.isInteger(error.status)?error.status:null,code:error.code||'',message:String(error.message||'').slice(0,2000)};
+   await localLock(this.key,()=>this.store.write([put('syncState',{id:'lastError',error:this.lastError})]));
+   this.serverState=needsAuth?'auth-required':!reached&&(!error.status||error.status>=500)?'unreachable':'reachable';
+   this.state=needsAuth?'auth-required':globalThis.navigator?.onLine===false?'offline':error.status>=400&&error.status<500?'request-error':'retry';emit(this);
    if(![401,403,409].includes(error.status)){clearTimeout(this.timer);this.timer=setTimeout(()=>this.sync().catch(()=>{}),10000)}throw error;
   }
  }
@@ -151,12 +155,25 @@ export class SyncEngine{
    for(const id of oldIds)ops.push(remove(name,id));
   }
   if(r.projections)ops.push(put('meta',{id:'projections',data:{...((await this.store.get('meta','projections'))?.data||{}),...r.projections}}));
+  ops.push(remove('syncState','lastError'));
   ops.push(put('syncState',{id:'cursor',cursor:r.cursor,protocol_version:1,last_sync_at:new Date().toISOString()}));if(!this.stopped)await this.store.write(ops);
  }
  async resolve(id,choice,manual){
   return localLock(this.key,async()=>{
    const entry=await this.store.get('conflicts',id);if(!entry)return;const {mutation:m,result}=entry;
    if(choice==='server'){await this.store.write([remove('conflicts',id)]);emit(this);return}
+   if(choice==='retry'){
+    if(!canRetryRejectedCreate(entry))throw new Error('sync_retry_unavailable');
+    const name=TYPE_STORES[m.entity_type],row=await this.store.get(name,m.entity_id);
+    const queued=(await this.store.list('outbox')).filter(item=>item.entity_type===m.entity_type&&item.entity_id===m.entity_id);
+    if(row?.server_data||queued.length)throw new Error('sync_retry_unavailable');
+    // Preserve the latest local draft, including edits made while the create was in flight.
+    const draft=entry.local_data||m.data,data={...m.data};
+    for(const key of ['family','type','title','starts_at','ends_at','payload','participants','is_family_event','actionable'])if(Object.hasOwn(draft,key))data[key]=structuredClone(draft[key]);
+    const next={...m,id:uuid(),data,state:'pending',attempted:false,base_version:null,order:Date.now()};next.mutation_id=next.id;
+    await this.store.write([remove('conflicts',id),put('outbox',next),put(name,{id:m.entity_id,version:0,server_data:null,data:{...data,id:m.entity_id},sync_status:'pending',deleted:false})]);
+    emit(this);this.schedule();return;
+   }
    if(!result.server_data||!result.server_version)throw new Error('sync_entity_unavailable');
    const next={...m,id:uuid(),operation:m.operation,changes:manual||m.changes,base_version:result.server_version,state:'pending',attempted:false,order:Date.now()};next.mutation_id=next.id;delete next.data;if(next.operation!=='command'){delete next.command;delete next.args}if(next.operation!=='update')delete next.changes;
    const name=TYPE_STORES[m.entity_type],row=await this.store.get(name,m.entity_id),server=row?.server_data||result.server_data;

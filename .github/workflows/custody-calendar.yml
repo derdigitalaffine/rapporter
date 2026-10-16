@@ -1,0 +1,38 @@
+name: custody-calendar
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  custody-calendar:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: famuhle
+          POSTGRES_USER: famuhle
+          POSTGRES_PASSWORD: custody-test
+        ports: ['5432:5432']
+        options: --health-cmd="pg_isready -U famuhle" --health-interval=5s --health-timeout=5s --health-retries=10
+    env:
+      POSTGRES_HOST: 127.0.0.1
+      POSTGRES_DB: famuhle
+      POSTGRES_USER: famuhle
+      POSTGRES_PASSWORD: custody-test
+      DJANGO_SECRET_KEY: calendar-ci-only
+      DJANGO_DEBUG: 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - run: pip install -r backend/requirements.txt
+      - working-directory: backend
+        run: python manage.py makemigrations --check --dry-run && python manage.py migrate && python manage.py check
+      - working-directory: backend
+        run: python manage.py test family.test_calendar_custody_sync family.test_calendar_people family.test_calendar_participants baby.test_custody_authorization
