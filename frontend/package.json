@@ -20,6 +20,7 @@
     "test:offline": "node --test tests/offline-*.test.mjs"
   },
   "dependencies": {
+    "@base-ui/react": "1.9.0",
     "@fontsource-variable/nunito": "latest",
     "@fortawesome/fontawesome-svg-core": "latest",
     "@fortawesome/free-regular-svg-icons": "latest",

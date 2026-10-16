@@ -81,14 +81,16 @@ export default function AccessibilityManager(){
 
     function activate(next){
       if(sameModal(next,active))return;
+      const wasManaged=active?.dialog.hasAttribute('data-family-overlay-owner');
       restoreBackground();
+      restoreBackground=()=>{};
       window.clearTimeout(focusTimer);
       root.toggleAttribute('data-app-modal',Boolean(next));
       if(!next){
         active=null;
         const target=restoreFocus;
         restoreFocus=null;
-        if(target instanceof HTMLElement&&target.isConnected)target.focus({preventScroll:true});
+        if(!wasManaged&&target instanceof HTMLElement&&target.isConnected)target.focus({preventScroll:true});
         return;
       }
       const dialog=next.dialog;
@@ -97,6 +99,7 @@ export default function AccessibilityManager(){
         restoreFocus=lastOutsideFocus instanceof HTMLElement&&lastOutsideFocus.isConnected?lastOutsideFocus:(current instanceof HTMLElement&&!dialog.contains(current)?current:null);
       }
       active=next;
+      if(dialog.hasAttribute('data-family-overlay-owner'))return;
       labelDialog(dialog);
       if(!dialog.hasAttribute('tabindex'))dialog.setAttribute('tabindex','-1');
       // The portal/backdrop is the modal boundary. Inerting outside only the
@@ -115,6 +118,7 @@ export default function AccessibilityManager(){
     }
 
     function onKeyDown(event){
+      if(topModal()?.dialog.hasAttribute('data-family-overlay-owner'))return;
       const dialog=active?.dialog;
       if(!dialog||!dialog.isConnected)return;
       if(event.key==='Escape'){
@@ -131,12 +135,15 @@ export default function AccessibilityManager(){
     }
 
     const observer=new MutationObserver(refresh);
+    function yieldOwnership(){restoreBackground();restoreBackground=()=>{};window.clearTimeout(focusTimer);}
+    document.addEventListener('familyos:managed-overlay-mount',yieldOwnership);
     observer.observe(document.body,{subtree:true,childList:true,attributes:true,attributeFilter:['aria-modal','hidden']});
     document.addEventListener('focusin',onFocusIn,true);
     document.addEventListener('keydown',onKeyDown,true);
     activate(topModal());
     return()=>{
       observer.disconnect();
+      document.removeEventListener('familyos:managed-overlay-mount',yieldOwnership);
       cancelAnimationFrame(refreshFrame);
       document.removeEventListener('focusin',onFocusIn,true);
       document.removeEventListener('keydown',onKeyDown,true);
