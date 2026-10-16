@@ -16,7 +16,9 @@ function modalRoot(dialog){
 }
 
 function topModal(){
-  const dialog=[...document.querySelectorAll(DIALOG_SELECTOR)].filter(visible).at(-1)||null;
+  // Independent React portals need not follow visual stacking order in the DOM.
+  const layer=dialog=>Number.parseInt(getComputedStyle(modalRoot(dialog)).zIndex,10)||0;
+  const dialog=[...document.querySelectorAll(DIALOG_SELECTOR)].filter(visible).sort((left,right)=>layer(left)-layer(right)).at(-1)||null;
   return dialog?{dialog,root:modalRoot(dialog)}:null;
 }
 

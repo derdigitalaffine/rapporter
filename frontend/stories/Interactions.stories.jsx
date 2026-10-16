@@ -70,7 +70,7 @@ async function testNested({canvasElement}) {
   const confirm = within(await body.findByRole('alertdialog'));
   await waitFor(() => expect(confirm.getByRole('button', {name: 'Abbrechen'})).toHaveFocus());
   await userEvent.tab({shift: true});
-  await expect(confirm.getByRole('button', {name: 'Bestätigen'})).toHaveFocus();
+  await waitFor(() => expect(confirm.getByRole('button', {name: 'Bestätigen'})).toHaveFocus());
   await userEvent.keyboard('{Escape}');
   await waitFor(() => expect(action).toHaveFocus());
   await expect(parent.getByRole('status')).toHaveTextContent('Behalten');
