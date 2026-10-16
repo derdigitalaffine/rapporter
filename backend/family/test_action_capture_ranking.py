@@ -91,3 +91,12 @@ class ActionCaptureRankingIntegrationTests(TestCase):
         self.assertNotIn(f"task:{foreign_task.id}", ids)
         self.assertEqual(response.data["suggestions"][0]["capture_reason"], "history_weekday")
         self.assertTrue(response.data["suggestions"][0]["capture_explanation"])
+
+    def test_get_falls_back_for_invalid_family_timezone(self):
+        self.family.timezone = "Invalid/Legacy-Timezone"
+        self.family.save(update_fields=["timezone"])
+
+        response = self.client.get(f"/api/actions/capture/?family={self.family.id}&q=betten")
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertTrue(response.data["suggestions"])
