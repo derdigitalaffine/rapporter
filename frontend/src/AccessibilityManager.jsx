@@ -18,10 +18,10 @@ function modalRoot(dialog){
   return dialog?.closest(MODAL_ROOT_SELECTOR)||dialog||null;
 }
 
-function topModal(){
+function topModal({legacyOnly=false}={}){
   // Independent React portals need not follow visual stacking order in the DOM.
   const layer=dialog=>Number.parseInt(getComputedStyle(modalRoot(dialog)).zIndex,10)||0;
-  const dialog=[...document.querySelectorAll(DIALOG_SELECTOR)].filter(visible).sort((left,right)=>layer(left)-layer(right)).at(-1)||null;
+  const dialog=[...document.querySelectorAll(DIALOG_SELECTOR)].filter(visible).filter(dialog=>!legacyOnly||!dialog.hasAttribute('data-family-overlay-owner')).sort((left,right)=>layer(left)-layer(right)).at(-1)||null;
   return dialog?{dialog,root:modalRoot(dialog)}:null;
 }
 
@@ -86,7 +86,7 @@ export default function AccessibilityManager(){
     let refreshFrame=0;
 
     function activate(next){
-      if(sameModal(next,active))return;
+      if(sameModal(next,active)&&!(legacySession&&!next))return;
       restoreBackground();
       restoreBackground=()=>{};
       window.clearTimeout(focusTimer);
@@ -145,6 +145,12 @@ export default function AccessibilityManager(){
 
     const observer=new MutationObserver(refresh);
     function yieldOwnership(event){
+      // A fast legacy -> managed handoff can precede the observer's first frame.
+      // Capture its return target without starting a second modal/focus manager.
+      if(topModal({legacyOnly:true})){
+        legacySession=true;
+        if(!restoreFocus?.isConnected)restoreFocus=lastOutsideFocus;
+      }
       if(event.detail)event.detail.returnFocus=restoreFocus||lastOutsideFocus;
       restoreBackground();restoreBackground=()=>{};window.clearTimeout(focusTimer);
     }
