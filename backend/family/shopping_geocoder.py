@@ -16,6 +16,7 @@ _ATTRIBUTION = "© OpenStreetMap contributors"
 _RATE_LOCK = threading.Lock()
 _LAST_REQUEST_AT = 0.0
 _ADVISORY_LOCK_KEY = 78122301
+_MAX_RESPONSE_BYTES = 512_000
 
 
 class ShoppingGeocoderError(Exception):
@@ -63,6 +64,22 @@ def _rate_slot():
         _LAST_REQUEST_AT = time.monotonic()
 
 
+def _response_json(response):
+    if int(response.headers.get("Content-Length") or 0) > _MAX_RESPONSE_BYTES:
+        raise ShoppingGeocoderError("Location provider response is too large.")
+    body = bytearray()
+    for chunk in response.iter_content(chunk_size=16_384):
+        if not chunk:
+            continue
+        body.extend(chunk)
+        if len(body) > _MAX_RESPONSE_BYTES:
+            raise ShoppingGeocoderError("Location provider response is too large.")
+    try:
+        return json.loads(body.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ShoppingGeocoderError("Location provider returned invalid JSON.") from exc
+
+
 def _request(path, params):
     url = f"{_base_url()}/{path.lstrip('/')}"
     headers = {
@@ -70,6 +87,7 @@ def _request(path, params):
         "User-Agent": str(getattr(settings, "NOMINATIM_USER_AGENT", "FamilyOS/1.0 shopping-store lookup")).strip(),
     }
     timeout = float(getattr(settings, "NOMINATIM_TIMEOUT", 5.0))
+    response = None
     try:
         with _rate_slot():
             response = requests.get(
@@ -78,17 +96,16 @@ def _request(path, params):
                 headers=headers,
                 timeout=timeout,
                 allow_redirects=False,
+                stream=True,
             )
+        if response.is_redirect or response.is_permanent_redirect or response.status_code != 200:
+            raise ShoppingGeocoderError("Location provider returned an invalid response.")
+        return _response_json(response)
     except requests.RequestException as exc:
         raise ShoppingGeocoderError("Location provider is unavailable.") from exc
-    if response.is_redirect or response.is_permanent_redirect or response.status_code != 200:
-        raise ShoppingGeocoderError("Location provider returned an invalid response.")
-    if int(response.headers.get("Content-Length") or 0) > 512_000:
-        raise ShoppingGeocoderError("Location provider response is too large.")
-    try:
-        return response.json()
-    except ValueError as exc:
-        raise ShoppingGeocoderError("Location provider returned invalid JSON.") from exc
+    finally:
+        if response is not None:
+            response.close()
 
 
 def _bounded_text(value, limit):
