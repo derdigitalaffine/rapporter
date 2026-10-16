@@ -10,7 +10,7 @@ import './calendar-subscriptions.css';
 export default function CalendarSubscriptions({familyId,settings=false}){
  const {i18n}=useTranslation(),labels=calendarSubscriptionLabels[i18n.language.split('-')[0]]||calendarSubscriptionLabels.en; const [open,setOpen]=useState(false);
  if(!familyId)return null;
- const button=<button type="button" className="secondary compact calendar-subscription-launch" onClick={()=>setOpen(true)}>{labels.open}</button>;
+ const button=<button type="button" className="secondary compact calendar-subscription-launch" aria-label={labels.openAria||labels.open} onClick={()=>setOpen(true)}>{labels.open}</button>;
  return <>{settings?<section className="card settings-section" id="calendar-subscriptions"><div><h2>{labels.title}</h2><p>{labels.intro}</p></div>{button}</section>:button}{open&&<SubscriptionDialog key={familyId} familyId={familyId} labels={labels} language={i18n.language} close={()=>setOpen(false)}/>}</>;
 }
 
