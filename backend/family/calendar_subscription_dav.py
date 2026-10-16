@@ -235,6 +235,35 @@ def query_range(root):
     return start, end
 
 
+def report_properties(prop):
+    if prop is None:
+        return [q(D, 'getetag'), q(C, 'calendar-data')]
+    requested = []
+    for node in prop:
+        if node.tag != q(C, 'calendar-data'):
+            if list(node) or node.attrib:
+                raise ValueError()
+            requested.append(node.tag)
+            continue
+        if node.attrib:
+            raise ValueError()
+        children = list(node)
+        if len(children) > 1:
+            raise ValueError()
+        if children:
+            expand = children[0]
+            if expand.tag != q(C, 'expand') or list(expand) or set(expand.attrib) != {'start', 'end'}:
+                raise ValueError()
+            start, end = [
+                datetime.strptime(expand.get(key), '%Y%m%dT%H%M%SZ').replace(tzinfo=dt_timezone.utc)
+                for key in ('start', 'end')
+            ]
+            if end <= start or end - start > timedelta(days=1830):
+                raise ValueError()
+        requested.append(node.tag)
+    return requested
+
+
 def _principal_value(member, tag):
     if tag == q(D, 'displayname'):
         return member_label(member)
@@ -483,8 +512,10 @@ def dav(request, path=''):
             return principal_search_property_set()
         if kind != 'calendar':
             return response(status=403)
-        prop = root.find(q(D, 'prop')); requested = [node.tag for node in prop] if prop is not None else [q(D, 'getetag'), q(C, 'calendar-data')]
-        if any(list(node) or node.attrib for node in (prop if prop is not None else [])):
+        prop = root.find(q(D, 'prop'))
+        try:
+            requested = report_properties(prop)
+        except (ValueError, TypeError):
             return response(status=403)
         if root.tag == q(C, 'calendar-query'):
             bounds = query_range(root)
