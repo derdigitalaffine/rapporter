@@ -24,6 +24,14 @@ For `scope=today`, the response may additionally contain `focus` (at most five e
 - `list=<uuid>` — task-list context; routines are intentionally excluded.
 - `workflow=<uuid>` — task-workflow context; routines are intentionally excluded.
 
+## To-do Hub presentation
+
+The main `To-dos` surface is a consumer of this projection, not a second task system. Its default route (`?page=todo`) opens **Upcoming / Anstehend** and requests `scope=upcoming` with the active `family` explicitly. `Today / Heute` remains available as an explicit subview and requests `scope=today`; the remaining list/workflow/routine management links continue to deep-link into their canonical domains.
+
+Projected actions are grouped into content-dependent, collapsible sections such as overdue, due, routines, in-progress/waiting, and up next. Empty sections are omitted. Section summaries expose their item count and use native keyboard/screen-reader-operable disclosure semantics; primary task/routine mutations still come exclusively from each projected row's `primary_action` / `allowed_actions`.
+
+Creating a planned task is intentionally **not** implemented as another form inside the To-do Hub. On the To-do page, the app-wide `+` control opens the canonical Task create flow directly; its adjacent quickstart control keeps the wider Create Registry reachable. The retrospective `Ich habe gerade …` capture remains a separate canonical completion flow and is progressively disclosed below the planned actions. This keeps #191/#195/#400 Create/Form ownership intact while preserving #594 capture semantics.
+
 ## Canonical state and ranking (`actions-v1`)
 
 Projection never changes canonical due dates, workflow state, routine history, or completion state. Ranking is deterministic and display-only. `actions-v1` orders, in broad buckets:
