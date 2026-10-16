@@ -7,10 +7,21 @@ from django.conf import settings
 
 
 def _fernet():
-    # Match the repository's managed SMTP secret-storage strategy: encrypted at
-    # rest with a deterministic Fernet key derived from the deployment secret.
     key = base64.urlsafe_b64encode(hashlib.sha256(settings.SECRET_KEY.encode("utf-8")).digest())
     return Fernet(key)
+
+
+def encrypt_value(value):
+    return _fernet().encrypt(str(value or "").encode("utf-8")).decode("ascii")
+
+
+def decrypt_value(value):
+    if not value:
+        raise ValueError("caldav_secret_missing")
+    try:
+        return _fernet().decrypt(value.encode("ascii")).decode("utf-8")
+    except (InvalidToken, ValueError, TypeError, UnicodeDecodeError) as exc:
+        raise ValueError("caldav_secret_unreadable") from exc
 
 
 def encrypt_credentials(*, server_url, username, password):
