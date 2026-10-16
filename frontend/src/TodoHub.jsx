@@ -116,7 +116,7 @@ export default function TodoHub({family,data,onCreate,onChanged,currentUserId,us
  useEffect(()=>{setFocus([]);setActions([]);setEditor(null);setLastAction(null);setQuery('');setList('');setPerson('');focusFamilyRef.current='';return()=>{requestRevision.current++;editorRevision.current++}},[family?.id]);
  useEffect(()=>{const pop=()=>{setViewState(workspaceView(location.search,initialWorkspace));setEditor(null)};window.addEventListener('popstate',pop);return()=>window.removeEventListener('popstate',pop)},[initialWorkspace]);
  useEffect(()=>{const params=new URLSearchParams(location.search);const id=params.get('task')||params.get('routine');if(id)openItem({id:`${params.has('task')?'task':'routine'}:${id}`})},[family?.id]);
- useEffect(()=>{if(lastAction&&!loading)requestAnimationFrame(()=>undoRef.current?.focus())},[lastAction,loading]);
+ useEffect(()=>{if(lastAction&&!loading&&!busyId){const frame=requestAnimationFrame(()=>undoRef.current?.focus());return()=>cancelAnimationFrame(frame)}},[lastAction,loading,busyId]);
 
  function setView(next){
   if(!VIEWS.has(next))return;
