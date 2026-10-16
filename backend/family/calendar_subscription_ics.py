@@ -17,21 +17,20 @@ class CalendarCapacityError(Exception): pass
 
 
 def shared_events(grant, member=None):
-    # Family feed: only explicitly whole-family native events.
-    # Member feed: those family events plus native events explicitly assigned to
-    # that member. Imports, health rows and orphaned external identities remain
-    # excluded regardless of feed shape.
+    # Every exported event must already be explicitly shared with the whole
+    # family. The optional member feed only splits that safe set by attendance;
+    # it never widens export to personal/selected-only events.
     query = FamilyEvent.objects.filter(
         family_id=grant.family_id,
         source__isnull=True,
         type='calendar.event',
+        is_family_event=True,
         external_id='',
         starts_at__isnull=False,
     )
-    if member is None:
-        query = query.filter(is_family_event=True)
-    else:
-        query = query.filter(Q(is_family_event=True) | Q(participants=member)).distinct()
+    if member is not None:
+        # No attendance selection means the event applies to every member.
+        query = query.filter(Q(participants=member) | Q(participants__isnull=True)).distinct()
     rows = list(query.select_related('family').order_by('id')[:MAX_RESOURCES + 1])
     if len(rows) > MAX_RESOURCES: raise CalendarCapacityError()
     return rows
