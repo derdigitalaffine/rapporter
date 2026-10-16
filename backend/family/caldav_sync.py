@@ -1,8 +1,9 @@
 """CalDAV adapter into canonical FamilyEvent rows.
 
-The remote server performs date filtering through RFC 4791 calendar-query.
-FamilyEvent stays canonical. Private remote href/ETag identity lives in
-CalDavEventBinding and never enters API-visible event payloads.
+Pulls are server-filtered. RFC 4791 recurrence expansion is requested from the
+remote server so arbitrary remote recurrence rules never need to be translated
+into FamilyOS recurrence semantics. Recurring remote events are projected as
+read-only occurrence rows; recurring FamilyOS write-back remains fail-closed.
 """
 import hashlib
 from datetime import date, datetime, time, timedelta, timezone as dt_timezone
@@ -59,13 +60,17 @@ def _resource_href(connection, href):
 
 
 def calendar_query_body(start, end):
+    start_stamp, end_stamp = _utc_stamp(start), _utc_stamp(end)
     return f'''<?xml version="1.0" encoding="utf-8"?>
 <c:calendar-query xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">
-  <d:prop><d:getetag/><c:calendar-data/></d:prop>
+  <d:prop>
+    <d:getetag/>
+    <c:calendar-data><c:expand start="{start_stamp}" end="{end_stamp}"/></c:calendar-data>
+  </d:prop>
   <c:filter>
     <c:comp-filter name="VCALENDAR">
       <c:comp-filter name="VEVENT">
-        <c:time-range start="{_utc_stamp(start)}" end="{_utc_stamp(end)}"/>
+        <c:time-range start="{start_stamp}" end="{end_stamp}"/>
       </c:comp-filter>
     </c:comp-filter>
   </c:filter>
@@ -110,7 +115,21 @@ def _aware(value, family):
     return None
 
 
-def parse_resource(resource, family):
+def _occurrence_identity(component, uid, start_raw):
+    recurrence = component.get("RECURRENCE-ID")
+    if recurrence is not None:
+        try:
+            value = recurrence.dt
+        except AttributeError:
+            value = str(recurrence)
+    else:
+        value = start_raw
+    if isinstance(value, (date, datetime)):
+        value = value.isoformat()
+    return f"{uid}#{value}"
+
+
+def parse_resources(resource, family):
     try:
         calendar = Calendar.from_ical(resource["data"])
     except Exception as exc:
@@ -118,39 +137,45 @@ def parse_resource(resource, family):
     components = calendar.walk("VEVENT")
     if not components:
         raise CalDavDiscoveryError("caldav_event_missing")
-    primary = next((row for row in components if "RECURRENCE-ID" not in row), components[0])
-    uid = str(primary.get("UID") or "").strip()
-    if not uid:
-        uid = "href:" + hashlib.sha256(resource["href"].encode("utf-8")).hexdigest()
-    recurring = len(components) > 1 or any(key in primary for key in ("RRULE", "RDATE", "EXDATE", "RECURRENCE-ID"))
-    start_raw = primary.decoded("DTSTART") if primary.get("DTSTART") else None
-    end_raw = primary.decoded("DTEND") if primary.get("DTEND") else None
-    start = _aware(start_raw, family)
-    end = _aware(end_raw, family)
-    all_day = isinstance(start_raw, date) and not isinstance(start_raw, datetime)
-    if start is None:
-        raise CalDavDiscoveryError("caldav_event_start_missing")
-    if all_day and end is None:
-        end = start + timedelta(days=1)
-    payload = {"provider": "CalDAV"}
-    location = str(primary.get("LOCATION") or "").strip()
-    if location:
-        payload["location"] = location[:500]
-    if all_day:
-        payload.update({
-            "all_day": True,
-            "date_start": start_raw.isoformat(),
-            "date_end_exclusive": (end_raw if isinstance(end_raw, date) else (start_raw + timedelta(days=1))).isoformat(),
+    recurring_resource = len(components) > 1 or any(
+        key in component for component in components for key in ("RECURRENCE-ID", "RRULE", "RDATE", "EXDATE")
+    )
+    rows = []
+    for component in components:
+        uid = str(component.get("UID") or "").strip()
+        if not uid:
+            uid = "href:" + hashlib.sha256(resource["href"].encode("utf-8")).hexdigest()
+        start_raw = component.decoded("DTSTART") if component.get("DTSTART") else None
+        end_raw = component.decoded("DTEND") if component.get("DTEND") else None
+        start = _aware(start_raw, family)
+        end = _aware(end_raw, family)
+        all_day = isinstance(start_raw, date) and not isinstance(start_raw, datetime)
+        if start is None:
+            raise CalDavDiscoveryError("caldav_event_start_missing")
+        if all_day and end is None:
+            end = start + timedelta(days=1)
+        payload = {"provider": "CalDAV"}
+        location = str(component.get("LOCATION") or "").strip()
+        if location:
+            payload["location"] = location[:500]
+        if all_day:
+            payload.update({
+                "all_day": True,
+                "date_start": start_raw.isoformat(),
+                "date_end_exclusive": (end_raw if isinstance(end_raw, date) else (start_raw + timedelta(days=1))).isoformat(),
+            })
+        remote_uid = _occurrence_identity(component, uid, start_raw) if recurring_resource else uid
+        rows.append({
+            "uid": remote_uid[:255],
+            "series_uid": uid[:255],
+            "title": str(component.get("SUMMARY") or "Kalendertermin")[:200],
+            "starts_at": start,
+            "ends_at": end,
+            "payload": payload,
+            "recurring_instance": recurring_resource,
+            **resource,
         })
-    return {
-        "uid": uid[:255],
-        "title": str(primary.get("SUMMARY") or "Kalendertermin")[:200],
-        "starts_at": start,
-        "ends_at": end,
-        "payload": payload,
-        "recurring": recurring,
-        **resource,
-    }
+    return rows
 
 
 def ensure_source(connection):
@@ -221,6 +246,9 @@ def _apply_remote_to_native(binding, parsed, seen_at):
 
 def _upsert_imported(connection, source, parsed, seen_at):
     external_id = _external_id(connection, parsed["uid"])
+    payload = dict(parsed["payload"])
+    if parsed.get("recurring_instance"):
+        payload["caldav_recurring_instance"] = True
     event, _ = FamilyEvent.objects.update_or_create(
         family=connection.family,
         source=source,
@@ -231,7 +259,7 @@ def _upsert_imported(connection, source, parsed, seen_at):
             "starts_at": parsed["starts_at"],
             "ends_at": parsed["ends_at"],
             "actionable": False,
-            "payload": parsed["payload"],
+            "payload": payload,
             "is_family_event": connection.member_id is None,
         },
     )
@@ -259,41 +287,37 @@ def pull_remote(connection, start, end):
         raise CalDavDiscoveryError("caldav_family_scope_required")
     source = ensure_source(connection)
     seen_at = timezone.now()
-    imported = updated = skipped_recurring = conflicts = 0
+    imported = updated = recurring_instances = conflicts = 0
     for resource in query_resources(connection, start, end):
-        parsed = parse_resource(resource, connection.family)
-        binding = CalDavEventBinding.objects.select_related("event", "event__source").filter(
-            connection=connection,
-            remote_uid=parsed["uid"],
-        ).first()
-        if binding and binding.event_id is None:
-            binding.remote_href_encrypted = encrypt_value(parsed["href"])
-            binding.last_seen_at = seen_at
-            binding.save(update_fields=["remote_href_encrypted", "last_seen_at", "updated_at"])
-            continue
-        if parsed["recurring"]:
-            skipped_recurring += 1
-            if binding:
-                if parsed["etag"]:
-                    binding.etag = parsed["etag"]
+        for parsed in parse_resources(resource, connection.family):
+            binding = CalDavEventBinding.objects.select_related("event", "event__source").filter(
+                connection=connection,
+                remote_uid=parsed["uid"],
+            ).first()
+            if binding and binding.event_id is None:
                 binding.remote_href_encrypted = encrypt_value(parsed["href"])
                 binding.last_seen_at = seen_at
-                binding.save(update_fields=["etag", "remote_href_encrypted", "last_seen_at", "updated_at"])
-            continue
-        if binding and binding.event_id and binding.event.source_id is None:
-            if connection.access_mode == CalDavConnection.AccessMode.READ_WRITE:
-                changed, conflict = _apply_remote_to_native(binding, parsed, seen_at)
-                updated += int(changed)
-                conflicts += int(conflict)
-            else:
-                binding.last_seen_at = seen_at
-                if parsed["etag"]:
-                    binding.etag = parsed["etag"]
-                binding.remote_href_encrypted = encrypt_value(parsed["href"])
-                binding.save(update_fields=["last_seen_at", "etag", "remote_href_encrypted", "updated_at"])
-            continue
-        _upsert_imported(connection, source, parsed, seen_at)
-        imported += 1
+                binding.save(update_fields=["remote_href_encrypted", "last_seen_at", "updated_at"])
+                continue
+            if parsed.get("recurring_instance"):
+                recurring_instances += 1
+                _upsert_imported(connection, source, parsed, seen_at)
+                imported += 1
+                continue
+            if binding and binding.event_id and binding.event.source_id is None:
+                if connection.access_mode == CalDavConnection.AccessMode.READ_WRITE:
+                    changed, conflict = _apply_remote_to_native(binding, parsed, seen_at)
+                    updated += int(changed)
+                    conflicts += int(conflict)
+                else:
+                    binding.last_seen_at = seen_at
+                    if parsed["etag"]:
+                        binding.etag = parsed["etag"]
+                    binding.remote_href_encrypted = encrypt_value(parsed["href"])
+                    binding.save(update_fields=["last_seen_at", "etag", "remote_href_encrypted", "updated_at"])
+                continue
+            _upsert_imported(connection, source, parsed, seen_at)
+            imported += 1
     stale = CalDavEventBinding.objects.select_related("event", "event__source").filter(connection=connection).filter(
         Q(last_seen_at__lt=seen_at) | Q(last_seen_at__isnull=True)
     ).filter(
@@ -310,7 +334,7 @@ def pull_remote(connection, start, end):
             conflicts += 1
     source.last_synced_at = seen_at
     source.save(update_fields=["last_synced_at", "updated_at"])
-    return {"pulled": imported, "remote_updates": updated, "skipped_recurring": skipped_recurring, "conflicts": conflicts}
+    return {"pulled": imported, "remote_updates": updated, "recurring_instances": recurring_instances, "conflicts": conflicts}
 
 
 def _event_ical(event, uid):
@@ -433,9 +457,6 @@ def push_local(connection, start, end):
         starts_at__lt=end,
     ).filter(Q(ends_at__gt=start) | Q(ends_at__isnull=True, starts_at__gte=start))
     if connection.member_id:
-        # Member calendars receive events explicitly assigned to that member plus
-        # whole-family events with no attendance selection. A family event that
-        # names only another member does not leak into this external calendar.
         events = events.filter(Q(participants=connection.member_id) | Q(is_family_event=True, participants__isnull=True)).distinct()
     else:
         events = events.filter(is_family_event=True)
@@ -459,7 +480,7 @@ def push_local(connection, start, end):
 
 def sync_connection(connection, *, past_days=30, future_days=365):
     if not connection.enabled:
-        return {"pulled": 0, "remote_updates": 0, "pushed": 0, "deleted": 0, "skipped_recurring": 0, "conflicts": 0}
+        return {"pulled": 0, "remote_updates": 0, "recurring_instances": 0, "pushed": 0, "deleted": 0, "skipped_recurring": 0, "conflicts": 0}
     if connection.scope != CalDavConnection.Scope.FAMILY:
         raise CalDavDiscoveryError("caldav_family_scope_required")
     now = timezone.now()
@@ -470,8 +491,9 @@ def sync_connection(connection, *, past_days=30, future_days=365):
     return {
         "pulled": pulled["pulled"],
         "remote_updates": pulled["remote_updates"],
+        "recurring_instances": pulled["recurring_instances"],
         "pushed": pushed["pushed"],
         "deleted": pushed["deleted"],
-        "skipped_recurring": pulled["skipped_recurring"] + pushed["skipped_recurring"],
+        "skipped_recurring": pushed["skipped_recurring"],
         "conflicts": pulled["conflicts"] + pushed["conflicts"],
     }
