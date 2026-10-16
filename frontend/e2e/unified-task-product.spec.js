@@ -83,6 +83,7 @@ test('legacy task deep link opens the same editor inside the unified workspace',
  await installApiMocks(page);
  await page.goto('/?page=tasks&task=task-1');
  await expect(page.getByRole('dialog').getByRole('textbox',{name:'Titel',exact:true})).toHaveValue('Wäsche aufhängen');
+ await expect(page.getByRole('dialog',{includeHidden:true})).toHaveCount(1);
  await page.getByRole('dialog').getByRole('button',{name:'Schließen',exact:true}).click();
  await expect(page.getByRole('dialog')).toHaveCount(0);
  await expect(page).not.toHaveURL(/task=/);
