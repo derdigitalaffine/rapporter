@@ -1,4 +1,6 @@
 import React from 'react';
+import {addons} from 'storybook/preview-api';
+import {STORY_FINISHED} from 'storybook/internal/core-events';
 import '@fontsource-variable/nunito';
 import i18n from '../src/brand-i18n';
 import '../src/ux-i18n';
@@ -32,6 +34,10 @@ export default {
   beforeEach: async () => {
     await i18n.changeLanguage('de');
     document.documentElement.lang = 'de';
+    const channel = addons.getChannel();
+    globalThis.__FAMILYOS_STORY_RESULT__ = null;
+    const finished = result => {globalThis.__FAMILYOS_STORY_RESULT__ = result;};
+    channel.on(STORY_FINISHED, finished);
     applyAppearance({profile: 'green', highContrast: false});
     const originalFetch = globalThis.fetch;
     globalThis.fetch = (input, options) => {
@@ -40,7 +46,7 @@ export default {
       if (url.pathname.startsWith('/api/')) return Promise.reject(new Error(`Unconfigured workbench fixture: ${url.pathname}`));
       return originalFetch(input, options);
     };
-    return () => { globalThis.fetch = originalFetch; };
+    return () => {globalThis.fetch = originalFetch; channel.off(STORY_FINISHED, finished);};
   },
   decorators: [(Story, context) => <main className="workbench-layout"><h1 className="form-sr-only">{context.name}</h1><Story/></main>],
 };

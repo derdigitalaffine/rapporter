@@ -9,6 +9,7 @@ for (const story of stories) {
     page.on('request', request => {if (new URL(request.url()).pathname.startsWith('/api/')) errors.push(`Unexpected API request: ${request.url()}`);});
     await page.goto(`/iframe.html?id=familyos-${story}&viewMode=story`);
     await expect(page.locator('#storybook-root main')).toBeVisible();
+    await expect.poll(() => page.evaluate(() => globalThis.__FAMILYOS_STORY_RESULT__?.status)).toBe('success');
     await expect(page.locator('[data-testid="error-message"]')).toHaveCount(0);
     // Storybook play functions also run in the standalone iframe.
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
