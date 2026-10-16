@@ -101,13 +101,14 @@ test('snapshot reset preserves pending offline create and unsupported protocol c
 test('server failure remains visible with browser online; status sheet is responsive and keyboard accessible',async({page},testInfo)=>{
  await boot(page);const pill=page.locator('.offline-sync-pill'),led=pill.locator('.offline-sync-led');
  await expectConfirmed(page);await expect(pill.locator('.offline-sync-label')).toHaveText('Sync');
- await page.route('**/api/sync/',route=>route.abort('connectionrefused'));
+ await page.route('**/api/sync/',route=>route.fulfill({status:503,json:{detail:'The server is temporarily unavailable.'}}));
  await page.evaluate(()=>window.dispatchEvent(new CustomEvent('familyos:sync-now')));
  expect(await page.evaluate(()=>navigator.onLine)).toBeTruthy();await expect(led).toHaveAttribute('data-tone','error');await expect(pill.locator('.offline-sync-label')).toHaveText('Sync');
  for(const width of [320,390,1440]){
   await page.setViewportSize({width,height:844});await pill.click();const dialog=page.getByRole('dialog',{name:'Synchronization',exact:true});await expect(dialog).toBeVisible();
   await expect(dialog.locator('.offline-sync-summary')).toHaveText('Server unavailable');
   await expect(dialog.getByText('Last successful sync',{exact:true})).toBeVisible();await expect(dialog.locator('time')).toBeVisible();
+  await expect(dialog.getByText('Server response: HTTP 503',{exact:true})).toBeVisible();await expect(dialog.getByText('The server is temporarily unavailable.',{exact:true})).toBeVisible();
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBeTruthy();
   const screenshotPath=testInfo.outputPath(`sync-status-${width}.png`);
   await page.screenshot({path:screenshotPath});await testInfo.attach(`sync-status-${width}`,{path:screenshotPath,contentType:'image/png'});
@@ -188,7 +189,8 @@ test('child appointment rejection shows server reason, survives reload and retri
  }
  const title=`Custody draft ${Date.now()}`;
  await editor.getByRole('textbox',{name:'Title',exact:true}).fill(title);
- await editor.getByRole('checkbox',{name:'Offline Child',exact:true}).check();
+ await editor.getByText('Offline Child',{exact:true}).click();
+ await expect(editor.getByRole('checkbox',{name:'Offline Child',exact:true})).toBeChecked();
  await editor.getByRole('button',{name:'Save',exact:true}).click();await expect(editor).toBeHidden();
  const pill=page.locator('.offline-sync-pill');await pill.click();
  let dialog=page.getByRole('dialog',{name:'Synchronization',exact:true});
