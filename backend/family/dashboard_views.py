@@ -33,7 +33,7 @@ def dashboard(request):
         })
 
     now = timezone.now()
-    tasks = Task.objects.filter(family=family, completed_at__isnull=True).select_related("task_list", "assignee").order_by("due_at", "-created_at")[:12]
+    tasks = Task.objects.filter(family=family, completed_at__isnull=True).select_related("task_list", "assignee", "unified_action").order_by("due_at", "-created_at")[:12]
     events = list(FamilyEvent.objects.filter(family=family, starts_at__gte=now).order_by("starts_at")[:12])
     current_weather = FamilyEvent.objects.filter(family=family, type="weather.current").order_by("-starts_at", "-updated_at").first()
     if current_weather and all(event.id != current_weather.id for event in events):

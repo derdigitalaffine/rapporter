@@ -200,6 +200,7 @@ export default function TodoHub({family,data,onCreate,onChanged,currentUserId,us
  const rowProps={language,busyId,onPrimary,onSecondary,onOpen:openItem};
 
  return <div className="todo-hub">
+  <h1 className="form-sr-only">{text.title}</h1>
   <nav className="todo-tabs" aria-label={text.title}>{tabItems.map(([id,label])=><button key={id} type="button" className={view===id?'active':''} aria-current={view===id?'page':undefined} onClick={()=>setView(id)}>{label}</button>)}</nav>
   <div className="todo-workspace-actions"><button type="button" className="primary" onClick={()=>onCreate?onCreate('task',{taskListId:list}):setEditor({kind:'task',record:null})}><Icon name="plus"/>{de?'Aufgabe hinzufügen':'Add task'}</button><CaptureSection family={family} text={text}/></div>
   {isWorkView(view)&&<>

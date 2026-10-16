@@ -9,10 +9,10 @@ async function boot(page,path='/'){
 
 test('main areas keep stable URLs across reload',async({page})=>{
  await boot(page,'/?page=tasks');
- await expect(page.getByRole('heading',{name:'Aufgaben',exact:true})).toBeVisible();
+ await expect(page.locator('main').getByRole('heading',{name:'Aufgaben',exact:true})).toBeVisible();
  await expect(page).toHaveURL(/\?page=tasks$/);
  await page.reload();await page.waitForLoadState('networkidle');
- await expect(page.getByRole('heading',{name:'Aufgaben',exact:true})).toBeVisible();
+ await expect(page.locator('main').getByRole('heading',{name:'Aufgaben',exact:true})).toBeVisible();
  await expect(page).toHaveURL(/\?page=tasks$/);
  await page.locator('.bottom-nav').getByRole('button',{name:'Einkauf',exact:true}).click();
  await expect(page.getByRole('heading',{name:'Einkauf',exact:true})).toBeVisible();

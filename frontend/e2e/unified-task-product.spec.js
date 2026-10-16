@@ -70,6 +70,16 @@ test('workspace search and browser back retain a single task surface',async({pag
  await expect(tabs.getByRole('button',{name:'Heute',exact:true})).toHaveAttribute('aria-current','page');
 });
 
+test('legacy task deep link opens the same editor inside the unified workspace',async({page})=>{
+ await installApiMocks(page);
+ await page.goto('/?page=tasks&task=task-1');
+ await expect(page.getByRole('dialog').getByRole('textbox',{name:'Titel',exact:true})).toHaveValue('Wäsche aufhängen');
+ await page.getByRole('dialog').getByRole('button',{name:'Schließen',exact:true}).click();
+ await expect(page.getByRole('dialog')).toHaveCount(0);
+ await expect(page).not.toHaveURL(/task=/);
+ await expect(page.locator('.bottom-nav').getByRole('button',{name:'Aufgaben',exact:true})).toHaveAttribute('aria-current','page');
+});
+
 for(const width of [320,390,1024,1440])test(`task dialog and workspace fit ${width}px with reachable touch targets`,async({page},info)=>{
  await page.setViewportSize({width,height:width===320?568:900});
  await setup(page);
