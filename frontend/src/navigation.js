@@ -20,3 +20,24 @@ export function pageHref(page,current=location.href){
  else url.searchParams.set('page',next);
  return `${url.pathname}${url.search}${url.hash}`;
 }
+
+export function featureHref(page,params={},current=location.href){
+ const url=new URL(pageHref(page,current),globalThis.location?.origin||'http://localhost');
+ const allowed=new Set(queryParamsForPage(page));
+ for(const [key,value] of Object.entries(params)){
+  if(!allowed.has(key))throw new Error(`Unsupported feature selector: ${key}`);
+  if(value===null||value===undefined||value==='')url.searchParams.delete(key);
+  else url.searchParams.set(key,String(value));
+ }
+ return `${url.pathname}${url.search}${url.hash}`;
+}
+
+export function updateFeatureLocation(page,params={}, {replace=false,notify=true}={}){
+ const href=featureHref(page,params);
+ if(notify){const event=new CustomEvent('famuhle:before-navigation',{cancelable:true,detail:{page}});window.dispatchEvent(event);if(event.defaultPrevented)return false;}
+ const state={...history.state,page,appNavigation:!replace};
+ const method=replace?'replaceState':'pushState';
+ history[method](state,'',href);
+ if(notify)window.dispatchEvent(new PopStateEvent('popstate',{state}));
+ return true;
+}

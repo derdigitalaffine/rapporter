@@ -54,7 +54,7 @@ def dashboard(request):
     tasks = Task.objects.exclude(hidden_from_user=request.user).filter(
         family=family,
         completed_at__isnull=True,
-    ).select_related("task_list", "assignee").order_by("due_at", "-created_at")[:12]
+    ).select_related("task_list", "assignee", "unified_action").order_by("due_at", "-created_at")[:12]
 
     upcoming = FamilyEvent.objects.filter(
         family=family,

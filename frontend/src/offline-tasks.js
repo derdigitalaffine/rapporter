@@ -14,6 +14,7 @@ export async function projectLocalTasks(engine,family){
    assignee:task.assignee?{id:task.assignee,username:task.assignee_name||''}:null,priority:task.priority||'normal',tags:task.tags||[],repeat:task.recurrence?{recurrence:task.recurrence}:null,
    primary_action:toggle,completion_command:null,allowed_actions:[toggle,{id:'edit',method:'PATCH',href:`/api/tasks/${task.id}/`},{id:'delete',method:'DELETE',href:`/api/tasks/${task.id}/`}],
    deep_link:`/?page=tasks&family=${engine.familyId}&task=${task.id}`,context:{source:task.source||'manual',list:list?{id:list.id,name:list.name}:null,workflow:column?{id:column.id,name:column.name,kind:column.kind,terminal:column.is_terminal}:null},
+   schedule:task.action_schedule||original.schedule,
    urgency:state==='overdue'?'critical':['due','active','waiting'].includes(state)||task.priority==='high'?'high':task.completed_at?'none':'normal',_offlinePending:task._offlinePending});
  }
  // Routines keep their canonical read projection; their writes remain owned by
@@ -67,6 +68,7 @@ export async function offlineTaskRequest(path,options={}){
    if(url.searchParams.get('kind')==='tasks'&&a.kind!=='task'||url.searchParams.get('kind')==='routines'&&a.kind!=='routine')return false;
    if(url.searchParams.get('task')&&a.id!==`task:${url.searchParams.get('task')}`)return false;
    if(url.searchParams.get('list')&&a.context?.list?.id!==url.searchParams.get('list'))return false;
+   if(scope==='completed'||scope==='recent')return ['done','done_today'].includes(a.state);
    if(a.kind!=='task')return scope==='all'||(scope==='upcoming'?!['done','done_today'].includes(a.state):a.state!=='done');
    if(scope==='mine')return String(a.assignee?.id)===String(identity.session.user.id)&&!a.completed_at;
    if(scope==='upcoming')return !a.completed_at&&a.due_at&&day(a.due_at,family.timezone||'UTC')>today;

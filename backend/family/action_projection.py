@@ -278,13 +278,13 @@ def _task_queryset(*, family, user, scope, list_id=None, workflow_id=None, today
             Q(completed_at__gte=today_start, completed_at__lt=tomorrow_start)
             | Q(completed_at__isnull=True, due_at__lt=tomorrow_start)
             | Q(completed_at__isnull=True, workflow_column__kind__in=["active", "waiting"])
-            | Q(unified_action__schedule__recurrence__frequency__in=["daily", "weekly", "monthly", "yearly"])
+            | Q(unified_action__schedule__recurrence__frequency__in=["daily", "weekly", "monthly", "quarterly", "yearly"])
         )
     if scope == "upcoming":
         return rows.filter(completed_at__isnull=True, due_at__gte=tomorrow_start)
     if scope in {"completed", "recent"}:
         return rows.filter(completed_at__gte=recent_start)
-    return rows.filter(Q(completed_at__isnull=True) | Q(completed_at__gte=today_start) | Q(unified_action__schedule__recurrence__frequency__in=["daily", "weekly", "monthly", "yearly"]))
+    return rows.filter(Q(completed_at__isnull=True) | Q(completed_at__gte=today_start) | Q(unified_action__schedule__recurrence__frequency__in=["daily", "weekly", "monthly", "quarterly", "yearly"]))
 
 
 def _routine_queryset(*, family, user, scope, now, recent_start):
@@ -467,7 +467,7 @@ def _decorate_unified(items, *, user, family, now):
             item['schedule'] = row.schedule
             # New schedule intent applies only to configured actions. Legacy feed
             # fields and algorithms stay available until the explicit cutover.
-            recurring_task = item['kind'] == 'task' and row.schedule.get('recurrence', {}).get('frequency') in {'daily','weekly','monthly','yearly'}
+            recurring_task = item['kind'] == 'task' and row.schedule.get('recurrence', {}).get('frequency') in {'daily','weekly','monthly','quarterly','yearly'}
             if (item['kind'] == 'routine' or recurring_task) and item['state'] not in {'paused', 'done_today'}:
                 if recurring_task:
                     item['primary_action'] = _action('task', 'complete', 'POST', f'/api/tasks/{row.legacy_task_id}/toggle/')

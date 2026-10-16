@@ -41,7 +41,7 @@ export function pageLabel(page,t,i18n){
   const english=i18n.language?.startsWith('en');
   const labels={
     home:t('today'),
-    todo:'To-dos',
+    todo:english?'Tasks':'Aufgaben',
     tasks:english?'Tasks':'Aufgaben',
     shopping:t('shopping'),
     calendar:t('calendar'),
@@ -53,7 +53,7 @@ export function pageLabel(page,t,i18n){
     integrations:t('integrations'),
     automations:t('ifThen'),
     members:t('members'),
-    routines:t('routineUi.title'),
+    routines:english?'Tasks':'Aufgaben',
     birthdays:t('birthdayUi.title'),
     baby:t('babyUi.title'),
     pets:t('petUi.title'),
@@ -85,6 +85,7 @@ export function primaryNavItems(t,i18n,{baby=false,pet=false}={}){
 
 export function primaryNavCurrent(page,items=PRIMARY_NAV_IDS){
   const ids=Array.isArray(items)?items.map(item=>typeof item==='string'?item:item.id):PRIMARY_NAV_IDS;
+  if(['tasks','routines'].includes(page)&&ids.includes('todo'))return 'todo';
   return ids.includes(page)?page:'more';
 }
 

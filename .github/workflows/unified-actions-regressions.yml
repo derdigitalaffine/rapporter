@@ -47,7 +47,7 @@ jobs:
         run: python manage.py makemigrations --check --dry-run && python manage.py migrate && python manage.py check
       - working-directory: backend
         run: >-
-          python manage.py test family.test_unified_actions family.test_action_capture_route
+          python manage.py test family.test_unified_actions family.test_action_capture_route family.test_task_action_product
           family.test_action_projection family.test_routines family.test_task_workflow family.test_smart_todo
           family.test_context_links family.test_action_schedule_recurrence
 
@@ -73,14 +73,14 @@ jobs:
         run: npx playwright install --with-deps chromium
       - working-directory: frontend
         run: >-
-          npm run e2e -- --project=${{ matrix.project }}
-          e2e/unified-actions.spec.js e2e/todo-hub.spec.js e2e/family-context.spec.js
+          npm run e2e -- --project=${{ matrix.project }} --reporter=line,github,html
+          e2e/unified-actions.spec.js e2e/todo-hub.spec.js e2e/unified-task-product.spec.js e2e/family-context.spec.js
           e2e/games-live.spec.js e2e/task-games.spec.js e2e/pin-board-card.spec.js
           e2e/pin-interactions.spec.js e2e/pin-type-suggestions.spec.js
           e2e/today-context-widgets.spec.js e2e/today-pin-interactions.spec.js
           e2e/today-quick-actions.spec.js e2e/today-reference-home.spec.js
       - working-directory: frontend
-        run: npm run e2e -- --project=${{ matrix.project }} e2e/today-create-widget.spec.js --grep "family switch"
+        run: npm run e2e -- --project=${{ matrix.project }} --reporter=line,github,html e2e/today-create-widget.spec.js --grep "family switch"
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
