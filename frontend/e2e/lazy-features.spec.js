@@ -48,3 +48,11 @@ test('transient chunk failure has a working retry path',async({page})=>{
   await page.getByRole('button',{name:'Erneut versuchen',exact:true}).click();
   await expect(page.locator('.travel-hub')).toBeVisible();
 });
+test('common task creation does not wake the specialist barcode editor',async({page})=>{
+  await installApiMocks(page);
+  const specialist=[];page.on('request',request=>{if(/\/assets\/LoyaltyCardEditor-[^/]+\.js$/.test(new URL(request.url()).pathname))specialist.push(request.url());});
+  await page.goto('/?page=todo');
+  await page.locator('.global-create-fab').click();
+  await expect(page.getByRole('dialog').getByRole('textbox',{name:'Titel',exact:true})).toBeVisible();
+  expect(specialist).toEqual([]);
+});

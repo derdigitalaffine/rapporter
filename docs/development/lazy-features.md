@@ -59,6 +59,9 @@ components/server still own final authorization and data loading.
 
 The canonical #191 CreateFlowHost is deferred only when an action is present;
 its existing renderer registry, callbacks, history and validation stay intact.
+Within that registry only the measured heavy LoyaltyCardEditor is deferred
+again: opening an everyday task form must not download/execute barcode rendering.
+The bundle graph and a real common-task browser case enforce this boundary.
 No second create dispatcher is introduced. Module loading has compact status,
 unavailable/offline error, retry, existing SW update check and explicit reload
 with the dirty-form/navigation guard. A failed specialist module never replaces
