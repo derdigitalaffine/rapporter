@@ -7,6 +7,14 @@ import {clearProjection,watchProjection} from './todayProjectionLifecycle';
 const stores=new Map();
 const unwrap=value=>Array.isArray(value)?value:(value?.actions||value?.results||[]);
 
+async function allTodayActions(familyId){
+ const payload=await api(`/actions/?family=${encodeURIComponent(familyId)}&scope=today`);
+ const rows=[...unwrap(payload)];let next=payload?.next;
+ const seen=new Set();
+ while(next){const url=new URL(next,location.origin);if(url.origin!==location.origin||url.pathname!=='/api/actions/'||url.searchParams.get('family')!==familyId||seen.has(url.href))throw new Error('invalid_action_page');seen.add(url.href);const page=await api(`${url.pathname.slice(4)}${url.search}`);rows.push(...unwrap(page));next=page.next;}
+ return rows;
+}
+
 function storeFor(familyId,timeZone='UTC'){
  const key=`${String(familyId||'')}|${timeZone}`;
  if(!stores.has(key))stores.set(key,{actions:[],events:[],loading:false,loaded:false,actionFailed:false,calendarFailed:false,day:'',generation:0,promise:null,listeners:new Set()});
@@ -28,7 +36,7 @@ async function loadTodayCoreData(family,{force=false,coalesce=false}={}){
  if(store.day!==day)clearProjection(store,emit);
  const generation=store.generation+1;
  store.generation=generation;store.day=day;store.loading=true;emit(store);
- const actionRequest=api(`/actions/?family=${encodeURIComponent(familyId)}&scope=today`);
+ const actionRequest=allTodayActions(familyId);
  const calendarRequest=fetchCalendarEvents({familyId,start:day,end:day});
  // Preserve already-authorized same-day rows while revalidating, but never
  // retain a failed source until the other request has also completed.
