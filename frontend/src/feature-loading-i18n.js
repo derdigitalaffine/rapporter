@@ -1,0 +1,9 @@
+import i18n from './brand-i18n';
+const resources={
+ de:{reload:'Seite neu laden',pending:'Bereich wird geladen …',failed:'Dieser Bereich konnte nicht geladen werden.',offline:'Dieser Bereich ist offline noch nicht verfügbar.',locked:'Dieser Bereich ist in deinem Tarif nicht enthalten.',denied:'Dieser Bereich ist für dich nicht verfügbar.',unknown:'Unbekannter Bereich.',retry:'Erneut versuchen',update:'Nach App-Update suchen'},
+ en:{reload:'Reload page',pending:'Loading section …',failed:'This section could not be loaded.',offline:'This section is not available offline yet.',locked:'This section is not included in your plan.',denied:'This section is not available to you.',unknown:'Unknown section.',retry:'Try again',update:'Check for an app update'},
+ fr:{reload:'Recharger la page',pending:'Chargement …',failed:'Impossible de charger cette rubrique.',offline:'Cette rubrique n’est pas encore disponible hors ligne.',locked:'Cette rubrique n’est pas incluse dans votre forfait.',denied:'Cette rubrique n’est pas disponible pour vous.',unknown:'Rubrique inconnue.',retry:'Réessayer',update:'Rechercher une mise à jour'},
+ nl:{reload:'Pagina opnieuw laden',pending:'Onderdeel laden …',failed:'Dit onderdeel kon niet worden geladen.',offline:'Dit onderdeel is nog niet offline beschikbaar.',locked:'Dit onderdeel zit niet in je abonnement.',denied:'Dit onderdeel is niet voor jou beschikbaar.',unknown:'Onbekend onderdeel.',retry:'Opnieuw proberen',update:'Zoeken naar een app-update'},
+ th:{reload:'โหลดหน้าใหม่',pending:'กำลังโหลด …',failed:'ไม่สามารถโหลดส่วนนี้ได้',offline:'ส่วนนี้ยังไม่พร้อมใช้งานออฟไลน์',locked:'ส่วนนี้ไม่รวมอยู่ในแผนของคุณ',denied:'คุณไม่สามารถใช้งานส่วนนี้ได้',unknown:'ไม่พบส่วนนี้',retry:'ลองอีกครั้ง',update:'ตรวจสอบการอัปเดตแอป'},
+};
+for(const [language,featureLoading] of Object.entries(resources))i18n.addResourceBundle(language,'translation',{featureLoading},true,true);

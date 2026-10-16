@@ -1,7 +1,6 @@
 import {switchAppLanguage as switchLanguage} from './language-options';
 import OfflineSyncStatus from './OfflineSyncStatus';
 import {clearTracking} from './vehicle-tracking';
-import VehiclesHub from './VehiclesHub';
 import './vehicles-i18n';
 import {setCreateRankingIdentity} from './create-ranking-client';
 import RoutinesHub from './RoutinesHub';
@@ -18,39 +17,18 @@ import {api,isAuthenticated,login,logout} from './api';
 import {Icon} from './icons';
 import {SmartTasks} from './SmartLists';
 import SmartShoppingPredicted from './ShoppingPredictions';
-import IntegrationHub from './IntegrationHub';
-import FamilyMembers from './FamilyMembers';
 import Messenger from './Messenger';
-import AutomationHub from './AutomationHub';
 import CalendarHub from './CalendarHub';
-import NotificationSettings from './NotificationSettings';
-import LoyaltyCards from './LoyaltyCards';
 import TodayHome from './TodayHome';
-import NotesHub from './NotesHub';
-import DocumentsHub from './DocumentsHub';
-import WeatherHub from './WeatherHub';
-import ExpensesHub from './ExpensesHub';
-import StatisticsHub from './StatisticsHub';
-import ContractsHub from './ContractsHub';
-import DecisionsHub from './DecisionsHub';
-import GamesHub from './GamesHub';
-import WishlistsHub from './WishlistsHub';
 import GlobalCreate from './GlobalCreate';
 import {useCreateActions} from './useCreateActions';
-import CreateFlowHost from './CreateFlowHost';
-import BirthdaysHub from './BirthdaysHub';
 import './birthday-i18n';
 import './profile-i18n';
-import ProfilePage from './ProfilePage';
 import ProgramInfo from './ProgramInfo';
-import BoardHub from './BoardHub';
-import TravelHub from './TravelHub';
-import PregnancyBabyHub from './PregnancyBabyHub';
 import './baby-i18n';
-import PetCareHub from './PetCareHub';
 import './pet-i18n';
 import MemberAvatar from './MemberAvatar';
-import SettingsHub from './SettingsHub';
+import {DeferredModule,FeatureAvailabilityContext,FEATURE_COMPONENTS} from './FeatureModule';
 import {useFamilyPermissions} from './family-permissions';
 import {toast} from './feedback';
 import {APP_PAGES,pageFromLocation,pageHref} from './navigation';
@@ -59,6 +37,9 @@ import './family-context.css';
 import './create-fab.css';
 import './entitlements.css';
 import './more-navigation.css';
+
+const {vehicles:VehiclesHub,integrations:IntegrationHub,members:FamilyMembers,automations:AutomationHub,notifications:NotificationSettings,loyalty:LoyaltyCards,notes:NotesHub,documents:DocumentsHub,weather:WeatherHub,expenses:ExpensesHub,statistics:StatisticsHub,contracts:ContractsHub,decisions:DecisionsHub,games:GamesHub,wishlists:WishlistsHub,birthdays:BirthdaysHub,profile:ProfilePage,board:BoardHub,trips:TravelHub,baby:PregnancyBabyHub,pets:PetCareHub,settings:SettingsHub}=FEATURE_COMPONENTS;
+const loadCreateFlowHost=()=>import('./CreateFlowHost.jsx');
 
 const demo={tasks:[],task_lists:[],events:[],routines:[],shopping_lists:[],inbox_count:0,automation_count:0};
 const ACTIVE_FAMILY_KEY='famuhle-active-family';
@@ -103,7 +84,7 @@ export default function App(){
  const pages={statistics:<StatisticsHub key={`statistics-${contentKey}`} family={family} role={role} entitlements={entitlements} onBack={()=>backTo('more')}/>,vehicles:<VehiclesHub key={`vehicles-${contentKey}`} family={family} userId={sessionUser?.id} onBack={()=>backTo('more')}/>,notes:<NotesHub key={`notes-${contentKey}`} family={family} onBack={()=>backTo('home')}/>,documents:<DocumentsHub key={`documents-${contentKey}`} family={family} onBack={()=>backTo('more')}/>,board:<BoardHub key={`board-${contentKey}`} family={family} onBack={()=>backTo('more')}/>,trips:<TravelHub key={`trips-${contentKey}`} family={family} onBack={()=>backTo('more')} onOpen={navigate}/>,decisions:<DecisionsHub key={`decisions-${contentKey}`} family={family} onBack={()=>backTo('more')}/>,games:<GamesHub key={`games-${contentKey}`} family={family} onBack={()=>backTo(new URLSearchParams(location.search).has('task')?'tasks':'more')}/>,wishlists:<WishlistsHub key={`wishlists-${contentKey}`} family={family} onBack={()=>backTo('more')} onCreate={openCreate}/>,home:<TodayHome createActions={createActions} createSuppressed={Boolean(createFlow)} key={`home-${contentKey}`} data={data} family={family} t={t} onTask={toggleTask} open={navigate} onCreate={openCreate}/>,todo:<TodoHub key={`todo-${contentKey}`} family={family} data={data} onCreate={openCreate}/>,tasks:<SmartTasks key={`tasks-${contentKey}`} family={family} currentUserId={sessionUser?.id} onChanged={load}/>,shopping:<SmartShoppingPredicted key={`shopping-${contentKey}`} family={family} onChanged={load}/>,routines:<RoutinesHub key={`routines-${contentKey}`} family={family} userId={sessionUser?.id} onChanged={load}/>,baby:<PregnancyBabyHub key={`baby-${contentKey}`} family={family} onBack={()=>backTo('more')} onModuleChange={setBabyModule}/>,pets:<PetCareHub key={`pets-${contentKey}`} family={family} onBack={()=>backTo('more')} onModuleChange={setPetModule}/>,more:<MorePage key={`more-${contentKey}`} family={family} families={families} role={role} data={data} t={t} i18n={i18n} open={navigate} babyModule={babyModule} petModule={petModule} entitlements={entitlements} onShowOnboarding={showOnboarding} onLogout={signOut} installable={!!installPrompt} onInstall={installApp} onSwitchFamily={switchFamily} loading={loading}/>,settings:<SettingsHub key={`settings-${contentKey}`} open={navigate}/>,calendar:<CalendarHub key={`calendar-${contentKey}`} family={family} t={t} onBack={()=>backTo('more')}/>,weather:<WeatherHub key={`weather-${contentKey}`} family={family} t={t} onBack={()=>backTo('home')}/>,birthdays:<BirthdaysHub key={`birthdays-${contentKey}`} family={family} onBack={()=>backTo('more')}/>,expenses:<ExpensesHub key={`expenses-${contentKey}`} entitlements={entitlements} family={family} onBack={()=>backTo('more')}/>,contracts:<ContractsHub key={`contracts-${contentKey}`} family={family} onBack={()=>backTo('more')} onCreate={openCreate}/>,inbox:<Messenger key={`messenger-${sessionUser?.id}-${familyKey}`} family={family} userId={sessionUser?.id} onBack={()=>backTo(family?'more':'inbox')} onChanged={load} onUnreadChange={setMessengerUnread} onLogout={signOut}/>,integrations:<IntegrationHub key={`integrations-${contentKey}`} family={family} onBack={()=>backTo('more')}/>,automations:<AutomationHub key={`automations-${contentKey}`} family={family} onBack={()=>backTo('more')}/>,members:<FamilyMembers key={`members-${contentKey}`} family={family} onBack={()=>backTo('more')}/>,profile:<ProfilePage key={`profile-${contentKey}`} family={family} onBack={()=>backTo('more')} onChanged={load}/>,notifications:<NotificationSettings key={`notifications-${contentKey}`} family={family} t={t} onBack={()=>backTo('more')}/>,loyalty:<LoyaltyCards key={`loyalty-${contentKey}`} family={family} onBack={()=>backTo('more')}/>};
  const babyInNav=babyModule?.enabled&&babyModule?.authorized&&babyModule?.show_in_main_navigation&&(!entitlements||entitlements.capabilities?.includes('pregnancy_baby'));const petInNav=petModule?.enabled&&petModule?.authorized&&petModule?.show_in_main_navigation&&(!entitlements||entitlements.capabilities?.includes('pets'));const nav=primaryNavItems(t,i18n,{baby:babyInNav,pet:petInNav});const currentNav=primaryNavCurrent(active,nav);const createContext={taskListId:data.task_lists?.[0]?.id||'',shoppingListId:data.shopping_lists?.[0]?.id||''};
  const headerTitle=pageLabel(active,t,i18n);
- return <div className={`app-shell ${active==='inbox'?'messenger-shell':''} ${loaded&&family&&role&&active!=='inbox'&&active!=='settings'?'global-create-enabled':''}`} data-primary-nav={loaded&&family&&!detail?'true':'false'}><header className="topbar"><div className="brand-mini" role="heading" aria-level="1"><span>{headerTitle}</span></div><div className="topbar-context"><OfflineSyncStatus family={family}/>{currentMember&&<button className="profile-shortcut" onClick={()=>navigate('profile')} aria-label={t('profileUi.title')}><MemberAvatar person={currentMember} size={34} decorative/></button>}</div></header><main key={`${familyKey}-${active}`} className="content page-transition" data-page={active}>{loading&&loaded&&<div className="loading" role="status"><Icon name="refresh"/> {t('syncing')}</div>}{!loaded?<DataState t={t} error={loadError} onRetry={()=>load()}/>:family?pages[active]:pages.inbox}</main>{loaded&&family&&!detail&&createPortal(<nav className={`bottom-nav ${nav.length>6?'bottom-nav--dense':''}`} aria-label={primaryNavLabel(i18n)} style={{'--bottom-nav-items':nav.length}}>{nav.map(({id,icon,label})=><button key={id} className={currentNav===id?'active':''} onClick={()=>navigate(id)} aria-current={currentNav===id?'page':undefined} title={label}><Icon name={icon} size={21}/><span>{label}</span></button>)}</nav>,document.body)}{loaded&&family&&<GlobalCreate createActions={createActions} page={active} family={family} role={role} context={createContext} onCreate={openCreate} suppressed={Boolean(createFlow)||active==='inbox'||active==='settings'}/>}<CreateFlowHost userId={sessionUser?.id} action={createFlow?.id} family={family} data={data} context={createFlow?.context} onClose={closeCreate} onRefresh={refreshAfterCreate}/></div>
+ return <FeatureAvailabilityContext.Provider value={{entitlements,role,babyModule,petModule}}><div className={`app-shell ${active==='inbox'?'messenger-shell':''} ${loaded&&family&&role&&active!=='inbox'&&active!=='settings'?'global-create-enabled':''}`} data-primary-nav={loaded&&family&&!detail?'true':'false'}><header className="topbar"><div className="brand-mini" role="heading" aria-level="1"><span>{headerTitle}</span></div><div className="topbar-context"><OfflineSyncStatus family={family}/>{currentMember&&<button className="profile-shortcut" onClick={()=>navigate('profile')} aria-label={t('profileUi.title')}><MemberAvatar person={currentMember} size={34} decorative/></button>}</div></header><main key={`${familyKey}-${active}`} className="content page-transition" data-page={active}>{loading&&loaded&&<div className="loading" role="status"><Icon name="refresh"/> {t('syncing')}</div>}{!loaded?<DataState t={t} error={loadError} onRetry={()=>load()}/>:family?pages[active]:pages.inbox}</main>{loaded&&family&&!detail&&createPortal(<nav className={`bottom-nav ${nav.length>6?'bottom-nav--dense':''}`} aria-label={primaryNavLabel(i18n)} style={{'--bottom-nav-items':nav.length}}>{nav.map(({id,icon,label})=><button key={id} className={currentNav===id?'active':''} onClick={()=>navigate(id)} aria-current={currentNav===id?'page':undefined} title={label}><Icon name={icon} size={21}/><span>{label}</span></button>)}</nav>,document.body)}{loaded&&family&&<GlobalCreate createActions={createActions} page={active} family={family} role={role} context={createContext} onCreate={openCreate} suppressed={Boolean(createFlow)||active==='inbox'||active==='settings'}/>}{createFlow&&<DeferredModule load={loadCreateFlowHost} onBack={closeCreate} userId={sessionUser?.id} action={createFlow?.id} family={family} data={data} context={createFlow?.context} onClose={closeCreate} onRefresh={refreshAfterCreate}/>}</div></FeatureAvailabilityContext.Provider>
 }
 
 const MORE_SECTION_IDS=['family','organisation','administration'];
