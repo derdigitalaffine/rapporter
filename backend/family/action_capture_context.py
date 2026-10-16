@@ -1,11 +1,11 @@
 from collections import defaultdict
 from datetime import timedelta
-from zoneinfo import ZoneInfo
 
 from django.db.models import Q
 from django.utils import timezone
 
 from .action_capture_ranking import rank_capture_suggestions
+from .predictions import _zone
 from .unified_action_models import Action, ActionCompletion
 
 
@@ -27,7 +27,7 @@ def rank_family_capture_rows(*, family, rows):
     }
 
     now = timezone.now()
-    zone = ZoneInfo(family.timezone)
+    zone = _zone(family)
     local_now = timezone.localtime(now, zone)
     histories = defaultdict(list)
     completions = (
