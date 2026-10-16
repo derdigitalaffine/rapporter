@@ -19,13 +19,14 @@ class CalDavConnectionSerializer(serializers.ModelSerializer):
     server_url = serializers.CharField(write_only=True, required=False, allow_blank=False, max_length=2048)
     username = serializers.CharField(write_only=True, required=False, allow_blank=True, max_length=512)
     password = serializers.CharField(write_only=True, required=False, allow_blank=True, max_length=2048, trim_whitespace=False)
+    calendar_href = serializers.URLField(write_only=True, required=False, allow_blank=True, max_length=2048)
 
     class Meta:
         model = CalDavConnection
         fields = [
-            "id", "scope", "name", "family", "enabled", "credential_state",
-            "server_url", "username", "password", "last_discovered_at",
-            "last_error_code", "created_at", "updated_at",
+            "id", "scope", "name", "family", "member", "access_mode", "calendar_href",
+            "enabled", "credential_state", "server_url", "username", "password",
+            "last_discovered_at", "last_error_code", "created_at", "updated_at",
         ]
         read_only_fields = ["last_discovered_at", "last_error_code", "created_at", "updated_at"]
 
@@ -40,19 +41,22 @@ class CalDavConnectionSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         scope = attrs.get("scope", getattr(self.instance, "scope", None))
         family = attrs.get("family", getattr(self.instance, "family", None))
+        member = attrs.get("member", getattr(self.instance, "member", None))
         if self.instance is not None:
             if "scope" in attrs and attrs["scope"] != self.instance.scope:
                 raise ValidationError({"scope": "Der Connection-Scope kann nicht direkt geändert werden."})
             if "family" in attrs and attrs["family"] != self.instance.family:
                 raise ValidationError({"family": "Die Connection-Familie kann nicht direkt geändert werden."})
         if scope == CalDavConnection.Scope.PERSONAL:
-            if family is not None:
-                raise ValidationError({"family": "Persönliche Connections besitzen keine Family-Zuordnung."})
+            if family is not None or member is not None:
+                raise ValidationError({"family": "Persönliche Connections besitzen keine Family- oder Mitglied-Zuordnung."})
         elif scope == CalDavConnection.Scope.FAMILY:
             if family is None:
                 raise ValidationError({"family": "Für Family-Connections ist eine Familie erforderlich."})
             if not self._family_membership(family):
                 raise PermissionDenied("Nur Owner/Adults dürfen Family-Integrationen verwalten.")
+            if member is not None and member.family_id != family.id:
+                raise ValidationError({"member": "Das Mitglied muss zur gewählten Familie gehören."})
         else:
             raise ValidationError({"scope": "Ungültiger Connection-Scope."})
 
@@ -98,11 +102,6 @@ class CalDavConnectionSerializer(serializers.ModelSerializer):
 
 class CalDavConnectionViewSet(viewsets.ModelViewSet):
     serializer_class = CalDavConnectionSerializer
-    # The global ActiveTenantFilterBackend assumes every model with a `family`
-    # field is family-scoped. CalDAV intentionally supports personal rows with
-    # family=NULL, so applying that backend would hide them after creation.
-    # This viewset performs the equivalent active-family restriction explicitly
-    # below while keeping personal visibility owner-scoped.
     filter_backends = []
     http_method_names = ["get", "post", "patch", "delete", "head", "options"]
 
@@ -115,12 +114,7 @@ class CalDavConnectionViewSet(viewsets.ModelViewSet):
         ).values_list("family_id", flat=True)
         return CalDavConnection.objects.filter(
             models.Q(scope=CalDavConnection.Scope.PERSONAL, owner=user, family__isnull=True)
-            | models.Q(
-                scope=CalDavConnection.Scope.FAMILY,
-                owner__isnull=True,
-                family_id__in=managed_family_ids,
-                family__status=Family.Status.ACTIVE,
-            )
+            | models.Q(scope=CalDavConnection.Scope.FAMILY, owner__isnull=True, family_id__in=managed_family_ids, family__status=Family.Status.ACTIVE)
         ).distinct()
 
     @action(detail=True, methods=["post"])
@@ -146,13 +140,11 @@ class CalDavConnectionViewSet(viewsets.ModelViewSet):
         return Response({
             "connection": str(connection.id),
             "credential_state": connection.credential_state,
+            "access_mode": connection.access_mode,
+            "member": str(connection.member_id) if connection.member_id else None,
             "calendar_count": len(calendars),
             "calendars": [
-                {
-                    "display_name": row["display_name"],
-                    "components": row["components"],
-                    "sync_token_supported": row["sync_token_supported"],
-                }
+                {"display_name": row["display_name"], "components": row["components"], "sync_token_supported": row["sync_token_supported"]}
                 for row in calendars
             ],
         })
