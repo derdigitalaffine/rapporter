@@ -1,11 +1,13 @@
 import {test,expect} from '@playwright/test';
 import {readFile} from 'node:fs/promises';
 const engineSource=await readFile(new URL('../src/offline-sync-engine.js',import.meta.url),'utf8');
+const rejectionSource=await readFile(new URL('../src/offline-rejections.js',import.meta.url),'utf8');
 const storeSource=await readFile(new URL('../src/local-sync-store.js',import.meta.url),'utf8');
 test.beforeEach(async({page})=>{
  await page.route('**/sync-engine-test',r=>r.fulfill({contentType:'text/html',body:'<!doctype html><title>Sync engine test</title>'}));
  await page.route('**/offline-sync-engine.js',r=>r.fulfill({contentType:'text/javascript',body:engineSource}));
  await page.route('**/local-sync-store.js',r=>r.fulfill({contentType:'text/javascript',body:storeSource}));
+ await page.route('**/offline-rejections.js',r=>r.fulfill({contentType:'text/javascript',body:rejectionSource}));
  await page.goto('/sync-engine-test');
 });
 test('local writes survive offline reload with stable outbox identifiers',async({page,context})=>{
