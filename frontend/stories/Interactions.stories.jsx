@@ -50,7 +50,11 @@ export const ToastDeduplication = {
     await userEvent.click(within(canvasElement).getByRole('button'));
     const body = within(canvasElement.ownerDocument.body);
     await expect(body.getAllByText('Verbindung wiederhergestellt.')).toHaveLength(1);
-    await userEvent.click(body.getByRole('button', {name: 'Meldung schließen'}));
+    const close=body.getByRole('button', {name: 'Meldung schließen'});
+    const target=close.getBoundingClientRect();
+    await expect(target.width).toBeGreaterThanOrEqual(44);
+    await expect(target.height).toBeGreaterThanOrEqual(44);
+    await userEvent.click(close);
   },
 };
 

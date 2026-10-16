@@ -6,4 +6,5 @@
 .entity-picker__option[data-highlighted]{outline:2px solid var(--color-brand);outline-offset:-2px}
 .toast[data-limited]{display:none}
 .toast-message{min-width:0;overflow-wrap:anywhere}
+.toast-close{min-width:44px;min-height:44px}
 @media(max-width:480px){.toast{grid-template-columns:32px minmax(0,1fr) auto}.toast-action{grid-column:2}.toast-close{grid-column:3;grid-row:1}}
