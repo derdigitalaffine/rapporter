@@ -1,6 +1,11 @@
 .shopping-checkout-backdrop{z-index:80}
 .shopping-checkout-sheet{max-width:34rem}
 .shopping-checkout-sheet>p{margin:.2rem 0 1rem;color:var(--muted)}
+.shopping-checkout-section{display:grid;gap:.65rem;margin-bottom:1rem}
+.shopping-checkout-section>p{margin:0;color:var(--muted)}
+.shopping-checkout-section>label{font-size:.9rem;font-weight:650}
+.shopping-checkout-section>select{width:100%;min-height:48px;padding:.7rem .8rem;border:1px solid var(--line);border-radius:12px;font:inherit}
+.shopping-checkout-section>small{color:var(--muted);line-height:1.4}
 .shopping-checkout-actions{display:grid;gap:.65rem}
 .shopping-checkout-actions button{min-height:48px;justify-content:center}
 .shopping-checkout-summary,.shopping-checkout-status{display:flex;min-height:9rem;flex-direction:column;align-items:center;justify-content:center;gap:.65rem;text-align:center}
