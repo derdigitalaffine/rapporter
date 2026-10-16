@@ -36,6 +36,14 @@ trap, dismiss, or inert an owned popup. Unmigrated legacy overlays retain their
 existing manager. Mixed/nested overlays need regression evidence before any
 further consumer migration; do not delete the legacy manager yet.
 
+The manager also exposes its canonical current dialog through
+`getActiveModalElement` / `familyos:modal-changed`. The existing PWA update
+banner uses this target via OverlayPortal's optional container: inside a modal
+it is inline with the dialog content, not in an inert background or covering
+form controls. This preserves its Later/Update actions and unsaved input under
+both legacy and headless modality. Update activation/cache/release logic is
+unchanged; there is no second modal scanner or service-worker core.
+
 ## Keyboard and Viewport
 
 `Drawer.VirtualKeyboardProvider` is scoped inside the real Drawer root and

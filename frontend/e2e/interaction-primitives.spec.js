@@ -23,6 +23,18 @@ test('canonical list creation restores global trigger after palette unmount',asy
   expect(box.y).toBeGreaterThanOrEqual(0);expect(box.y+box.height).toBeLessThanOrEqual(viewport.height);
   expect((await new AxeBuilder({page}).withTags(['wcag2a','wcag2aa','wcag21aa']).analyze()).violations).toEqual([]);
   await testInfo.attach('canonical-list-sheet',{body:await page.screenshot({fullPage:true}),contentType:'image/png'});
+  await page.evaluate(()=>{
+    window.__ownedSheetUpdateRequests=0;
+    window.dispatchEvent(new CustomEvent('famuhle:pwa-update-ready',{detail:{activate:()=>{window.__ownedSheetUpdateRequests+=1;}}}));
+  });
+  const update=sheet.getByTestId('pwa-update-banner');
+  await expect(update).toHaveAttribute('data-in-modal','true');
+  await update.getByRole('button',{name:'Später',exact:true}).click();
+  await expect(sheet.getByRole('textbox',{name:/Name/})).toHaveValue('Sommerferienplanung mit sehr langem Namen');
+  expect(await page.evaluate(()=>window.__ownedSheetUpdateRequests)).toBe(0);
+  await page.evaluate(()=>window.dispatchEvent(new CustomEvent('famuhle:pwa-update-ready',{detail:{activate:()=>{window.__ownedSheetUpdateRequests+=1;}}})));
+  await update.getByRole('button',{name:'Jetzt aktualisieren',exact:true}).click();
+  expect(await page.evaluate(()=>window.__ownedSheetUpdateRequests)).toBe(1);
   await sheet.getByRole('button',{name:'Abbrechen',exact:true}).click();
   await expect(sheet).toHaveCount(0);
   await expect(trigger).toBeFocused();

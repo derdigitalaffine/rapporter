@@ -4,6 +4,9 @@ const DIALOG_SELECTOR='[role="dialog"][aria-modal="true"],[role="alertdialog"][a
 const MODAL_ROOT_SELECTOR='[data-app-modal-root],.sheet-backdrop,.feedback-dialog-backdrop';
 const FOCUSABLE_SELECTOR='button:not([disabled]),a[href],input:not([disabled]),select:not([disabled]),textarea:not([disabled]),summary,[tabindex]:not([tabindex="-1"])';
 let titleId=0;
+export const MODAL_CHANGED_EVENT='familyos:modal-changed';
+let activeModalElement=null;
+export const getActiveModalElement=()=>activeModalElement;
 
 function visible(element){
   if(!(element instanceof HTMLElement))return false;
@@ -88,6 +91,8 @@ export default function AccessibilityManager(){
       restoreBackground=()=>{};
       window.clearTimeout(focusTimer);
       root.toggleAttribute('data-app-modal',Boolean(next));
+      activeModalElement=next?.dialog||null;
+      window.dispatchEvent(new CustomEvent(MODAL_CHANGED_EVENT,{detail:{dialog:activeModalElement}}));
       if(!next){
         active=null;
         const target=restoreFocus;
@@ -157,6 +162,7 @@ export default function AccessibilityManager(){
       window.clearTimeout(focusTimer);
       restoreBackground();
       root.removeAttribute('data-app-modal');
+      activeModalElement=null;
     };
   },[]);
   return null;
