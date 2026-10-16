@@ -5,7 +5,8 @@ from .shopping_access_views import ShoppingListViewSet, ShoppingItemViewSet, Sho
 from .shopping_audience_views import shopping_audience_options
 from .shopping_session_views import shopping_session_complete, shopping_session_current, shopping_session_detail, shopping_session_history, shopping_session_start
 from .action_views import action_list
-from .unified_action_views import action_execute, action_detail, quick_capture, event_actions, context_action, decision_round, completion_duration, action_settings
+from .unified_action_views import action_execute, action_detail, event_actions, context_action, decision_round, completion_duration, action_settings
+from .action_capture_views import quick_capture
 from .create_action_views import create_action_preferences
 from .workflow_views import WorkflowColumnViewSet
 from .birthday_views import BirthdayPersonViewSet, birthday_list, gift_plan
