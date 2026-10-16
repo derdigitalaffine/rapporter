@@ -1,0 +1,4 @@
+.workbench-layout{padding:24px;max-width:900px;margin:auto;min-width:0}
+.workbench-stack{display:grid;gap:16px;min-width:0}
+.workbench-actions{display:flex;flex-wrap:wrap;gap:12px}
+@media(max-width:480px){.workbench-layout{padding:16px}}
