@@ -1,0 +1,12 @@
+case_id,input_kind,input,expected_action,expected_gtin,notes
+barcode_exact_nutella,barcode,3017620422003,MATCH,3017620422003,Exact valid barcode may resolve to one active fixture row
+barcode_exact_oreo,barcode,7622210449283,MATCH,7622210449283,Exact valid barcode may resolve to one active fixture row
+barcode_bad_checksum,barcode,3017620422004,REJECT_INVALID_GTIN,,Deliberately invalid check digit; synthetic negative fixture only
+barcode_bad_length,barcode,123456789,REJECT_INVALID_GTIN,,Unsupported GTIN length
+barcode_non_numeric,barcode,30176204ABC03,REJECT_INVALID_GTIN,,GTIN must contain digits only
+text_brand_nutella,text,Nutella,ABSTAIN,,Brand or product-family text can represent multiple pack sizes or variants
+text_brand_oreo,text,Oreo,ABSTAIN,,Weak name similarity must not force a product binding
+text_generic_milk,text,Milch,GENERIC_ITEM,,Generic shopping item remains valid without barcode
+text_generic_bread,text,Brot,GENERIC_ITEM,,Generic shopping item remains valid without barcode
+text_ambiguous_combo,text,Nutella oder Oreo,ABSTAIN,,Multiple candidate products require no automatic binding
+source_deleted,source_event,3017620422003,TOMBSTONE_ONLY,3017620422003,A source deletion must tombstone reference data and must not delete private shopping history

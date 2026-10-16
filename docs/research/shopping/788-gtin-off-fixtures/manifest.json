@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "dataset_id": "shopping.gtins.off.de.fixture",
+  "version": "2026-10-16.1",
+  "kind": "gtin_product_mapping_fixture",
+  "locale": "de-DE",
+  "country": "DE",
+  "optional": true,
+  "default_enabled": false,
+  "generated_at": "2026-10-16T00:00:00Z",
+  "verified_at": "2026-10-16",
+  "decision": "adapt",
+  "scope": {
+    "product_count": 2,
+    "eval_case_count": 11,
+    "germany_evidence_product_count": 1,
+    "coverage_claim": "none; fixture size is not Germany market coverage",
+    "images_included": false,
+    "nutrition_included": false,
+    "allergens_included": false,
+    "private_household_data_included": false
+  },
+  "sources": [
+    {
+      "id": "off-api-docs",
+      "url": "https://github.com/openfoodfacts/openfoodfacts-server/blob/main/docs/api/index.md",
+      "revision": "30c84d579549a7a325eafc3d5b6a7efbb5c1ad95",
+      "role": "current API version, licence split and operating limits",
+      "database_licence": "ODbL-1.0",
+      "contents_licence": "DbCL-1.0",
+      "image_licence": "CC-BY-SA-3.0 (images excluded from this fixture)",
+      "redistribution": "requires separate review for the concrete derived/combined database"
+    },
+    {
+      "id": "off-data-formats-docs",
+      "url": "https://github.com/openfoodfacts/data-imports/blob/a2237a59211867646c79cb8673214d4dc12af8da/docs/data-formats.md",
+      "revision": "a2237a59211867646c79cb8673214d4dc12af8da",
+      "role": "pinned documentation examples used as reproducible fixture evidence",
+      "redistribution": "fixture only; production ingestion must use licensed OFF data source and preserve required attribution"
+    }
+  ],
+  "files": [
+    {
+      "path": "products.csv",
+      "records": 2,
+      "sha256": "a1ba2db71334dcc4d6a3861953b8d4a340f560dce876aaf32c621bc78b6dd761"
+    },
+    {
+      "path": "eval-cases.csv",
+      "records": 11,
+      "sha256": "46cc17dc12327e0c7e19a56f4f10f076600ec9dd88b35384e6354f166a358eb1"
+    }
+  ],
+  "validation": {
+    "gtin_lengths": [8, 12, 13, 14],
+    "check_digit": "GS1 modulo-10",
+    "duplicate_gtin": "error",
+    "weak_text_match": "abstain",
+    "unknown_product": "keep generic shopping item"
+  },
+  "update_strategy": {
+    "mode": "pinned export/delta source; no uncontrolled API crawl",
+    "stages": ["staging", "validate", "preview_diff", "atomic_activate"],
+    "tombstones": "source deletions or invalidations create reference tombstones; never delete private shopping history",
+    "rollback": "reactivate previous validated package version",
+    "uninstall": "disable/remove public reference package only"
+  },
+  "licence_review_required_before_production_distribution": true,
+  "issues": [783, 785, 788]
+}
