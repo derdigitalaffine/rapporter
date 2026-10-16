@@ -42,7 +42,7 @@ class CalDavConnectionSerializer(serializers.ModelSerializer):
         read_only_fields = ["last_discovered_at", "last_error_code", "created_at", "updated_at"]
 
     def get_calendar_selected(self, instance):
-        return bool(instance.calendar_href)
+        return bool(instance.calendar_href_encrypted)
 
     def _family_membership(self, family):
         return Membership.objects.filter(
@@ -117,7 +117,7 @@ class CalDavConnectionSerializer(serializers.ModelSerializer):
         if encrypted is not None:
             validated_data["credentials_encrypted"] = encrypted
             validated_data["last_error_code"] = ""
-            validated_data["calendar_href"] = ""
+            validated_data["calendar_href_encrypted"] = ""
         return super().update(instance, validated_data)
 
 
@@ -193,7 +193,7 @@ class CalDavConnectionViewSet(viewsets.ModelViewSet):
         connection.calendar_href = selected["href"]
         connection.last_discovered_at = timezone.now()
         connection.last_error_code = ""
-        connection.save(update_fields=["calendar_href", "last_discovered_at", "last_error_code", "updated_at"])
+        connection.save(update_fields=["calendar_href_encrypted", "last_discovered_at", "last_error_code", "updated_at"])
         return Response({
             "id": str(connection.id),
             "calendar_selected": True,
