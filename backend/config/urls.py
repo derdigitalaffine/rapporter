@@ -40,12 +40,14 @@ from family.sync_views import sync
 
 from family.calendar_subscription_views import subscriptions, subscription_detail
 from family.calendar_subscription_dav import feed, dav, well_known
+from family.calendar_subscription_member_feed import member_feed
 
 urlpatterns = [
     path(".well-known/caldav", well_known),
     path("caldav/", dav),
     path("caldav/<path:path>", dav),
     path("calendar-feed/<str:token>/family.ics", feed),
+    path("calendar-feed/<str:token>/member/<uuid:member_id>.ics", member_feed),
     path("api/calendar-subscriptions/<uuid:family_id>/", subscriptions),
     path("api/calendar-subscriptions/<uuid:family_id>/<uuid:subscription_id>/", subscription_detail),
     path("api/calendar-subscriptions/<uuid:family_id>/<uuid:subscription_id>/<str:operation>/", subscription_detail),
@@ -59,7 +61,7 @@ urlpatterns = [
     path("api/auth/session/", session_view, name="auth_session"),
     path("api/auth/sessions/", session_list, name="auth_session_list"),
     path("api/auth/sessions/<uuid:sid>/", session_detail, name="auth_session_detail"),
-    path("api/auth/sessions/revoke-others/", revoke_other_sessions, name="auth_session_revoke_others"),
+    path("api/auth/sessions/revoke-others/", revoke_other_sessions, name="auth_sessions_revoke_others"),
     path("api/auth/reauth/password/", reauthenticate_password, name="auth_reauth_password"),
     path("api/auth/email/", include("auth_identity.urls")),
     path("api/auth/passkeys/", include("auth_passkeys.urls")),
@@ -71,11 +73,11 @@ urlpatterns = [
     path("api/superadmin/auth/reauth/password/", superadmin_reauthenticate_password, name="superadmin_auth_reauth_password"),
     path("api/superadmin/auth/reauth/passkey/options/", superadmin_passkey_reauthentication_options, name="superadmin_auth_reauth_passkey_options"),
     path("api/superadmin/auth/reauth/passkey/verify/", superadmin_passkey_reauthentication_verify, name="superadmin_auth_reauth_passkey_verify"),
-    path("api/superadmin/auth/passkeys/", superadmin_passkeys, name="superadmin_auth_passkeys"),
+    path("api/superadmin/auth/passkeys/", superadmin_passkeys, name="superadmin_passkeys"),
     path("api/superadmin/auth/passkeys/register/options/", superadmin_passkey_registration_options, name="superadmin_auth_passkey_register_options"),
     path("api/superadmin/auth/passkeys/register/verify/", superadmin_passkey_registration_verify, name="superadmin_auth_passkey_register_verify"),
     path("api/superadmin/auth/passkeys/<uuid:credential_id>/", superadmin_passkey_detail, name="superadmin_auth_passkey_detail"),
-    path("api/superadmin/auth/password/", superadmin_password_change, name="superadmin_auth_password_change"),
+    path("api/superadmin/auth/password/", superadmin_password_change, name="superadmin_password_change"),
     path("api/superadmin/analytics/overview/", superadmin_analytics_overview, name="superadmin_analytics_overview"),
     path("api/superadmin/analytics/matomo/status/", superadmin_matomo_status, name="superadmin_matomo_status"),
     path("api/superadmin/analytics/matomo/report/", superadmin_matomo_report, name="superadmin_matomo_report"),
