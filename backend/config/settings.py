@@ -12,7 +12,7 @@ BASE_DIR=Path(__file__).resolve().parent.parent
 SECRET_KEY=os.getenv("DJANGO_SECRET_KEY","dev-only-change-me");DEBUG=env_bool("DJANGO_DEBUG",False);ALLOWED_HOSTS=[h.strip() for h in os.getenv("DJANGO_ALLOWED_HOSTS","localhost,127.0.0.1").split(",") if h.strip()];CSRF_TRUSTED_ORIGINS=[u.strip() for u in os.getenv("CSRF_TRUSTED_ORIGINS","").split(",") if u.strip()]
 INSTALLED_APPS=["django.contrib.admin","django.contrib.auth","django.contrib.contenttypes","django.contrib.sessions","django.contrib.messages","django.contrib.staticfiles","django.contrib.postgres","corsheaders","rest_framework","auth_abuse.apps.AuthAbuseConfig","auth_identity.apps.AuthIdentityConfig","auth_sessions.apps.AuthSessionsConfig","auth_passkeys.apps.AuthPasskeysConfig","entitlements.apps.EntitlementsConfig","telemetry.apps.TelemetryConfig","family","family_statistics.apps.FamilyStatisticsConfig","vehicles.apps.VehiclesConfig","expenses","baby.apps.BabyConfig","pets.apps.PetsConfig","documents.apps.DocumentsConfig","contracts.apps.ContractsConfig","correspondence.apps.CorrespondenceConfig","decisions.apps.DecisionsConfig","wishlists.apps.WishlistsConfig","notifications.apps.NotificationsConfig","games.apps.GamesConfig","messenger.apps.MessengerConfig","mailing.apps.MailingConfig"]
 MIDDLEWARE=["family.calendar_subscription_privacy.CalendarSubscriptionPrivacyMiddleware","django.middleware.security.SecurityMiddleware","whitenoise.middleware.WhiteNoiseMiddleware","corsheaders.middleware.CorsMiddleware","django.contrib.sessions.middleware.SessionMiddleware","django.middleware.common.CommonMiddleware","django.middleware.csrf.CsrfViewMiddleware","django.contrib.auth.middleware.AuthenticationMiddleware","family.request_context.ActorContextMiddleware","baby.middleware.PrivateBabyNoStoreMiddleware","pets.middleware.PrivatePetNoStoreMiddleware","vehicles.middleware.VehiclesNoStoreMiddleware","messenger.middleware.MessengerNoStoreMiddleware","django.contrib.messages.middleware.MessageMiddleware","django.middleware.clickjacking.XFrameOptionsMiddleware"]
-ROOT_URLCONF="config.urls";TEMPLATES=[{"BACKEND":"django.template.backends.django.DjangoTemplates","DIRS":[],"APP_DIRS":True,"OPTIONS":{"context_processors":["django.template.context_processors.request","django.contrib.auth.context_processors.auth","django.contrib.messages.context_processors.messages"]}}];WSGI_APPLICATION="config.wsgi.application"
+ROOT_URLCONF="config.urls";TEMPLATES=[{"BACKEND":"django.template.backends.django.DjangoTemplates","DIRS":[],"APP_DIRS":True,"OPTIONS":{"context_processors":["django.template.context_processors.request","django.contrib.auth.context_processors.auth","django.contrib.messages.context_processors.auth"]}}];WSGI_APPLICATION="config.wsgi.application"
 DATABASES={"default":{"ENGINE":"django.db.backends.postgresql","NAME":os.getenv("POSTGRES_DB","famuhle"),"USER":os.getenv("POSTGRES_USER","famuhle"),"PASSWORD":os.getenv("POSTGRES_PASSWORD","famuhle"),"HOST":os.getenv("POSTGRES_HOST","db"),"PORT":os.getenv("POSTGRES_PORT","5432")}}
 AUTH_PASSWORD_VALIDATORS=[{"NAME":"django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},{"NAME":"django.contrib.auth.password_validation.MinimumLengthValidator"},{"NAME":"django.contrib.auth.password_validation.CommonPasswordValidator"},{"NAME":"django.contrib.auth.password_validation.NumericPasswordValidator"}]
 LANGUAGE_CODE="de";LANGUAGES=[("de","Deutsch"),("en","English")];TIME_ZONE=os.getenv("TIME_ZONE","Europe/Berlin");USE_I18N=True;USE_TZ=True
@@ -55,6 +55,15 @@ MATOMO_API_TIMEOUT=float(os.getenv("MATOMO_API_TIMEOUT","8") or "8")
 MATOMO_TRACKING_ENABLED=env_bool("MATOMO_TRACKING_ENABLED",False)
 MATOMO_TRACKING_APP_ORIGIN=(os.getenv("MATOMO_TRACKING_APP_ORIGIN","").strip().rstrip("/") or APP_URL)
 MATOMO_TRACKING_TIMEOUT=float(os.getenv("MATOMO_TRACKING_TIMEOUT","4") or "4")
+
+# Shopping store location lookup stays server-side. The public Nominatim default is
+# only called by explicit search/GPS actions; typing continues to use saved stores.
+NOMINATIM_BASE_URL=os.getenv("NOMINATIM_BASE_URL","https://nominatim.openstreetmap.org").strip().rstrip("/")
+NOMINATIM_RATE_LIMIT_ENABLED=env_bool("NOMINATIM_RATE_LIMIT_ENABLED",True)
+SHOPPING_STORE_AUTOCOMPLETE_ENABLED=env_bool("SHOPPING_STORE_AUTOCOMPLETE_ENABLED",True)
+NOMINATIM_TIMEOUT=float(os.getenv("NOMINATIM_TIMEOUT","5") or "5")
+NOMINATIM_USER_AGENT=os.getenv("NOMINATIM_USER_AGENT","FamilyOS/1.0 shopping-store lookup").strip()
+NOMINATIM_CACHE_SECONDS=int(os.getenv("NOMINATIM_CACHE_SECONDS","900") or "900")
 
 # Public OSM raster tiles by default; optionally use a same-origin tile service.
 VEHICLES_OSM_TILE_URL=os.getenv("VEHICLES_OSM_TILE_URL", "https://tile.openstreetmap.org/{z}/{x}/{y}.png").strip()
