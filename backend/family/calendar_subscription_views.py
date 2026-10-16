@@ -114,13 +114,14 @@ def subscription_detail(request, family_id, subscription_id, operation=''):
         accounts = []
         for member in members:
             label = member_label(member)
+            feed_url = credentials['subscription_url'] if len(members) == 1 else f'{base}/calendar-feed/{token}/member/{member.pk}.ics'
             accounts.append({
                 'PayloadType': 'com.apple.subscribedcalendar.account', 'PayloadVersion': 1,
                 'PayloadIdentifier': f'org.familyos.calendar.{grant.pk}.member.{member.pk}',
                 'PayloadUUID': str(uuid.uuid5(grant.pk, f'member:{member.pk}')).upper(),
                 'PayloadDisplayName': f'FamilyOS · {label}',
                 'SubCalAccountDescription': f'FamilyOS · {family.name} · {label}',
-                'SubCalAccountHostName': f'{base}/calendar-feed/{token}/member/{member.pk}.ics',
+                'SubCalAccountHostName': feed_url,
             })
         profile = {
             'PayloadType': 'Configuration', 'PayloadVersion': 1,
