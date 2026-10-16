@@ -12,7 +12,7 @@ from rest_framework.response import Response
 from .caldav_discovery import CalDavDiscoveryError, discover_calendars
 from .caldav_models import CalDavConnection
 from .caldav_secrets import decrypt_credentials, encrypt_credentials
-from .caldav_sync import sync_connection
+from .caldav_sync import ensure_source, sync_connection
 from .models import Family, IntegrationSource, Membership
 
 
@@ -213,6 +213,8 @@ class CalDavConnectionViewSet(viewsets.ModelViewSet):
         connection.last_discovered_at = timezone.now()
         connection.last_error_code = ""
         connection.save(update_fields=["calendar_href_encrypted", "last_discovered_at", "last_error_code", "updated_at"])
+        if connection.scope == CalDavConnection.Scope.FAMILY:
+            ensure_source(connection)
         return Response({
             "id": str(connection.id),
             "calendar_selected": True,
