@@ -29,6 +29,15 @@ test('canonical list creation restores global trigger after palette unmount',asy
   });
   const update=sheet.getByTestId('pwa-update-banner');
   await expect(update).toHaveAttribute('data-in-modal','true');
+  for(const width of [320,390,1024,1440]){
+    await page.setViewportSize({width,height:viewport.height});
+    const copy=await update.locator('.pwa-update-copy').boundingBox();
+    const actions=await update.locator('.pwa-update-actions').boundingBox();
+    expect(copy.y+copy.height).toBeLessThanOrEqual(actions.y);
+    for(const button of await update.getByRole('button').all())expect(await button.evaluate(element=>element.scrollWidth<=element.clientWidth+1)).toBe(true);
+    await testInfo.attach(`modal-update-${width}`,{body:await page.screenshot({fullPage:true}),contentType:'image/png'});
+  }
+  await page.setViewportSize(viewport);
   await update.getByRole('button',{name:'Später',exact:true}).click();
   await expect(sheet.getByRole('textbox',{name:/Name/})).toHaveValue('Sommerferienplanung mit sehr langem Namen');
   expect(await page.evaluate(()=>window.__ownedSheetUpdateRequests)).toBe(0);
