@@ -1,0 +1,158 @@
+{
+  "schema_version": 1,
+  "dataset_id": "shopping.de.food-lexicon.sample",
+  "version": "2026-10-16.1",
+  "locale": "de-DE",
+  "entries": [
+    {
+      "id": "food.milk.generic",
+      "label_de": "Milch",
+      "parent_id": "food.dairy",
+      "shopping_department": "dairy",
+      "aliases": ["Milch"],
+      "negative_terms": ["Milchreis", "Milchschnitte"],
+      "ambiguity": "Generic milk type; do not infer chilled vs shelf-stable aisle.",
+      "provenance": "project-authored"
+    },
+    {
+      "id": "food.milk.uh",
+      "label_de": "H-Milch",
+      "parent_id": "food.milk.generic",
+      "shopping_department": "dairy_shelf_stable",
+      "aliases": ["H-Milch", "haltbare Milch", "UHT Milch"],
+      "negative_terms": [],
+      "ambiguity": "",
+      "provenance": "project-authored"
+    },
+    {
+      "id": "food.milk.fresh",
+      "label_de": "Frischmilch",
+      "parent_id": "food.milk.generic",
+      "shopping_department": "dairy_chilled",
+      "aliases": ["Frischmilch", "Kühlmilch"],
+      "negative_terms": [],
+      "ambiguity": "",
+      "provenance": "project-authored"
+    },
+    {
+      "id": "food.plant-drink",
+      "label_de": "Pflanzendrink",
+      "parent_id": "food.beverage.plant",
+      "shopping_department": "plant_drinks",
+      "aliases": ["Haferdrink", "Hafermilch", "Sojadrink", "Mandelmilch"],
+      "negative_terms": [],
+      "ambiguity": "Colloquial *milch names are aliases, not dairy classification.",
+      "provenance": "project-authored"
+    },
+    {
+      "id": "food.tomato.fresh",
+      "label_de": "frische Tomaten",
+      "parent_id": "food.produce.tomato",
+      "shopping_department": "produce",
+      "aliases": ["Tomaten", "frische Tomaten"],
+      "negative_terms": ["Tomatensaft", "Tomatenmark"],
+      "ambiguity": "",
+      "provenance": "project-authored"
+    },
+    {
+      "id": "food.tomato.canned",
+      "label_de": "Tomatenkonserve",
+      "parent_id": "food.pantry.tomato",
+      "shopping_department": "canned_goods",
+      "aliases": ["Dosentomaten", "gehackte Tomaten", "Tomaten in der Dose"],
+      "negative_terms": [],
+      "ambiguity": "",
+      "provenance": "project-authored"
+    },
+    {
+      "id": "food.herbs.fresh",
+      "label_de": "frische Kräuter",
+      "parent_id": "food.herbs",
+      "shopping_department": "produce",
+      "aliases": ["frische Kräuter", "frische Petersilie", "frischer Basilikum"],
+      "negative_terms": [],
+      "ambiguity": "Bare herb names may be fresh, dried or frozen and should abstain.",
+      "provenance": "project-authored"
+    },
+    {
+      "id": "food.herbs.frozen",
+      "label_de": "TK-Kräuter",
+      "parent_id": "food.herbs",
+      "shopping_department": "frozen",
+      "aliases": ["TK-Kräuter", "tiefgekühlte Kräuter"],
+      "negative_terms": [],
+      "ambiguity": "",
+      "provenance": "project-authored"
+    },
+    {
+      "id": "drink.water",
+      "label_de": "Wasser",
+      "parent_id": "drink",
+      "shopping_department": "beverages",
+      "aliases": ["Wasser", "Mineralwasser"],
+      "negative_terms": ["Wassereis"],
+      "ambiguity": "",
+      "provenance": "project-authored"
+    },
+    {
+      "id": "household.dishwasher-tabs",
+      "label_de": "Spülmaschinentabs",
+      "parent_id": "household.cleaning",
+      "shopping_department": "household",
+      "aliases": ["Spülmaschinentabs", "Geschirrspültabs"],
+      "negative_terms": [],
+      "ambiguity": "",
+      "provenance": "project-authored"
+    },
+    {
+      "id": "pet.cat-food",
+      "label_de": "Katzenfutter",
+      "parent_id": "pet.food",
+      "shopping_department": "pet",
+      "aliases": ["Katzenfutter"],
+      "negative_terms": [],
+      "ambiguity": "",
+      "provenance": "project-authored"
+    },
+    {
+      "id": "food.bread",
+      "label_de": "Brot",
+      "parent_id": "food.bakery",
+      "shopping_department": "bakery",
+      "aliases": ["Brot", "Mischbrot"],
+      "negative_terms": ["Brotaufstrich"],
+      "ambiguity": "",
+      "provenance": "project-authored"
+    },
+    {
+      "id": "food.eggs",
+      "label_de": "Eier",
+      "parent_id": "food",
+      "shopping_department": "eggs",
+      "aliases": ["Eier", "Hühnereier"],
+      "negative_terms": ["Eierlikör"],
+      "ambiguity": "",
+      "provenance": "project-authored"
+    },
+    {
+      "id": "food.apple",
+      "label_de": "Apfel",
+      "parent_id": "food.produce.fruit",
+      "shopping_department": "produce",
+      "aliases": ["Apfel", "Äpfel"],
+      "negative_terms": ["Apfelsaft", "Apfelmus"],
+      "ambiguity": "",
+      "provenance": "project-authored"
+    },
+    {
+      "id": "drink.apple-juice",
+      "label_de": "Apfelsaft",
+      "parent_id": "drink.juice",
+      "shopping_department": "beverages",
+      "aliases": ["Apfelsaft"],
+      "negative_terms": [],
+      "ambiguity": "",
+      "provenance": "project-authored"
+    }
+  ]
+}
