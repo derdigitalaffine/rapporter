@@ -239,16 +239,34 @@ class ExpenseShareSerializer(serializers.ModelSerializer):
 
 class ReceiptExtractionSerializer(serializers.ModelSerializer):
     quality_warnings = serializers.SerializerMethodField()
+    structured_data = serializers.SerializerMethodField()
 
     def get_quality_warnings(self, obj):
         warnings = (obj.structured_data or {}).get("quality_warnings", [])
         return [value for value in warnings if value in {"low_resolution", "dark"}]
 
+    def get_structured_data(self, obj):
+        data = obj.structured_data or {}
+        if data.get("schema_version") != 2:
+            return {}
+        public_keys = (
+            "schema_version",
+            "extractor_version",
+            "ocr_confidence",
+            "semantic_confidence",
+            "fields",
+            "total_candidates",
+            "line_items",
+            "reconciliation",
+            "review",
+        )
+        return {key: data[key] for key in public_keys if key in data}
+
     class Meta:
         model = ReceiptExtraction
         fields = [
             "id", "status", "merchant", "date", "total", "subtotal", "tax", "currency",
-            "field_confidences", "quality_warnings", "parser_version", "processed_at",
+            "field_confidences", "quality_warnings", "structured_data", "parser_version", "processed_at",
         ]
 
 
