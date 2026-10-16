@@ -19,7 +19,7 @@ class Migration(migrations.Migration):
         ),
         migrations.AddField(
             model_name='caldavconnection',
-            name='calendar_href',
+            name='calendar_href_encrypted',
             field=models.TextField(blank=True, editable=False),
         ),
         migrations.AddField(
