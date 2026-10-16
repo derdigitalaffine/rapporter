@@ -4,6 +4,8 @@ import './pwa-update-i18n';
 import './pwa-update.css';
 import {Icon} from './icons';
 import {DIRTY_STATE_EVENT,hasDirtyState} from './dirty-state';
+import {getActiveModalElement,MODAL_CHANGED_EVENT} from './AccessibilityManager';
+import OverlayPortal from './OverlayPortal';
 
 export const PWA_UPDATE_READY_EVENT='famuhle:pwa-update-ready';
 
@@ -13,6 +15,7 @@ export default function PwaUpdateManager(){
   const {t}=useTranslation();
   const [ready,setReady]=useState(false);
   const [dirty,setDirty]=useState(()=>hasDirtyState());
+  const [modal,setModal]=useState(getActiveModalElement);
   const waitingRef=useRef(null);
   const testActivateRef=useRef(null);
   const activationRequested=useRef(false);
@@ -20,6 +23,11 @@ export default function PwaUpdateManager(){
   const reloading=useRef(false);
   const postponed=useRef(false);
   const changedWithoutReload=useRef(false);
+  useEffect(()=>{
+    const changed=event=>setModal(event.detail.dialog);
+    window.addEventListener(MODAL_CHANGED_EVENT,changed);
+    return()=>window.removeEventListener(MODAL_CHANGED_EVENT,changed);
+  },[]);
 
   useEffect(()=>{
     if(!('serviceWorker' in navigator))return;
@@ -99,9 +107,9 @@ export default function PwaUpdateManager(){
   function later(){postponed.current=true;setReady(false)}
 
   if(!ready)return null;
-  return <aside className="pwa-update-banner" role="status" aria-live="polite" data-testid="pwa-update-banner">
+  return <OverlayPortal container={modal?.isConnected?modal:null}><aside className="pwa-update-banner" data-in-modal={modal?.isConnected?'true':undefined} role="status" aria-live="polite" data-testid="pwa-update-banner">
     <span className="pwa-update-icon" aria-hidden="true"><Icon name="refresh"/></span>
     <div className="pwa-update-copy"><strong>{t('pwaUpdate.title')}</strong><span>{dirty?t('pwaUpdate.dirtyMessage'):t('pwaUpdate.message')}</span></div>
     <div className="pwa-update-actions"><button className="text-button" type="button" onClick={later}>{t('pwaUpdate.later')}</button><button className="primary compact" type="button" onClick={updateNow}>{t('pwaUpdate.now')}</button></div>
-  </aside>;
+  </aside></OverlayPortal>;
 }

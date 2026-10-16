@@ -1,0 +1,50 @@
+import {test,expect} from '@playwright/test';
+import AxeBuilder from '@axe-core/playwright';
+import {installApiMocks} from './mock-api';
+
+test('canonical list creation restores global trigger after palette unmount',async({page},testInfo)=>{
+  await installApiMocks(page);
+  await page.goto('/');
+  const trigger=page.locator('.global-create-fab');
+  await expect(trigger).toBeVisible();
+  await trigger.click();
+  const palette=page.getByRole('dialog',{name:'Neu hinzufügen'});
+  await palette.getByRole('button',{name:'Alle Aktionen'}).click();
+  await palette.getByRole('button',{name:'Aufgabenliste',exact:true}).click();
+  const sheet=page.getByRole('dialog').filter({has:page.locator('#list-name')});
+  await expect(sheet).toBeVisible();
+  await expect(sheet).toHaveAttribute('data-family-overlay-owner','base-ui');
+  await expect(sheet).toHaveAttribute('aria-modal','true');
+  await sheet.getByRole('textbox',{name:/Name/}).fill('Sommerferienplanung mit sehr langem Namen');
+  const save=sheet.getByRole('button',{name:'Speichern',exact:true});
+  await expect(save).toBeEnabled();
+  await save.scrollIntoViewIfNeeded();
+  const box=await save.boundingBox(),viewport=page.viewportSize();
+  expect(box.y).toBeGreaterThanOrEqual(0);expect(box.y+box.height).toBeLessThanOrEqual(viewport.height);
+  expect((await new AxeBuilder({page}).withTags(['wcag2a','wcag2aa','wcag21aa']).analyze()).violations).toEqual([]);
+  await testInfo.attach('canonical-list-sheet',{body:await page.screenshot({fullPage:true}),contentType:'image/png'});
+  await page.evaluate(()=>{
+    window.__ownedSheetUpdateRequests=0;
+    window.dispatchEvent(new CustomEvent('famuhle:pwa-update-ready',{detail:{activate:()=>{window.__ownedSheetUpdateRequests+=1;}}}));
+  });
+  const update=sheet.getByTestId('pwa-update-banner');
+  await expect(update).toHaveAttribute('data-in-modal','true');
+  for(const width of [320,390,1024,1440]){
+    await page.setViewportSize({width,height:viewport.height});
+    const copy=await update.locator('.pwa-update-copy').boundingBox();
+    const actions=await update.locator('.pwa-update-actions').boundingBox();
+    expect(copy.y+copy.height).toBeLessThanOrEqual(actions.y);
+    for(const button of await update.getByRole('button').all())expect(await button.evaluate(element=>element.scrollWidth<=element.clientWidth+1)).toBe(true);
+    await testInfo.attach(`modal-update-${width}`,{body:await page.screenshot({fullPage:true}),contentType:'image/png'});
+  }
+  await page.setViewportSize(viewport);
+  await update.getByRole('button',{name:'Später',exact:true}).click();
+  await expect(sheet.getByRole('textbox',{name:/Name/})).toHaveValue('Sommerferienplanung mit sehr langem Namen');
+  expect(await page.evaluate(()=>window.__ownedSheetUpdateRequests)).toBe(0);
+  await page.evaluate(()=>window.dispatchEvent(new CustomEvent('famuhle:pwa-update-ready',{detail:{activate:()=>{window.__ownedSheetUpdateRequests+=1;}}})));
+  await update.getByRole('button',{name:'Jetzt aktualisieren',exact:true}).click();
+  expect(await page.evaluate(()=>window.__ownedSheetUpdateRequests)).toBe(1);
+  await sheet.getByRole('button',{name:'Abbrechen',exact:true}).click();
+  await expect(sheet).toHaveCount(0);
+  await expect(trigger).toBeFocused();
+});

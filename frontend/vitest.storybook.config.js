@@ -10,7 +10,7 @@ export default defineConfig({
     plugins: [storybookTest({configDir: path.join(dirname, '.storybook')})],
     test: {
       name: 'storybook',
-      browser: {enabled: true, headless: true, provider: playwright(), instances: [{browser: 'chromium'}]},
+      browser: {enabled: true, headless: true, screenshotDirectory: 'workbench-results/vitest', provider: playwright(), instances: [{browser: 'chromium'}]},
     },
   }]},
 });

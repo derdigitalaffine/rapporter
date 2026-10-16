@@ -1,7 +1,8 @@
 import {useEffect,useMemo,useRef,useState} from 'react';
 import {api,AUTH_CHANGED_EVENT} from './api';
 import FileDropZone from './FileDropZone';
-import {EntityPicker,FieldGroup,FormActions,FormField,FormShell} from './form-primitives';
+import {FieldGroup,FormActions,FormField,FormShell} from './form-primitives';
+import EntityPicker from './ui/FamilyCombobox';
 import {Icon} from './icons';
 import {pinIconName,pinTypeLabel} from './pinboard-ui';
 import {pinComposerCopy} from './pin-composer-copy';
@@ -184,7 +185,7 @@ export default function PinComposer({
    {preferences.enabled&&preferences.types.length>0&&<FieldGroup legend={w.recent}><div className="pin-recent-types">{preferences.types.map(key=><button type="button" key={key} disabled={busy} onClick={()=>chooseRecentType(key)}><Icon name={ADAPTERS[key].icon}/><span>{w[ADAPTERS[key].labelKey]}</span></button>)}</div></FieldGroup>}
    <FieldGroup legend={w.groups}><div className="pin-source-groups" role="group" aria-label={w.groups}>{GROUPS.map(row=><button type="button" key={row.key} className={group===row.key?'active':''} aria-pressed={group===row.key} onClick={()=>chooseGroup(row.key)}>{w[row.key]}</button>)}</div></FieldGroup>
    {currentGroup.adapters.length>1&&<div className="pin-source-types" role="group" aria-label={w[currentGroup.key]}>{currentGroup.adapters.map(key=><button type="button" key={key} className={activeAdapter===key?'active':''} aria-pressed={activeAdapter===key} onClick={()=>chooseAdapter(key)}><Icon name={ADAPTERS[key].icon}/><span>{w[ADAPTERS[key].labelKey]}</span></button>)}</div>}
-   <EntityPicker id="pin-existing-search" label={w.choose} description={w.pickerHint} items={items} selectedIds={targetId?[targetId]:[]} onChange={changeSelection} getItemLabel={itemLabel} multiple={false} placeholder={w.search} emptyMessage={pickerBusy?w.loading:w.empty} query={query} onQueryChange={changeQuery} filterLocally={false} clearQueryOnChoose={false} selectionLabel={w.selected} removeLabel={w.remove} getRemoveLabel={item=>`${w.remove}: ${item.title||item.id}`} disabled={busy}/>
+   <EntityPicker id="pin-existing-search" label={w.choose} description={w.pickerHint} items={items} selectedIds={targetId?[targetId]:[]} onChange={changeSelection} getItemLabel={itemLabel} multiple={false} placeholder={w.search} emptyMessage={w.empty} loading={pickerBusy} loadingMessage={w.loading} query={query} onQueryChange={changeQuery} filterLocally={false} clearQueryOnChoose={false} selectionLabel={w.selected} removeLabel={w.remove} getRemoveLabel={item=>`${w.remove}: ${item.title||item.id}`} disabled={busy}/>
    {selected&&<div className="pin-choice-preview" aria-live="polite"><span><Icon name={ADAPTERS[activeAdapter]?.icon||pinIconName(kind)}/></span><div><small>{w.selected}</small><strong>{selected.title}</strong>{selected.subtitle&&<span>{String(selected.subtitle)}</span>}</div></div>}
    {pickerBusy&&items.length>0&&<p role="status" className="pin-choice-loading">{w.loading}</p>}
    {pickerError&&<div role="alert" className="pin-picker-error"><span>{pickerError}</span><button type="button" className="secondary" onClick={retryPicker}>{w.retry}</button></div>}

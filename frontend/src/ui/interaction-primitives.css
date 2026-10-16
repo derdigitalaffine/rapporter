@@ -1,0 +1,11 @@
+/* Layout adapters only: production tokens and component classes remain canonical. */
+.family-dialog-viewport{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;box-sizing:border-box}
+.family-dialog-viewport .confirm-dialog{max-height:calc(100dvh - 40px);overflow-y:auto;overflow-wrap:anywhere}
+.sheet-backdrop.family-sheet-viewport{background:none;backdrop-filter:none;padding-bottom:var(--drawer-keyboard-inset,0px)}
+.family-sheet{max-height:min(calc(100dvh - var(--drawer-keyboard-inset,0px) - 32px),760px)}
+.family-sheet .form-actions{position:sticky;bottom:0;background:var(--surface);padding-block:8px;z-index:1}
+.entity-picker__option[data-highlighted]{outline:2px solid var(--color-brand);outline-offset:-2px}
+.toast[data-limited]{display:none}
+.toast-message{min-width:0;overflow-wrap:anywhere}
+.toast-close{min-width:44px;min-height:44px}
+@media(max-width:480px){.toast{grid-template-columns:32px minmax(0,1fr) auto}.toast-action{grid-column:2}.toast-close{grid-column:3;grid-row:1}}

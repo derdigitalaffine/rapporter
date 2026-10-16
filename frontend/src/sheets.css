@@ -42,11 +42,11 @@
    the OS keyboard. Only the sheet's usable flex area follows VisualViewport.
    This keeps dimming continuous while ensuring controls stay above the
    keyboard instead of creating an opaque band that rises through the app. */
-html[data-app-keyboard] .sheet-backdrop{
+html[data-app-keyboard] .sheet-backdrop:not([data-family-overlay-owner]){
   padding-top:max(8px,var(--app-viewport-top,0px));
   padding-bottom:var(--app-keyboard-inset,0px);
 }
-html[data-app-keyboard] .quick-sheet{
+html[data-app-keyboard] .quick-sheet:not([data-family-overlay-owner]){
   max-height:min(calc(var(--app-viewport-height,100dvh) - 8px),760px);
   padding-bottom:16px;
   scroll-padding-bottom:32px;

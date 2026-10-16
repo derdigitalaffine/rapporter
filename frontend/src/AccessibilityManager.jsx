@@ -4,6 +4,9 @@ const DIALOG_SELECTOR='[role="dialog"][aria-modal="true"],[role="alertdialog"][a
 const MODAL_ROOT_SELECTOR='[data-app-modal-root],.sheet-backdrop,.feedback-dialog-backdrop';
 const FOCUSABLE_SELECTOR='button:not([disabled]),a[href],input:not([disabled]),select:not([disabled]),textarea:not([disabled]),summary,[tabindex]:not([tabindex="-1"])';
 let titleId=0;
+export const MODAL_CHANGED_EVENT='familyos:modal-changed';
+let activeModalElement=null;
+export const getActiveModalElement=()=>activeModalElement;
 
 function visible(element){
   if(!(element instanceof HTMLElement))return false;
@@ -15,8 +18,10 @@ function modalRoot(dialog){
   return dialog?.closest(MODAL_ROOT_SELECTOR)||dialog||null;
 }
 
-function topModal(){
-  const dialog=[...document.querySelectorAll(DIALOG_SELECTOR)].filter(visible).at(-1)||null;
+function topModal({legacyOnly=false}={}){
+  // Independent React portals need not follow visual stacking order in the DOM.
+  const layer=dialog=>Number.parseInt(getComputedStyle(modalRoot(dialog)).zIndex,10)||0;
+  const dialog=[...document.querySelectorAll(DIALOG_SELECTOR)].filter(visible).filter(dialog=>!legacyOnly||!dialog.hasAttribute('data-family-overlay-owner')).sort((left,right)=>layer(left)-layer(right)).at(-1)||null;
   return dialog?{dialog,root:modalRoot(dialog)}:null;
 }
 
@@ -75,20 +80,25 @@ export default function AccessibilityManager(){
     let active=null;
     let restoreBackground=()=>{};
     let restoreFocus=null;
+    let legacySession=false;
     let lastOutsideFocus=document.activeElement instanceof HTMLElement?document.activeElement:null;
     let focusTimer=0;
     let refreshFrame=0;
 
     function activate(next){
-      if(sameModal(next,active))return;
+      if(sameModal(next,active)&&!(legacySession&&!next))return;
       restoreBackground();
+      restoreBackground=()=>{};
       window.clearTimeout(focusTimer);
       root.toggleAttribute('data-app-modal',Boolean(next));
+      activeModalElement=next?.dialog||null;
+      window.dispatchEvent(new CustomEvent(MODAL_CHANGED_EVENT,{detail:{dialog:activeModalElement}}));
       if(!next){
         active=null;
         const target=restoreFocus;
         restoreFocus=null;
-        if(target instanceof HTMLElement&&target.isConnected)target.focus({preventScroll:true});
+        if(legacySession&&target instanceof HTMLElement&&target.isConnected)target.focus({preventScroll:true});
+        legacySession=false;
         return;
       }
       const dialog=next.dialog;
@@ -97,6 +107,8 @@ export default function AccessibilityManager(){
         restoreFocus=lastOutsideFocus instanceof HTMLElement&&lastOutsideFocus.isConnected?lastOutsideFocus:(current instanceof HTMLElement&&!dialog.contains(current)?current:null);
       }
       active=next;
+      if(dialog.hasAttribute('data-family-overlay-owner'))return;
+      legacySession=true;
       labelDialog(dialog);
       if(!dialog.hasAttribute('tabindex'))dialog.setAttribute('tabindex','-1');
       // The portal/backdrop is the modal boundary. Inerting outside only the
@@ -115,6 +127,7 @@ export default function AccessibilityManager(){
     }
 
     function onKeyDown(event){
+      if(topModal()?.dialog.hasAttribute('data-family-overlay-owner'))return;
       const dialog=active?.dialog;
       if(!dialog||!dialog.isConnected)return;
       if(event.key==='Escape'){
@@ -131,18 +144,31 @@ export default function AccessibilityManager(){
     }
 
     const observer=new MutationObserver(refresh);
+    function yieldOwnership(event){
+      // A fast legacy -> managed handoff can precede the observer's first frame.
+      // Capture its return target without starting a second modal/focus manager.
+      if(topModal({legacyOnly:true})){
+        legacySession=true;
+        if(!restoreFocus?.isConnected)restoreFocus=lastOutsideFocus;
+      }
+      if(event.detail)event.detail.returnFocus=restoreFocus||lastOutsideFocus;
+      restoreBackground();restoreBackground=()=>{};window.clearTimeout(focusTimer);
+    }
+    document.addEventListener('familyos:managed-overlay-mount',yieldOwnership);
     observer.observe(document.body,{subtree:true,childList:true,attributes:true,attributeFilter:['aria-modal','hidden']});
     document.addEventListener('focusin',onFocusIn,true);
     document.addEventListener('keydown',onKeyDown,true);
     activate(topModal());
     return()=>{
       observer.disconnect();
+      document.removeEventListener('familyos:managed-overlay-mount',yieldOwnership);
       cancelAnimationFrame(refreshFrame);
       document.removeEventListener('focusin',onFocusIn,true);
       document.removeEventListener('keydown',onKeyDown,true);
       window.clearTimeout(focusTimer);
       restoreBackground();
       root.removeAttribute('data-app-modal');
+      activeModalElement=null;
     };
   },[]);
   return null;

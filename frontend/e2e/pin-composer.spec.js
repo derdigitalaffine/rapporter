@@ -52,9 +52,9 @@ test('server search, pagination and submission keep canonical adapter identity',
   return route.fulfill({json:{kind:'task',adapter_key:'task',page,page_size:20,has_next:!query&&page===1,results:all}});
  }});
  const form=page.locator('.pin-composer');await chooseExisting(form);
- await expect(form.getByRole('button',{name:'Erste Aufgabe',exact:true})).toBeVisible();await form.getByRole('button',{name:'Weitere laden',exact:true}).click();await expect(form.getByRole('button',{name:'Zweite Aufgabe',exact:true})).toBeVisible();
- const search=form.getByRole('searchbox',{name:'Vorhandenen Inhalt auswählen'});await search.fill('arzt');await expect(form.getByRole('button',{name:'Treffer arzt',exact:true})).toBeVisible();
- await form.getByRole('button',{name:'Treffer arzt',exact:true}).click();await form.getByRole('button',{name:'Anpinnen',exact:true}).click();
+ await expect(form.getByRole('option',{name:'Erste Aufgabe',exact:true})).toBeVisible();await form.getByRole('button',{name:'Weitere laden',exact:true}).click();await expect(form.getByRole('option',{name:'Zweite Aufgabe',exact:true})).toBeVisible();
+ const search=form.getByRole('combobox',{name:'Vorhandenen Inhalt auswählen'});await search.fill('arzt');await expect(form.getByRole('option',{name:'Treffer arzt',exact:true})).toBeVisible();
+ await form.getByRole('option',{name:'Treffer arzt',exact:true}).click();await form.getByRole('button',{name:'Anpinnen',exact:true}).click();
  expect(state.posts.at(-1)).toMatchObject({kind:'task',adapter_key:'task',target_id:'task-search'});
  expect(state.pickerRequests.some(row=>row.key==='task'&&row.page===2)).toBeTruthy();expect(state.pickerRequests.some(row=>row.key==='task'&&row.query==='arzt')).toBeTruthy();
 });
@@ -66,9 +66,9 @@ test('late search responses and auth loss cannot restore stale private selection
   if(query==='neu')return route.fulfill({json:{kind:LEGACY[key],adapter_key:key,page,page_size:20,has_next:false,results:[{id:'new',kind:LEGACY[key],title:'Neuer Treffer'}]}});
   return route.fulfill({json:{kind:LEGACY[key],adapter_key:key,page,page_size:20,has_next:false,results:[]}});
  }});
- const form=page.locator('.pin-composer');await chooseExisting(form);const search=form.getByRole('searchbox',{name:'Vorhandenen Inhalt auswählen'});
- await search.fill('alt');await page.waitForTimeout(220);await search.fill('neu');await expect(form.getByRole('button',{name:'Neuer Treffer',exact:true})).toBeVisible();releaseOld();await page.waitForTimeout(250);await expect(form.getByText('Alter privater Treffer',{exact:true})).toHaveCount(0);
- await form.getByRole('button',{name:'Neuer Treffer',exact:true}).click();await expect(form.getByRole('button',{name:'Anpinnen',exact:true})).toBeEnabled();
+ const form=page.locator('.pin-composer');await chooseExisting(form);const search=form.getByRole('combobox',{name:'Vorhandenen Inhalt auswählen'});
+ await search.fill('alt');await page.waitForTimeout(220);await search.fill('neu');await expect(form.getByRole('option',{name:'Neuer Treffer',exact:true})).toBeVisible();releaseOld();await page.waitForTimeout(250);await expect(form.getByText('Alter privater Treffer',{exact:true})).toHaveCount(0);
+ await form.getByRole('option',{name:'Neuer Treffer',exact:true}).click();await expect(form.getByRole('button',{name:'Anpinnen',exact:true})).toBeEnabled();
  await page.evaluate(()=>window.dispatchEvent(new CustomEvent('famuhle:auth-changed',{detail:{authenticated:false}})));await expect(form).toHaveCount(0);await expect(page.getByText('Neuer Treffer',{exact:true})).toHaveCount(0);
 });
 
