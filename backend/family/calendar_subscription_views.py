@@ -45,6 +45,7 @@ def audit(request, grant, action):
 
 class SubscriptionInput(serializers.Serializer):
     name = serializers.CharField(max_length=80, trim_whitespace=True)
+    detail_level = serializers.ChoiceField(choices=CalendarSubscription.DetailLevel.choices, default=CalendarSubscription.DetailLevel.TITLE)
 
 
 @api_view(['GET', 'POST'])
@@ -64,7 +65,7 @@ def subscriptions(request, family_id):
         Family.objects.select_for_update().get(pk=family.pk)
         if CalendarSubscription.objects.filter(family=family, created_by=request.user, revoked_at__isnull=True).count() >= 10:
             raise serializers.ValidationError({'code': 'subscription_limit'})
-        grant = CalendarSubscription(family=family, created_by=request.user, name=data.validated_data['name'])
+        grant = CalendarSubscription(family=family, created_by=request.user, name=data.validated_data['name'], detail_level=data.validated_data['detail_level'])
         rotate_credentials(grant)
         audit(request, grant, 'created')
     return private(Response(reveal(grant), status=201))
@@ -85,17 +86,11 @@ def subscription_detail(request, family_id, subscription_id, operation=''):
             return private(Response(status=405))
         sensitive(request)
         if operation == 'rotate':
-            rotate_credentials(grant)
-            audit(request, grant, 'rotated')
+            rotate_credentials(grant); audit(request, grant, 'rotated')
         elif operation == 'reveal':
             audit(request, grant, 'revealed')
         if operation != 'profile':
             return private(Response(reveal(grant)))
-
-        # A FamilyOS subscription is a read-only ICS feed, not an account whose
-        # password iOS should use for CalDAV writes. Using Apple's subscribed
-        # calendar payload avoids account-validation failures and keeps optional
-        # writable CalDAV connections a separate integration concern.
         credentials = reveal(grant)
         account = {
             'PayloadType': 'com.apple.subscribedcalendar.account', 'PayloadVersion': 1,
