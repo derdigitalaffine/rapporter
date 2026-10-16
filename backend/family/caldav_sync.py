@@ -6,7 +6,7 @@ CalDavEventBinding and never enters API-visible event payloads.
 """
 import hashlib
 from datetime import date, datetime, time, timedelta, timezone as dt_timezone
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlsplit
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from django.db.models import Q
@@ -42,6 +42,20 @@ def _header(headers, name):
         if str(key).casefold() == target:
             return str(value)
     return ""
+
+
+def _origin_key(url):
+    parsed = urlsplit(str(url))
+    default_port = 443 if parsed.scheme.lower() == "https" else 80
+    return parsed.scheme.lower(), (parsed.hostname or "").lower(), parsed.port or default_port
+
+
+def _resource_href(connection, href):
+    calendar_href = connection.calendar_href
+    resource_href = urljoin(calendar_href.rstrip("/") + "/", str(href))
+    if _origin_key(resource_href) != _origin_key(calendar_href):
+        raise CalDavDiscoveryError("caldav_resource_origin_rejected")
+    return resource_href
 
 
 def calendar_query_body(start, end):
@@ -80,7 +94,7 @@ def query_resources(connection, start, end, *, requester=safe_request):
             continue
         etag = response.find(f".//{{{DAV}}}getetag")
         rows.append({
-            "href": urljoin(connection.calendar_href, href.text.strip()),
+            "href": _resource_href(connection, href.text.strip()),
             "etag": (etag.text or "").strip() if etag is not None else "",
             "data": data.text.encode("utf-8"),
         })
@@ -355,8 +369,8 @@ def _write_binding(connection, event, binding=None):
         raise CalDavDiscoveryError("caldav_recurring_write_unsupported")
     credentials = decrypt_credentials(connection.credentials_encrypted)
     uid = binding.remote_uid if binding else f"familyos-{event.pk}@familyos"
-    href = decrypt_value(binding.remote_href_encrypted) if binding else urljoin(
-        connection.calendar_href.rstrip("/") + "/", f"familyos-{event.pk}.ics"
+    href = _resource_href(connection, decrypt_value(binding.remote_href_encrypted)) if binding else _resource_href(
+        connection, f"familyos-{event.pk}.ics"
     )
     headers = {"Content-Type": "text/calendar; charset=utf-8"}
     if binding and binding.etag:
@@ -403,7 +417,7 @@ def _write_binding(connection, event, binding=None):
 def _delete_tombstone(binding):
     connection = binding.connection
     credentials = decrypt_credentials(connection.credentials_encrypted)
-    href = decrypt_value(binding.remote_href_encrypted)
+    href = _resource_href(connection, decrypt_value(binding.remote_href_encrypted))
     headers = {"If-Match": binding.etag} if binding.etag else {}
     _, status, _, _ = safe_request(
         href,
