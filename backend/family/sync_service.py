@@ -203,7 +203,10 @@ def apply_mutation(request, family, mutation):
             ProcessedMutation.objects.create(family=family, actor=request.user, mutation_id=mutation_id, fingerprint=fingerprint, result={k: v for k, v in result.items() if k != 'data'})
             return result
     except (APIException, DjangoValidationError, ValueError, TypeError, IntegrityError) as exc:
-        return {**result, 'status': 'rejected', 'code': 'validation_error',
+        status = exc.status_code if isinstance(exc, APIException) else 400
+        code = {400: 'validation_error', 401: 'authentication_required', 403: 'permission_denied',
+                404: 'not_found', 429: 'rate_limited'}.get(status, 'mutation_rejected')
+        return {**result, 'status': 'rejected', 'code': code, 'http_status': status,
                 'errors': json.loads(JSONRenderer().render(exc.detail)) if isinstance(exc, APIException) else {'detail': 'Invalid mutation.'}}
 
 

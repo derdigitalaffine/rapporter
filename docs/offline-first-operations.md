@@ -180,3 +180,23 @@ Primary references:
 - https://github.com/NginxProxyManager/nginx-proxy-manager/blob/develop/backend/templates/proxy_host.conf
 
 - https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Security-Policy/connect-src
+
+### Rejected appointments and custody (#747)
+
+Deploy backend and frontend together. Native Calendar and profile consumers use
+the existing central custody policy, including historical child Memberships with
+no BabyProfile/ManagedChildGuardian row. No schema/backfill is needed and no custody
+is inferred from Owner/Adult/parenthood alone. Existing legacy grants stay intact.
+
+Sync mutation rejections carry a semantic code, HTTP status and the validated
+server detail; old stored validation_error responses remain readable. Whole-request
+HTTP failures retain a bounded error detail in the existing private syncState store
+until successful synchronization. Permission403 is not automatically an expired
+session; reauth403 codes and401 retain the existing authentication flow.
+
+Rejected new native appointment drafts can be deliberately retried under current
+server authorization using a fresh mutation key and the original final entity UUID.
+Lost-response retries retain that new stable key. Hidden/unavailable IDs and true
+field conflicts never take this create path. Stored drafts/errors are retained
+without a client schema upgrade. Additional edits preserved separately remain for
+explicit review; do not clear IndexedDB or infer custody to resolve a rejection.

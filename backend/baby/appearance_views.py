@@ -19,7 +19,7 @@ from family.profile_views import (
     _update_appearance,
 )
 
-from .models import BabyProfile, ManagedChildGuardian
+from .child_identity_service import require_child_membership_guardian
 
 
 def _managed_child_membership(request_user, membership_id):
@@ -37,14 +37,8 @@ def _managed_child_membership(request_user, membership_id):
         raise PermissionDenied("Kinderprofil ist nicht verfügbar.")
     if actor.role == Membership.Role.OWNER:
         return target
-    baby = BabyProfile.objects.filter(membership=target).first()
-    if baby and ManagedChildGuardian.objects.filter(
-        baby=baby,
-        membership=actor,
-        can_manage_account=True,
-    ).exists():
-        return target
-    raise PermissionDenied("Nur Owner oder explizite Guardians können den Kinderavatar gestalten.")
+    require_child_membership_guardian(request_user, target, manage=True)
+    return target
 
 
 def _appearance_payload(profile, membership):

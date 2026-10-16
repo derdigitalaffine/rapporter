@@ -23,3 +23,7 @@ FamilyEvent.objects.get_or_create(family=family,type='calendar.event',title='Off
 source,_=IntegrationSource.objects.get_or_create(family=family,name='Read-only ICS',kind='ics')
 FamilyEvent.objects.get_or_create(family=family,source=source,type='calendar.event',title='Read-only external',defaults={'starts_at':timezone.now(),'ends_at':timezone.now()+timezone.timedelta(hours=1)})
 print('Offline integration fixtures ready')
+
+# Historical child membership: deliberately no BabyProfile or Guardian backfill.
+child_user,_=get_user_model().objects.get_or_create(username='offline-e2e-child')
+Membership.objects.get_or_create(user=child_user,family=family,defaults={'role':'child','display_name':'Offline Child'})
