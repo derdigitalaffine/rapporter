@@ -1,6 +1,12 @@
 from .shopping_reference_models import ReferenceDataset
 
 
+_RUNTIME_REDISTRIBUTION = (
+    ReferenceDataset.Redistribution.ADOPT,
+    ReferenceDataset.Redistribution.ADAPT,
+)
+
+
 def reference_dataset_versions(*, dataset_id=None, dataset_type=None):
     """Return registered public package versions without assuming any exist."""
     queryset = ReferenceDataset.objects.all()
@@ -12,8 +18,11 @@ def reference_dataset_versions(*, dataset_id=None, dataset_type=None):
 
 
 def active_reference_datasets(*, dataset_type=None):
-    """Return only active packages; an empty queryset is the valid core default."""
-    queryset = ReferenceDataset.objects.filter(state=ReferenceDataset.State.ACTIVE)
+    """Return runtime-safe active packages; an empty queryset is the core default."""
+    queryset = ReferenceDataset.objects.filter(
+        state=ReferenceDataset.State.ACTIVE,
+        redistribution__in=_RUNTIME_REDISTRIBUTION,
+    )
     if dataset_type:
         queryset = queryset.filter(dataset_type=dataset_type)
     return queryset
