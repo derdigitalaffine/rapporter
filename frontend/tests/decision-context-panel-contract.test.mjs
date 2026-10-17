@@ -46,9 +46,9 @@ test('decision deep-link selectors are owned by the feature registry',()=>{
   assert.match(registry,/defineFeature\('decisions',\{detail:true,queryParams:\['decision','decision_context_type','decision_context_id','decision_preset'\]/);
 });
 
-test('contract navigation eagerly registers the localized contract label',()=>{
-  assert.match(navigation,/import '\.\/contracts-i18n';/);
-  assert.match(navigation,/contracts:t\('contractUi\.title'\)/);
+test('contract navigation exposes its German label before the lazy ContractUI bundle loads',()=>{
+  assert.doesNotMatch(navigation,/contracts-i18n/);
+  assert.match(navigation,/contracts:english\?'Contracts':'Verträge'/);
 });
 
 test('context launcher styles preserve FamilyOS touch and reflow contracts',()=>{
