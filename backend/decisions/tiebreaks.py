@@ -8,6 +8,7 @@ from games.models import GameMatch
 from games.services import notify_challenge
 
 from .models import Decision, DecisionOption, DecisionTieBreak, DecisionVote
+from .results import option_metrics, summarize_result
 
 
 class DecisionTieBreakError(Exception):
@@ -26,40 +27,15 @@ def _can_manage(decision, membership):
 def _option_rows(decision):
     rows = []
     for option in DecisionOption.objects.filter(decision=decision).prefetch_related("votes"):
-        votes = list(option.votes.all())
-        ranks = [vote.rank for vote in votes if vote.rank is not None]
-        scores = [vote.score for vote in votes if vote.score is not None]
-        rows.append(
-            (
-                option,
-                {
-                    "votes": len(votes),
-                    "average_rank": round(sum(ranks) / len(ranks), 2) if ranks else None,
-                    "average_score": round(sum(scores) / len(scores), 2) if scores else None,
-                },
-            )
-        )
+        rows.append((option, option_metrics(option.votes.all())))
     return rows
 
 
 def leader_options(decision):
     rows = _option_rows(decision)
-    if decision.mode == Decision.Mode.RANKING:
-        candidates = [(payload["average_rank"], option) for option, payload in rows if payload["average_rank"] is not None]
-        if not candidates:
-            return []
-        best = min(value for value, _ in candidates)
-    elif decision.mode == Decision.Mode.RATING:
-        candidates = [(payload["average_score"], option) for option, payload in rows if payload["average_score"] is not None]
-        if not candidates:
-            return []
-        best = max(value for value, _ in candidates)
-    else:
-        candidates = [(payload["votes"], option) for option, payload in rows]
-        best = max((value for value, _ in candidates), default=0)
-        if best <= 0:
-            return []
-    return [option for value, option in candidates if value == best]
+    summary = summarize_result(decision, rows)
+    leader_ids = {row["id"] for row in summary["leaders"]}
+    return [option for option, _ in rows if str(option.id) in leader_ids]
 
 
 def _preferred_leader(decision, member_id, leader_ids):
@@ -103,12 +79,13 @@ def game_mapping(decision, leaders=None):
     if len(members) != 2:
         return None
     leader_ids = {row.id for row in leaders}
+    options_by_id = {row.id: row for row in leaders}
     mapping = {member.id: _preferred_leader(decision, member.id, leader_ids) for member in members}
     if any(option_id is None for option_id in mapping.values()):
         return None
     if set(mapping.values()) != leader_ids:
         return None
-    return {member.id: (member, DecisionOption.objects.get(id=mapping[member.id])) for member in members}
+    return {member.id: (member, options_by_id[mapping[member.id]]) for member in members}
 
 
 def _resolution_payload(tie_break):
@@ -140,7 +117,11 @@ def decorate_result(decision, membership, raw_result):
     game = tie_break.game_match if tie_break and tie_break.game_match_id else None
     raw_result["tie_break"] = {
         "available": bool(available),
-        "can_random": bool(available and _can_manage(decision, membership) and not (game and game.status in {GameMatch.Status.PENDING, GameMatch.Status.ACTIVE})),
+        "can_random": bool(
+            available
+            and _can_manage(decision, membership)
+            and not (game and game.status in {GameMatch.Status.PENDING, GameMatch.Status.ACTIVE})
+        ),
         "can_game": bool(available and mapping and membership.id in mapping and tie_break is None),
         "game_eligible": bool(available and mapping),
         "game": {
@@ -163,14 +144,22 @@ def start_tie_break(*, decision_id, family, membership, method, game_type=None):
         leaders = leader_options(decision)
         if len(leaders) < 2:
             raise DecisionTieBreakError("decision_not_tied")
-        tie_break = DecisionTieBreak.objects.select_for_update().filter(decision=decision).select_related("game_match", "winner_option").first()
+        tie_break = (
+            DecisionTieBreak.objects.select_for_update()
+            .filter(decision=decision)
+            .select_related("game_match", "winner_option")
+            .first()
+        )
         if tie_break and tie_break.resolved_at:
             return tie_break
 
         if method == DecisionTieBreak.Method.RANDOM:
             if not _can_manage(decision, membership):
                 raise DecisionTieBreakError("tie_break_forbidden")
-            if tie_break and tie_break.game_match and tie_break.game_match.status in {GameMatch.Status.PENDING, GameMatch.Status.ACTIVE}:
+            if tie_break and tie_break.game_match and tie_break.game_match.status in {
+                GameMatch.Status.PENDING,
+                GameMatch.Status.ACTIVE,
+            }:
                 raise DecisionTieBreakError("tie_break_game_active")
             winner = secrets.choice(leaders)
             if tie_break is None:
