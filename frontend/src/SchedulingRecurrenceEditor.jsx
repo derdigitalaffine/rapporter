@@ -40,7 +40,7 @@ function presetOptions(de,allowActionCadence){
   {key:'daily',label:de?'Täglich':'Daily',value:{frequency:'daily',interval:1}},
   {key:'weekly',label:de?'Wöchentlich':'Weekly',value:{frequency:'weekly',interval:1}},
   {key:'monthly',label:de?'Monatlich':'Monthly',value:{frequency:'monthly',interval:1}},
-  {key:'quarterly-first-monday',label:de?'1. Montag · Quartal':'1st Monday · quarter',value:{frequency:'quarterly',interval:1,nth_weekdays:[{weekday:'MO',ordinal:1]}},secondary:true},
+  {key:'quarterly-first-monday',label:de?'1. Montag · Quartal':'1st Monday · quarter',value:{frequency:'quarterly',interval:1,nth_weekdays:[{weekday:'MO',ordinal:1}]},secondary:true},
  ];
  if(allowActionCadence)base.splice(3,0,
   {key:'business-days',label:de?'Werktags':'Business days',value:{frequency:'daily',interval:1,business_days:true}},
