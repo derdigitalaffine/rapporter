@@ -1,6 +1,7 @@
 import {offlineEngine,readyOfflineEngine,offlineIdentity,addShoppingLocally} from './offline-runtime';
 import {api} from './api';
 import {deleteShoppingMutation,listShoppingMutations,putShoppingMutation} from './offline-store';
+import {applyShoppingItemAutoguess} from './shopping-item-autoguess.js';
 
 export const SHOPPING_BUDGET_PURCHASE_EVENT='famuhle:shopping-budget-purchase';
 const uuid=()=>globalThis.crypto?.randomUUID?.()||`offline-${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -17,9 +18,12 @@ function consumeShoppingOrderMetadata(targetId){
 }
 
 export async function queueShoppingAdd(familyId,payload){
-  if(offlineEngine(familyId)){const {item}=await addShoppingLocally(familyId,payload);return {localId:item.id,payload}}
+  const mutationId=uuid();
+  const guessed=applyShoppingItemAutoguess(payload).payload;
+  const mutationPayload={...guessed,client_mutation_id:mutationId};
+  if(offlineEngine(familyId)){const {item}=await addShoppingLocally(familyId,mutationPayload);return {localId:item.id,payload:mutationPayload,id:mutationId}}
   const localId=`offline-${uuid()}`;
-  const mutation={id:uuid(),familyId:String(familyId),type:'add',localId,payload,createdAt:Date.now(),attempts:0,status:'pending'};
+  const mutation={id:mutationId,familyId:String(familyId),type:'add',localId,payload:mutationPayload,createdAt:Date.now(),attempts:0,status:'pending'};
   await putShoppingMutation(mutation);return mutation;
 }
 export async function queueShoppingPatch(familyId,targetId,payload){
