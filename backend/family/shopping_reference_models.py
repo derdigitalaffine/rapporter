@@ -118,3 +118,49 @@ class ReferenceDatasetActivationEvent(TimestampedModel):
         indexes = [
             models.Index(fields=["dataset_id", "-created_at"], name="refds_event_time_idx"),
         ]
+
+
+class ReferenceDatasetRecord(TimestampedModel):
+    """Materialized public package record; never contains household observations."""
+
+    dataset = models.ForeignKey(ReferenceDataset, on_delete=models.CASCADE, related_name="records")
+    record_key = models.CharField(max_length=256)
+    source_path = models.CharField(max_length=500)
+    ordinal = models.PositiveBigIntegerField()
+    payload = models.JSONField(default=dict)
+    lookup_key = models.CharField(max_length=255, blank=True)
+    tombstone = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ["dataset_id", "ordinal", "id"]
+        constraints = [
+            models.UniqueConstraint(fields=["dataset", "record_key"], name="refrec_dataset_key_uniq"),
+        ]
+        indexes = [
+            models.Index(fields=["dataset", "tombstone"], name="refrec_dataset_live_idx"),
+            models.Index(fields=["dataset", "lookup_key"], name="refrec_lookup_idx"),
+        ]
+
+
+class ReferenceDatasetSearchTerm(TimestampedModel):
+    """Bounded normalized lookup term for one materialized public record."""
+
+    class Kind(models.TextChoices):
+        PRIMARY = "primary", "Primary"
+        ALIAS = "alias", "Alias"
+        CODE = "code", "Code"
+        ID = "id", "ID"
+
+    dataset = models.ForeignKey(ReferenceDataset, on_delete=models.CASCADE, related_name="search_terms")
+    record = models.ForeignKey(ReferenceDatasetRecord, on_delete=models.CASCADE, related_name="search_terms")
+    term = models.CharField(max_length=200)
+    kind = models.CharField(max_length=16, choices=Kind.choices, default=Kind.PRIMARY)
+
+    class Meta:
+        ordering = ["term", "record_id"]
+        constraints = [
+            models.UniqueConstraint(fields=["record", "term"], name="refterm_record_term_uniq"),
+        ]
+        indexes = [
+            models.Index(fields=["dataset", "term"], name="refterm_dataset_term_idx"),
+        ]
