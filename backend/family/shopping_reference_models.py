@@ -111,7 +111,7 @@ class ReferenceDatasetActivationEvent(TimestampedModel):
     from_version = models.CharField(max_length=80, blank=True)
     to_version = models.CharField(max_length=80, blank=True)
     state_revision = models.PositiveBigIntegerField(default=0)
-    reason = models.CharField(max_length=500, blank=True)
+    reason_code = models.CharField(max_length=80, blank=True)
 
     class Meta:
         ordering = ["-created_at", "-id"]
