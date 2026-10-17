@@ -18,7 +18,6 @@ MAX_MATERIALIZED_RECORDS = 100_000
 MAX_RECORD_JSON_BYTES = 32 * 1024
 MAX_TERMS_PER_RECORD = 64
 MAX_TERM_LENGTH = 200
-_NON_RUNTIME_FILE_ROLES = {"evaluation", "eval", "evidence", "documentation", "docs"}
 _TOMBSTONE_STATUSES = {"deleted", "removed", "tombstone"}
 _WHITESPACE_RE = re.compile(r"\s+")
 
@@ -26,119 +25,41 @@ _COMMON_FIELDS = {"status", "tombstone", "deleted"}
 _ALLOWED_FIELDS = {
     ReferenceDataset.DatasetType.STORE_REFERENCE: _COMMON_FIELDS
     | {
-        "id",
-        "store_id",
-        "chain_id",
-        "sample_id",
-        "canonical_name",
-        "name",
-        "aliases",
-        "operator_scope",
-        "country_region",
-        "wikidata_id",
-        "nsi_id",
-        "location_provider",
-        "location_ref",
-        "branch_label",
-        "address",
-        "city",
-        "postcode",
-        "latitude",
-        "longitude",
-        "source_namespace",
-        "source_id",
-        "source_revision",
-        "verified_at",
-        "confidence",
-        "source_status",
+        "id", "store_id", "chain_id", "sample_id", "canonical_name", "name", "aliases",
+        "operator_scope", "country_region", "wikidata_id", "nsi_id", "location_provider",
+        "location_ref", "branch_label", "address", "city", "postcode", "latitude", "longitude",
+        "source_namespace", "source_id", "source_revision", "verified_at", "confidence", "source_status",
         "public_place_hint",
     },
     ReferenceDataset.DatasetType.LEXICON: _COMMON_FIELDS
     | {
-        "id",
-        "label_de",
-        "label",
-        "name",
-        "parent_id",
-        "shopping_department",
-        "aliases",
-        "synonyms",
-        "negative_terms",
-        "ambiguity",
-        "provenance",
+        "id", "label_de", "label", "name", "parent_id", "shopping_department", "aliases", "synonyms",
+        "negative_terms", "ambiguity", "provenance",
     },
     ReferenceDataset.DatasetType.GTIN_PRODUCT: _COMMON_FIELDS
     | {
-        "id",
-        "gtin",
-        "ean",
-        "product_name",
-        "name",
-        "brand",
-        "quantity",
-        "source_category",
-        "mapped_category_id",
-        "source_namespace",
-        "source_id",
-        "source_revision",
-        "countries_evidence",
-        "verified_at",
-        "confidence",
+        "id", "gtin", "ean", "product_name", "name", "brand", "quantity", "source_category",
+        "mapped_category_id", "source_namespace", "source_id", "source_revision", "countries_evidence",
+        "verified_at", "confidence",
     },
     ReferenceDataset.DatasetType.STORE_LAYOUT_EVIDENCE: _COMMON_FIELDS
     | {
-        "id",
-        "evidence_id",
-        "layout_id",
-        "store_ref",
-        "store_id",
-        "chain_id",
-        "section_id",
-        "section",
-        "aisle",
-        "category_id",
-        "category",
-        "position",
-        "source_namespace",
-        "source_id",
-        "source_revision",
-        "valid_from",
-        "valid_to",
-        "verified_at",
-        "confidence",
-        "evidence",
+        "id", "evidence_id", "layout_id", "store_ref", "store_id", "chain_id", "section_id", "section",
+        "aisle", "category_id", "category", "position", "source_namespace", "source_id", "source_revision",
+        "valid_from", "valid_to", "verified_at", "confidence", "evidence",
     },
 }
 _PRIMARY_FIELDS = (
-    "label_de",
-    "label",
-    "name",
-    "display_name",
-    "canonical_name",
-    "product_name",
-    "section",
-    "category",
-    "aisle",
-    "public_place_hint",
-    "value",
+    "label_de", "label", "name", "display_name", "canonical_name", "product_name", "section", "category",
+    "aisle", "public_place_hint", "value",
 )
 _ALIAS_FIELDS = ("aliases", "synonyms")
 _CODE_FIELDS = ("gtin", "ean", "wikidata_id", "nsi_id", "source_id", "location_ref", "mapped_category_id")
 _ID_FIELDS = ("id", "key", "slug", "store_id", "chain_id", "sample_id", "section_id", "category_id")
 _RECORD_KEY_FIELDS = ("id", "gtin", "ean", "key", "slug", "store_id", "chain_id", "sample_id", "section_id")
 _LOOKUP_FIELDS = (
-    "gtin",
-    "ean",
-    "label_de",
-    "label",
-    "name",
-    "display_name",
-    "canonical_name",
-    "product_name",
-    "id",
-    "key",
-    "store_id",
-    "chain_id",
+    "gtin", "ean", "label_de", "label", "name", "display_name", "canonical_name", "product_name", "id", "key",
+    "store_id", "chain_id",
 )
 
 
@@ -235,20 +156,6 @@ def _records_from_file(path, content):
     if suffix == ".txt":
         _error("unsupported_runtime_format", f"Plain text files cannot be materialized as typed runtime records: {path}")
     _error("unsupported_format", f"Unsupported reference file: {path}")
-
-
-def _runtime_paths(dataset, payload_files):
-    specs = {
-        str(spec.get("path")): spec
-        for spec in dataset.manifest.get("files", [])
-        if isinstance(spec, dict) and spec.get("path")
-    }
-    for source_path in sorted(payload_files):
-        spec = specs.get(source_path, {})
-        role = normalize_reference_term(spec.get("role") or "records")
-        if spec.get("runtime") is False or role in _NON_RUNTIME_FILE_ROLES:
-            continue
-        yield source_path
 
 
 def _sanitize_record(dataset, record, source_path):
@@ -382,7 +289,7 @@ def materialize_reference_dataset(dataset, payload_files):
     term_specs = []
     seen_keys = set()
     ordinal = 0
-    for source_path in _runtime_paths(dataset, payload_files):
+    for source_path in sorted(payload_files):
         rows = _records_from_file(source_path, payload_files[source_path])
         for raw_record in rows:
             ordinal += 1
