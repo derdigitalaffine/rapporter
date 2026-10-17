@@ -26,6 +26,7 @@ MAX_OPERATOR_DATASETS = 100
 MAX_OPERATOR_EVENTS = 30
 _ALLOWED_STATES = {value for value, _label in ReferenceDataset.State.choices}
 _ALLOWED_TYPES = {value for value, _label in ReferenceDataset.DatasetType.choices}
+_ALLOWED_ACTIONS = {"activate", "disable", "rollback"}
 
 
 def _error(detail, code, http_status=status.HTTP_400_BAD_REQUEST, **extra):
@@ -143,7 +144,24 @@ def _expected_revision(request):
     return value
 
 
+def _transition_state_error(dataset, action):
+    if action not in _ALLOWED_ACTIONS:
+        return _error("Unbekannte Paketaktion.", "invalid_action", http_status=status.HTTP_404_NOT_FOUND)
+    if action == "activate" and dataset.state not in {
+        ReferenceDataset.State.PREVIEW,
+        ReferenceDataset.State.DISABLED,
+        ReferenceDataset.State.ACTIVE,
+    }:
+        return _error("Paket ist in diesem Status nicht aktivierbar.", "invalid_state", http_status=status.HTTP_409_CONFLICT)
+    if action in {"disable", "rollback"} and dataset.state != ReferenceDataset.State.ACTIVE:
+        return _error("Nur die aktive Paketversion kann diese Aktion ausführen.", "invalid_state", http_status=status.HTTP_409_CONFLICT)
+    return None
+
+
 def _run_transition(request, dataset, action):
+    lifecycle_error = _transition_state_error(dataset, action)
+    if lifecycle_error:
+        return lifecycle_error
     guard = _sensitive_guard(request)
     if guard:
         return guard
@@ -174,7 +192,7 @@ def _run_transition(request, dataset, action):
                 reason_code="operator_disable",
             )
             audit_key = "superadmin.reference_data.disabled"
-        elif action == "rollback":
+        else:
             updated = rollback_reference_dataset(
                 dataset.dataset_id,
                 lease_token=lease.token,
@@ -182,8 +200,6 @@ def _run_transition(request, dataset, action):
                 reason_code="operator_rollback",
             )
             audit_key = "superadmin.reference_data.rolled_back"
-        else:
-            return _error("Unbekannte Paketaktion.", "invalid_action", http_status=status.HTTP_404_NOT_FOUND)
     except ReferenceActivationError as exc:
         return _activation_error(exc)
     finally:
