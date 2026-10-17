@@ -32,7 +32,7 @@ class Migration(migrations.Migration):
                 ),
             ],
             options={
-                "ordering": ["dataset_id", "ordinal", "id"],
+                "ordering": ["ordinal", "id"],
                 "indexes": [
                     models.Index(fields=["dataset", "tombstone"], name="refrec_dataset_live_idx"),
                     models.Index(fields=["dataset", "lookup_key"], name="refrec_lookup_idx"),
@@ -80,8 +80,10 @@ class Migration(migrations.Migration):
                 ),
             ],
             options={
-                "ordering": ["term", "record_id"],
-                "indexes": [models.Index(fields=["dataset", "term"], name="refterm_dataset_term_idx")],
+                "ordering": ["term", "id"],
+                "indexes": [
+                    models.Index(fields=["dataset", "term"], name="refterm_dataset_term_idx"),
+                ],
                 "constraints": [
                     models.UniqueConstraint(fields=("record", "term"), name="refterm_record_term_uniq"),
                 ],
