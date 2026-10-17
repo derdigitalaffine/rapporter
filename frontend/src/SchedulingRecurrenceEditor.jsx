@@ -5,6 +5,7 @@ import {FormField,FormRow} from './form-primitives';
 import './scheduling-recurrence.css';
 
 const DAYS=['MO','TU','WE','TH','FR','SA','SU'];
+const WEEKDAYS=['MO','TU','WE','TH','FR'];
 const DAY_LABELS={de:['Mo','Di','Mi','Do','Fr','Sa','So'],en:['Mon','Tue','Wed','Thu','Fri','Sat','Sun']};
 const MONTH_LABELS={de:['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'],en:['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']};
 const ORDINAL_LABELS={de:{1:'Erste',2:'Zweite',3:'Dritte',4:'Vierte',5:'Fünfte','-1':'Letzte'},en:{1:'First',2:'Second',3:'Third',4:'Fourth',5:'Fifth','-1':'Last'}};
@@ -30,6 +31,9 @@ function recurrenceRule(value,anchor){
 function recurrenceKind(recurrence){
  if(!recurrence)return 'none';
  if(recurrence.times_per_period)return 'quota';
+ const weekdays=recurrence.weekdays||[];
+ const fixedWeekdays=recurrence.frequency==='weekly'&&Number(recurrence.interval||1)===1&&weekdays.length===WEEKDAYS.length&&WEEKDAYS.every(day=>weekdays.includes(day));
+ if(fixedWeekdays)return 'business_daily';
  if(recurrence.business_days&&Number(recurrence.interval||1)===1)return 'business_daily';
  if(recurrence.business_days||recurrence.frequency==='hourly'||Number(recurrence.interval||1)>1)return 'interval';
  return recurrence.frequency||'none';
@@ -43,7 +47,7 @@ function presetOptions(de,allowActionCadence){
   {key:'quarterly-first-monday',label:de?'1. Montag · Quartal':'1st Monday · quarter',value:{frequency:'quarterly',interval:1,nth_weekdays:[{weekday:'MO',ordinal:1}]},secondary:true},
  ];
  if(allowActionCadence)base.splice(3,0,
-  {key:'business-days',label:de?'Werktags':'Business days',value:{frequency:'daily',interval:1,business_days:true}},
+  {key:'business-days',label:de?'Werktags':'Weekdays',value:{frequency:'weekly',interval:1,weekdays:WEEKDAYS}},
   {key:'twice-daily',label:de?'2× pro Tag':'2× per day',value:{frequency:'daily',interval:1,times_per_period:2}},
   {key:'every-two-weeks',label:de?'Alle 2 Wochen':'Every 2 weeks',value:{frequency:'weekly',interval:2}},
  );
@@ -83,14 +87,14 @@ export default function SchedulingRecurrenceEditor({
  const intervalUnit=recurrence?.business_days?'business_daily':frequency;
  const intervalCount=Math.max(1,Number(recurrence?.interval||1));
  const intervalMenuLabel=kind==='interval'?(intervalCount===1?singleIntervalLabels[intervalUnit]:(de?`Alle ${intervalCount} ${unitLabels[intervalUnit]}`:`Every ${intervalCount} ${unitLabels[intervalUnit]}`)):(de?'Eigenes Intervall':'Custom interval');
- const quotaMenuLabel=kind==='quota'?(de?`${recurrence?.times_per_period||1}× pro ${periodLabels[frequency]}`:`${recurrence?.times_per_period||1}× per ${periodLabels[frequency]}`):(de?'Mehrmals pro Zeitraum':'Multiple times per period');
+ const quotaMenuLabel=kind==='quota'?(de?`${recurrence?.times_per_period||1}× pro ${periodLabels[frequency]}`:`${recurrence?.times_per_period||1}× per ${periodLabels[frequency]}`):(de?'Anzahl pro Zeitraum festlegen …':'Set count per period …');
 
  function setRecurrence(next){onChange?.(next)}
  function change(changes){setRecurrence({...recurrence,...changes})}
  function changeKind(next){
   if(next==='none'){setRecurrence('');return}
   if(next==='once'){setRecurrence({frequency:'once',date:anchorDate(anchor)});return}
-  if(next==='business_daily'){setRecurrence({frequency:'daily',interval:1,business_days:true});return}
+  if(next==='business_daily'){setRecurrence({frequency:'weekly',interval:1,weekdays:WEEKDAYS});return}
   if(next==='interval'){
    if(kind==='interval')return;
    setRecurrence({frequency:'daily',interval:2});return;
@@ -145,17 +149,17 @@ export default function SchedulingRecurrenceEditor({
  }
 
  return <div className={`scheduling-recurrence-editor ${className}`.trim()}>
-  <div className="scheduling-recurrence-presets" aria-label={de?'Schnelle Wiederholungen':'Quick recurrence presets'}>
+  <div className="scheduling-recurrence-presets" aria-label={de?'Schneller Rhythmus':'Quick rhythm presets'}>
    {presets.map(preset=><button type="button" key={preset.key} disabled={disabled} onClick={()=>setRecurrence(preset.value)}>{preset.label}</button>)}
   </div>
 
   {showNaturalLanguage&&<div className="scheduling-recurrence-phrase">
    <FormField label={de?'In eigenen Worten':'In your own words'} description={de?'Zum Beispiel: „alle drei Tage“, „jeden dritten Werktag“, „zweimal die Woche“, „montags um 8 Uhr“ oder „erster Montag im Quartal“':'For example: “every three days”, “every 3 business days”, “twice a week”, “Mondays at 8” or “first Monday of the quarter”'}>
-    {fieldProps=><div className="scheduling-recurrence-phrase-input"><input {...fieldProps} value={phrase} disabled={disabled} onChange={event=>setPhrase(event.target.value)} onKeyDown={event=>{if(event.key==='Enter'){event.preventDefault();parsePhrase()}}} placeholder={de?'Wiederholung beschreiben …':'Describe recurrence …'}/><button type="button" disabled={disabled||previewBusy||!phrase.trim()||!familyId} onClick={parsePhrase}>{de?'Erkennen':'Interpret'}</button></div>}
+    {fieldProps=><div className="scheduling-recurrence-phrase-input"><input {...fieldProps} value={phrase} disabled={disabled} onChange={event=>setPhrase(event.target.value)} onKeyDown={event=>{if(event.key==='Enter'){event.preventDefault();parsePhrase()}}} placeholder={de?'Rhythmus beschreiben …':'Describe rhythm …'}/><button type="button" disabled={disabled||previewBusy||!phrase.trim()||!familyId} onClick={parsePhrase}>{de?'Erkennen':'Interpret'}</button></div>}
    </FormField>
   </div>}
 
-  <FormField label={de?'Wiederholung':'Repeat'}><select value={kind} disabled={disabled} onChange={event=>changeKind(event.target.value)}>{allowNone&&<option value="none">{de?'Keine':'None'}</option>}{allowOnce&&<option value="once">{de?'Einmalig':'Once'}</option>}<option value="daily">{de?'Täglich':'Daily'}</option>{cadenceVisible&&<option value="business_daily">{de?'Werktags (Mo–Fr)':'Business days (Mon–Fri)'}</option>}<option value="weekly">{de?'Wöchentlich':'Weekly'}</option><option value="monthly">{de?'Monatlich':'Monthly'}</option><option value="quarterly">{de?'Quartalsweise':'Quarterly'}</option><option value="yearly">{de?'Jährlich':'Yearly'}</option>{cadenceVisible&&<option value="interval">{intervalMenuLabel}</option>}{cadenceVisible&&<option value="quota">{quotaMenuLabel}</option>}</select></FormField>
+  <FormField label={de?'Rhythmus':'Rhythm'} description={de?'Fester Zeitplan oder flexibles Ziel – beides wird hier geplant.':'Choose a fixed schedule or a flexible target in one place.'}><select value={kind} disabled={disabled} onChange={event=>changeKind(event.target.value)}>{allowNone&&<option value="none">{de?'Kein Rhythmus':'No rhythm'}</option>}{allowOnce&&<option value="once">{de?'Einmalig':'Once'}</option>}<optgroup label={de?'Fester Rhythmus':'Fixed rhythm'}><option value="daily">{de?'Täglich':'Daily'}</option>{cadenceVisible&&<option value="business_daily">{de?'Werktags (Mo–Fr)':'Weekdays (Mon–Fri)'}</option>}<option value="weekly">{de?'Wöchentlich':'Weekly'}</option><option value="monthly">{de?'Monatlich':'Monthly'}</option><option value="quarterly">{de?'Quartalsweise':'Quarterly'}</option><option value="yearly">{de?'Jährlich':'Yearly'}</option>{cadenceVisible&&<option value="interval">{intervalMenuLabel}</option>}</optgroup>{cadenceVisible&&<optgroup label={de?'Flexibles Ziel':'Flexible target'}><option value="quota">{quotaMenuLabel}</option></optgroup>}</select></FormField>
 
   {kind==='interval'&&<section className="scheduling-recurrence-cadence" aria-label={de?'Eigenes Intervall':'Custom interval'}>
    <FormRow>
@@ -166,14 +170,14 @@ export default function SchedulingRecurrenceEditor({
    {recurrence?.business_days&&<p className="scheduling-recurrence-hint">{de?'Gezählt werden Montag bis Freitag; Wochenenden werden beim Intervall übersprungen.':'Only Monday through Friday are counted; weekends are skipped by the interval.'}</p>}
   </section>}
 
-  {kind==='business_daily'&&<p className="scheduling-recurrence-hint">{de?'Montag bis Freitag zählen als Werktage; Samstag und Sonntag werden übersprungen.':'Monday through Friday count as business days; Saturday and Sunday are skipped.'}</p>}
+  {kind==='business_daily'&&<p className="scheduling-recurrence-hint">{recurrence?.business_days?(de?'Bestehender Werktagsrhythmus: Montag bis Freitag. Beim nächsten Ändern wird er als fester Mo–Fr-Rhythmus gespeichert.':'Existing weekday rhythm: Monday through Friday. The next edit stores it as a fixed Mon–Fri rhythm.'):(de?'Fester Rhythmus von Montag bis Freitag; es entstehen echte geplante Wochentage.':'Fixed Monday-to-Friday rhythm with real planned weekdays.')}</p>}
 
-  {kind==='quota'&&<section className="scheduling-recurrence-cadence" aria-label={de?'Mehrfach-Ziel':'Multiple target'}>
+  {kind==='quota'&&<section className="scheduling-recurrence-cadence" aria-label={de?'Flexibles Ziel':'Flexible target'}>
    <FormRow>
     <FormField label={de?'Anzahl':'Count'}><input type="number" min="1" max="50" inputMode="numeric" required disabled={disabled} value={recurrence?.times_per_period||2} onChange={event=>change({times_per_period:Math.max(1,Math.min(50,Number(event.target.value)||1))})}/></FormField>
     <FormField label={de?'Pro Zeitraum':'Per period'}><select value={frequency} disabled={disabled} onChange={event=>changeQuotaPeriod(event.target.value)}>{QUOTA_PERIODS.map(period=><option key={period} value={period}>{periodLabels[period]}</option>)}</select></FormField>
    </FormRow>
-   <p className="scheduling-recurrence-hint">{de?'Flexibles Ziel im Kalenderzeitraum: Erledigungen werden gezählt, ohne feste Einzeltermine vorzugeben.':'Flexible target inside the calendar period: completions are counted without creating fixed individual slots.'}</p>
+   <p className="scheduling-recurrence-hint">{de?'Flexibles Ziel im Zeitraum: Erledigungen zählen zum Fortschritt, ohne feste Einzeltermine zu erfinden.':'Flexible target in the period: completions count toward progress without inventing fixed individual slots.'}</p>
   </section>}
 
   {frequency==='once'&&<FormField label={de?'Datum':'Date'}><input type="date" required disabled={disabled} value={recurrence?.date||anchorDate(anchor)} onChange={event=>change({date:event.target.value})}/></FormField>}
@@ -191,7 +195,8 @@ export default function SchedulingRecurrenceEditor({
    <div className="scheduling-recurrence-preview-head"><strong>{de?'Vorschau':'Preview'}</strong>{previewBusy&&<span>{de?'Wird berechnet …':'Calculating …'}</span>}</div>
    {preview?.summary&&<p className="scheduling-recurrence-summary">{preview.summary}</p>}
    {preview?.occurrences?.length>0&&<ol>{preview.occurrences.map(item=><li key={item}>{dateFormatter.format(new Date(`${item}T12:00:00`))}</li>)}</ol>}
-   {preview&&!previewBusy&&!preview?.occurrences?.length&&(frequency==='hourly'||kind==='quota')&&<p className="scheduling-recurrence-preview-note">{de?'Dynamische Wiederholung – der nächste Zeitpunkt hängt von Erledigungen ab.':'Dynamic recurrence — the next due time depends on completions.'}</p>}
+   {preview&&!previewBusy&&!preview?.occurrences?.length&&kind==='quota'&&<p className="scheduling-recurrence-preview-note">{de?'Flexibles Ziel – der Fortschritt wird im Zeitraum gezählt; es entstehen keine künstlichen Termine.':'Flexible target — progress is counted in the period; no artificial dates are created.'}</p>}
+   {preview&&!previewBusy&&!preview?.occurrences?.length&&frequency==='hourly'&&<p className="scheduling-recurrence-preview-note">{de?'Intervall nach Erledigung – der nächste Zeitpunkt hängt von der letzten Erledigung ab.':'Completion-based interval — the next due time depends on the last completion.'}</p>}
    {previewError&&<p className="scheduling-recurrence-error" role="status">{previewError}</p>}
   </section>}
  </div>;

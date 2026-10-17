@@ -9,6 +9,8 @@ import json
 import re
 from dateutil import rrule, tz
 
+from .recurrence_text import normalize_recurrence_text
+
 WEEKDAYS = ['MO', 'TU', 'WE', 'TH', 'FR', 'SA', 'SU']
 MODES = {'static', 'learning', 'adaptive'}
 FREQUENCIES = {'daily': rrule.DAILY, 'weekly': rrule.WEEKLY, 'monthly': rrule.MONTHLY, 'yearly': rrule.YEARLY}
@@ -404,14 +406,15 @@ def predict(schedule, observations, now, rejected=()):
 
 
 def parse_schedule(text, family_timezone, today=None):
-    """Small explicit DE/EN grammar. Unsupported input requires visual editing."""
-    value = text.strip().casefold()
-    value = re.sub(r'\s+', ' ', value)
+    """Parse deterministic DE/EN recurrence text into the canonical action schedule."""
+    value, clock, recurrence_override = normalize_recurrence_text(text)
     result = {'version': 'action-schedule-v1', 'timezone': family_timezone, 'mode': 'static'}
-    clock = re.search(r'(?:um |at )?(\d{1,2}:\d{2})(?: uhr)?$', value)
     if clock:
-        result['segments'] = [{'preferred_time': clock[1].zfill(5)}]
-        value = value[:clock.start()].strip()
+        result['segments'] = [{'preferred_time': clock}]
+    if recurrence_override is not None:
+        result['recurrence'] = recurrence_override
+        return normalize_schedule(result, family_timezone, today)
+
     names = {'montag': 'MO', 'monday': 'MO', 'dienstag': 'TU', 'tuesday': 'TU', 'mittwoch': 'WE', 'wednesday': 'WE', 'donnerstag': 'TH', 'thursday': 'TH', 'freitag': 'FR', 'friday': 'FR', 'samstag': 'SA', 'saturday': 'SA', 'sonntag': 'SU', 'sunday': 'SU'}
     ordinals = {'ersten': 1, 'zweiten': 2, 'dritten': 3, 'vierten': 4, 'fünften': 5, 'letzten': -1, 'first': 1, 'second': 2, 'third': 3, 'fourth': 4, 'fifth': 5, 'last': -1}
     weekend_ordinals = {'erste': 1, 'zweite': 2, 'dritte': 3, 'vierte': 4, 'fünfte': 5, 'letzte': -1, 'first': 1, 'second': 2, 'third': 3, 'fourth': 4, 'fifth': 5, 'last': -1}
@@ -429,7 +432,7 @@ def parse_schedule(text, family_timezone, today=None):
     if value in {'täglich', 'daily', 'jeden tag'}:
         result['recurrence'] = {'frequency': 'daily', 'interval': 1}
     elif value in {'werktags', 'weekdays'}:
-        result['recurrence'] = {'frequency': 'daily', 'interval': 1, 'business_days': True}
+        result['recurrence'] = {'frequency': 'weekly', 'interval': 1, 'weekdays': ['MO', 'TU', 'WE', 'TH', 'FR']}
     elif value in {'flexibel', 'learning', 'lernend'}:
         result['mode'] = 'learning'
     elif business_de:

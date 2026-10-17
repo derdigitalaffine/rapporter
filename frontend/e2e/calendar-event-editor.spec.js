@@ -105,7 +105,7 @@ test('new event editor saves first Monday of each calendar quarter',async({page}
   const dialog=await openNewEventEditor(page);
   await dialog.getByLabel('Titel').fill('Quartalsplanung');
   await dialog.getByRole('button',{name:'Weitere Details'}).click();
-  await dialog.getByLabel('Wiederholung',{exact:true}).selectOption('quarterly');
+  await dialog.getByLabel('Rhythmus',{exact:true}).selectOption('quarterly');
   await dialog.getByLabel('Wochentag im Quartal').selectOption('MO');
   await dialog.getByLabel('Welche Position?').selectOption('1');
   await dialog.getByRole('button',{name:'Speichern',exact:true}).click();
@@ -174,7 +174,7 @@ test('editing a projected recurrence occurrence keeps the master series anchor',
 
   const dialog=page.getByRole('dialog',{name:'Termin bearbeiten'});
   await expect(dialog.getByLabel('Beginn')).toHaveValue(localInputValue(masterStart));
-  await expect(dialog.getByLabel('Wiederholung',{exact:true})).toHaveValue('monthly');
+  await expect(dialog.getByLabel('Rhythmus',{exact:true})).toHaveValue('monthly');
   await dialog.getByRole('button',{name:'Speichern',exact:true}).click();
   await expect.poll(()=>patched).not.toBeNull();
   expect(patched.starts_at).toBe(new Date(masterStart).toISOString());
