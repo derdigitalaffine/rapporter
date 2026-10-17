@@ -68,7 +68,7 @@ test('schedule editor shares server-authoritative recurrence UX with calendar ev
  await expect(dialog.getByLabel('Planungsmodus')).toBeVisible();
  await dialog.getByLabel('In eigenen Worten',{exact:true}).fill('immer am ersten Montag im Quartal');
  await dialog.getByRole('button',{name:'Erkennen',exact:true}).click();
- await expect(dialog.getByText(/erster Montag/)).toBeVisible();
+ await expect(dialog.locator('.scheduling-recurrence-summary')).toContainText('erster Montag');
  await expect(dialog.getByLabel('Wiederholung',{exact:true})).toHaveValue('quarterly');
  await dialog.getByRole('button',{name:'Speichern',exact:true}).click();
  await expect.poll(()=>requests.at(-1)?.schedule?.recurrence?.frequency).toBe('quarterly');
