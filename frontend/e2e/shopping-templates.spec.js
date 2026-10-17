@@ -6,13 +6,23 @@ function json(route,body,status=200){return route.fulfill({status,contentType:'a
 async function installTemplateMocks(page,state){
  const stores=[];const templates=[];
  let seq=1;
+ const syncStoreLabels=store=>{for(const list of state.shoppingLists){if((store.shopping_list_ids||[]).some(id=>String(id)===String(list.id)))list.store=store.display_label}};
  await page.route('**/api/**',async route=>{
   const request=route.request();const method=request.method();const url=new URL(request.url());const path=url.pathname.replace(/^\/api/,'');let body={};try{body=request.postDataJSON()||{}}catch{}
   if(path==='/shopping-stores/'&&method==='GET')return json(route,stores);
   if(path==='/shopping-stores/'&&method==='POST'){
-   const row={id:`store-${seq++}`,family:body.family,name:body.name,branch_label:body.branch_label||'',display_label:body.branch_label?`${body.name} · ${body.branch_label}`:body.name,address:body.address||'',website_url:body.website_url||'',offers_url:body.offers_url||'',note:'',active:true,sort_order:0,shopping_list_ids:[]};stores.push(row);return json(route,row,201);
+   const row={id:`store-${seq++}`,family:body.family,name:body.name,branch_label:body.branch_label||'',display_label:body.branch_label?`${body.name} · ${body.branch_label}`:body.name,address:body.address||'',website_url:body.website_url||'',offers_url:body.offers_url||'',note:body.note||'',active:true,sort_order:body.sort_order||0,shopping_list_ids:[]};stores.push(row);return json(route,row,201);
   }
-  let match=path.match(/^\/shopping-stores\/([^/]+)\/assign\/$/);
+  let match=path.match(/^\/shopping-stores\/([^/]+)\/$/);
+  if(match&&method==='PATCH'){
+   const store=stores.find(row=>row.id===match[1]);Object.assign(store,body);store.display_label=store.branch_label?`${store.name} · ${store.branch_label}`:store.name;syncStoreLabels(store);return json(route,store);
+  }
+  if(match&&method==='DELETE'){
+   const index=stores.findIndex(row=>row.id===match[1]);const store=stores[index];const referenced=(store?.shopping_list_ids||[]).length||templates.some(template=>String(template.default_store)===String(store?.id));
+   if(referenced)return json(route,{detail:'Dieser Einkaufsort wird noch von einer Einkaufsliste oder Vorlage verwendet. Deaktiviere ihn stattdessen oder entferne zuerst die Zuordnungen.'},409);
+   stores.splice(index,1);return route.fulfill({status:204,body:''});
+  }
+  match=path.match(/^\/shopping-stores\/([^/]+)\/assign\/$/);
   if(match&&method==='POST'){
    const store=stores.find(row=>row.id===match[1]);for(const row of stores)row.shopping_list_ids=(row.shopping_list_ids||[]).filter(id=>String(id)!==String(body.shopping_list));store.shopping_list_ids=[...(store.shopping_list_ids||[]),body.shopping_list];const list=state.shoppingLists.find(row=>row.id===body.shopping_list);if(list)list.store=store.display_label;return json(route,{shopping_list:body.shopping_list,store:store.id,display_label:store.display_label});
   }
@@ -92,12 +102,12 @@ test('shopping list can be saved as template, previewed and applied without dupl
 test('shopping place assigns legacy display label and exposes safe offers link in store mode',async({page})=>{
  const state=await installApiMocks(page,{dismissOnboarding:true});await installTemplateMocks(page,state);await openTools(page);
  const tools=page.getByTestId('shopping-template-tools');
- await tools.getByRole('button',{name:'Einkaufsort speichern'}).first().click();
+ await tools.getByRole('button',{name:'Neuer Einkaufsort'}).click();
  const storeForm=tools.locator('form').filter({hasText:'Standort / Filialzusatz (optional)'});
  await storeForm.getByLabel('Name des Einkaufsorts').fill('REWE');
  await storeForm.getByLabel('Standort / Filialzusatz (optional)').fill('Innenstadt');
  await storeForm.getByLabel('Wochenangebot (HTTPS)').fill('https://offers.example.test/rewe');
- await storeForm.getByRole('button',{name:'Einkaufsort speichern'}).click();
+ await storeForm.getByRole('button',{name:'Speichern'}).click();
  await tools.getByLabel('Einkaufsort für diese Liste').selectOption({label:'REWE · Innenstadt'});
  await tools.getByRole('button',{name:'Zuordnen'}).click();
  await expect(page.locator('.shopping-session-title small')).toContainText('REWE · Innenstadt');
@@ -108,6 +118,47 @@ test('shopping place assigns legacy display label and exposes safe offers link i
  await expect(offers).toHaveAttribute('href','https://offers.example.test/rewe');
  await expect(offers).toHaveAttribute('target','_blank');
  await expect(offers).toHaveAttribute('rel',/noopener/);
+});
+
+test('shopping places can be edited, deactivated and only deleted when unreferenced',async({page})=>{
+ const state=await installApiMocks(page,{dismissOnboarding:true});const apiState=await installTemplateMocks(page,state);await openTools(page);
+ const tools=page.getByTestId('shopping-template-tools');
+ await tools.getByRole('button',{name:'Neuer Einkaufsort'}).click();
+ let form=tools.locator('form').filter({hasText:'Standort / Filialzusatz (optional)'});
+ await form.getByLabel('Name des Einkaufsorts').fill('REWE');
+ await form.getByLabel('Adresse (optional)').fill('Marktstraße 1');
+ await form.getByRole('button',{name:'Speichern'}).click();
+
+ let card=tools.locator('.template-card').filter({hasText:'REWE'});
+ await card.getByRole('button',{name:'Bearbeiten'}).click();
+ form=tools.locator('form').filter({hasText:'Standort / Filialzusatz (optional)'});
+ await form.getByLabel('Standort / Filialzusatz (optional)').fill('West');
+ await form.getByLabel('Notiz (optional)').fill('Parkhaus hinten');
+ await form.getByRole('button',{name:'Speichern'}).click();
+ card=tools.locator('.template-card').filter({hasText:'REWE · West'});
+ await expect(card).toContainText('Marktstraße 1');
+
+ await card.getByRole('button',{name:'Deaktivieren'}).click();
+ await expect(card).toContainText('Inaktiv');
+ await card.getByRole('button',{name:'Reaktivieren'}).click();
+ await expect(card.getByRole('button',{name:'Deaktivieren'})).toBeVisible();
+
+ await tools.getByLabel('Einkaufsort für diese Liste').selectOption({label:'REWE · West'});
+ await tools.getByRole('button',{name:'Zuordnen'}).click();
+ await card.getByRole('button',{name:'Löschen'}).click();
+ await page.getByRole('button',{name:'Löschen',exact:true}).last().click();
+ await expect(tools.getByRole('alert')).toContainText('noch von einer Einkaufsliste oder Vorlage verwendet');
+ expect(apiState.stores).toHaveLength(1);
+
+ await tools.getByRole('button',{name:'Neuer Einkaufsort'}).click();
+ form=tools.locator('form').filter({hasText:'Standort / Filialzusatz (optional)'});
+ await form.getByLabel('Name des Einkaufsorts').fill('Wochenmarkt');
+ await form.getByRole('button',{name:'Speichern'}).click();
+ const market=tools.locator('.template-card').filter({hasText:'Wochenmarkt'});
+ await market.getByRole('button',{name:'Löschen'}).click();
+ await page.getByRole('button',{name:'Löschen',exact:true}).last().click();
+ await expect(market).toHaveCount(0);
+ expect(apiState.stores).toHaveLength(1);
 });
 
 test('loaded template can be queued offline and is applied once after reconnect',async({page,context})=>{
