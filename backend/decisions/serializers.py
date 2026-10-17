@@ -43,14 +43,28 @@ class DecisionCreateSerializer(serializers.Serializer):
         return value
 
 
+class DecisionRatingSerializer(serializers.Serializer):
+    option_id = serializers.UUIDField()
+    score = serializers.IntegerField(min_value=1, max_value=5)
+
+
 class DecisionVoteSerializer(serializers.Serializer):
     option_ids = serializers.ListField(
         child=serializers.UUIDField(),
         allow_empty=True,
         max_length=10,
+        required=False,
+        default=list,
     )
+    ratings = DecisionRatingSerializer(many=True, required=False, default=list)
 
     def validate_option_ids(self, value):
         if len(set(value)) != len(value):
+            raise serializers.ValidationError("duplicate_option_ids")
+        return value
+
+    def validate_ratings(self, value):
+        option_ids = [row["option_id"] for row in value]
+        if len(set(option_ids)) != len(option_ids):
             raise serializers.ValidationError("duplicate_option_ids")
         return value
