@@ -18,14 +18,39 @@ Contextual decisions use the same Decision objects, API, and composer as the cen
 The central Decisions area follows the FamilyOS #223 interaction contract:
 
 - **Actionable open decisions first.** Open decisions the current member can vote on and has not answered yet come first. Within the same action state, a real upcoming deadline sorts earlier; items without deadlines keep their stable server order. Finished decisions remain secondary.
-- **Explainable smartness.** The UI states why that presentation ordering is happening. It never casts a vote, closes a decision, transfers a result, or changes a persisted family order automatically.
+- **Explainable smartness.** The UI states why that presentation ordering is happening. It never casts a vote, closes a decision, resolves a tie, transfers a result, or changes a persisted family order automatically.
 - **Open / Finished / All filters.** These filters are presentation only and do not create another server-side state. Deep links to a finished decision remain visible by opening the relevant combined view.
-- **One clear local action.** Voting is the primary action of an open decision. Closing, clearing a vote, context actions, and result transfer remain visually secondary or destructive according to their semantics.
+- **One clear local action.** Voting is the primary action of an open decision. Closing, clearing a vote, context actions, tie resolution, and result transfer remain explicit secondary actions according to their semantics.
 - **Results are read-only presentation of the canonical aggregate.** Finished cards use the API `result` object for winner/tie presentation and never recompute a winner in the browser.
 - **Progressive creation.** Question, voting mode, and options are the core form. Deadline and anonymous-result settings live under `More settings`; validation uses the shared FamilyOS form primitives and keeps the draft intact after network/server errors.
-- **Every state stays understandable.** Loading, empty, error, read-only, saved-vote, tie, result, and deadline-attention states are expressed in text as well as visually.
+- **Every state stays understandable.** Loading, empty, error, read-only, saved-vote, tie, resolved tie, result, and deadline-attention states are expressed in text as well as visually.
 
 The feature uses 44px-or-larger primary interaction targets, explicit keyboard controls for ranking, native radio/checkbox semantics, visible focus states, and responsive layouts down to the narrow FamilyOS viewport contract. Dragging is not required for any Decision interaction.
+
+### Resolving ties
+
+A finished Decision can keep its raw aggregate tie and add one explicit final resolution. The aggregate is never rewritten: `result.is_tie` and `result.leaders` still describe the actual ballots, while `result.resolution` records the chosen tie-break outcome.
+
+Two explicit paths exist:
+
+- **Server draw (`random`)** chooses exactly once from the canonical tied `result.leaders` using server-side cryptographic randomness. The result is persisted and repeated requests return the same resolution; there is no reroll.
+- **Game duel (`game`)** reuses the canonical Games `GameMatch`. It is available only for a non-anonymous Decision with exactly two voters, exactly two tied leader options, and an unambiguous one-to-one preference between those voters and leaders. The game winner resolves the Decision to that participant's tied option. A game draw leaves the Decision unresolved, after which an authorized member may still use the server draw.
+
+Anonymous Decisions never expose a game tie-break because doing so would reveal the two voters. They may still be resolved by the server draw. Starting either path is always an explicit user action. A pending or active deciding game blocks a competing random resolution.
+
+`POST /api/decisions/<decision-uuid>/tie-break/` accepts:
+
+```json
+{"family":"<family-uuid>","method":"random"}
+```
+
+or, for an eligible two-person duel:
+
+```json
+{"family":"<family-uuid>","method":"game","game_type":"rps"}
+```
+
+The game path supports the existing canonical game types. The central UI intentionally defaults the quick tie-break action to Rock · Paper · Scissors as the shortest duel and links to the normal Games surface for play.
 
 ### Shopping
 
@@ -34,7 +59,7 @@ A shopping list exposes **Vote together** next to the existing context action. T
 - **Plan a purchase / Anschaffung planen** – opens the central Decisions area as a ranking.
 - **What should we eat? / Was wollen wir essen?** – opens the central Decisions area as a single-choice vote.
 
-The preset carries the Shopping List context and only pre-fills the question and voting mode. The user edits the question, mode, options, deadline, and anonymity in the normal Decisions composer before creating the canonical Decision. Closed Shopping decisions with a unique winner offer the explicit **Add winner to shopping list** action in the Decisions area. This uses the canonical shopping quick-add endpoint. Ties are never transferred automatically.
+The preset carries the Shopping List context and only pre-fills the question and voting mode. The user edits the question, mode, options, deadline, and anonymity in the normal Decisions composer before creating the canonical Decision. Closed Shopping decisions with a canonical winner or an explicit tie-break resolution offer the explicit **Add winner to shopping list** action in the Decisions area. This uses the canonical shopping quick-add endpoint. Unresolved ties are never transferred automatically.
 
 ### Travel
 
@@ -70,13 +95,13 @@ All endpoints require authentication and an active membership in the supplied fa
 
 Supported initial context types are Task, Note, Trip, Shopping List, Shopping Item, Pinboard Post, and Calendar Event. Context links never broaden the source object's ACL.
 
-### Detail
+### Detail and result contract
 
 `GET /api/decisions/<decision-uuid>/?family=<family-uuid>` returns the question, options, aggregate vote counts, the caller's current selection, open/closed state, permissions, and canonical context metadata when present.
 
 Each option also exposes `average_rank`/`my_rank` for ranking decisions and `average_score`/`my_score` for rating decisions. Values that do not apply remain `null`, keeping the response shape stable across modes.
 
-The top-level `result` object is the canonical aggregate used by integrations. Its `metric` is `votes`, `average_rank`, or `average_score`; `leaders` contains all leading options, `is_tie` signals a tie, and `winner` is present only when exactly one option leads. Integrations must not invent a separate winner calculation or perform an automatic side effect from this field.
+The top-level `result` object is the canonical aggregate used by integrations. Its `metric` is `votes`, `average_rank`, or `average_score`; `leaders` contains all leading options, `is_tie` signals the raw aggregate tie, and `winner` is present only when exactly one option leads. `resolution` is `null` unless an explicit tie-break has completed; when present it contains the tie-break `method`, persisted winner option, and resolution time. `tie_break` exposes only server-derived capabilities/state such as whether random/game resolution is available and an existing deciding game's deep link. Integrations must not invent a separate winner calculation or automatic tie resolution.
 
 A context-bound decision is visible only while its linked context is visible to the caller. For example, a decision linked to a private Note disappears from list/detail and from generic ContextLink queries after that caller's NoteShare is revoked. Unknown, foreign-family, or inaccessible IDs use neutral unavailable responses rather than revealing existence.
 
@@ -87,49 +112,28 @@ A context-bound decision is visible only while its linked context is visible to 
 Single/multiple and ranking ballots use `option_ids`:
 
 ```json
-{
-  "family": "<family-uuid>",
-  "option_ids": ["<option-uuid>"]
-}
+{"family":"<family-uuid>","option_ids":["<option-uuid>"]}
 ```
 
 For `ranking`, `option_ids` is ordered from rank 1 downward and must contain every option exactly once. An empty array clears the ranking.
 
-Rating ballots use `ratings`:
+Rating ballots use `ratings` with integer scores from 1 through 5. An empty `ratings` array clears the caller's ratings.
 
-```json
-{
-  "family": "<family-uuid>",
-  "ratings": [
-    {"option_id": "<option-uuid>", "score": 5},
-    {"option_id": "<option-uuid>", "score": 3}
-  ]
-}
-```
-
-Scores are integers from 1 through 5. An empty `ratings` array clears the caller's ratings.
-
-Vote writes use **replace semantics**: the submitted ballot atomically replaces all previous choices for the current membership. `single` decisions allow at most one selected option; `multiple` decisions allow multiple unique options from that decision; `ranking` requires a complete ordered ballot; `rating` accepts independent scores for a subset of options. Guests are read-only. Votes cannot change after manual close or after `closes_at` has passed.
+Vote writes use **replace semantics**: the submitted ballot atomically replaces all previous choices for the current membership. Guests are read-only. Votes cannot change after manual close or after `closes_at` has passed.
 
 ### Close
 
-`POST /api/decisions/<decision-uuid>/close/`
-
-```json
-{"family": "<family-uuid>"}
-```
-
-The creator, family owner, or adult can close a decision. Closing is idempotent and does not delete votes or context metadata.
+`POST /api/decisions/<decision-uuid>/close/` with `{"family":"<family-uuid>"}` closes the decision. The creator, family owner, or adult can close a decision. Closing is idempotent and does not delete votes or context metadata.
 
 ## Privacy and anonymity
 
-Anonymous decisions still store the voting Membership internally so the service can enforce one coherent vote set per member and safely support vote replacement. The API deliberately does **not** serialize voter identities for anonymous decisions: option results contain aggregate counts/ranks/scores only. The caller still receives their own selection/rank/score so their ballot can be rendered without deanonymizing anyone else.
+Anonymous decisions still store the voting Membership internally so the service can enforce one coherent vote set per member and safely support vote replacement. The API deliberately does **not** serialize voter identities for anonymous decisions: option results contain aggregate counts/ranks/scores only. The caller still receives their own selection/rank/score so their ballot can be rendered without deanonymizing anyone else. Game tie-break eligibility is disabled for anonymous Decisions for the same reason.
 
 For non-anonymous decisions, option results may include each voter's membership UUID and family display name plus the applicable rank or score. This is family-private data and is returned only to active family members who can see the decision and, for context-bound decisions, the linked context.
 
 ## Notifications
 
-The core does not emit per-vote notifications. Optional creation/end reminders are a later UX/prefs integration and must use the central notification preference system; vote events must not create notification floods.
+The core does not emit per-vote notifications. A deciding game uses the existing Games challenge/turn/result notifications instead of introducing a parallel Decision notification lifecycle.
 
 ## Extension rules
 

@@ -21,7 +21,9 @@ from family.context_models import ContextLink
 from family.models import Family, Membership
 
 from .models import Decision, DecisionOption, DecisionVote
+from .results import option_metrics, summarize_result
 from .serializers import DecisionCreateSerializer, DecisionVoteSerializer
+from .tiebreaks import DecisionTieBreakError, decorate_result, start_tie_break
 
 
 class DecisionApiError(Exception):
@@ -65,7 +67,13 @@ def _membership(user, family_id, *, required=True):
 def _decision_queryset(family):
     return (
         Decision.objects.filter(family=family)
-        .select_related("created_by")
+        .select_related(
+            "created_by",
+            "tie_break__winner_option",
+            "tie_break__game_match",
+            "tie_break__challenger_option",
+            "tie_break__opponent_option",
+        )
         .prefetch_related("options__votes__member__user")
         .order_by("-created_at", "id")
     )
@@ -115,44 +123,6 @@ def _member_name(member):
     return member.display_name or member.user.get_username()
 
 
-def _result_summary(decision, option_rows):
-    candidates = []
-    if decision.mode == Decision.Mode.RANKING:
-        metric = "average_rank"
-        for option, payload in option_rows:
-            if payload[metric] is not None:
-                candidates.append((payload[metric], option))
-        if not candidates:
-            return {"metric": metric, "winner": None, "leaders": [], "is_tie": False}
-        best = min(value for value, _ in candidates)
-    elif decision.mode == Decision.Mode.RATING:
-        metric = "average_score"
-        for option, payload in option_rows:
-            if payload[metric] is not None:
-                candidates.append((payload[metric], option))
-        if not candidates:
-            return {"metric": metric, "winner": None, "leaders": [], "is_tie": False}
-        best = max(value for value, _ in candidates)
-    else:
-        metric = "votes"
-        candidates = [(payload[metric], option) for option, payload in option_rows]
-        best = max((value for value, _ in candidates), default=0)
-        if best <= 0:
-            return {"metric": metric, "winner": None, "leaders": [], "is_tie": False}
-
-    leaders = [
-        {"id": str(option.id), "label": option.label, "value": value}
-        for value, option in candidates
-        if value == best
-    ]
-    return {
-        "metric": metric,
-        "winner": leaders[0] if len(leaders) == 1 else None,
-        "leaders": leaders,
-        "is_tie": len(leaders) > 1,
-    }
-
-
 def _serialize(decision, membership, context=None):
     options = list(decision.options.all())
     selected = []
@@ -168,16 +138,13 @@ def _serialize(decision, membership, context=None):
             selected.append(str(option.id))
             if mine.rank is not None:
                 ranked_selected.append((mine.rank, str(option.id)))
-        ranks = [vote.rank for vote in votes if vote.rank is not None]
-        scores = [vote.score for vote in votes if vote.score is not None]
+        metrics = option_metrics(votes)
         payload = {
             "id": str(option.id),
             "label": option.label,
             "position": option.position,
-            "votes": len(votes),
+            **metrics,
             "selected_by_me": mine is not None,
-            "average_rank": round(sum(ranks) / len(ranks), 2) if ranks else None,
-            "average_score": round(sum(scores) / len(scores), 2) if scores else None,
             "my_rank": mine.rank if mine is not None else None,
             "my_score": mine.score if mine is not None else None,
         }
@@ -195,6 +162,7 @@ def _serialize(decision, membership, context=None):
         option_rows.append((option, payload))
     if decision.mode == Decision.Mode.RANKING:
         selected = [option_id for _, option_id in sorted(ranked_selected)]
+    raw_result = summarize_result(decision, option_rows)
     body = {
         "id": str(decision.id),
         "family": str(decision.family_id),
@@ -208,7 +176,7 @@ def _serialize(decision, membership, context=None):
         "options": serialized_options,
         "my_option_ids": selected,
         "total_voters": len(voter_ids),
-        "result": _result_summary(decision, option_rows),
+        "result": decorate_result(decision, membership, raw_result),
         "can_vote": membership.role != Membership.Role.GUEST and decision.is_open,
         "can_close": decision.created_by_id == membership.user_id
         or membership.role in {Membership.Role.OWNER, Membership.Role.ADULT},
@@ -388,3 +356,30 @@ def decision_close(request, decision_id):
         return Response(_serialize(decision, membership, context))
     except DecisionApiError as exc:
         return _error(exc)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def decision_tie_break(request, decision_id):
+    try:
+        membership = _membership(request.user, request.data.get("family"))
+        decision, _ = _visible_decision(request.user, membership.family, decision_id)
+        start_tie_break(
+            decision_id=decision.id,
+            family=membership.family,
+            membership=membership,
+            method=str(request.data.get("method") or ""),
+            game_type=str(request.data.get("game_type") or "") or None,
+        )
+        decision, context = _visible_decision(request.user, membership.family, decision.id)
+        return Response(_serialize(decision, membership, context))
+    except DecisionApiError as exc:
+        return _error(exc)
+    except DecisionTieBreakError as exc:
+        if exc.code == "tie_break_forbidden":
+            http_status = status.HTTP_403_FORBIDDEN
+        elif exc.code in {"decision_still_open", "decision_not_tied", "tie_break_game_active", "game_tie_break_unavailable"}:
+            http_status = status.HTTP_409_CONFLICT
+        else:
+            http_status = status.HTTP_400_BAD_REQUEST
+        return Response({"code": exc.code}, status=http_status)

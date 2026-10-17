@@ -58,6 +58,16 @@ test('smart UI is explainable and canonical-result driven',()=>{
   assert.doesNotMatch(hub,/options\.sort\([^\n]*(?:votes|average_rank|average_score)/);
 });
 
+test('tie resolution stays explicit and consumes only server capabilities and resolution',()=>{
+  assert.match(hub,/row\?\.result\?\.resolution\?\.winner\|\|row\?\.result\?\.winner/);
+  assert.match(hub,/`\/decisions\/\$\{row\.id\}\/tie-break\/`/);
+  assert.match(hub,/tieBreak\?\.can_random/);
+  assert.match(hub,/tieBreak\?\.can_game/);
+  assert.match(hub,/tieBreak\.game\.deep_link/);
+  assert.match(hub,/game_type:'rps'/);
+  assert.doesNotMatch(hub,/Math\.random/);
+});
+
 test('decision cards expose state in text and keep one local primary mutation',()=>{
   assert.match(hub,/hasMine\?w\.yourVoteSaved:interactive\?w\.yourVoteOpen:w\.readOnly/);
   assert.match(hub,/className="primary compact" onClick=\{\(\)=>saveVote\(row\)\}/);
@@ -73,6 +83,7 @@ test('decision CSS is tokenized, scoped, touch-safe and narrow-screen safe',()=>
   assert.match(css,/\.decisions-hub \.decision-page-head/);
   assert.match(css,/\.decisions-hub \.decision-check/);
   assert.match(css,/\.decisions-hub \.decision-vote-option/);
+  assert.match(css,/\.decision-tiebreak/);
   assert.match(css,/min-height:44px/);
   assert.match(css,/:focus-visible/);
   assert.match(css,/@media\(max-width:359px\)/);
