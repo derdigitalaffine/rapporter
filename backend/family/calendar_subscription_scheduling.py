@@ -1,21 +1,35 @@
 """Minimal CalDAV scheduling facade for FamilyOS-internal participants.
 
 FamilyOS does not deliver email invitations. Scheduling is limited to active
-members of the authenticated family and maps to the shared FamilyEvent participant
-set. The outbox acknowledges internal iTIP messages so native clients can expose
+members of the authenticated family and maps to the FamilyEvent participant set.
+The outbox acknowledges internal iTIP messages so native clients can expose
 invitee editing without claiming external delivery.
 """
+from uuid import UUID
 from xml.etree import ElementTree as ET
 
+from django.db import transaction
 from django.views.decorators.csrf import csrf_exempt
 from icalendar import Calendar
 
 from . import calendar_subscription_dav as core
-from .calendar_subscription_ics import MAX_BYTES
-from .calendar_subscription_participants import UnknownFamilyAttendee, attendee_memberships
+from .calendar_subscription_ics import MAX_BYTES, shared_events
+from .calendar_subscription_participants import (
+    ADDRESS_DOMAIN,
+    UnknownFamilyAttendee,
+    active_members,
+    attendee_memberships,
+    member_calendar_address,
+    member_calendar_urn,
+    member_label,
+    member_principal_path,
+    owner_member,
+)
+from .models import FamilyEvent
 
 D = core.D
 C = core.C
+CS = core.CS
 
 
 def _scheduled(result, allow=None):
@@ -167,6 +181,216 @@ def _schedule_collection(request, grant, path, kind):
     return _scheduled(core.response(status=405), allow)
 
 
+def _member_email(member):
+    return f'{member.pk}@{ADDRESS_DOMAIN}'
+
+
+def _member_search_value(grant, member, tag):
+    if tag == core.q(D, 'displayname'):
+        return member_label(member)
+    if tag == core.q(C, 'calendar-user-address-set'):
+        return ' '.join((member_calendar_address(member), member_calendar_urn(member), member_principal_path(grant, member)))
+    if tag == core.q(C, 'calendar-user-type'):
+        return 'INDIVIDUAL'
+    if tag == core.q(CS, 'email-address-set'):
+        return _member_email(member)
+    if tag == core.q(CS, 'first-name'):
+        return (member.user.first_name or member_label(member).split(' ', 1)[0]).strip()
+    if tag == core.q(CS, 'last-name'):
+        return (member.user.last_name or '').strip()
+    if tag == core.q(CS, 'record-type'):
+        return 'users'
+    raise ValueError()
+
+
+def _member_search_props(grant, member):
+    path = member_principal_path(grant, member)
+    values = core.props_for(grant, path, 'member-principal', member=member)
+    email_set = core.element(CS, 'email-address-set')
+    email_set.append(core.element(CS, 'email-address', _member_email(member)))
+    values[core.q(CS, 'email-address-set')] = email_set
+    values[core.q(CS, 'first-name')] = core.element(CS, 'first-name', _member_search_value(grant, member, core.q(CS, 'first-name')))
+    values[core.q(CS, 'last-name')] = core.element(CS, 'last-name', _member_search_value(grant, member, core.q(CS, 'last-name')))
+    values[core.q(CS, 'record-type')] = core.element(CS, 'record-type', 'users')
+    return values
+
+
+def _matches(value, needle, match_type, caseless):
+    if caseless:
+        value = value.casefold(); needle = needle.casefold()
+    if match_type == 'starts-with':
+        return value.startswith(needle)
+    if match_type == 'ends-with':
+        return value.endswith(needle)
+    if match_type == 'equals':
+        return value == needle
+    return needle in value
+
+
+def _principal_property_search(root, grant):
+    if root.tag != core.q(D, 'principal-property-search') or set(root.attrib) - {'test', 'type'}:
+        raise ValueError()
+    mode = root.get('test', 'allof')
+    if mode not in ('allof', 'anyof'):
+        raise ValueError()
+    requested_type = root.get('type')
+    if requested_type not in (None, '', 'INDIVIDUAL'):
+        return core.multistatus([], [])
+
+    searchable = {
+        core.q(D, 'displayname'),
+        core.q(C, 'calendar-user-address-set'),
+        core.q(C, 'calendar-user-type'),
+        core.q(CS, 'email-address-set'),
+        core.q(CS, 'first-name'),
+        core.q(CS, 'last-name'),
+        core.q(CS, 'record-type'),
+    }
+    searches = root.findall(core.q(D, 'property-search'))
+    if not searches or len(searches) > 8:
+        raise ValueError()
+    criteria = []
+    for search in searches:
+        if search.attrib:
+            raise ValueError()
+        prop = search.find(core.q(D, 'prop')); match = search.find(core.q(D, 'match'))
+        if prop is None or match is None or len(prop) != 1 or prop[0].tag not in searchable:
+            raise ValueError()
+        if set(match.attrib) - {'caseless', 'match-type'}:
+            raise ValueError()
+        caseless_value = match.get('caseless', 'yes').lower()
+        if caseless_value not in ('yes', 'no'):
+            raise ValueError()
+        match_type = match.get('match-type', 'contains')
+        if match_type not in ('contains', 'starts-with', 'ends-with', 'equals'):
+            raise ValueError()
+        criteria.append((prop[0].tag, match.text or '', match_type, caseless_value != 'no'))
+
+    requested_node = root.find(core.q(D, 'prop'))
+    requested = [node.tag for node in requested_node] if requested_node is not None else list(searchable)
+    allowed_requested = searchable | {core.q(D, 'resourcetype'), core.q(D, 'principal-URL')}
+    if any(tag not in allowed_requested for tag in requested):
+        raise ValueError()
+
+    rows = []
+    for member in active_members(grant):
+        checks = [
+            _matches(_member_search_value(grant, member, tag), needle, match_type, caseless)
+            for tag, needle, match_type, caseless in criteria
+        ]
+        if (any(checks) if mode == 'anyof' else all(checks)):
+            rows.append((member_principal_path(grant, member), _member_search_props(grant, member)))
+        if len(rows) >= 100:
+            break
+    return core.multistatus(rows, requested)
+
+
+def _principal_search_property_set():
+    root = core.element(D, 'principal-search-property-set')
+    for namespace, name, description in (
+        (D, 'displayname', 'Display Name'),
+        (CS, 'email-address-set', 'Email Addresses'),
+        (CS, 'first-name', 'First Name'),
+        (CS, 'last-name', 'Last Name'),
+        (C, 'calendar-user-type', 'Calendar User Type'),
+        (C, 'calendar-user-address-set', 'Calendar User Address Set'),
+    ):
+        item = ET.SubElement(root, core.q(D, 'principal-search-property'))
+        prop = ET.SubElement(item, core.q(D, 'prop')); prop.append(core.element(namespace, name))
+        ET.SubElement(item, core.q(D, 'description'), {'{http://www.w3.org/XML/1998/namespace}lang': 'en'}).text = description
+    return core.response(ET.tostring(root, encoding='utf-8', xml_declaration=True))
+
+
+def _event_id(grant, actual):
+    prefix = f'/caldav/{grant.pk}/home/family/'
+    if not actual.startswith(prefix) or not actual.endswith('.ics'):
+        return None
+    try:
+        return UUID(actual[len(prefix):-4])
+    except ValueError:
+        return None
+
+
+def _owner_can_write(grant, event):
+    owner = owner_member(grant)
+    return owner is not None and event.participants.filter(pk=owner.pk).exists()
+
+
+def _put_event(request, grant, event_id, existing):
+    current = core.event_etag(grant, existing) if existing is not None else None
+    if request.META.get('HTTP_IF_NONE_MATCH') == '*' and existing is not None:
+        return core.response(status=412)
+    if request.META.get('HTTP_IF_MATCH') and request.META.get('HTTP_IF_MATCH') != current:
+        return core.response(status=412)
+    if existing is not None and not _owner_can_write(grant, existing):
+        return core.response(status=403)
+    try:
+        title, starts_at, ends_at, payload, participants = core._parse_put(grant, existing, request.body)
+    except UnknownFamilyAttendee:
+        return core.response(status=409)
+    except NotImplementedError:
+        return core.response(status=409)
+    except (ValueError, TypeError, KeyError):
+        return core.response(status=400)
+
+    with transaction.atomic():
+        locked = FamilyEvent.objects.select_for_update().filter(pk=event_id, family=grant.family).first()
+        if existing is None and locked is not None:
+            return core.response(status=412)
+        if existing is not None and (locked is None or core.event_etag(grant, locked) != current):
+            return core.response(status=412)
+        if locked is not None and (locked.source_id or locked.external_id or locked.type != 'calendar.event'):
+            return core.response(status=403)
+        if locked is not None and not _owner_can_write(grant, locked):
+            return core.response(status=403)
+        if locked is None:
+            event = FamilyEvent(
+                id=event_id,
+                family=grant.family,
+                type='calendar.event',
+                title=title,
+                starts_at=starts_at,
+                ends_at=ends_at,
+                actionable=False,
+                payload=payload,
+                is_family_event=False,
+            )
+            event.save(force_insert=True)
+            status = 201
+        else:
+            event = locked
+            event.title = title
+            event.starts_at = starts_at
+            event.ends_at = ends_at
+            event.payload = payload
+            event.save(update_fields=['title', 'starts_at', 'ends_at', 'payload', 'updated_at'])
+            status = 204
+        event.participants.set(participants)
+    result = core.response(status=status, content_type='text/calendar; charset=utf-8')
+    result['ETag'] = core.event_etag(grant, event)
+    return result
+
+
+def _delete_event(request, grant, existing):
+    if existing is None:
+        return core.response(status=404)
+    if not _owner_can_write(grant, existing):
+        return core.response(status=403)
+    current = core.event_etag(grant, existing)
+    if request.META.get('HTTP_IF_MATCH') and request.META.get('HTTP_IF_MATCH') != current:
+        return core.response(status=412)
+    with transaction.atomic():
+        locked = FamilyEvent.objects.select_for_update().filter(pk=existing.pk, family=grant.family).first()
+        if locked is None:
+            return core.response(status=404)
+        if core.event_etag(grant, locked) != current:
+            return core.response(status=412)
+        if locked.source_id or locked.external_id or locked.type != 'calendar.event' or not _owner_can_write(grant, locked):
+            return core.response(status=403)
+        locked.delete()
+    return core.response(status=204)
+
+
 def _apply_schedule_tag(request, result):
     etag = result.get('ETag')
     if etag:
@@ -217,6 +441,10 @@ def _apply_schedule_tag(request, result):
 @csrf_exempt
 def dav(request, path=''):
     actual = '/caldav/' + path
+    schedule_match = request.META.get('HTTP_IF_SCHEDULE_TAG_MATCH')
+    if schedule_match and not request.META.get('HTTP_IF_MATCH'):
+        request.META['HTTP_IF_MATCH'] = schedule_match
+
     is_principal_propfind = request.method == 'PROPFIND' and actual.endswith('/principal/')
     is_schedule_collection = actual.endswith('/inbox/') or actual.endswith('/outbox/')
 
@@ -235,7 +463,37 @@ def dav(request, path=''):
             return _principal_propfind(request, grant, actual)
         return _scheduled(core.response(status=404))
 
-    schedule_match = request.META.get('HTTP_IF_SCHEDULE_TAG_MATCH')
-    if schedule_match and not request.META.get('HTTP_IF_MATCH'):
-        request.META['HTTP_IF_MATCH'] = schedule_match
+    if request.method == 'REPORT' and request.body:
+        try:
+            root = core.xml_body(request)
+        except (ValueError, TypeError, ET.ParseError, OverflowError):
+            root = None
+        if root is not None and root.tag in (core.q(D, 'principal-property-search'), core.q(D, 'principal-search-property-set')):
+            grant, error = _authenticate(request)
+            if error is not None:
+                return error
+            principal = f'/caldav/{grant.pk}/principal/'
+            principals = f'/caldav/{grant.pk}/principals/'
+            if actual not in ('/caldav/', principal, principals):
+                return _scheduled(core.response(status=403))
+            try:
+                result = _principal_property_search(root, grant) if root.tag == core.q(D, 'principal-property-search') else _principal_search_property_set()
+            except (ValueError, TypeError):
+                result = core.response(status=400)
+            return _scheduled(result)
+
+    if request.method in ('PUT', 'DELETE'):
+        grant, error = _authenticate(request)
+        if error is not None:
+            return error
+        event_id = _event_id(grant, actual)
+        if event_id is None:
+            return _scheduled(core.response(status=403))
+        try:
+            existing = next((event for event in shared_events(grant) if event.pk == event_id), None)
+            result = _put_event(request, grant, event_id, existing) if request.method == 'PUT' else _delete_event(request, grant, existing)
+        except core.CalendarCapacityError:
+            result = core.response(status=507)
+        return _apply_schedule_tag(request, _scheduled(result))
+
     return _apply_schedule_tag(request, _scheduled(core.dav(request, path)))
