@@ -180,14 +180,30 @@ class ShoppingSessionActivity(TimestampedModel):
         on_delete=models.SET_NULL,
         related_name="shopping_session_activities",
     )
+    # Learning uses only this client-local ordering. ``sequence`` remains the
+    # server cursor for collaboration and is deliberately never a learning clock.
+    client_stream = models.CharField(max_length=128, blank=True, default="")
+    client_sequence = models.PositiveBigIntegerField(null=True, blank=True)
+    mutation_id = models.UUIDField(null=True, blank=True)
 
     class Meta:
         ordering = ["sequence"]
         constraints = [
             models.UniqueConstraint(fields=["session", "sequence"], name="shop_session_activity_seq_uniq"),
+            models.UniqueConstraint(
+                fields=["session", "client_stream", "client_sequence"],
+                condition=models.Q(client_stream__gt="", client_sequence__isnull=False),
+                name="shop_activity_client_seq_uniq",
+            ),
+            models.UniqueConstraint(
+                fields=["session", "mutation_id"],
+                condition=models.Q(mutation_id__isnull=False),
+                name="shop_activity_mutation_uniq",
+            ),
         ]
         indexes = [
             models.Index(fields=["session", "sequence"], name="shop_session_cursor_idx"),
+            models.Index(fields=["session", "client_stream", "client_sequence"], name="shop_activity_client_idx"),
         ]
 
 

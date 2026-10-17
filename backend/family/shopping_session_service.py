@@ -1,4 +1,5 @@
 from datetime import timedelta
+from uuid import UUID
 
 from django.db import transaction
 from django.utils import timezone
@@ -75,11 +76,32 @@ def active_shopping_session(shopping_list):
     )
 
 
-def record_shopping_item_activity(item, kind, actor):
+def _activity_metadata(client_activity):
+    value = client_activity if isinstance(client_activity, dict) else {}
+    stream = str(value.get("stream") or "").strip()[:128]
+    try:
+        sequence = int(value.get("sequence"))
+        if sequence < 1:
+            sequence = None
+    except (TypeError, ValueError):
+        sequence = None
+    if not stream or sequence is None:
+        stream, sequence = "", None
+    mutation_id = value.get("mutation_id")
+    try:
+        mutation_id = UUID(str(mutation_id)) if mutation_id else None
+    except (TypeError, ValueError, AttributeError):
+        mutation_id = None
+    return stream, sequence, mutation_id
+
+
+def record_shopping_item_activity(item, kind, actor, client_activity=None):
     """Append one ACL-safe activity to an active ShoppingSession.
 
-    Gift/hidden rows are deliberately excluded so an activity stream can never
-    become a side channel around ShoppingItem visibility.
+    ``sequence`` remains a server cursor for collaboration. Learned ordering may
+    only consume the explicit client-local stream/sequence pair. A stream pair or
+    mutation id is idempotent under offline retry/replay while legacy callers keep
+    producing activities that are deliberately excluded from learning.
     """
     if not actor or not getattr(actor, "is_authenticated", False):
         return None
@@ -87,6 +109,7 @@ def record_shopping_item_activity(item, kind, actor):
         return None
     if not can_access_shopping_list(actor, item.shopping_list):
         return None
+    client_stream, client_sequence, mutation_id = _activity_metadata(client_activity)
     now = timezone.now()
     with transaction.atomic():
         session = (
@@ -99,6 +122,16 @@ def record_shopping_item_activity(item, kind, actor):
         )
         if not session:
             return None
+        duplicate = None
+        if mutation_id:
+            duplicate = session.activities.filter(mutation_id=mutation_id).first()
+        if duplicate is None and client_stream and client_sequence is not None:
+            duplicate = session.activities.filter(
+                client_stream=client_stream,
+                client_sequence=client_sequence,
+            ).first()
+        if duplicate:
+            return duplicate
         session.activity_seq += 1
         session.last_activity_at = now
         session.save(update_fields=["activity_seq", "last_activity_at", "updated_at"])
@@ -114,4 +147,7 @@ def record_shopping_item_activity(item, kind, actor):
             item_id=item.id,
             item_name=item.name,
             actor=actor,
+            client_stream=client_stream,
+            client_sequence=client_sequence,
+            mutation_id=mutation_id,
         )
