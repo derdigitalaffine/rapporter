@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 from django.contrib.auth import get_user_model
 from django.db import models
 from django.test import TestCase
@@ -66,6 +68,34 @@ class ShoppingReferenceReadTests(TestCase):
         self.assertNotIn("private_note", record.payload)
         self.assertIn("rewe", terms)
         self.assertIn("rewe city", terms)
+
+    def test_store_samples_use_branch_identity_before_shared_chain_id(self):
+        dataset = self._dataset(dataset_id="shopping.de.store.branches", dataset_type=ReferenceDataset.DatasetType.STORE_REFERENCE, quality={})
+        payload = {
+            "sampling.csv": (
+                "chain_id,sample_id,canonical_name,public_place_hint\n"
+                "de.rewe,rewe-mitte,REWE,Mitte\n"
+                "de.rewe,rewe-west,REWE,West\n"
+            ).encode()
+        }
+
+        result = materialize_reference_dataset(dataset, payload)
+        keys = set(dataset.records.values_list("record_key", flat=True))
+
+        self.assertEqual(result["records"], 2)
+        self.assertEqual(keys, {"sample_id:rewe-mitte", "sample_id:rewe-west"})
+
+    def test_global_search_term_budget_fails_before_replacing_existing_index(self):
+        dataset = self._dataset()
+        existing = self._record(dataset, key="existing", name="Bestehend")
+        payload = {"lexicon.json": b'{"entries":[{"id":"food.milk","label_de":"Milch"}]}' }
+
+        with patch("family.shopping_reference_records.MAX_TOTAL_SEARCH_TERMS", 1):
+            with self.assertRaises(ReferenceRecordMaterializationError) as caught:
+                materialize_reference_dataset(dataset, payload)
+
+        self.assertEqual(caught.exception.code, "too_many_search_terms")
+        self.assertTrue(ReferenceDatasetRecord.objects.filter(pk=existing.pk).exists())
 
     def test_materializer_rejects_lexicon_without_abstain_contract(self):
         dataset = self._dataset(quality={})
