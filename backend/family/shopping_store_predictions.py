@@ -35,7 +35,7 @@ def _target_store(family, list_id):
         raise ValueError("Einkaufsliste gehört nicht zu dieser Familie.")
     assignment = (
         ShoppingListStoreProfile.objects.select_related("store")
-        .filter(shopping_list=target)
+        .filter(shopping_list=target, store__family=family)
         .first()
     )
     return assignment.store if assignment else None
@@ -238,6 +238,7 @@ def _refine_defaults_for_store(family, suggestion, list_id):
             family=family,
             normalized_name=suggestion["key"],
             store_context__shopping_store=store,
+            store_context__shopping_store__family=family,
         )
         .select_related("store_context")
         .order_by("purchased_at")
