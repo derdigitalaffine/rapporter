@@ -68,7 +68,7 @@ test('schedule editor shares server-authoritative recurrence UX with calendar ev
  await expect(dialog.getByLabel('Planungsmodus')).toBeVisible();
  await dialog.getByLabel('In eigenen Worten',{exact:true}).fill('immer am ersten Montag im Quartal');
  await dialog.getByRole('button',{name:'Erkennen',exact:true}).click();
- await expect(dialog.getByText(/erster Montag/)).toBeVisible();
+ await expect(dialog.locator('.scheduling-recurrence-summary')).toContainText('erster Montag');
  await expect(dialog.getByLabel('Wiederholung',{exact:true})).toHaveValue('quarterly');
  await dialog.getByRole('button',{name:'Speichern',exact:true}).click();
  await expect.poll(()=>requests.at(-1)?.schedule?.recurrence?.frequency).toBe('quarterly');
@@ -79,13 +79,16 @@ test('advanced recurrence exposes comfortable interval and target-count modes',a
  await page.setViewportSize({width:390,height:844});
  const requests=await boot(page);const dialog=await openSchedule(page);
  const repeat=dialog.getByLabel('Wiederholung',{exact:true});
+ await expect(repeat.locator('option[value="interval"]')).toHaveText('Eigenes Intervall');
+ await expect(repeat.locator('option[value="quota"]')).toHaveText('Mehrmals pro Zeitraum');
  await repeat.selectOption('interval');
  await dialog.getByLabel('Alle',{exact:true}).fill('3');
  await dialog.getByLabel('Einheit',{exact:true}).selectOption('weekly');
- await expect(dialog.getByText('Alle 3 Wochen',{exact:true})).toBeVisible();
+ await expect(repeat.locator('option:checked')).toHaveText('Alle 3 Wochen');
  await repeat.selectOption('quota');
  await dialog.getByLabel('Anzahl',{exact:true}).fill('4');
  await dialog.getByLabel('Pro Zeitraum',{exact:true}).selectOption('monthly');
+ await expect(repeat.locator('option:checked')).toHaveText('4× pro Monat');
  await expect(dialog.getByText(/Flexibles Ziel im Kalenderzeitraum/)).toBeVisible();
  expect(await dialog.evaluate(node=>node.scrollWidth<=node.clientWidth)).toBe(true);
  const result=await new AxeBuilder({page}).include('.action-options-sheet').withTags(['wcag2a','wcag2aa','wcag21aa']).analyze();
@@ -104,7 +107,7 @@ test('business-day cadence is first-class and preserves the weekday counter',asy
  await repeat.selectOption('interval');
  await dialog.getByLabel('Alle',{exact:true}).fill('3');
  await dialog.getByLabel('Einheit',{exact:true}).selectOption('business_daily');
- await expect(dialog.getByText('Alle 3 Werktage',{exact:true})).toBeVisible();
+ await expect(repeat.locator('option:checked')).toHaveText('Alle 3 Werktage');
  await expect(dialog.getByText(/Wochenenden werden beim Intervall übersprungen/)).toBeVisible();
  await dialog.getByRole('button',{name:'Speichern',exact:true}).click();
  await expect.poll(()=>requests.at(-1)?.schedule?.recurrence?.business_days).toBe(true);
