@@ -112,7 +112,8 @@ def _audit(event_key, request, dataset):
         event_key,
         actor=request.user,
         actor_class="superadmin",
-        target_type="reference_dataset",
+        reason="admin_action",
+        target_type="reference_data",
         target_id=str(dataset.id),
     )
 
@@ -164,7 +165,7 @@ def _run_transition(request, dataset, action):
                 expected_revision=expected_revision,
                 reason_code="operator_activate",
             )
-            audit_key = "superadmin.reference_dataset.activated"
+            audit_key = "superadmin.reference_data.activated"
         elif action == "disable":
             updated = disable_reference_dataset(
                 dataset.pk,
@@ -172,7 +173,7 @@ def _run_transition(request, dataset, action):
                 expected_revision=expected_revision,
                 reason_code="operator_disable",
             )
-            audit_key = "superadmin.reference_dataset.disabled"
+            audit_key = "superadmin.reference_data.disabled"
         elif action == "rollback":
             updated = rollback_reference_dataset(
                 dataset.dataset_id,
@@ -180,7 +181,7 @@ def _run_transition(request, dataset, action):
                 expected_revision=expected_revision,
                 reason_code="operator_rollback",
             )
-            audit_key = "superadmin.reference_dataset.rolled_back"
+            audit_key = "superadmin.reference_data.rolled_back"
         else:
             return _error("Unbekannte Paketaktion.", "invalid_action", http_status=status.HTTP_404_NOT_FOUND)
     except ReferenceActivationError as exc:
@@ -252,7 +253,7 @@ def superadmin_reference_dataset_validate(request):
     except ReferencePackageError as exc:
         return _error(str(exc), exc.code)
 
-    _audit("superadmin.reference_dataset.validated", request, dataset)
+    _audit("superadmin.reference_data.validated", request, dataset)
     http_status = status.HTTP_200_OK if dataset.validation_summary.get("valid") else status.HTTP_422_UNPROCESSABLE_ENTITY
     return Response({"dataset": _serialize(dataset, include_manifest=True)}, status=http_status)
 
