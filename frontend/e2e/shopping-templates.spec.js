@@ -46,10 +46,7 @@ async function installTemplateMocks(page,state){
 
 async function openTools(page){
  await page.goto('/?page=shopping');
- const overflow=page.locator('.shopping-overflow');
- await expect(overflow.locator('summary')).toBeVisible();
- await overflow.locator('summary').click();
- const planningButton=overflow.getByRole('button',{name:'Vorlagen & Einkaufsorte'});
+ const planningButton=page.locator('.shopping-list-switcher').getByRole('button',{name:'Vorlagen'});
  await expect(planningButton).toBeVisible();
  await planningButton.click();
  await expect(page.getByTestId('shopping-template-tools')).toBeVisible();
@@ -135,7 +132,7 @@ test('loaded template can be queued offline and is applied once after reconnect'
 test('manual template and planning tools stay usable in English at 390px',async({page})=>{
  await page.setViewportSize({width:390,height:844});const state=await installApiMocks(page,{language:'en',dismissOnboarding:true});await installTemplateMocks(page,state);
  await page.goto('/?page=shopping');
- const overflow=page.locator('.shopping-overflow');await overflow.locator('summary').click();await overflow.getByRole('button',{name:'Templates & shopping places'}).click();
+ await page.locator('.shopping-list-switcher').getByRole('button',{name:'Templates'}).click();
  const tools=page.getByTestId('shopping-template-tools');
  await expect(tools.getByRole('heading',{name:'Templates & shopping places'})).toBeVisible();
  await tools.getByRole('button',{name:'New template'}).click();
