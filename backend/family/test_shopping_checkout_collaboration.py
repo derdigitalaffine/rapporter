@@ -74,7 +74,7 @@ class ShoppingCheckoutCollaborationTests(TestCase):
         self.assertEqual(retried.status_code, 200)
         self.assertTrue(retried.data["left"])
 
-    def test_group_finish_requires_explicit_confirmation_for_active_peer(self):
+    def test_group_finish_requires_confirmation_for_the_current_active_peer_set(self):
         session_id = self._start()
         self._add_purchase()
         joined = self.peer_client.post(
@@ -101,6 +101,23 @@ class ShoppingCheckoutCollaborationTests(TestCase):
         self.assertEqual([person["id"] for person in blocked.data["participants"]], [self.peer.id])
         self.assertEqual(ShoppingSession.objects.get(id=session_id).status, ShoppingSession.Status.ACTIVE)
 
+        stale_confirmation = self.owner_client.post(
+            "/api/shopping-sessions/complete/",
+            {
+                "shopping_list": str(self.shopping_list.id),
+                "session": session_id,
+                "scope": "group",
+                "expected_revision": 0,
+                "confirm_active_peers": True,
+                "confirmed_active_peer_ids": [],
+                "open_items": "keep",
+            },
+            format="json",
+        )
+        self.assertEqual(stale_confirmation.status_code, 409)
+        self.assertEqual(stale_confirmation.data["code"], "active_peers_confirmation_required")
+        self.assertEqual(ShoppingSession.objects.get(id=session_id).status, ShoppingSession.Status.ACTIVE)
+
         completed = self.owner_client.post(
             "/api/shopping-sessions/complete/",
             {
@@ -109,6 +126,7 @@ class ShoppingCheckoutCollaborationTests(TestCase):
                 "scope": "group",
                 "expected_revision": 0,
                 "confirm_active_peers": True,
+                "confirmed_active_peer_ids": [str(self.peer.id)],
                 "open_items": "keep",
             },
             format="json",
