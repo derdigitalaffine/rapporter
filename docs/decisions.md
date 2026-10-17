@@ -17,8 +17,8 @@ Contextual decisions use the same Decision objects, API, and composer as the cen
 
 The central Decisions area follows the FamilyOS #223 interaction contract:
 
-- **Open decisions first.** Open decisions are shown before finished ones. When open decisions have real deadlines, the nearest deadline is shown first. Items without deadlines keep their stable server order.
-- **Explainable smartness.** The UI states that deadline-based prioritisation is happening. It never casts a vote, closes a decision, transfers a result, or changes a persisted family order automatically.
+- **Actionable open decisions first.** Open decisions the current member can vote on and has not answered yet come first. Within the same action state, a real upcoming deadline sorts earlier; items without deadlines keep their stable server order. Finished decisions remain secondary.
+- **Explainable smartness.** The UI states why that presentation ordering is happening. It never casts a vote, closes a decision, transfers a result, or changes a persisted family order automatically.
 - **Open / Finished / All filters.** These filters are presentation only and do not create another server-side state. Deep links to a finished decision remain visible by opening the relevant combined view.
 - **One clear local action.** Voting is the primary action of an open decision. Closing, clearing a vote, context actions, and result transfer remain visually secondary or destructive according to their semantics.
 - **Results are read-only presentation of the canonical aggregate.** Finished cards use the API `result` object for winner/tie presentation and never recompute a winner in the browser.
