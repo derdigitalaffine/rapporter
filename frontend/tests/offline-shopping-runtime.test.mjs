@@ -27,13 +27,12 @@ test('servers without capability never activate the local domain adapter',async(
  await rememberOfflineBootstrap('/auth/session/',{authenticated:true,user:{id:'old'}});
  assert.equal((await request('/shopping-lists/','GET')).handled,false);
 });
-test('quick-add reuses and reopens matching Shopping items instead of creating duplicates',async()=>{
- const {transport}=await setup(),e=offlineEngine('f');e.schedule=()=>{};navigator.onLine=false;
+test('quick-add keeps two explicit same-name items distinct instead of silently merging',async()=>{
+ await setup();const e=offlineEngine('f');e.schedule=()=>{};navigator.onLine=false;
  const list=(await request('/shopping-lists/','POST',{family:'f',name:'Food'})).value;
  const first=(await request('/smart/shopping/quick-add/','POST',{family:'f',shopping_list:list.id,name:'Milk',quantity:'2'})).value;
- await request(`/shopping-items/${first.item.id}/`,'PATCH',{checked:true});
  const again=(await request('/smart/shopping/quick-add/','POST',{family:'f',shopping_list:list.id,name:'milk',quantity:''})).value;
- assert.equal(again.reused,true);assert.equal(again.item.id,first.item.id);assert.equal(again.item.checked,false);assert.equal(again.item.quantity,'2');assert.equal((await e.list('shopping_item')).length,1);
+ assert.equal(first.reused,false);assert.equal(again.reused,false);assert.notEqual(again.item.id,first.item.id);assert.equal((await e.list('shopping_item')).length,2);
 });
 
 test('logout in another tab stops old writes without erasing the newly selected account',async()=>{

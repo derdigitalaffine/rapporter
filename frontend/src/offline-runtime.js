@@ -102,8 +102,7 @@ export async function offlineDashboard(path){
 export async function addShoppingLocally(familyId,payload){
  const e=await readyOfflineEngine(familyId),name=String(payload.name||'').trim();if(!name)throw new Error('item_name_required');
  const listId=payload.shopping_list||(await e.list('shopping_list')).find(l=>!l.archived)?.id;if(!listId)throw new Error('shopping_list_required');
- const existing=(await e.list('shopping_item')).filter(i=>i.shopping_list===listId&&!i.birthday_context&&String(i.name).toLocaleLowerCase()===name.toLocaleLowerCase()).sort((a,b)=>Number(a.checked)-Number(b.checked))[0];
  const values={};for(const key of ['quantity','category','aisle','note'])if(payload[key]!==undefined&&payload[key]!==null&&payload[key]!=='')values[key]=payload[key];if('favorite' in payload)values.favorite=Boolean(payload.favorite);
- const item=await e.mutate('shopping_item',existing?.id,existing?'update':'create',existing?{...values,checked:false}:{shopping_list:listId,name,...values,checked:false});
- return {item,reused:Boolean(existing)};
+ const item=await e.mutate('shopping_item',undefined,'create',{shopping_list:listId,name,...values,checked:false});
+ return {item,reused:false};
 }
