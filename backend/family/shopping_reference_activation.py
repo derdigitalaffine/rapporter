@@ -15,7 +15,8 @@ from .shopping_reference_registry import active_reference_datasets
 
 DEFAULT_LEASE_SECONDS = 120
 MAX_LEASE_SECONDS = 900
-_TECHNICAL_ID_RE = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
+_DATASET_ID_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{2,179}$")
+_OWNER_RE = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
 _REASON_CODE_RE = re.compile(r"^[a-z0-9._-]{0,80}$")
 
 
@@ -42,7 +43,8 @@ def _error(error_class, code, message):
 
 
 def _technical_id(value, field):
-    if not isinstance(value, str) or not _TECHNICAL_ID_RE.fullmatch(value):
+    pattern = _DATASET_ID_RE if field == "dataset_id" else _OWNER_RE
+    if not isinstance(value, str) or not pattern.fullmatch(value):
         _error(ReferenceActivationError, "invalid_technical_id", f"{field} must be a technical identifier")
     return value
 
