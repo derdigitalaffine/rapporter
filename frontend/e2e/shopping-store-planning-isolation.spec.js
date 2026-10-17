@@ -18,8 +18,22 @@ test('store · planning and budget surfaces stay unmounted and do not load plann
  await page.goto('/?page=shopping&list=shop-1&mode=store');
  await page.waitForLoadState('networkidle');
 
- await expect(page.locator('.store-focus')).toBeVisible();
- await expect(page.locator('.shopping-predictions')).toHaveCount(0);
- await expect(page.locator('.shopping-budget-commitment')).toHaveCount(0);
- expect(planningRequests).toEqual([]);
+ const expectIsolated=async()=>{
+  await expect(page.locator('.store-focus')).toBeVisible();
+  await expect(page.locator('.shopping-predictions')).toHaveCount(0);
+  await expect(page.locator('.shopping-budget-commitment')).toHaveCount(0);
+  expect(planningRequests).toEqual([]);
+ };
+ await expectIsolated();
+
+ await page.reload();
+ await page.waitForLoadState('networkidle');
+ await expectIsolated();
+
+ await page.getByRole('button',{name:'Zur Planung'}).click();
+ await expect(page.locator('.shopping-page')).toBeVisible();
+ planningRequests.length=0;
+ await page.goBack();
+ await page.waitForLoadState('networkidle');
+ await expectIsolated();
 });
