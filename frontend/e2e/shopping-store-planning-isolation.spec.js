@@ -32,6 +32,7 @@ test('store · planning and budget surfaces stay unmounted and do not load plann
 
  await page.getByRole('button',{name:'Zur Planung'}).click();
  await expect(page.locator('.shopping-page')).toBeVisible();
+ await page.waitForLoadState('networkidle');
  planningRequests.length=0;
  await page.goBack();
  await page.waitForLoadState('networkidle');
