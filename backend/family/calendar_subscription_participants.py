@@ -75,14 +75,14 @@ def calendar_bytes_with_participants(grant, events, detail_level='full'):
             organizer = vCalAddress(member_calendar_address(owner))
             organizer.params['CN'] = member_label(owner)
             organizer.params['CUTYPE'] = 'INDIVIDUAL'
-            organizer.params['SCHEDULE-AGENT'] = 'CLIENT'
+            organizer.params['SCHEDULE-AGENT'] = 'SERVER'
             component.add('ORGANIZER', organizer, encode=0)
         for member in participants:
             attendee = vCalAddress(member_calendar_address(member))
             attendee.params['CN'] = member_label(member)
             attendee.params['CUTYPE'] = 'INDIVIDUAL'
             attendee.params['ROLE'] = 'REQ-PARTICIPANT'
-            attendee.params['SCHEDULE-AGENT'] = 'CLIENT'
+            attendee.params['SCHEDULE-AGENT'] = 'SERVER'
             component.add('ATTENDEE', attendee, encode=0)
     data = calendar.to_ical()
     if len(data) > MAX_BYTES:
