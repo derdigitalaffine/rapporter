@@ -1,5 +1,3 @@
-import './contracts-i18n';
-
 export const PRIMARY_NAV_IDS=Object.freeze(['home','todo','shopping','calendar','more']);
 
 const PAGE_ICONS=Object.freeze({
@@ -59,7 +57,7 @@ export function pageLabel(page,t,i18n){
     birthdays:t('birthdayUi.title'),
     baby:t('babyUi.title'),
     pets:t('petUi.title'),
-    contracts:t('contractUi.title'),
+    contracts:english?'Contracts':'Verträge',
     loyalty:t('loyaltyUi.title'),
     vehicles:t('vehiclesUi.title'),
     trips:english?'Trips':'Reisen',
