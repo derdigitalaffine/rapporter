@@ -73,3 +73,76 @@ class AdvancedScheduleRecurrenceTests(SimpleTestCase):
         self.assertEqual(quarter['recurrence']['frequency'], 'quarterly')
         self.assertEqual(november['recurrence']['months'], [11])
         self.assertEqual(weekend['recurrence']['nth_weekdays'][0], {'weekday': 'SA', 'ordinal': 1})
+
+    def test_hourly_interval_restarts_after_latest_completion(self):
+        schedule = normalize_schedule({
+            'mode': 'static',
+            'anchor_date': '2026-10-17',
+            'recurrence': {'frequency': 'hourly', 'interval': 4},
+        }, 'Europe/Berlin')
+        now = datetime(2026, 10, 17, 14, 0, tzinfo=UTC)
+        completed = datetime(2026, 10, 17, 12, 30, tzinfo=UTC)
+        prediction = predict(schedule, [completed], now)
+        self.assertEqual(prediction['status'], 'scheduled')
+        self.assertEqual(prediction['expected_at'], datetime(2026, 10, 17, 16, 30, tzinfo=UTC))
+        due = predict(schedule, [completed], datetime(2026, 10, 17, 17, 0, tzinfo=UTC))
+        self.assertEqual(due['status'], 'due')
+
+    def test_hourly_interval_phrases_are_deterministic(self):
+        german = parse_schedule('alle 6 Stunden', 'Europe/Berlin', today=date(2026, 10, 17))
+        english = parse_schedule('every 8 hours', 'Europe/Berlin', today=date(2026, 10, 17))
+        self.assertEqual(german['recurrence'], {'frequency': 'hourly', 'interval': 6})
+        self.assertEqual(english['recurrence'], {'frequency': 'hourly', 'interval': 8})
+
+    def test_business_day_interval_counts_only_monday_to_friday(self):
+        schedule = parse_schedule('alle 3 Werktage', 'Europe/Berlin', today=date(2026, 10, 19))
+        self.assertEqual(schedule['recurrence'], {'frequency': 'daily', 'interval': 3, 'business_days': True})
+        monday = predict(schedule, [], datetime(2026, 10, 19, 7, tzinfo=UTC))
+        self.assertEqual(monday['expected_at'].date().isoformat(), '2026-10-19')
+        after_monday = predict(schedule, [datetime(2026, 10, 19, 8, tzinfo=UTC)], datetime(2026, 10, 19, 9, tzinfo=UTC))
+        self.assertEqual(after_monday['expected_at'].date().isoformat(), '2026-10-22')
+        after_thursday = predict(schedule, [datetime(2026, 10, 22, 8, tzinfo=UTC)], datetime(2026, 10, 22, 9, tzinfo=UTC))
+        self.assertEqual(after_thursday['expected_at'].date().isoformat(), '2026-10-27')
+
+    def test_business_day_anchor_on_weekend_moves_to_monday_and_english_parses(self):
+        weekend = parse_schedule('alle 2 Werktage', 'Europe/Berlin', today=date(2026, 10, 17))
+        english = parse_schedule('every 4 business days', 'Europe/Berlin', today=date(2026, 10, 17))
+        self.assertEqual(english['recurrence'], {'frequency': 'daily', 'interval': 4, 'business_days': True})
+        prediction = predict(weekend, [], datetime(2026, 10, 17, 8, tzinfo=UTC))
+        self.assertEqual(prediction['expected_at'].date().isoformat(), '2026-10-19')
+        with self.assertRaises(ValueError):
+            normalize_schedule({'mode': 'static', 'recurrence': {'frequency': 'weekly', 'interval': 2, 'business_days': True}}, 'Europe/Berlin')
+
+    def test_times_per_week_tracks_progress_without_fake_slots(self):
+        schedule = normalize_schedule({
+            'mode': 'static',
+            'anchor_date': '2026-10-12',
+            'recurrence': {'frequency': 'weekly', 'interval': 1, 'times_per_period': 3},
+        }, 'Europe/Berlin')
+        observations = [
+            datetime(2026, 10, 12, 18, tzinfo=UTC),
+            datetime(2026, 10, 15, 7, tzinfo=UTC),
+        ]
+        prediction = predict(schedule, observations, datetime(2026, 10, 17, 10, tzinfo=UTC))
+        self.assertEqual(prediction['status'], 'due')
+        self.assertEqual(prediction['target_count'], 3)
+        self.assertEqual(prediction['completed_count'], 2)
+        self.assertEqual(prediction['remaining_count'], 1)
+        self.assertEqual(prediction['period_start'], '2026-10-12')
+        self.assertEqual(prediction['period_end'], '2026-10-18')
+        complete = predict(schedule, observations + [datetime(2026, 10, 17, 11, tzinfo=UTC)], datetime(2026, 10, 17, 12, tzinfo=UTC))
+        self.assertEqual(complete['status'], 'scheduled')
+        self.assertEqual(complete['remaining_count'], 0)
+        self.assertEqual(complete['expected_at'].date().isoformat(), '2026-10-19')
+
+    def test_times_per_period_phrases_and_validation(self):
+        german = parse_schedule('3 mal pro Woche', 'Europe/Berlin', today=date(2026, 10, 17))
+        compact = parse_schedule('2x pro Tag', 'Europe/Berlin', today=date(2026, 10, 17))
+        english = parse_schedule('4 times per month', 'Europe/Berlin', today=date(2026, 10, 17))
+        self.assertEqual(german['recurrence'], {'frequency': 'weekly', 'interval': 1, 'times_per_period': 3})
+        self.assertEqual(compact['recurrence'], {'frequency': 'daily', 'interval': 1, 'times_per_period': 2})
+        self.assertEqual(english['recurrence'], {'frequency': 'monthly', 'interval': 1, 'times_per_period': 4})
+        with self.assertRaises(ValueError):
+            normalize_schedule({'mode': 'static', 'recurrence': {'frequency': 'yearly', 'times_per_period': 2}}, 'Europe/Berlin')
+        with self.assertRaises(ValueError):
+            normalize_schedule({'mode': 'static', 'recurrence': {'frequency': 'weekly', 'interval': 2, 'times_per_period': 2}}, 'Europe/Berlin')

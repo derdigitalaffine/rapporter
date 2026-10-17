@@ -9,6 +9,8 @@ const DAY_LABELS={de:['Mo','Di','Mi','Do','Fr','Sa','So'],en:['Mon','Tue','Wed',
 const MONTH_LABELS={de:['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'],en:['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']};
 const ORDINAL_LABELS={de:{1:'Erste',2:'Zweite',3:'Dritte',4:'Vierte',5:'Fünfte','-1':'Letzte'},en:{1:'First',2:'Second',3:'Third',4:'Fourth',5:'Fifth','-1':'Last'}};
 const LEGACY=new Set(['weekly','monthly','yearly']);
+const INTERVAL_UNITS=['hourly','daily','business_daily','weekly','monthly','quarterly','yearly'];
+const QUOTA_PERIODS=['daily','weekly','monthly'];
 
 export function recurrenceObject(value){
  if(!value)return null;
@@ -25,15 +27,27 @@ function recurrenceRule(value,anchor){
  return {version:'scheduling-rule-v1',time_mode:'wall_clock',anchor_date:anchorDate(anchor),recurrence:value};
 }
 
-function presetOptions(de){
- return [
+function recurrenceKind(recurrence){
+ if(!recurrence)return 'none';
+ if(recurrence.times_per_period)return 'quota';
+ if(recurrence.business_days&&Number(recurrence.interval||1)===1)return 'business_daily';
+ if(recurrence.business_days||recurrence.frequency==='hourly'||Number(recurrence.interval||1)>1)return 'interval';
+ return recurrence.frequency||'none';
+}
+
+function presetOptions(de,allowActionCadence){
+ const base=[
   {key:'daily',label:de?'Täglich':'Daily',value:{frequency:'daily',interval:1}},
   {key:'weekly',label:de?'Wöchentlich':'Weekly',value:{frequency:'weekly',interval:1}},
   {key:'monthly',label:de?'Monatlich':'Monthly',value:{frequency:'monthly',interval:1}},
-  {key:'quarterly-first-monday',label:de?'1. Montag · Quartal':'1st Monday · quarter',value:{frequency:'quarterly',interval:1,nth_weekdays:[{weekday:'MO',ordinal:1}]}},
-  {key:'november-last-thursday',label:de?'Letzter Do · November':'Last Thu · November',value:{frequency:'yearly',interval:1,months:[11],nth_weekdays:[{weekday:'TH',ordinal:-1}]}},
-  {key:'quarterly-first-weekend',label:de?'1. Wochenende · Quartal':'1st weekend · quarter',value:{frequency:'quarterly',interval:1,nth_weekdays:[{weekday:'SA',ordinal:1}]}}
+  {key:'quarterly-first-monday',label:de?'1. Montag · Quartal':'1st Monday · quarter',value:{frequency:'quarterly',interval:1,nth_weekdays:[{weekday:'MO',ordinal:1]}},secondary:true},
  ];
+ if(allowActionCadence)base.splice(3,0,
+  {key:'business-days',label:de?'Werktags':'Business days',value:{frequency:'daily',interval:1,business_days:true}},
+  {key:'twice-daily',label:de?'2× pro Tag':'2× per day',value:{frequency:'daily',interval:1,times_per_period:2}},
+  {key:'every-two-weeks',label:de?'Alle 2 Wochen':'Every 2 weeks',value:{frequency:'weekly',interval:2}},
+ );
+ return base;
 }
 
 export default function SchedulingRecurrenceEditor({
@@ -44,6 +58,7 @@ export default function SchedulingRecurrenceEditor({
  anchor,
  allowOnce=false,
  allowNone=true,
+ allowActionCadence=true,
  showNaturalLanguage=true,
  onParsedRule,
  className='',
@@ -53,21 +68,42 @@ export default function SchedulingRecurrenceEditor({
  const language=de?'de':'en';
  const recurrence=recurrenceObject(value);
  const frequency=recurrence?.frequency||'none';
- const advanced=['monthly','quarterly','yearly'].includes(frequency);
+ const kind=recurrenceKind(recurrence);
+ const cadenceVisible=allowActionCadence||kind==='interval'||kind==='quota'||kind==='business_daily';
+ const calendarAdvanced=!recurrence?.times_per_period&&!recurrence?.business_days&&['monthly','quarterly','yearly'].includes(frequency);
  const [phrase,setPhrase]=useState('');
  const [preview,setPreview]=useState(null);
  const [previewError,setPreviewError]=useState('');
  const [previewBusy,setPreviewBusy]=useState(false);
- const presets=useMemo(()=>presetOptions(de),[de]);
+ const presets=useMemo(()=>presetOptions(de,allowActionCadence),[de,allowActionCadence]);
  const dateFormatter=useMemo(()=>new Intl.DateTimeFormat(de?'de-DE':'en-GB',{weekday:'short',day:'2-digit',month:'short',year:'numeric'}),[de]);
+ const unitLabels=de?{hourly:'Stunden',daily:'Tage',business_daily:'Werktage',weekly:'Wochen',monthly:'Monate',quarterly:'Quartale',yearly:'Jahre'}:{hourly:'hours',daily:'days',business_daily:'business days',weekly:'weeks',monthly:'months',quarterly:'quarters',yearly:'years'};
+ const periodLabels=de?{daily:'Tag',weekly:'Woche',monthly:'Monat'}:{daily:'day',weekly:'week',monthly:'month'};
+ const intervalUnit=recurrence?.business_days?'business_daily':frequency;
 
  function setRecurrence(next){onChange?.(next)}
  function change(changes){setRecurrence({...recurrence,...changes})}
- function changeFrequency(next){
+ function changeKind(next){
   if(next==='none'){setRecurrence('');return}
   if(next==='once'){setRecurrence({frequency:'once',date:anchorDate(anchor)});return}
+  if(next==='business_daily'){setRecurrence({frequency:'daily',interval:1,business_days:true});return}
+  if(next==='interval'){
+   if(kind==='interval')return;
+   setRecurrence({frequency:'daily',interval:2});return;
+  }
+  if(next==='quota'){
+   if(kind==='quota')return;
+   setRecurrence({frequency:'weekly',interval:1,times_per_period:2});return;
+  }
+  if(next===frequency&&kind===frequency)return;
   setRecurrence({frequency:next,interval:1});
  }
+ function changeIntervalUnit(next){
+  const interval=Math.max(1,Number(recurrence?.interval||2));
+  if(next==='business_daily'){setRecurrence({frequency:'daily',interval,business_days:true});return}
+  setRecurrence({frequency:next,interval});
+ }
+ function changeQuotaPeriod(next){setRecurrence({frequency:next,interval:1,times_per_period:Math.max(1,Number(recurrence?.times_per_period||2))})}
  function toggleMonth(month,checked){
   const current=recurrence?.months||[];
   const next=checked?[...new Set([...current,month])].sort((a,b)=>a-b):current.filter(item=>item!==month);
@@ -110,24 +146,40 @@ export default function SchedulingRecurrenceEditor({
   </div>
 
   {showNaturalLanguage&&<div className="scheduling-recurrence-phrase">
-   <FormField label={de?'In eigenen Worten':'In your own words'} description={de?'Zum Beispiel: „immer am ersten Montag im Quartal“':'For example: “every first Monday of the quarter”'}>
+   <FormField label={de?'In eigenen Worten':'In your own words'} description={de?'Zum Beispiel: „alle 3 Tage“, „alle 3 Werktage“, „2x pro Woche“ oder „erster Montag im Quartal“':'For example: “every 3 days”, “every 3 business days”, “2 times per week” or “first Monday of the quarter”'}>
     {fieldProps=><div className="scheduling-recurrence-phrase-input"><input {...fieldProps} value={phrase} disabled={disabled} onChange={event=>setPhrase(event.target.value)} onKeyDown={event=>{if(event.key==='Enter'){event.preventDefault();parsePhrase()}}} placeholder={de?'Wiederholung beschreiben …':'Describe recurrence …'}/><button type="button" disabled={disabled||previewBusy||!phrase.trim()||!familyId} onClick={parsePhrase}>{de?'Erkennen':'Interpret'}</button></div>}
    </FormField>
   </div>}
 
-  <FormRow>
-   <FormField label={de?'Wiederholung':'Repeat'}><select value={frequency} disabled={disabled} onChange={event=>changeFrequency(event.target.value)}>{allowNone&&<option value="none">{de?'Keine':'None'}</option>}{allowOnce&&<option value="once">{de?'Einmalig':'Once'}</option>}<option value="daily">{de?'Täglich':'Daily'}</option><option value="weekly">{de?'Wöchentlich':'Weekly'}</option><option value="monthly">{de?'Monatlich':'Monthly'}</option><option value="quarterly">{de?'Quartalsweise':'Quarterly'}</option><option value="yearly">{de?'Jährlich':'Yearly'}</option></select></FormField>
-   {frequency!=='none'&&frequency!=='once'&&<FormField label={de?'Alle N Intervalle':'Every N intervals'}><input type="number" min="1" max="1200" required disabled={disabled} value={recurrence?.interval||1} onChange={event=>change({interval:Number(event.target.value)})}/></FormField>}
-  </FormRow>
+  <FormField label={de?'Wiederholung':'Repeat'}><select value={kind} disabled={disabled} onChange={event=>changeKind(event.target.value)}>{allowNone&&<option value="none">{de?'Keine':'None'}</option>}{allowOnce&&<option value="once">{de?'Einmalig':'Once'}</option>}<option value="daily">{de?'Täglich':'Daily'}</option>{cadenceVisible&&<option value="business_daily">{de?'Werktags (Mo–Fr)':'Business days (Mon–Fri)'}</option>}<option value="weekly">{de?'Wöchentlich':'Weekly'}</option><option value="monthly">{de?'Monatlich':'Monthly'}</option><option value="quarterly">{de?'Quartalsweise':'Quarterly'}</option><option value="yearly">{de?'Jährlich':'Yearly'}</option>{cadenceVisible&&<option value="interval">{de?'Alle N …':'Every N …'}</option>}{cadenceVisible&&<option value="quota">{de?'N-mal pro Zeitraum':'N times per period'}</option>}</select></FormField>
+
+  {kind==='interval'&&<section className="scheduling-recurrence-cadence" aria-label={de?'Benutzerdefiniertes Intervall':'Custom interval'}>
+   <FormRow>
+    <FormField label={de?'Alle':'Every'}><input type="number" min="1" max="1200" inputMode="numeric" required disabled={disabled} value={recurrence?.interval||1} onChange={event=>change({interval:Math.max(1,Number(event.target.value)||1)})}/></FormField>
+    <FormField label={de?'Einheit':'Unit'}><select value={intervalUnit} disabled={disabled} onChange={event=>changeIntervalUnit(event.target.value)}>{INTERVAL_UNITS.map(unit=><option key={unit} value={unit}>{unitLabels[unit]}</option>)}</select></FormField>
+   </FormRow>
+   {frequency==='hourly'&&<p className="scheduling-recurrence-hint">{de?'Das Intervall startet nach jeder Erledigung neu. Es werden keine künstlichen Uhrzeiten erzeugt.':'The interval restarts after each completion. No artificial clock times are created.'}</p>}
+   {recurrence?.business_days&&<p className="scheduling-recurrence-hint">{de?'Gezählt werden Montag bis Freitag; Wochenenden werden beim Intervall übersprungen.':'Only Monday through Friday are counted; weekends are skipped by the interval.'}</p>}
+  </section>}
+
+  {kind==='business_daily'&&<p className="scheduling-recurrence-hint">{de?'Montag bis Freitag zählen als Werktage; Samstag und Sonntag werden übersprungen.':'Monday through Friday count as business days; Saturday and Sunday are skipped.'}</p>}
+
+  {kind==='quota'&&<section className="scheduling-recurrence-cadence" aria-label={de?'Mehrfach-Ziel':'Multiple target'}>
+   <FormRow>
+    <FormField label={de?'Anzahl':'Count'}><input type="number" min="1" max="50" inputMode="numeric" required disabled={disabled} value={recurrence?.times_per_period||2} onChange={event=>change({times_per_period:Math.max(1,Math.min(50,Number(event.target.value)||1))})}/></FormField>
+    <FormField label={de?'Pro Zeitraum':'Per period'}><select value={frequency} disabled={disabled} onChange={event=>changeQuotaPeriod(event.target.value)}>{QUOTA_PERIODS.map(period=><option key={period} value={period}>{periodLabels[period]}</option>)}</select></FormField>
+   </FormRow>
+   <p className="scheduling-recurrence-hint">{de?'Flexibles Ziel im Kalenderzeitraum: Erledigungen werden gezählt, ohne feste Einzeltermine vorzugeben.':'Flexible target inside the calendar period: completions are counted without creating fixed individual slots.'}</p>
+  </section>}
 
   {frequency==='once'&&<FormField label={de?'Datum':'Date'}><input type="date" required disabled={disabled} value={recurrence?.date||anchorDate(anchor)} onChange={event=>change({date:event.target.value})}/></FormField>}
 
-  {advanced&&<FormRow>
+  {calendarAdvanced&&<FormRow>
    <FormField label={frequency==='quarterly'?(de?'Wochentag im Quartal':'Weekday in quarter'):(de?'Wochentag im Zeitraum':'Weekday in period')}><select value={recurrence?.nth_weekdays?.[0]?.weekday||''} disabled={disabled} onChange={event=>change({nth_weekdays:event.target.value?[{weekday:event.target.value,ordinal:recurrence?.nth_weekdays?.[0]?.ordinal||1}]:undefined})}><option value="">{de?'Tag des Ankerdatums':'Anchor date day'}</option>{DAYS.map((day,index)=><option key={day} value={day}>{DAY_LABELS[language][index]}{day==='SA'?(de?' · Wochenende':' · weekend'):''}</option>)}</select></FormField>
    <FormField label={de?'Welche Position?':'Which position?'}><select value={recurrence?.nth_weekdays?.[0]?.ordinal||1} disabled={disabled||!recurrence?.nth_weekdays?.length} onChange={event=>change({nth_weekdays:[{...recurrence.nth_weekdays[0],ordinal:Number(event.target.value)}]})}>{[1,2,3,4,5,-1].map(ordinal=><option key={ordinal} value={ordinal}>{ORDINAL_LABELS[language][ordinal]}</option>)}</select></FormField>
   </FormRow>}
 
-  {frequency==='weekly'&&<fieldset className="scheduling-recurrence-options" disabled={disabled}><legend>{de?'Wochentage (leer = Ankertag)':'Weekdays (empty = anchor day)'}</legend>{DAYS.map((day,index)=><label key={day}><input type="checkbox" checked={recurrence?.weekdays?.includes(day)||false} onChange={event=>toggleWeekday(day,event.target.checked)}/>{DAY_LABELS[language][index]}</label>)}</fieldset>}
+  {frequency==='weekly'&&kind!=='quota'&&<fieldset className="scheduling-recurrence-options" disabled={disabled}><legend>{de?'Wochentage (leer = Ankertag)':'Weekdays (empty = anchor day)'}</legend>{DAYS.map((day,index)=><label key={day}><input type="checkbox" checked={recurrence?.weekdays?.includes(day)||false} onChange={event=>toggleWeekday(day,event.target.checked)}/>{DAY_LABELS[language][index]}</label>)}</fieldset>}
   {frequency==='yearly'&&<fieldset className="scheduling-recurrence-options scheduling-recurrence-months" disabled={disabled}><legend>{de?'Monate (leer = Ankermonat)':'Months (empty = anchor month)'}</legend>{MONTH_LABELS[language].map((label,index)=>{const month=index+1;return <label key={month}><input type="checkbox" checked={recurrence?.months?.includes(month)||false} onChange={event=>toggleMonth(month,event.target.checked)}/>{label}</label>})}</fieldset>}
   {frequency==='quarterly'&&recurrence?.nth_weekdays?.[0]?.weekday==='SA'&&<p className="muted">{de?'Das Wochenende beginnt am ausgewählten Samstag.':'The weekend starts on the selected Saturday.'}</p>}
 
@@ -135,6 +187,7 @@ export default function SchedulingRecurrenceEditor({
    <div className="scheduling-recurrence-preview-head"><strong>{de?'Vorschau':'Preview'}</strong>{previewBusy&&<span>{de?'Wird berechnet …':'Calculating …'}</span>}</div>
    {preview?.summary&&<p className="scheduling-recurrence-summary">{preview.summary}</p>}
    {preview?.occurrences?.length>0&&<ol>{preview.occurrences.map(item=><li key={item}>{dateFormatter.format(new Date(`${item}T12:00:00`))}</li>)}</ol>}
+   {preview&&!previewBusy&&!preview?.occurrences?.length&&(frequency==='hourly'||kind==='quota')&&<p className="scheduling-recurrence-preview-note">{de?'Dynamische Wiederholung – der nächste Zeitpunkt hängt von Erledigungen ab.':'Dynamic recurrence — the next due time depends on completions.'}</p>}
    {previewError&&<p className="scheduling-recurrence-error" role="status">{previewError}</p>}
   </section>}
  </div>;

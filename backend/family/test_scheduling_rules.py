@@ -125,3 +125,26 @@ class SchedulingRuleTests(SimpleTestCase):
                 {**base, "include_dates": ["2026-01-02"], "exclude_dates": ["2026-01-02"]},
                 "Europe/Berlin",
             )
+
+    def test_business_day_rule_has_real_weekday_preview_and_clear_summary(self):
+        rule = parse_scheduling_text("alle 3 Werktage", "Europe/Berlin", today=date(2026, 10, 19))
+        self.assertEqual(rule["recurrence"], {"frequency": "daily", "interval": 3, "business_days": True})
+        self.assertEqual(describe_scheduling_rule(rule, "Europe/Berlin", "de"), "Alle 3 Werktage")
+        self.assertEqual(
+            preview_occurrence_dates(rule, "Europe/Berlin", after="2026-10-19", limit=4),
+            ["2026-10-19", "2026-10-22", "2026-10-27", "2026-10-30"],
+        )
+        with self.assertRaisesRegex(ValueError, "Action cadence"):
+            to_event_recurrence(rule, "Europe/Berlin")
+
+    def test_hourly_and_period_targets_are_described_without_fake_occurrences(self):
+        hourly = parse_scheduling_text("alle 6 Stunden", "Europe/Berlin", today=date(2026, 10, 17))
+        quota = parse_scheduling_text("3 mal pro Woche", "Europe/Berlin", today=date(2026, 10, 17))
+        self.assertEqual(describe_scheduling_rule(hourly, "Europe/Berlin", "de"), "Alle 6 Stunden")
+        self.assertEqual(describe_scheduling_rule(quota, "Europe/Berlin", "de"), "3-mal pro Woche")
+        self.assertEqual(preview_occurrence_dates(hourly, "Europe/Berlin", after="2026-10-17", limit=5), [])
+        self.assertEqual(preview_occurrence_dates(quota, "Europe/Berlin", after="2026-10-17", limit=5), [])
+        with self.assertRaisesRegex(ValueError, "Action cadence"):
+            to_event_recurrence(hourly, "Europe/Berlin")
+        with self.assertRaisesRegex(ValueError, "Action cadence"):
+            to_event_recurrence(quota, "Europe/Berlin")
