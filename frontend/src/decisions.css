@@ -54,6 +54,14 @@
 .decision-result-summary{display:grid;gap:var(--space-1);padding:var(--space-4);border:1px solid var(--color-border);border-radius:var(--radius-md);background:var(--color-neutral-soft)}
 .decision-result-summary strong{font-size:1.04rem;line-height:1.4;overflow-wrap:anywhere}
 .decision-result-summary small{color:var(--color-muted)}
+.decision-tiebreak{display:grid;gap:var(--space-3);padding:var(--space-4);border:1px solid var(--color-border);border-radius:var(--radius-md);background:var(--color-surface)}
+.decision-tiebreak-copy{display:grid;gap:var(--space-1)}
+.decision-tiebreak-copy p{max-width:62ch;margin:0;color:var(--color-muted);line-height:1.45}
+.decision-tiebreak-actions{display:flex;flex-wrap:wrap;gap:var(--space-2)}
+.decision-tiebreak-actions>button{min-height:44px}
+.decision-tiebreak>small{color:var(--color-muted);line-height:1.4}
+.decision-tiebreak-game{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:var(--space-3);padding:var(--space-3);border-radius:var(--radius-md);background:var(--color-neutral-soft);color:var(--color-text)}
+.decision-tiebreak-game>a{min-height:44px}
 .decision-participation{display:flex;align-items:flex-start;gap:var(--space-2);margin:0;padding:var(--space-3);border-radius:var(--radius-md);background:var(--color-neutral-soft);color:var(--color-muted);font-size:.9rem;line-height:1.45}
 .decision-participation.is-saved{color:var(--color-text);font-weight:700}
 .decision-vote-options{display:grid;gap:var(--space-2);min-width:0;margin:0;padding:0;border:0}
@@ -106,6 +114,9 @@
  .decision-rating-scale{justify-content:flex-start}
  .decision-result-row{align-items:flex-start;flex-direction:column;gap:var(--space-1)}
  .decision-result-row small{text-align:left}
+ .decision-tiebreak-game{grid-template-columns:auto minmax(0,1fr)}
+ .decision-tiebreak-game>a{grid-column:1/-1;justify-content:center}
+ .decision-tiebreak-actions>button{flex:1 1 180px}
  .decision-card-footer{grid-template-columns:1fr}
  .decision-actions{justify-content:stretch}
  .decision-actions>button{flex:1 1 150px}
@@ -120,6 +131,9 @@
  .decision-option-edit{grid-template-columns:1fr}
  .decision-option-edit>.icon-btn{justify-self:end;margin-bottom:0}
  .decision-add-option{width:100%;justify-content:center}
+ .decision-tiebreak{padding:var(--space-3)}
+ .decision-tiebreak-actions{display:grid;grid-template-columns:1fr}
+ .decision-tiebreak-actions>button{width:100%}
  .decision-rating-scale{display:grid;grid-template-columns:repeat(5,minmax(44px,1fr));width:100%}
  .decision-rating-scale label{min-width:0}
  .decision-actions>button{flex-basis:100%;width:100%}
