@@ -3,7 +3,7 @@ from functools import lru_cache
 from datetime import date, datetime, timedelta, timezone as dt_timezone
 from icalendar import Calendar, Event, Timezone
 from django.utils import timezone
-from .models import FamilyEvent
+from .models import FamilyEvent, Membership
 from .action_schedule import _days, local_datetime
 from .calendar_recurrence import family_zone, recurrence_dict, project_event
 
@@ -15,11 +15,30 @@ WEEKDAYS = ['MO', 'TU', 'WE', 'TH', 'FR', 'SA', 'SU']
 class CalendarCapacityError(Exception): pass
 
 
+def _scope_member_ids(grant, member=None):
+    if member is not None:
+        return [member.pk]
+    owner = Membership.objects.filter(
+        family_id=grant.family_id,
+        user_id=grant.created_by_id,
+        user__is_active=True,
+    ).values_list('pk', flat=True).first()
+    ids = [owner] if owner is not None else []
+    configured = grant.included_member_ids if isinstance(grant.included_member_ids, list) else []
+    if configured:
+        ids.extend(Membership.objects.filter(
+            family_id=grant.family_id,
+            pk__in=configured,
+            role__in=(Membership.Role.CHILD, Membership.Role.TEEN),
+            user__is_active=True,
+        ).values_list('pk', flat=True))
+    return list(dict.fromkeys(ids))
+
+
 def shared_events(grant, member=None):
-    # Every exported event must already be explicitly shared with the whole
-    # family. `is_family_event=True` means it applies to every family member;
-    # participant rows are additional planning metadata and must never hide a
-    # family event from another member's calendar projection.
+    scope_member_ids = _scope_member_ids(grant, member)
+    if not scope_member_ids:
+        return []
     query = FamilyEvent.objects.filter(
         family_id=grant.family_id,
         source__isnull=True,
@@ -27,7 +46,8 @@ def shared_events(grant, member=None):
         is_family_event=True,
         external_id='',
         starts_at__isnull=False,
-    )
+        participants__pk__in=scope_member_ids,
+    ).distinct()
     rows = list(query.select_related('family').order_by('id')[:MAX_RESOURCES + 1])
     if len(rows) > MAX_RESOURCES: raise CalendarCapacityError()
     return rows

@@ -35,7 +35,7 @@ jobs:
       - working-directory: backend
         run: python manage.py makemigrations --check --dry-run && python manage.py migrate && python manage.py check
       - working-directory: backend
-        run: python manage.py test family.test_calendar_subscriptions family.test_calendar_subscription_dav_expand family.test_calendar_caldav_participants family.test_calendar_subscription_detail_update family.test_calendar_recurrence family.test_caldav_sync family.test_caldav_sync_security family.test_caldav_selection_reset family.test_caldav_recurrence_scope auth_abuse.tests telemetry.tests
+        run: python manage.py test family.test_calendar_subscriptions family.test_calendar_subscription_dav_expand family.test_calendar_caldav_participants family.test_calendar_subscription_detail_update family.test_calendar_subscription_member_scope family.test_calendar_recurrence family.test_caldav_sync family.test_caldav_sync_security family.test_caldav_selection_reset family.test_caldav_recurrence_scope auth_abuse.tests telemetry.tests
   calendar-proxy:
     runs-on: ubuntu-latest
     steps:

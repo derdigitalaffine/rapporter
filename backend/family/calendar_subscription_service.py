@@ -56,9 +56,10 @@ def resolve_token(token, username=None):
 
 
 def metadata(grant):
+    included = grant.included_member_ids if isinstance(grant.included_member_ids, list) else []
     return {'id': str(grant.pk), 'family': str(grant.family_id), 'name': grant.name,
-            'detail_level': grant.detail_level, 'created_at': grant.created_at,
-            'revoked_at': grant.revoked_at, 'last_used_at': grant.last_used_at}
+            'detail_level': grant.detail_level, 'included_member_ids': [str(value) for value in included],
+            'created_at': grant.created_at, 'revoked_at': grant.revoked_at, 'last_used_at': grant.last_used_at}
 
 
 def reveal(grant):

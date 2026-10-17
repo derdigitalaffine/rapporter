@@ -16,6 +16,8 @@ from .models import Family, Membership
 from .calendar_subscription_models import CalendarSubscription
 from .calendar_subscription_service import MANAGER_ROLES, origin, metadata, reveal, rotate_credentials
 
+SCOPE_ROLES = (Membership.Role.CHILD, Membership.Role.TEEN)
+
 
 def private(response):
     response['Cache-Control'] = 'private, no-store, max-age=0'
@@ -48,13 +50,42 @@ def member_label(member):
     return (member.display_name or member.user.get_full_name() or member.user.get_username()).strip()
 
 
+def selectable_members(family):
+    return list(Membership.objects.filter(
+        family=family,
+        role__in=SCOPE_ROLES,
+        user__is_active=True,
+    ).select_related('user').order_by('created_at', 'id'))
+
+
+def validate_scope(family, values):
+    requested = []
+    seen = set()
+    for value in values or []:
+        token = str(value)
+        if token not in seen:
+            requested.append(token)
+            seen.add(token)
+    allowed = {str(member.pk) for member in selectable_members(family)}
+    if any(value not in allowed for value in requested):
+        raise serializers.ValidationError({'included_member_ids': ['Only active child or teen family members can be included.']})
+    return requested
+
+
 class SubscriptionInput(serializers.Serializer):
     name = serializers.CharField(max_length=80, trim_whitespace=True)
     detail_level = serializers.ChoiceField(choices=CalendarSubscription.DetailLevel.choices, default=CalendarSubscription.DetailLevel.TITLE)
+    included_member_ids = serializers.ListField(child=serializers.UUIDField(), required=False, allow_empty=True, max_length=32)
 
 
 class SubscriptionUpdateInput(serializers.Serializer):
-    detail_level = serializers.ChoiceField(choices=CalendarSubscription.DetailLevel.choices)
+    detail_level = serializers.ChoiceField(choices=CalendarSubscription.DetailLevel.choices, required=False)
+    included_member_ids = serializers.ListField(child=serializers.UUIDField(), required=False, allow_empty=True, max_length=32)
+
+    def validate(self, attrs):
+        if not attrs:
+            raise serializers.ValidationError({'code': 'calendar_subscription_update_empty'})
+        return attrs
 
 
 @api_view(['GET', 'POST'])
@@ -67,14 +98,22 @@ def subscriptions(request, family_id):
             origin()
         except serializers.ValidationError:
             configured = False
-        return private(Response({'subscriptions': [metadata(row) for row in rows], 'configured': configured}))
+        members = [{'id': str(member.pk), 'name': member_label(member), 'role': member.role} for member in selectable_members(family)]
+        return private(Response({'subscriptions': [metadata(row) for row in rows], 'configured': configured, 'selectable_members': members}))
     sensitive(request)
     data = SubscriptionInput(data=request.data); data.is_valid(raise_exception=True)
+    included_member_ids = validate_scope(family, data.validated_data.get('included_member_ids', []))
     with transaction.atomic():
         Family.objects.select_for_update().get(pk=family.pk)
         if CalendarSubscription.objects.filter(family=family, created_by=request.user, revoked_at__isnull=True).count() >= 10:
             raise serializers.ValidationError({'code': 'subscription_limit'})
-        grant = CalendarSubscription(family=family, created_by=request.user, name=data.validated_data['name'], detail_level=data.validated_data['detail_level'])
+        grant = CalendarSubscription(
+            family=family,
+            created_by=request.user,
+            name=data.validated_data['name'],
+            detail_level=data.validated_data['detail_level'],
+            included_member_ids=included_member_ids,
+        )
         rotate_credentials(grant)
         audit(request, grant, 'created')
     return private(Response(reveal(grant), status=201))
@@ -94,8 +133,14 @@ def subscription_detail(request, family_id, subscription_id, operation=''):
         if request.method == 'PATCH' and not operation:
             sensitive(request)
             data = SubscriptionUpdateInput(data=request.data); data.is_valid(raise_exception=True)
-            grant.detail_level = data.validated_data['detail_level']
-            grant.save(update_fields=['detail_level', 'updated_at'])
+            update_fields = ['updated_at']
+            if 'detail_level' in data.validated_data:
+                grant.detail_level = data.validated_data['detail_level']
+                update_fields.append('detail_level')
+            if 'included_member_ids' in data.validated_data:
+                grant.included_member_ids = validate_scope(family, data.validated_data['included_member_ids'])
+                update_fields.append('included_member_ids')
+            grant.save(update_fields=update_fields)
             audit(request, grant, 'updated')
             return private(Response(metadata(grant)))
         if operation not in ('reveal', 'rotate', 'profile') or (operation == 'profile') != (request.method == 'GET'):

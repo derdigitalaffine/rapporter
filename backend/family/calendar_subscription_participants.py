@@ -1,9 +1,9 @@
-"""FamilyOS CalDAV participant identities without invitation delivery.
+"""FamilyOS CalDAV participant identities without external invitation delivery.
 
 Membership UUIDs are the canonical identity. A reserved `.invalid` mailto form is
 also exposed because calendar clients commonly expect a mail-shaped calendar user
-address. No mailbox exists and FamilyOS never sends scheduling messages for these
-addresses.
+address. No mailbox exists and FamilyOS never sends external scheduling messages
+for these addresses.
 """
 from urllib.parse import urlsplit
 from uuid import UUID
@@ -45,6 +45,11 @@ def active_members(grant):
     )
 
 
+def owner_member(grant, members=None):
+    rows = members if members is not None else active_members(grant)
+    return next((member for member in rows if member.user_id == grant.created_by_id), None)
+
+
 def _event_uid(event):
     payload = event.payload if isinstance(event.payload, dict) else {}
     value = payload.get('caldav_uid')
@@ -58,19 +63,26 @@ def calendar_bytes_with_participants(grant, events, detail_level='full'):
         return data
     prefetch_related_objects(events, 'participants__user')
     by_uid = {_event_uid(event): event for event in events}
+    members = active_members(grant)
+    owner = owner_member(grant, members)
     calendar = Calendar.from_ical(data)
     for component in calendar.walk('VEVENT'):
         event = by_uid.get(str(component.get('UID') or ''))
         if event is None:
             continue
-        for member in event.participants.all():
-            if not member.user.is_active:
-                continue
+        participants = [member for member in event.participants.all() if member.user.is_active]
+        if owner is not None and any(member.pk == owner.pk for member in participants):
+            organizer = vCalAddress(member_calendar_address(owner))
+            organizer.params['CN'] = member_label(owner)
+            organizer.params['CUTYPE'] = 'INDIVIDUAL'
+            organizer.params['SCHEDULE-AGENT'] = 'SERVER'
+            component.add('ORGANIZER', organizer, encode=0)
+        for member in participants:
             attendee = vCalAddress(member_calendar_address(member))
             attendee.params['CN'] = member_label(member)
             attendee.params['CUTYPE'] = 'INDIVIDUAL'
             attendee.params['ROLE'] = 'REQ-PARTICIPANT'
-            attendee.params['SCHEDULE-AGENT'] = 'NONE'
+            attendee.params['SCHEDULE-AGENT'] = 'SERVER'
             component.add('ATTENDEE', attendee, encode=0)
     data = calendar.to_ical()
     if len(data) > MAX_BYTES:
@@ -102,13 +114,25 @@ def _membership_id_from_address(grant, value):
 
 
 def attendee_memberships(grant, component):
-    values = _values(component, 'ATTENDEE')
-    if not values:
-        return []
     members = {member.pk: member for member in active_members(grant)}
-    selected = []
-    seen = set()
-    for value in values:
+    owner = owner_member(grant, list(members.values()))
+    if owner is None:
+        raise UnknownFamilyAttendee('calendar owner')
+
+    organizers = _values(component, 'ORGANIZER')
+    if len(organizers) > 1:
+        raise UnknownFamilyAttendee('multiple organizers')
+    if organizers:
+        try:
+            organizer_id = _membership_id_from_address(grant, organizers[0])
+        except (ValueError, TypeError) as exc:
+            raise UnknownFamilyAttendee(str(organizers[0] or '')) from exc
+        if organizer_id != owner.pk:
+            raise UnknownFamilyAttendee(str(organizers[0] or ''))
+
+    selected = [owner]
+    seen = {owner.pk}
+    for value in _values(component, 'ATTENDEE'):
         try:
             membership_id = _membership_id_from_address(grant, value)
         except (ValueError, TypeError) as exc:

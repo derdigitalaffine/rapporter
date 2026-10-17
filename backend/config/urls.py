@@ -40,7 +40,8 @@ from telemetry.superadmin_views import superadmin_analytics_overview, superadmin
 from family.sync_views import sync
 
 from family.calendar_subscription_views import subscriptions, subscription_detail
-from family.calendar_subscription_dav import feed, dav, well_known
+from family.calendar_subscription_dav import feed, well_known
+from family.calendar_subscription_scheduling import dav
 from family.calendar_subscription_member_feed import member_feed
 
 urlpatterns = [
