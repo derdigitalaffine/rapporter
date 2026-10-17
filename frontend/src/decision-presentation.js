@@ -20,12 +20,20 @@ export function hasDecisionParticipation(row){
   return Boolean(row?.my_option_ids?.length);
 }
 
+export function decisionNeedsVote(row){
+  return Boolean(row?.is_open&&row?.can_vote&&!hasDecisionParticipation(row));
+}
+
 export function sortDecisions(rows=[],now=Date.now()){
   return rows.map((row,index)=>({row,index})).sort((left,right)=>{
     if(Boolean(left.row?.is_open)!==Boolean(right.row?.is_open))return left.row?.is_open?-1:1;
     if(left.row?.is_open&&right.row?.is_open){
+      const needsVoteDelta=Number(decisionNeedsVote(right.row))-Number(decisionNeedsVote(left.row));
+      if(needsVoteDelta!==0)return needsVoteDelta;
       const deadlineDelta=deadlineMs(left.row)-deadlineMs(right.row);
-      if(deadlineDelta!==0)return deadlineDelta;
+      if(Number.isFinite(deadlineDelta)&&deadlineDelta!==0)return deadlineDelta;
+      if(deadlineDelta===Number.POSITIVE_INFINITY)return 1;
+      if(deadlineDelta===Number.NEGATIVE_INFINITY)return-1;
       const urgencyOrder={due:0,soon:1,upcoming:2,normal:3};
       const urgencyDelta=urgencyOrder[decisionUrgency(left.row,now)]-urgencyOrder[decisionUrgency(right.row,now)];
       if(urgencyDelta!==0)return urgencyDelta;
