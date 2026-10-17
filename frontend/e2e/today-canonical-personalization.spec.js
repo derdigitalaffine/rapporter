@@ -5,7 +5,7 @@ const actionPayload={actions:[{
  id:'action-priority-1',family:'family-1',kind:'task',title:'Versicherung heute klären',state:'due',priority:'high',urgency:'high',ranking:{bucket:1},deep_link:'/?page=todo',due_at:new Date(Date.now()+3600000).toISOString(),
 }]};
 
-test('canonical home can hide, reorder and resize optional module tiles without touching legacy layout',async({page})=>{
+test('canonical home uses the confirmed core default and remains independently personalizable',async({page})=>{
  await installApiMocks(page,{language:'de',dismissOnboarding:true});
  const legacyLayoutRequests=[];
  page.on('request',request=>{if(new URL(request.url()).pathname==='/api/today-layout/')legacyLayoutRequests.push(request.method())});
@@ -13,7 +13,16 @@ test('canonical home can hide, reorder and resize optional module tiles without 
  await page.goto('/');
  await page.waitForLoadState('networkidle');
  const grid=page.locator('[data-testid="today-canonical-grid"]');
- await expect(grid.locator('[data-today-widget]')).toHaveCount(3);
+ await expect(grid.locator('[data-today-widget]')).toHaveCount(7);
+ await expect(grid.locator('[data-today-widget="situation"]')).toBeVisible();
+ await expect(grid.locator('[data-today-widget="focus"]')).toBeVisible();
+ await expect(grid.locator('[data-today-widget="timeline"]')).toBeVisible();
+ await expect(grid.locator('[data-today-widget="week"]')).toBeVisible();
+ await expect(grid.locator('[data-today-widget="todo"]')).toBeVisible();
+ await expect(grid.locator('[data-today-widget="quick-actions"]')).toBeVisible();
+ await expect(grid.locator('[data-today-widget="pinboard"]')).toBeVisible();
+ await expect(grid.locator('[data-today-widget="overview"]')).toHaveCount(0);
+ await expect(page.locator('[data-testid="today-quick-actions"] .create-action-card').first()).toBeVisible();
  await expect(page.locator('[data-testid="today-layout-edit"]')).toBeVisible();
  expect(legacyLayoutRequests).toEqual([]);
 

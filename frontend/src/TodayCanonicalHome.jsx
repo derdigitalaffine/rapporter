@@ -8,6 +8,9 @@ import {formatDateTime} from './locale';
 import {featureHref} from './navigation';
 import {isWarningEvent} from './calendar-event-ui';
 import {useTodayCoreData} from './todayCoreData';
+import {readCreateActionsSnapshot} from './useCreateActions';
+import {requestCreate} from './create-request';
+import './create-i18n';
 import './onboarding.css';
 import './today-layout.css';
 import './today-layout-v2.css';
@@ -62,6 +65,17 @@ function ModuleShortcut({page,icon,title,value,detail,language}){
  return <section className="today-section today-module-shortcut">
   <div className="today-module-shortcut-main"><span className="today-module-shortcut-icon"><Icon name={icon}/></span><div><small>{de?'MODUL':'MODULE'}</small><h2>{title}</h2>{value!==undefined&&value!==null&&<strong className="today-module-shortcut-value">{value}</strong>}</div></div>
   <a className="today-link" href={featureHref(page)}>{detail} <Icon name="next"/></a>
+ </section>;
+}
+
+function TodayQuickActions({family,viewer,language}){
+ const userId=viewer?.user||viewer?.id||null;
+ const {ranked}=readCreateActionsSnapshot({familyId:family?.id,userId,page:'home'});
+ const de=language.startsWith('de');
+ const actions=(ranked||[]).slice(0,6);
+ return <section className="today-section today-quick-actions" data-testid="today-quick-actions">
+  <div className="today-section-head"><div><small>{de?'SCHNELL HINZUFÜGEN':'QUICK ADD'}</small><h2>{de?'Schnellaktionen':'Quick actions'}</h2></div></div>
+  {actions.length?<div className="create-action-grid">{actions.map(action=><button type="button" className="create-action-card primary-action" key={action.id} onClick={()=>requestCreate(action.id,{origin:'home'})}><span><Icon name={action.icon} size={20}/></span><strong>{i18n.t(action.labelKey)}</strong></button>)}</div>:<p className="today-calm">{de?'Keine Schnellaktionen verfügbar.':'No quick actions available.'}</p>}
  </section>;
 }
 
@@ -140,13 +154,14 @@ export default function TodayCanonicalHome({data,family,open,unreadMessages=null
  const shoppingLists=data?.shopping_lists||[];
  const widgets=useMemo(()=>({
   overview:<TodayOverview family={family} data={data} unreadMessages={unreadMessages} language={language}/>,
+  'quick-actions':<TodayQuickActions family={family} viewer={viewer} language={language}/>,
   shopping:<ModuleShortcut page="shopping" icon="shopping" title={de?'Einkauf':'Shopping'} value={openShoppingCount(data,excludedShoppingLists)} detail={de?'Liste öffnen':'Open list'} language={language}/>,
   inbox:<ModuleShortcut page="inbox" icon="inbox" title={de?'Nachrichten':'Messages'} value={unreadMessages} detail={de?'Postfach öffnen':'Open inbox'} language={language}/>,
   notes:<ModuleShortcut page="notes" icon="edit" title={de?'Notizzettel':'Notes'} detail={de?'Notizen öffnen':'Open notes'} language={language}/>,
   weather:<ModuleShortcut page="weather" icon="weather" title={de?'Wetter':'Weather'} detail={de?'Wetter öffnen':'Open weather'} language={language}/>,
   trip:<ModuleShortcut page="trips" icon="route" title={de?'Reise':'Trip'} detail={de?'Reisen öffnen':'Open trips'} language={language}/>,
   loyalty:<ModuleShortcut page="loyalty" icon="favorite" title={de?'Bonuskarten':'Loyalty cards'} detail={de?'Karten öffnen':'Open cards'} language={language}/>,
- }),[family.id,data,unreadMessages,language,de,excludedShoppingLists]);
+ }),[family.id,data,unreadMessages,language,de,excludedShoppingLists,viewer]);
  const header=<header className="today-hero"><div className="today-greeting"><p>{formatDateTime(language,new Date(),{timeZone:family.timezone||'UTC',weekday:'long',day:'numeric',month:'long'})} · {family.name}</p><h1>{greeting(displayFamily,language)}</h1></div></header>;
  return <div data-testid="today-canonical-home">
   <TodayLayout
