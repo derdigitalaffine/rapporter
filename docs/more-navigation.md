@@ -12,6 +12,12 @@ Familienwechsel, Tarif-/Zugriffsinformation und ein gegebenenfalls verfügbarer 
 
 Die interne persistierte Section-ID `organisation` bleibt aus Kompatibilitätsgründen erhalten. Nur die sichtbare Semantik heißt **Haushalt & Finanzen**.
 
+## Today-Start und Legacy-Startscreen
+
+Der normale App-Start bzw. **Heute** verwendet ausschließlich den kanonischen neuen Startscreen. Persistierte alte Today-Widget-Layouts werden dort nicht geladen und dürfen den Startscreen nicht nachträglich ersetzen.
+
+Das bisherige konfigurierbare Today-Widget-Dashboard bleibt zur Kompatibilität erhalten, ist aber ausschließlich als sekundäre Detailseite **Mehr → Einstellungen & Verwaltung → Alter Legacy-Startscreen** erreichbar. Die Seite ist sichtbar als **Legacy** gekennzeichnet. Bestehende gespeicherte Widget-Reihenfolgen, Größen und Editor-Funktionen bleiben dort erhalten; der Legacy-Screen ist kein Eintrag der Hauptnavigation und wird beim normalen App-Start nicht gerendert.
+
 ## To-dos und Routinen: konsolidierte UX, vollständige Fachfunktionen
 
 **To-dos** bleibt Primärnavigation und ist der gemeinsame tägliche Einstieg für Aufgaben und Routinen. Deshalb wird `Routinen` nicht zusätzlich als regulärer Eintrag unter **Mehr** wiederholt.
@@ -63,4 +69,4 @@ Die sichtbaren `Mehr`-Texte liegen in einer eigenen i18n-Ressource für DE/EN/FR
 
 Dieser Slice ist die explizit dokumentierte, eng begrenzte IA-Vorbedingung vor der Offline-first Implementierung aus #705/#706. Er ändert keinen IndexedDB-, Outbox-, Cursor-, Conflict-, Task- oder Expense-Sync-Vertrag. Nach dem Merge kann #706 auf stabilen Routen und einer stabilisierten Informationsarchitektur aufsetzen.
 
-Refs #223 #577 #657 #698 #705 #714
+Refs #223 #577 #657 #698 #705 #714 #823
