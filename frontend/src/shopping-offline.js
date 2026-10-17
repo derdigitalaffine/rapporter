@@ -1,18 +1,37 @@
 import {offlineEngine,readyOfflineEngine,offlineIdentity,addShoppingLocally} from './offline-runtime';
 import {api} from './api';
 import {deleteShoppingMutation,listShoppingMutations,putShoppingMutation} from './offline-store';
+import {applyShoppingItemAutoguess} from './shopping-item-autoguess.js';
 
 export const SHOPPING_BUDGET_PURCHASE_EVENT='famuhle:shopping-budget-purchase';
 const uuid=()=>globalThis.crypto?.randomUUID?.()||`offline-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+const mutationUuid=()=>globalThis.crypto?.randomUUID?.()||'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,char=>{const random=Math.random()*16|0;const value=char==='x'?random:(random&3)|8;return value.toString(16)});
+const ORDER_META_PREFIX='famuhle-shopping-order-next:';
+
+export function stageShoppingOrderMetadata(targetId,metadata){
+  if(typeof sessionStorage==='undefined')return;
+  try{sessionStorage.setItem(`${ORDER_META_PREFIX}${String(targetId)}`,JSON.stringify(metadata||{}))}catch{}
+}
+function consumeShoppingOrderMetadata(targetId){
+  if(typeof sessionStorage==='undefined')return null;
+  const key=`${ORDER_META_PREFIX}${String(targetId)}`;
+  try{const raw=sessionStorage.getItem(key);sessionStorage.removeItem(key);return raw?JSON.parse(raw):null}catch{return null}
+}
 
 export async function queueShoppingAdd(familyId,payload){
-  if(offlineEngine(familyId)){const {item}=await addShoppingLocally(familyId,payload);return {localId:item.id,payload}}
+  const mutationId=mutationUuid();
+  const guessed=applyShoppingItemAutoguess(payload).payload;
+  const mutationPayload={...guessed,client_mutation_id:mutationId};
+  if(offlineEngine(familyId)){const {item}=await addShoppingLocally(familyId,mutationPayload);return {localId:item.id,payload:mutationPayload,id:mutationId}}
   const localId=`offline-${uuid()}`;
-  const mutation={id:uuid(),familyId:String(familyId),type:'add',localId,payload,createdAt:Date.now(),attempts:0,status:'pending'};
+  const mutation={id:mutationId,familyId:String(familyId),type:'add',localId,payload:mutationPayload,createdAt:Date.now(),attempts:0,status:'pending'};
   await putShoppingMutation(mutation);return mutation;
 }
 export async function queueShoppingPatch(familyId,targetId,payload){
   const target=String(targetId);
+  const mutationId=mutationUuid();
+  const orderMeta=consumeShoppingOrderMetadata(target);
+  const mutationPayload=orderMeta?{...payload,client_activity:{...orderMeta,mutation_id:mutationId}}:payload;
   // A budget reservation is an online finance transition, not an offline
   // checkbox mutation. Keep the item open until the canonical Expense has
   // been confirmed; the create flow will mark it checked afterwards.
@@ -29,8 +48,8 @@ export async function queueShoppingPatch(familyId,targetId,payload){
       // a normal checkbox into a hard failure.
     }
   }
-  if(offlineEngine(familyId)){await (await readyOfflineEngine(familyId)).mutate('shopping_item',target,'update',payload);return {targetId:target}}
-  const mutation={id:uuid(),familyId:String(familyId),type:'patch',targetId:target,payload,createdAt:Date.now(),attempts:0,status:'pending'};
+  if(offlineEngine(familyId)){await (await readyOfflineEngine(familyId)).mutate('shopping_item',target,'update',mutationPayload);return {targetId:target}}
+  const mutation={id:mutationId,familyId:String(familyId),type:'patch',targetId:target,payload:mutationPayload,createdAt:Date.now(),attempts:0,status:'pending'};
   await putShoppingMutation(mutation);return mutation;
 }
 export async function queueShoppingDelete(familyId,targetId){
@@ -67,7 +86,7 @@ export function applyShoppingMutations(lists,mutations){
       if(!existing)list.items.push({id:mutation.localId,shopping_list:list.id,name:mutation.payload.name,quantity:mutation.payload.quantity||'',category:mutation.payload.category||'',aisle:mutation.payload.aisle||'',note:mutation.payload.note||'',favorite:!!mutation.payload.favorite,checked:false,added_by_name:'',_offlinePending:true});
     }
     if(mutation.type==='patch'){
-      const found=findItem(mutation.targetId);if(found){Object.assign(found.item,mutation.payload,{_offlinePending:true})}
+      const found=findItem(mutation.targetId);if(found){const {client_activity,...visiblePatch}=mutation.payload||{};Object.assign(found.item,visiblePatch,{_offlinePending:true})}
     }
     if(mutation.type==='delete'){
       const found=findItem(mutation.targetId);if(found){found.list.items=found.list.items.filter(row=>String(row.id)!==String(mutation.targetId))}

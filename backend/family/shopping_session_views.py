@@ -12,7 +12,7 @@ from rest_framework.response import Response
 from .models import Membership, ShoppingItem, ShoppingList
 from .serializers import ShoppingItemSerializer
 from .shopping_access import visible_shopping_lists
-from .shopping_models import ShoppingSession
+from .shopping_models import ShoppingSession, ShoppingStore
 from .shopping_session_service import start_or_join_shopping_session, touch_shopping_session_participant
 
 
@@ -106,6 +106,18 @@ def _item_snapshot(item):
         # The source item is deleted after checkout, so retain just enough ACL
         # metadata to keep gift/surprise items private when history is read later.
         "hidden_from_user_id": item.hidden_from_user_id,
+    }
+
+
+def _store_snapshot(store):
+    if not store:
+        return None
+    return {
+        "id": str(store.id),
+        "name": store.name,
+        "branch_label": store.branch_label,
+        "address": store.address,
+        "display_label": store.display_label,
     }
 
 
@@ -293,6 +305,7 @@ def shopping_session_complete(request):
 
     session_id = request.data.get("session")
     open_items_policy = str(request.data.get("open_items") or "").strip().lower()
+    store_id = request.data.get("store")
     with transaction.atomic():
         sessions = (
             ShoppingSession.objects.select_for_update(of=("self",))
@@ -309,6 +322,19 @@ def shopping_session_complete(request):
         if session.status != ShoppingSession.Status.COMPLETED:
             if session.status != ShoppingSession.Status.ACTIVE:
                 return Response({"detail": "Einkaufssession ist nicht mehr aktiv."}, status=status.HTTP_409_CONFLICT)
+
+            store = None
+            if store_id:
+                store = ShoppingStore.objects.filter(
+                    id=store_id,
+                    family_id=shopping_list.family_id,
+                    active=True,
+                ).first()
+                if not store:
+                    return Response(
+                        {"code": "invalid_store", "detail": "Filiale ist für diese Einkaufsliste nicht verfügbar."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
 
             visible_items = list(
                 ShoppingItem.objects.select_for_update()
@@ -329,6 +355,7 @@ def shopping_session_complete(request):
                 open_items_policy = "keep"
 
             completed_at = timezone.now()
+            confirmed_store = _store_snapshot(store)
             session.status = ShoppingSession.Status.COMPLETED
             session.completed_at = completed_at
             session.completed_by = request.user
@@ -338,8 +365,9 @@ def shopping_session_complete(request):
                 "shopping_list": {
                     "id": str(shopping_list.id),
                     "name": shopping_list.name,
-                    "store": shopping_list.store,
+                    "store": confirmed_store["display_label"] if confirmed_store else shopping_list.store,
                 },
+                "confirmed_store": confirmed_store,
                 "purchased_items": [_item_snapshot(item) for item in purchased],
                 "open_items": [_item_snapshot(item) for item in open_items],
                 "purchased_count": len(purchased),
