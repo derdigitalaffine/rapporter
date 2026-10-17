@@ -51,5 +51,5 @@ export default function SmartShoppingPredicted({family,onChanged,...props}){
   window.addEventListener(SHOPPING_BUDGET_PURCHASE_EVENT,openExpense);
   return()=>window.removeEventListener(SHOPPING_BUDGET_PURCHASE_EVENT,openExpense);
  },[family?.id]);
- return <div className="shopping-prediction-shell"><PredictionPanel family={family} onAccepted={accepted}/><SmartShopping key={`${family?.id||'none'}-${revision}`} family={family} onChanged={onChanged} {...props}/><aside className="shopping-secondary-tools" aria-label={t=>t}><ShoppingBudgetCommitment key={`budget-${family?.id||'none'}-${revision}`} family={family} onChanged={accepted}/></aside></div>
+ return <div className="shopping-prediction-shell"><PredictionPanel family={family} onAccepted={accepted}/><SmartShopping key={`${family?.id||'none'}-${revision}`} family={family} onChanged={onChanged} {...props}/><aside className="shopping-secondary-tools"><ShoppingBudgetCommitment key={`budget-${family?.id||'none'}-${revision}`} family={family} onChanged={accepted}/></aside></div>
 }
