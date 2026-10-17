@@ -22,6 +22,12 @@ from auth_sessions.admin_views import (
 )
 from auth_sessions.views import reauthenticate_password, revoke_other_sessions, session_detail, session_list
 from family.auth_views import login_view, logout_view, refresh_view, session_view
+from family.shopping_reference_operator_views import (
+    superadmin_reference_dataset_action,
+    superadmin_reference_dataset_detail,
+    superadmin_reference_dataset_validate,
+    superadmin_reference_datasets,
+)
 from family.superadmin_analytics_views import superadmin_matomo_report, superadmin_matomo_status
 from family.superadmin_user_crud_views import superadmin_user_crud_detail, superadmin_users_crud
 from family.superadmin_user_views import (
@@ -93,6 +99,10 @@ urlpatterns = [
     path("api/superadmin/users/<int:user_id>/email-direct/", superadmin_user_email_direct, name="superadmin_user_email_direct"),
     path("api/superadmin/users/<int:user_id>/password-reset/", superadmin_user_password_reset, name="superadmin_user_password_reset"),
     path("api/superadmin/users/<int:user_id>/password-reset-link/", superadmin_user_password_reset_link, name="superadmin_user_password_reset_link"),
+    path("api/superadmin/reference-datasets/", superadmin_reference_datasets, name="superadmin_reference_datasets"),
+    path("api/superadmin/reference-datasets/validate/", superadmin_reference_dataset_validate, name="superadmin_reference_dataset_validate"),
+    path("api/superadmin/reference-datasets/<uuid:dataset_pk>/", superadmin_reference_dataset_detail, name="superadmin_reference_dataset_detail"),
+    path("api/superadmin/reference-datasets/<uuid:dataset_pk>/<str:action>/", superadmin_reference_dataset_action, name="superadmin_reference_dataset_action"),
     path("api/superadmin/mail-health/", superadmin_mail_health, name="superadmin_mail_health"),
     path("api/superadmin/mail-journal/", superadmin_mail_journal, name="superadmin_mail_journal"),
     path("api/superadmin/smtp/", superadmin_smtp_config, name="superadmin_smtp_config"),
