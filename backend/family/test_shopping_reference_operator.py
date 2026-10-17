@@ -9,6 +9,8 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 from rest_framework.test import APIClient
 
+from telemetry.models import AuditEvent
+
 from .shopping_reference_models import ReferenceDataset
 from .shopping_reference_validation import reference_content_checksum
 
@@ -88,6 +90,11 @@ class ShoppingReferenceOperatorTests(TestCase):
         self.assertTrue(dataset.validation_summary["materialized"])
         self.assertEqual(response.data["dataset"]["dataset_id"], dataset.dataset_id)
         self.assertNotIn("package", response.data["dataset"])
+        audit = AuditEvent.objects.get(event_key="superadmin.reference_data.validated")
+        self.assertEqual(audit.actor_id, self.admin.id)
+        self.assertEqual(audit.target_type, "reference_data")
+        self.assertEqual(audit.target_id, str(dataset.id))
+        self.assertEqual(audit.reason, "admin_action")
 
     def test_structurally_invalid_upload_returns_bounded_error_without_registry_row(self):
         self.client.force_authenticate(user=self.admin)
@@ -117,6 +124,14 @@ class ShoppingReferenceOperatorTests(TestCase):
         self.assertEqual(dataset.state, ReferenceDataset.State.ACTIVE)
         self.assertGreater(dataset.state_revision, revision)
         self.assertEqual(response.data["dataset"]["state"], "active")
+        self.assertTrue(
+            AuditEvent.objects.filter(
+                event_key="superadmin.reference_data.activated",
+                actor=self.admin,
+                target_type="reference_data",
+                target_id=str(dataset.id),
+            ).exists()
+        )
 
     def test_stale_operator_revision_is_rejected_without_second_transition(self):
         self.client.force_authenticate(user=self.admin)
