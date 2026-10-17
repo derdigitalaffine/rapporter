@@ -20,6 +20,11 @@ test('same-page deep links survive; route changes remove all registry-owned sele
     for(const key of FEATURE_QUERY_PARAMS)assert.equal(home.searchParams.has(key),false);
   }
 });
+test('contextual decision selectors survive only in the canonical decisions area',()=>{
+  const source='https://family.example/?page=decisions&decision_context_type=trip&decision_context_id=trip-1&decision_preset=stay';
+  assert.equal(pageHref('decisions',source),'/?page=decisions&decision_context_type=trip&decision_context_id=trip-1&decision_preset=stay');
+  assert.equal(pageHref('shopping',source),'/?page=shopping');
+});
 test('expenses do not leak expense selectors to other pages',()=>{
   assert.equal(pageHref('more','https://family.example/?page=expenses&ledger=1&expense=2'),'/?page=more');
   assert.equal(pageHref('expenses','https://family.example/?page=expenses&ledger=1&expense=2'),'/?page=expenses&ledger=1&expense=2');
