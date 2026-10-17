@@ -131,7 +131,10 @@ export default function ShoppingCheckoutFlow({list,sessionId,openCount,onClose,o
    await flushBeforeFinish();
    const requestBody={shopping_list:list.id,session:sessionId,open_items:openItems,store:storeId||null};
    if(reviewRevision!==null)requestBody.expected_revision=reviewRevision;
-   if(activePeers.length)requestBody.confirm_active_peers=groupConfirmed;
+   if(activePeers.length){
+    requestBody.confirm_active_peers=groupConfirmed;
+    if(groupConfirmed)requestBody.confirmed_active_peer_ids=activePeers.map(person=>String(person.id)).sort();
+   }
    const payload=await api('/shopping-sessions/complete/',{method:'POST',body:JSON.stringify(requestBody)});
    setCompletion(payload);setStage('done');
    if(payload?.session?.id&&typeof window!=='undefined'){
