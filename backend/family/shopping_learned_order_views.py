@@ -16,6 +16,14 @@ from .shopping_session_service import record_shopping_item_activity
 class ShoppingItemViewSet(AccessShoppingItemViewSet):
     """Canonical item viewset with replay-safe shopping activity metadata."""
 
+    def get_serializer(self, *args, **kwargs):
+        data = kwargs.get("data")
+        if self.action in {"update", "partial_update"} and data is not None and "client_activity" in data:
+            serializer_data = data.copy()
+            serializer_data.pop("client_activity", None)
+            kwargs["data"] = serializer_data
+        return super().get_serializer(*args, **kwargs)
+
     def perform_update(self, serializer):
         was_checked = serializer.instance.checked
         super().perform_update(serializer)
