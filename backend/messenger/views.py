@@ -197,7 +197,7 @@ def messages(request, conversation_id):
     member = membership(request.user, conversation_id)
     if request.method == "POST":
         rate(request, "chat.write")
-        data = validated(request.data, client_id=serializers.UUIDField(), body=serializers.CharField(max_length=4000, allow_blank=True, required=False, default=""), reply_to=serializers.UUIDField(required=False, allow_null=True))
+        data = validated(request.data, client_id=serializers.UUIDField(), body=serializers.CharField(max_length=4000, allow_blank=True, required=False, default=""), reply_to=serializers.UUIDField(required=False, allow_null=True), location=serializers.JSONField(required=False, allow_null=True))
         msg = services.send_message(request.user, conversation_id, files=request.FILES.getlist("files"), **data)
         return Response(message_payload(msg, member), status=201)
     data = validated(request.query_params, after=serializers.IntegerField(min_value=0, required=False), before=serializers.IntegerField(min_value=1, required=False), q=serializers.CharField(max_length=100, required=False))

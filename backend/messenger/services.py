@@ -217,15 +217,37 @@ def _revision(conv):
     return conv.revision
 
 
+def validate_location(value):
+    """One static point, no arbitrary metadata or external URLs."""
+    import math
+    if value is None:
+        return None
+    if not isinstance(value, dict) or set(value) != {"latitude", "longitude", "accuracy"}:
+        raise ValidationError({"code": "invalid_location"})
+    limits = {"latitude": (-90, 90), "longitude": (-180, 180), "accuracy": (0, 100000)}
+    result = {}
+    for key, (low, high) in limits.items():
+        number = value[key]
+        if isinstance(number, bool) or not isinstance(number, (int, float)) or not math.isfinite(number) or not low <= number <= high:
+            raise ValidationError({"code": "invalid_location"})
+        result[key] = round(float(number), 5 if key != "accuracy" else 1)
+    return result
+
+
 @transaction.atomic
-def send_message(user, conversation_id, *, client_id, body, reply_to=None, files=()):
+def send_message(user, conversation_id, *, client_id, body, reply_to=None, files=(), location=None):
     conv, member = _locked_member(user, conversation_id)
+    location = validate_location(location)
     body = str(body or "").strip()
-    if len(body) > 4000 or len(files) > 5 or (not body and not files):
+    if len(body) > 4000 or len(files) > 5 or (not body and not files and location is None):
         raise ValidationError({"code": "invalid_message"})
     from .media import prepare_uploads, save_uploads
     uploads = prepare_uploads(files)
-    digest = hashlib.sha256(json.dumps([body, str(reply_to or ""), [(c.sha256, kind, name) for c, kind, name in uploads]], ensure_ascii=False).encode()).hexdigest()
+    payload = [body, str(reply_to or ""), [(c.sha256, kind, name) for c, kind, name in uploads]]
+    # Preserve pre-migration retry digests for ordinary messages.
+    if location is not None:
+        payload.append(location)
+    digest = hashlib.sha256(json.dumps(payload, ensure_ascii=False).encode()).hexdigest()
     previous = conv.messages.filter(sender=user, client_id=client_id).first()
     if previous:
         if previous.payload_digest != digest:
@@ -237,7 +259,7 @@ def send_message(user, conversation_id, *, client_id, body, reply_to=None, files
         if not reply:
             raise Http404
     revision = _revision(conv)
-    msg = ChatMessage.objects.create(conversation=conv, sender=user, client_id=client_id, body=body, reply_to=reply, sequence=revision, event_sequence=revision, payload_digest=digest)
+    msg = ChatMessage.objects.create(conversation=conv, sender=user, client_id=client_id, body=body, location=location, reply_to=reply, sequence=revision, event_sequence=revision, payload_digest=digest)
     save_uploads(msg, uploads)
     member.typing_until = None
     member.save(update_fields=["typing_until", "updated_at"])
@@ -266,6 +288,7 @@ def change_message(user, conversation_id, message_id, *, body=None, delete=False
             if msg.deleted_at:
                 return msg
             msg.body, msg.deleted_at = "", timezone.now()
+            msg.location = None
             msg.reactions.all().delete()
         else:
             body = str(body or "").strip()
