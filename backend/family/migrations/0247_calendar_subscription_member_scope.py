@@ -2,7 +2,7 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-    dependencies = [('family', '0245_shopping_item_create_receipt')]
+    dependencies = [('family', '0246_shopping_reference_dataset')]
 
     operations = [
         migrations.AddField(

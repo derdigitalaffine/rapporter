@@ -1,7 +1,8 @@
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 from .views import FamilyViewSet, TaskListViewSet, TaskViewSet, RoutineViewSet, IntegrationSourceViewSet, AutomationRuleViewSet
-from .shopping_access_views import ShoppingListViewSet, ShoppingTemplateViewSet, shopping_clear_checked, shopping_quick_add, shopping_reorder, shopping_toggle_favorite
+from .shopping_access_views import ShoppingListViewSet, ShoppingTemplateViewSet, shopping_clear_checked, shopping_reorder, shopping_toggle_favorite
+from .shopping_autoguess_views import shopping_quick_add
 from .shopping_learned_order_views import ShoppingItemViewSet, ShoppingStoreViewSet
 from .shopping_audience_views import shopping_audience_options
 from .shopping_location_views import shopping_store_location_lookup, shopping_store_location_resolve

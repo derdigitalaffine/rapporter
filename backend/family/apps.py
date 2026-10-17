@@ -25,6 +25,7 @@ class FamilyConfig(AppConfig):
         from .family_master_models import FamilyMasterData
         from .family_relationship_models import FamilyRelationship
         from .notes_models import Note, NoteRevision, NoteShare
+        from .shopping_autoguess_models import ShoppingItemCreateReceipt
         from .shopping_models import (
             ShoppingListAccess,
             ShoppingListStoreProfile,
@@ -35,6 +36,7 @@ class FamilyConfig(AppConfig):
             ShoppingTemplate,
             ShoppingTemplateItem,
         )
+        from .shopping_reference_models import ReferenceDataset
         from .today_models import TodayLayout
         from .todo_models import TodoActionPreference, TodoPreference
         from .travel_models import Trip, TripPhoto
@@ -57,6 +59,7 @@ class FamilyConfig(AppConfig):
         core_models.Note = Note
         core_models.NoteShare = NoteShare
         core_models.NoteRevision = NoteRevision
+        core_models.ShoppingItemCreateReceipt = ShoppingItemCreateReceipt
         core_models.ShoppingStore = ShoppingStore
         core_models.ShoppingListAccess = ShoppingListAccess
         core_models.ShoppingListStoreProfile = ShoppingListStoreProfile
@@ -65,6 +68,7 @@ class FamilyConfig(AppConfig):
         core_models.ShoppingSessionParticipant = ShoppingSessionParticipant
         core_models.ShoppingTemplate = ShoppingTemplate
         core_models.ShoppingTemplateItem = ShoppingTemplateItem
+        core_models.ReferenceDataset = ReferenceDataset
         core_models.TodayLayout = TodayLayout
         core_models.TodoPreference = TodoPreference
         core_models.TodoActionPreference = TodoActionPreference

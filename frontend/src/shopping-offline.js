@@ -1,10 +1,24 @@
 import {offlineEngine,readyOfflineEngine,offlineIdentity,addShoppingLocally} from './offline-runtime';
 import {api} from './api';
 import {deleteShoppingMutation,listShoppingMutations,putShoppingMutation} from './offline-store';
+import {applyShoppingItemAutoguess} from './shopping-item-autoguess.js';
 
 export const SHOPPING_BUDGET_PURCHASE_EVENT='famuhle:shopping-budget-purchase';
 const uuid=()=>globalThis.crypto?.randomUUID?.()||`offline-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+const mutationUuid=()=>globalThis.crypto?.randomUUID?.()||'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,char=>{const random=Math.random()*16|0;const value=char==='x'?random:(random&3)|8;return value.toString(16)});
 const ORDER_META_PREFIX='famuhle-shopping-order-next:';
+const stagedAddMutationIds=new Map();
+const addStageKey=name=>String(name??'').normalize('NFKC').replace(/\s+/g,' ').trim().toLocaleLowerCase('de-DE');
+
+export const createShoppingMutationId=()=>mutationUuid();
+export function stageShoppingAddMutationId(name,mutationId){
+  const key=addStageKey(name);if(!key||!mutationId)return;
+  stagedAddMutationIds.set(key,String(mutationId));
+}
+function consumeShoppingAddMutationId(name){
+  const key=addStageKey(name);if(!key)return null;
+  const value=stagedAddMutationIds.get(key)||null;stagedAddMutationIds.delete(key);return value;
+}
 
 export function stageShoppingOrderMetadata(targetId,metadata){
   if(typeof sessionStorage==='undefined')return;
@@ -17,14 +31,19 @@ function consumeShoppingOrderMetadata(targetId){
 }
 
 export async function queueShoppingAdd(familyId,payload){
-  if(offlineEngine(familyId)){const {item}=await addShoppingLocally(familyId,payload);return {localId:item.id,payload}}
+  const stagedMutationId=consumeShoppingAddMutationId(payload?.name);
+  const mutationId=payload?.client_mutation_id||stagedMutationId||mutationUuid();
+  const {client_mutation_id:_clientMutationId,...inputPayload}=payload||{};
+  const guessed=applyShoppingItemAutoguess(inputPayload).payload;
+  const mutationPayload={...guessed,client_mutation_id:mutationId};
+  if(offlineEngine(familyId)){const {item}=await addShoppingLocally(familyId,mutationPayload);return {localId:item.id,payload:mutationPayload,id:mutationId}}
   const localId=`offline-${uuid()}`;
-  const mutation={id:uuid(),familyId:String(familyId),type:'add',localId,payload,createdAt:Date.now(),attempts:0,status:'pending'};
+  const mutation={id:mutationId,familyId:String(familyId),type:'add',localId,payload:mutationPayload,createdAt:Date.now(),attempts:0,status:'pending'};
   await putShoppingMutation(mutation);return mutation;
 }
 export async function queueShoppingPatch(familyId,targetId,payload){
   const target=String(targetId);
-  const mutationId=uuid();
+  const mutationId=mutationUuid();
   const orderMeta=consumeShoppingOrderMetadata(target);
   const mutationPayload=orderMeta?{...payload,client_activity:{...orderMeta,mutation_id:mutationId}}:payload;
   // A budget reservation is an online finance transition, not an offline

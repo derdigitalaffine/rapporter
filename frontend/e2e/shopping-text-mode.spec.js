@@ -18,32 +18,42 @@ async function openTextMode(page){
   await expect(toggle).toHaveAttribute('aria-pressed','true');
 }
 
-async function pasteLines(textarea,text){
-  await textarea.evaluate((element,value)=>{
-    const data=new DataTransfer();
-    data.setData('text/plain',value);
-    element.dispatchEvent(new ClipboardEvent('paste',{clipboardData:data,bubbles:true,cancelable:true}));
-  },text);
-}
+test('Textmodus keeps multiline input as draft until explicit apply',async({page})=>{
+  const creates=[];
+  page.on('request',request=>{
+    if(request.method()==='POST'&&request.url().includes('/api/smart/shopping/quick-add/')){
+      let body={};try{body=request.postDataJSON()||{}}catch{}
+      creates.push(body);
+    }
+  });
 
-test('Textmodus splits pasted lines, ignores blanks and keeps keyboard entry fast',async({page})=>{
   await bootShopping(page);
   await openTextMode(page);
 
-  const textarea=page.getByLabel('Artikel zeilenweise hinzufügen');
-  await expect(textarea).toBeFocused();
-  await pasteLines(textarea,'Bananen\n\nKaffee\r\nÄpfel\n');
+  const textarea=page.getByLabel('Artikel zeilenweise erfassen');
+  await textarea.fill('2 x Bananen\n500 g Tomaten\n\nKaffee');
 
-  await expect(page.getByLabel('Bananen bearbeiten')).toBeVisible();
-  await expect(page.getByLabel('Kaffee bearbeiten')).toBeVisible();
-  await expect(page.getByLabel('Äpfel bearbeiten')).toBeVisible();
-  await expect(page.locator('.shopping-text-line')).toHaveCount(4);
+  const preview=page.getByLabel('Vorschau');
+  await expect(preview).toBeVisible();
+  await expect(preview.locator('.shopping-text-preview-row')).toHaveCount(3);
+  await expect(preview).toContainText('3 Zeilen');
+  expect(creates).toHaveLength(0);
 
-  await textarea.fill('Tomaten');
+  const firstName=preview.locator('.shopping-text-preview-row').first().getByLabel('Artikel');
+  await expect(firstName).toHaveValue(/Bananen/);
+  await firstName.fill('Bio-Bananen');
+
+  await textarea.press('End');
   await textarea.press('Enter');
-  await expect(page.getByLabel('Tomaten bearbeiten')).toBeVisible();
-  await expect(textarea).toBeFocused();
+  expect(creates).toHaveLength(0);
+
+  await page.getByRole('button',{name:'Übernehmen'}).click();
+
   await expect(textarea).toHaveValue('');
+  await expect.poll(()=>creates.length).toBe(3);
+  expect(creates[0].name).toBe('Bio-Bananen');
+  expect(creates[0].client_mutation_id).toMatch(/^[0-9a-f-]{36}$/i);
+  await expect(page.getByLabel('Bio-Bananen bearbeiten')).toBeVisible();
 });
 
 test('Textmodus renames and removes existing rows without losing shopping metadata or store mode',async({page})=>{
@@ -65,7 +75,7 @@ test('Textmodus renames and removes existing rows without losing shopping metada
   await expect.poll(()=>requests.some(request=>request.method==='DELETE')).toBe(true);
 
   await page.getByRole('button',{name:'Im Laden'}).click();
-  await expect(page.getByLabel('Artikel zeilenweise hinzufügen')).toHaveCount(0);
+  await expect(page.getByLabel('Artikel zeilenweise erfassen')).toHaveCount(0);
   await expect(page.locator('.store-focus')).toBeVisible();
   const noHorizontalOverflow=await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1);
   expect(noHorizontalOverflow).toBe(true);
