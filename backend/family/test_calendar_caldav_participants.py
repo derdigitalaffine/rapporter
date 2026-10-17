@@ -159,20 +159,31 @@ class CalDavFamilyParticipantTests(TestCase):
             content_type='text/calendar', HTTP_IF_NONE_MATCH='*',
         )
         self.assertEqual(created.status_code, 201)
+        self.assertEqual(created['Schedule-Tag'], created['ETag'])
         stored = FamilyEvent.objects.get(pk=event_id)
         self.assertEqual(set(stored.participants.values_list('pk', flat=True)), {self.owner.pk, self.child.pk})
 
         fetched = self.dav('GET', path=path)
+        self.assertEqual(fetched['Schedule-Tag'], fetched['ETag'])
         component = Calendar.from_ical(fetched.content).walk('VEVENT')[0]
         attendees = component['ATTENDEE'] if isinstance(component['ATTENDEE'], list) else [component['ATTENDEE']]
         self.assertEqual({str(value) for value in attendees}, {owner_address, child_address})
         self.assertEqual(str(component['ORGANIZER']), owner_address)
         self.assertEqual(str(component['ORGANIZER'].params['SCHEDULE-AGENT']), 'SERVER')
 
+        multiget = self.dav(
+            'REPORT',
+            body=f'<c:calendar-multiget xmlns:c="urn:ietf:params:xml:ns:caldav" xmlns:d="DAV:"><d:prop><d:getetag/><c:schedule-tag/></d:prop><d:href>{path}</d:href></c:calendar-multiget>',
+            HTTP_DEPTH='1',
+        )
+        self.assertEqual(multiget.status_code, 207)
+        self.assertIn(b'schedule-tag', multiget.content)
+        self.assertNotIn(b'404 Not Found', multiget.content)
+
         removed = self.dav(
             'PUT', path=path,
             body=self.event_body(event_id, title='No child assignee', organizer=owner_address),
-            content_type='text/calendar', HTTP_IF_MATCH=created['ETag'],
+            content_type='text/calendar', HTTP_IF_SCHEDULE_TAG_MATCH=created['Schedule-Tag'],
         )
         self.assertEqual(removed.status_code, 204)
         self.assertEqual(list(FamilyEvent.objects.get(pk=event_id).participants.values_list('pk', flat=True)), [self.owner.pk])
