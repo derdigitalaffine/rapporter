@@ -7,11 +7,11 @@ import {featureHref} from '../src/navigation.js';
 const widgetSource=await readFile(new URL('../src/TodayCoreWidgets.jsx',import.meta.url),'utf8');
 const timelineStyles=await readFile(new URL('../src/today-core-widgets.css',import.meta.url),'utf8');
 
-test('fresh and explicit reset defaults have overview and focus, not duplicate lists',()=>{
+test('fresh and explicit reset defaults follow the current Today core sequence',()=>{
  const rows=defaultTodayWidgets();
- assert.deepEqual(rows.filter(row=>row.visible).map(row=>row.id),['situation','overview','focus']);
+ assert.deepEqual(rows.filter(row=>row.visible).map(row=>row.id),['situation','focus','timeline','week','todo','quick-actions','pinboard']);
  assert.deepEqual(TodayWidgetsById.overview.supportedSizes,['wide']);
- assert.equal(normalizeTodayLayout({version:2,revision:0,widgets:rows}).widgets.find(row=>row.id==='overview').visible,true);
+ assert.equal(normalizeTodayLayout({version:2,revision:0,widgets:rows}).widgets.find(row=>row.id==='overview').visible,false);
 });
 test('saved personal layouts retain visible order and keep the new overview opt-in',()=>{
  const widgets=[{id:'situation',visible:true,size:'compact'},{id:'shopping',visible:true,size:'compact'},{id:'focus',visible:false,size:'wide'},{id:'timeline',visible:true,size:'wide'}];
