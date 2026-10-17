@@ -11,22 +11,22 @@ The Decisions area supports four voting modes:
 - **Ranking (`ranking`)** when all options should be ordered from most to least preferred. Ranking always submits a complete order; moving an option up or down is available with explicit buttons and does not depend on drag and drop.
 - **Rating (`rating`)** for independent 1–5 ratings. Members may rate one or several options.
 
-Contextual decisions use the same Decision objects and API as the central Decisions area. They do not create Shopping- or Trip-specific poll models.
+Contextual decisions use the same Decision objects, API, and composer as the central Decisions area. Shopping and Travel expose lightweight launchers only; they do not maintain a second decision form, list, or feature-specific poll model.
 
 ### Shopping
 
-A shopping list exposes **Vote together** next to the existing context action. The compact presets are:
+A shopping list exposes **Vote together** next to the existing context action. The launcher offers these presets:
 
-- **Plan a purchase / Anschaffung planen** – starts as a ranking.
-- **What should we eat? / Was wollen wir essen?** – starts as a single-choice vote.
+- **Plan a purchase / Anschaffung planen** – opens the central Decisions area as a ranking.
+- **What should we eat? / Was wollen wir essen?** – opens the central Decisions area as a single-choice vote.
 
-The preset only pre-fills the question and voting mode; users can still edit the question, mode, and options before creating the decision. Closed decisions with a unique winner offer an explicit **Add winner to shopping list** action. This uses the canonical shopping quick-add endpoint, so an existing matching item is re-opened instead of silently duplicating it. Ties are never transferred automatically.
+The preset carries the Shopping List context and only pre-fills the question and voting mode. The user edits the question, mode, options, deadline, and anonymity in the normal Decisions composer before creating the canonical Decision. Closed Shopping decisions with a unique winner offer the explicit **Add winner to shopping list** action in the Decisions area. This uses the canonical shopping quick-add endpoint. Ties are never transferred automatically.
 
 ### Travel
 
-A concrete Trip exposes the same contextual action in its existing FamilyOS planning section. Presets cover destination (ranking), accommodation (rating), and activities (multiple choice). The decision remains linked to the Trip through `decision.context`, and the Trip remains the authoritative object for travel visibility and lifecycle.
+A concrete Trip exposes the same lightweight launcher in its existing FamilyOS planning section. Presets cover destination (ranking), accommodation (rating), and activities (multiple choice), and each opens the normal Decisions composer with the Trip context attached. The created decision remains linked to the Trip through `decision.context`, and the Trip remains the authoritative object for travel visibility and lifecycle.
 
-These contextual launchers are progressive disclosure: no extra decision data is loaded until the user opens the action.
+These contextual launchers are progressive disclosure: they show only relevant starting points. Decision data, voting, results, and follow-up actions stay in the central Decisions area.
 
 ## API
 
@@ -121,4 +121,4 @@ The core does not emit per-vote notifications. Optional creation/end reminders a
 
 New domains should not add bespoke poll foreign keys. Prefer an allow-listed `decision.context` ContextLink adapter after defining the domain's visibility and lifecycle contract. A new relation must preserve the rule that the linked object's ACL remains authoritative and that losing context access removes visibility of the context-bound decision.
 
-UI integrations must use the app-wide form primitives and progressive disclosure from #400/#223. They may pre-fill a contextual question or mode, but they still create the canonical Decision object and must require an explicit user action before writing a result into another domain.
+UI integrations must use the app-wide form primitives and progressive disclosure from #400/#223. They may pre-fill a contextual question or mode, but they still create the canonical Decision object in the central Decisions composer and must require an explicit user action before writing a result into another domain.
