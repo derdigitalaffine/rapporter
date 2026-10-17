@@ -9,6 +9,8 @@ class Decision(TimestampedModel):
     class Mode(models.TextChoices):
         SINGLE = "single", "Single choice"
         MULTIPLE = "multiple", "Multiple choice"
+        RANKING = "ranking", "Ranking"
+        RATING = "rating", "Rating"
 
     family = models.ForeignKey(Family, on_delete=models.CASCADE, related_name="decisions")
     question = models.CharField(max_length=500)
@@ -52,6 +54,8 @@ class DecisionVote(TimestampedModel):
     decision = models.ForeignKey(Decision, on_delete=models.CASCADE, related_name="votes")
     option = models.ForeignKey(DecisionOption, on_delete=models.CASCADE, related_name="votes")
     member = models.ForeignKey(Membership, on_delete=models.CASCADE, related_name="decision_votes")
+    rank = models.PositiveSmallIntegerField(null=True, blank=True)
+    score = models.PositiveSmallIntegerField(null=True, blank=True)
 
     class Meta:
         ordering = ["created_at", "id"]
@@ -59,6 +63,14 @@ class DecisionVote(TimestampedModel):
             models.UniqueConstraint(
                 fields=["decision", "option", "member"],
                 name="decision_vote_member_option_uq",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(rank__isnull=True) | models.Q(rank__gte=1),
+                name="decision_vote_rank_positive_ck",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(score__isnull=True) | models.Q(score__range=(1, 5)),
+                name="decision_vote_score_range_ck",
             ),
         ]
         indexes = [models.Index(fields=["decision", "member"], name="decision_vote_member_idx")]
