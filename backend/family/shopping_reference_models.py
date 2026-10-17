@@ -1,3 +1,5 @@
+import uuid
+
 from django.db import models
 
 from .models import TimestampedModel
@@ -58,6 +60,7 @@ class ReferenceDataset(TimestampedModel):
     validation_summary = models.JSONField(default=dict, blank=True)
     validation_error = models.TextField(blank=True)
     state = models.CharField(max_length=24, choices=State.choices, default=State.STAGED, db_index=True)
+    state_revision = models.PositiveBigIntegerField(default=0)
     fetched_at = models.DateTimeField(null=True, blank=True)
     verified_at = models.DateTimeField(null=True, blank=True)
     installed_at = models.DateTimeField(null=True, blank=True)
@@ -68,6 +71,11 @@ class ReferenceDataset(TimestampedModel):
         ordering = ["dataset_id", "-created_at"]
         constraints = [
             models.UniqueConstraint(fields=["dataset_id", "version"], name="refds_id_version_uniq"),
+            models.UniqueConstraint(
+                fields=["dataset_id"],
+                condition=models.Q(state="active"),
+                name="refds_one_active_uniq",
+            ),
         ]
         indexes = [
             models.Index(fields=["dataset_type", "state"], name="refds_type_state_idx"),
@@ -76,3 +84,37 @@ class ReferenceDataset(TimestampedModel):
 
     def __str__(self):
         return f"{self.dataset_id}@{self.version}"
+
+
+class ReferenceDatasetLease(TimestampedModel):
+    """Short technical lease serialising operations for one semantic dataset."""
+
+    dataset_id = models.CharField(max_length=180, unique=True)
+    owner = models.CharField(max_length=128)
+    token = models.UUIDField(default=uuid.uuid4, editable=False)
+    expires_at = models.DateTimeField()
+
+    class Meta:
+        ordering = ["dataset_id"]
+
+
+class ReferenceDatasetActivationEvent(TimestampedModel):
+    """Append-only technical activation history without household identifiers."""
+
+    class Action(models.TextChoices):
+        ACTIVATE = "activate", "Activate"
+        DISABLE = "disable", "Disable"
+        ROLLBACK = "rollback", "Rollback"
+
+    dataset_id = models.CharField(max_length=180, db_index=True)
+    action = models.CharField(max_length=16, choices=Action.choices)
+    from_version = models.CharField(max_length=80, blank=True)
+    to_version = models.CharField(max_length=80, blank=True)
+    state_revision = models.PositiveBigIntegerField(default=0)
+    reason_code = models.CharField(max_length=80, blank=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+        indexes = [
+            models.Index(fields=["dataset_id", "-created_at"], name="refds_event_time_idx"),
+        ]
