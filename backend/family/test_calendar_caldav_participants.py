@@ -24,7 +24,7 @@ class CalDavFamilyParticipantTests(TestCase):
         self.assertEqual(login.status_code, 200, login.data)
         created = self.client.post(
             f'/api/calendar-subscriptions/{self.family.pk}/',
-            {'name': 'iPhone', 'detail_level': 'title'},
+            {'name': 'iPhone', 'detail_level': 'title', 'included_member_ids': [str(self.child.pk)]},
             format='json',
         )
         self.assertEqual(created.status_code, 201, created.data)
@@ -45,10 +45,12 @@ class CalDavFamilyParticipantTests(TestCase):
             **headers,
         )
 
-    def event_body(self, event_id, title='Family event', attendees=()):
+    def event_body(self, event_id, title='Family event', attendees=(), organizer=None):
         calendar = Calendar(); calendar.add('version', '2.0'); calendar.add('prodid', '-//FamilyOS test//EN')
         event = Event(); event.add('uid', f'{event_id}@iphone'); event.add('summary', title)
         event.add('dtstart', self.start); event.add('dtend', self.start + timedelta(hours=1))
+        if organizer:
+            value = vCalAddress(organizer); event.add('ORGANIZER', value, encode=0)
         for address, label in attendees:
             attendee = vCalAddress(address); attendee.params['CN'] = label
             event.add('ATTENDEE', attendee, encode=0)
@@ -97,7 +99,8 @@ class CalDavFamilyParticipantTests(TestCase):
         attendee = component['ATTENDEE']
         self.assertEqual(str(attendee), f'mailto:{self.child.pk}@members.familyos.invalid')
         self.assertEqual(str(attendee.params['CN']), 'Emma')
-        self.assertEqual(str(attendee.params['SCHEDULE-AGENT']), 'NONE')
+        self.assertEqual(str(attendee.params['SCHEDULE-AGENT']), 'CLIENT')
+        self.assertNotIn('ORGANIZER', component)
 
         feed_path = self.grant['subscription_url'].replace('https://calendar.example.test', '')
         public_feed = self.public.get(feed_path)
@@ -107,27 +110,31 @@ class CalDavFamilyParticipantTests(TestCase):
 
     def test_put_maps_family_attendees_bidirectionally_and_rejects_outsiders(self):
         event_id = uuid4(); path = self.home + str(event_id) + '.ics'
-        address = f'mailto:{self.child.pk}@members.familyos.invalid'
+        owner_address = f'mailto:{self.owner.pk}@members.familyos.invalid'
+        child_address = f'mailto:{self.child.pk}@members.familyos.invalid'
         created = self.dav(
             'PUT', path=path,
-            body=self.event_body(event_id, attendees=[(address, 'Emma')]),
+            body=self.event_body(event_id, attendees=[(child_address, 'Emma')]),
             content_type='text/calendar', HTTP_IF_NONE_MATCH='*',
         )
         self.assertEqual(created.status_code, 201)
         stored = FamilyEvent.objects.get(pk=event_id)
-        self.assertEqual(list(stored.participants.values_list('pk', flat=True)), [self.child.pk])
+        self.assertEqual(set(stored.participants.values_list('pk', flat=True)), {self.owner.pk, self.child.pk})
 
         fetched = self.dav('GET', path=path)
         component = Calendar.from_ical(fetched.content).walk('VEVENT')[0]
-        self.assertEqual(str(component['ATTENDEE']), address)
+        attendees = component['ATTENDEE'] if isinstance(component['ATTENDEE'], list) else [component['ATTENDEE']]
+        self.assertEqual({str(value) for value in attendees}, {owner_address, child_address})
+        self.assertEqual(str(component['ORGANIZER']), owner_address)
+        self.assertEqual(str(component['ORGANIZER'].params['SCHEDULE-AGENT']), 'CLIENT')
 
         removed = self.dav(
             'PUT', path=path,
-            body=self.event_body(event_id, title='No assignee'),
+            body=self.event_body(event_id, title='No child assignee', organizer=owner_address),
             content_type='text/calendar', HTTP_IF_MATCH=created['ETag'],
         )
         self.assertEqual(removed.status_code, 204)
-        self.assertFalse(FamilyEvent.objects.get(pk=event_id).participants.exists())
+        self.assertEqual(list(FamilyEvent.objects.get(pk=event_id).participants.values_list('pk', flat=True)), [self.owner.pk])
 
         principal_event_id = uuid4(); principal_path = self.home + str(principal_event_id) + '.ics'
         principal_address = f'{self.principals}{self.child.pk}/'
@@ -137,7 +144,17 @@ class CalDavFamilyParticipantTests(TestCase):
             content_type='text/calendar', HTTP_IF_NONE_MATCH='*',
         )
         self.assertEqual(via_principal.status_code, 201)
-        self.assertTrue(FamilyEvent.objects.get(pk=principal_event_id).participants.filter(pk=self.child.pk).exists())
+        principal_participants = set(FamilyEvent.objects.get(pk=principal_event_id).participants.values_list('pk', flat=True))
+        self.assertEqual(principal_participants, {self.owner.pk, self.child.pk})
+
+        spoofed_id = uuid4(); spoofed_path = self.home + str(spoofed_id) + '.ics'
+        spoofed = self.dav(
+            'PUT', path=spoofed_path,
+            body=self.event_body(spoofed_id, organizer=child_address),
+            content_type='text/calendar', HTTP_IF_NONE_MATCH='*',
+        )
+        self.assertEqual(spoofed.status_code, 409)
+        self.assertFalse(FamilyEvent.objects.filter(pk=spoofed_id).exists())
 
         outsider_id = uuid4(); outsider_path = self.home + str(outsider_id) + '.ics'
         rejected = self.dav(
