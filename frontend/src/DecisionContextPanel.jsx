@@ -44,9 +44,9 @@ export default function DecisionContextPanel({family,context}){
  const canCreate=Boolean(role&&role!=='guest');
  const presets=useMemo(()=>presetsFor(context?.type,en),[context?.type,en]);
  const w=en?{
-  action:'Vote together',title:'Decide together',hint:'Start a small vote without leaving this context.',loading:'Loading decisions …',failed:'Decisions could not be loaded.',recent:'Votes in this context',open:'Open',closed:'Closed',openDecision:'Open decision',question:'Question',mode:'Voting mode',single:'One choice',multiple:'Several choices',ranking:'Rank options',rating:'Rate 1–5',options:'Options',option:'Option',add:'Add option',remove:'Remove option',create:'Start vote',cancel:'Cancel',saving:'Saving …',created:'Vote created.',apply:'Add winner to shopping list',applied:'Winner added to the shopping list.',alreadyThere:'This result is already on the shopping list.',tie:'Resolve the tie before transferring a result.'
+  action:'Vote together',title:'Decide together',hint:'Start a small vote without leaving this context.',loading:'Loading decisions …',failed:'Decisions could not be loaded.',recent:'Votes in this context',open:'Open',closed:'Closed',openDecision:'Open decision',question:'Question',mode:'Voting mode',single:'One choice',multiple:'Several choices',ranking:'Rank options',rating:'Rate 1–5',options:'Options',option:'Option',add:'Add option',remove:'Remove option',create:'Start vote',cancel:'Cancel',saving:'Saving …',created:'Vote created.',apply:'Add winner to shopping list',applied:'Winner added to the shopping list.',tie:'Resolve the tie before transferring a result.'
  }:{
-  action:'Gemeinsam abstimmen',title:'Gemeinsam entscheiden',hint:'Eine kleine Abstimmung starten, ohne diesen Kontext zu verlassen.',loading:'Abstimmungen werden geladen …',failed:'Abstimmungen konnten nicht geladen werden.',recent:'Abstimmungen in diesem Kontext',open:'Offen',closed:'Geschlossen',openDecision:'Abstimmung öffnen',question:'Frage',mode:'Abstimmungsart',single:'Eine Auswahl',multiple:'Mehrere auswählen',ranking:'Optionen sortieren',rating:'Mit 1–5 bewerten',options:'Optionen',option:'Option',add:'Option hinzufügen',remove:'Option entfernen',create:'Abstimmung starten',cancel:'Abbrechen',saving:'Wird gespeichert …',created:'Abstimmung erstellt.',apply:'Gewinner auf Einkaufsliste',applied:'Gewinner wurde auf die Einkaufsliste übernommen.',alreadyThere:'Dieses Ergebnis steht bereits auf der Einkaufsliste.',tie:'Bei Gleichstand bitte erst ein eindeutiges Ergebnis herstellen.'
+  action:'Gemeinsam abstimmen',title:'Gemeinsam entscheiden',hint:'Eine kleine Abstimmung starten, ohne diesen Kontext zu verlassen.',loading:'Abstimmungen werden geladen …',failed:'Abstimmungen konnten nicht geladen werden.',recent:'Abstimmungen in diesem Kontext',open:'Offen',closed:'Geschlossen',openDecision:'Abstimmung öffnen',question:'Frage',mode:'Abstimmungsart',single:'Eine Auswahl',multiple:'Mehrere auswählen',ranking:'Optionen sortieren',rating:'Mit 1–5 bewerten',options:'Optionen',option:'Option',add:'Option hinzufügen',remove:'Option entfernen',create:'Abstimmung starten',cancel:'Abbrechen',saving:'Wird gespeichert …',created:'Abstimmung erstellt.',apply:'Gewinner auf Einkaufsliste',applied:'Gewinner wurde auf die Einkaufsliste übernommen.',tie:'Bei Gleichstand bitte erst ein eindeutiges Ergebnis herstellen.'
  };
  const [open,setOpen]=useState(false);
  const [rows,setRows]=useState([]);
@@ -66,12 +66,12 @@ export default function DecisionContextPanel({family,context}){
    setRows(asRows(data).filter(row=>String(row.context?.id||'')===contextId&&row.context?.type===context.type));
   }catch(err){setError(err.message||w.failed)}finally{setLoading(false)}
  }
- useEffect(()=>{if(open)void load()},[open,family?.id,contextId]);
+ useEffect(()=>{if(open)void load()},[open,family?.id,contextId,context?.type]);
  if(!canCreate||!presets.length)return null;
  function choosePreset(next){setPreset(next.key);setNotice('');setError('');setDraft({question:next.question,mode:next.mode,options:['','']})}
  function updateOption(index,value){setDraft(old=>({...old,options:old.options.map((item,i)=>i===index?value:item)}))}
  function addOption(){setDraft(old=>old.options.length>=10?old:{...old,options:[...old.options,'']})}
- function removeOption(index){setDraft(old=>old.options.length<=2?old:{...old,options:old.options.filter((_,i)=>i!==index)}))}
+ function removeOption(index){setDraft(old=>old.options.length<=2?old:{...old,options:old.options.filter((_,i)=>i!==index)})}
  async function createDecision(event){
   event.preventDefault();if(busy)return;
   const options=cleanOptions(draft.options);if(options.length<2)return;
@@ -85,10 +85,7 @@ export default function DecisionContextPanel({family,context}){
   const winner=row?.result?.winner;if(!winner||context.type!=='shopping_list'||busy)return;
   setBusy(`apply:${row.id}`);setError('');setNotice('');
   try{
-   const current=await api(`/shopping-lists/${context.id}/`);
-   const exists=(current?.items||[]).some(item=>!item.checked&&String(item.name||'').trim().toLocaleLowerCase()===String(winner.label).trim().toLocaleLowerCase());
-   if(exists){setNotice(w.alreadyThere);return}
-   await api('/shopping-items/',{method:'POST',body:JSON.stringify({family:family.id,shopping_list:context.id,name:winner.label,quantity:'',category:'',aisle:'',note:''})});
+   await api('/smart/shopping/quick-add/',{method:'POST',body:JSON.stringify({family:family.id,shopping_list:context.id,name:winner.label,quantity:'',category:'',aisle:'',note:''})});
    setNotice(w.applied);
   }catch(err){setError(err.message||w.failed)}finally{setBusy('')}
  }
