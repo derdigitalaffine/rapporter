@@ -40,11 +40,21 @@ function readSettings(key){
  }catch{return defaultPrioritySettings}
 }
 
-function openShoppingCount(data){
- return (data?.shopping_lists||[]).reduce((sum,list)=>{
-  if(Number.isFinite(Number(list?.open_count)))return sum+Number(list.open_count);
-  return sum+(list?.items||[]).filter(item=>!item.checked).length;
- },0);
+function readExcludedShoppingLists(key){
+ try{
+  const value=JSON.parse(localStorage.getItem(key)||'[]');
+  return Array.isArray(value)?[...new Set(value.map(String))]:[];
+ }catch{return []}
+}
+
+function shoppingListOpenCount(list){
+ if(Number.isFinite(Number(list?.open_count)))return Number(list.open_count);
+ return (list?.items||[]).filter(item=>!item.checked).length;
+}
+
+function openShoppingCount(data,excludedIds=[]){
+ const excluded=new Set(excludedIds.map(String));
+ return (data?.shopping_lists||[]).reduce((sum,list)=>excluded.has(String(list?.id))?sum:sum+shoppingListOpenCount(list),0);
 }
 
 function ModuleShortcut({page,icon,title,value,detail,language}){
@@ -94,28 +104,49 @@ function PrioritySettings({language,settings,onChange}){
  </fieldset>;
 }
 
+function ShoppingTileSettings({language,lists,excludedIds,onToggle}){
+ const de=language.startsWith('de');
+ const excluded=new Set(excludedIds.map(String));
+ return <fieldset className="today-priority-settings" data-testid="today-shopping-list-settings">
+  <legend>{de?'Einkaufskachel':'Shopping tile'}</legend>
+  <p>{de?'Wähle, welche Einkaufslisten in die offene Summe einfließen. Neue Listen werden automatisch berücksichtigt.':'Choose which shopping lists count toward the open total. New lists are included automatically.'}</p>
+  {lists.length?lists.map(list=>{
+   const id=String(list.id);const count=shoppingListOpenCount(list);const name=list.name||(de?'Unbenannte Liste':'Unnamed list');
+   return <label key={id}><input type="checkbox" checked={!excluded.has(id)} onChange={event=>onToggle(id,event.target.checked)}/><span>{name} · {count} {de?'offen':'open'}</span></label>;
+  }):<p>{de?'Noch keine Einkaufslisten vorhanden.':'No shopping lists yet.'}</p>}
+ </fieldset>;
+}
+
 export default function TodayCanonicalHome({data,family,open,unreadMessages=null,viewer=null}){
  const language=i18n.language;
  const displayFamily={...family,name:firstName(viewer)||family.name};
  const identity=String(viewer?.user||viewer?.id||'self');
  const layoutKey=`famuhle-today-home-layout:v1:${family.id}:${identity}`;
  const priorityKey=`famuhle-today-home-priority:v1:${family.id}:${identity}`;
+ const shoppingKey=`famuhle-today-home-shopping:v1:${family.id}:${identity}`;
  const [prioritySettings,setPrioritySettings]=useState(()=>readSettings(priorityKey));
+ const [excludedShoppingLists,setExcludedShoppingLists]=useState(()=>readExcludedShoppingLists(shoppingKey));
  const changePriority=(key,value)=>setPrioritySettings(current=>{
   const next={...current,[key]:value};
   try{localStorage.setItem(priorityKey,JSON.stringify(next))}catch{}
   return next;
  });
+ const changeShoppingList=(id,included)=>setExcludedShoppingLists(current=>{
+  const value=String(id);const next=included?current.filter(item=>String(item)!==value):[...new Set([...current,value])];
+  try{localStorage.setItem(shoppingKey,JSON.stringify(next))}catch{}
+  return next;
+ });
  const de=language.startsWith('de');
+ const shoppingLists=data?.shopping_lists||[];
  const widgets=useMemo(()=>({
   overview:<TodayOverview family={family} data={data} unreadMessages={unreadMessages} language={language}/>,
-  shopping:<ModuleShortcut page="shopping" icon="shopping" title={de?'Einkauf':'Shopping'} value={openShoppingCount(data)} detail={de?'Liste öffnen':'Open list'} language={language}/>,
+  shopping:<ModuleShortcut page="shopping" icon="shopping" title={de?'Einkauf':'Shopping'} value={openShoppingCount(data,excludedShoppingLists)} detail={de?'Liste öffnen':'Open list'} language={language}/>,
   inbox:<ModuleShortcut page="inbox" icon="inbox" title={de?'Nachrichten':'Messages'} value={unreadMessages} detail={de?'Postfach öffnen':'Open inbox'} language={language}/>,
   notes:<ModuleShortcut page="notes" icon="edit" title={de?'Notizzettel':'Notes'} detail={de?'Notizen öffnen':'Open notes'} language={language}/>,
   weather:<ModuleShortcut page="weather" icon="weather" title={de?'Wetter':'Weather'} detail={de?'Wetter öffnen':'Open weather'} language={language}/>,
   trip:<ModuleShortcut page="trips" icon="route" title={de?'Reise':'Trip'} detail={de?'Reisen öffnen':'Open trips'} language={language}/>,
   loyalty:<ModuleShortcut page="loyalty" icon="favorite" title={de?'Bonuskarten':'Loyalty cards'} detail={de?'Karten öffnen':'Open cards'} language={language}/>,
- }),[family.id,data,unreadMessages,language,de]);
+ }),[family.id,data,unreadMessages,language,de,excludedShoppingLists]);
  const header=<header className="today-hero"><div className="today-greeting"><p>{formatDateTime(language,new Date(),{timeZone:family.timezone||'UTC',weekday:'long',day:'numeric',month:'long'})} · {family.name}</p><h1>{greeting(displayFamily,language)}</h1></div></header>;
  return <div data-testid="today-canonical-home">
   <TodayLayout
@@ -128,7 +159,7 @@ export default function TodayCanonicalHome({data,family,open,unreadMessages=null
    editIcon="settings"
    gridTestId="today-canonical-grid"
    topNotice={<PriorityBanner family={family} language={language} settings={prioritySettings}/>}
-   editorExtras={<PrioritySettings language={language} settings={prioritySettings} onChange={changePriority}/>}
+   editorExtras={<><PrioritySettings language={language} settings={prioritySettings} onChange={changePriority}/><ShoppingTileSettings language={language} lists={shoppingLists} excludedIds={excludedShoppingLists} onToggle={changeShoppingList}/></>}
   />
  </div>;
 }
