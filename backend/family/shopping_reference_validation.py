@@ -11,7 +11,10 @@ from urllib.parse import urlparse
 from django.utils import timezone
 
 from .shopping_reference_models import ReferenceDataset
-from .shopping_reference_registry import active_reference_datasets
+from .shopping_reference_records import (
+    ReferenceRecordMaterializationError,
+    materialize_reference_dataset,
+)
 
 
 MAX_PACKAGE_BYTES = 10 * 1024 * 1024
@@ -27,6 +30,12 @@ _DATASET_ID_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{2,179}$")
 _VERSION_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+\-]{0,79}$")
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _CONTENT_CHECKSUM_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
+_STABLE_VALID_STATES = {
+    ReferenceDataset.State.PREVIEW,
+    ReferenceDataset.State.ACTIVE,
+    ReferenceDataset.State.DISABLED,
+    ReferenceDataset.State.STALE,
+}
 
 
 class ReferencePackageError(ValueError):
@@ -49,6 +58,16 @@ def reference_content_checksum(files):
         digest.update(file_digest.encode("ascii"))
         digest.update(b"\n")
     return f"sha256:{digest.hexdigest()}"
+
+
+def _manifest_fingerprint(manifest):
+    canonical = json.dumps(
+        manifest,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    ).encode("utf-8")
+    return hashlib.sha256(canonical).hexdigest()
 
 
 def _error(code, message):
@@ -367,31 +386,31 @@ def _failure_summary(exc, *, package_sha256, source_adapter):
 
 
 def stage_reference_package(package_bytes, *, source_adapter):
-    """Stage and validate a bounded ZIP package without network access or extraction.
-
-    Structural failures that occur before a trustworthy dataset identity is known
-    raise ``ReferencePackageError`` and create no database row. Semantic/content
-    failures after identity parsing persist a FAILED row for operator inspection.
-    Replaying an identical dataset_id/version/checksum is idempotent.
-    """
+    """Stage, validate and materialize a bounded ZIP package without network access."""
     if source_adapter not in SOURCE_ADAPTERS:
         _error("unknown_source_adapter", "Reference packages must use a registered source adapter")
 
     package_bytes, manifest, payload_files = _read_bounded_archive(package_bytes)
     normalized = _normalize_manifest(manifest)
     package_sha256 = hashlib.sha256(package_bytes).hexdigest()
+    manifest_fingerprint = _manifest_fingerprint(manifest)
 
     existing = ReferenceDataset.objects.filter(
         dataset_id=normalized["dataset_id"],
         version=normalized["version"],
     ).first()
-    if existing and existing.checksum != normalized["checksum"]:
-        raise ReferencePackageVersionConflict(
-            "version_conflict",
-            "A dataset version is immutable and already exists with a different checksum",
-        )
-    if existing and existing.state == ReferenceDataset.State.PREVIEW and existing.validation_summary.get("valid"):
-        return existing
+    preserved_state = None
+    if existing:
+        same_manifest = _manifest_fingerprint(existing.manifest or {}) == manifest_fingerprint
+        if existing.checksum != normalized["checksum"] or not same_manifest:
+            raise ReferencePackageVersionConflict(
+                "version_conflict",
+                "A dataset version is immutable and already exists with different content or manifest metadata",
+            )
+        if existing.validation_summary.get("valid") and existing.state in _STABLE_VALID_STATES:
+            preserved_state = existing.state
+            if existing.validation_summary.get("materialized") is True:
+                return existing
 
     values = {
         **{key: normalized[key] for key in (
@@ -418,12 +437,13 @@ def stage_reference_package(package_bytes, *, source_adapter):
     }
     if existing:
         dataset = existing
-        for field, value in values.items():
-            setattr(dataset, field, value)
-        dataset.validation_error = ""
-        dataset.validation_summary = {}
-        dataset.record_count = 0
-        dataset.save()
+        if preserved_state is None:
+            for field, value in values.items():
+                setattr(dataset, field, value)
+            dataset.validation_error = ""
+            dataset.validation_summary = {}
+            dataset.record_count = 0
+            dataset.save()
     else:
         dataset = ReferenceDataset.objects.create(
             dataset_id=normalized["dataset_id"],
@@ -431,32 +451,47 @@ def stage_reference_package(package_bytes, *, source_adapter):
             **values,
         )
 
-    dataset.state = ReferenceDataset.State.VALIDATING
-    dataset.save(update_fields=["state", "updated_at"])
+    if preserved_state is None:
+        dataset.state = ReferenceDataset.State.VALIDATING
+        dataset.save(update_fields=["state", "updated_at"])
 
     try:
         counts, content_checksum = _validate_payload(normalized, manifest, payload_files)
         normalized_dependencies = _validate_dependencies(normalized["dependencies"])
+        try:
+            materialized = materialize_reference_dataset(dataset, payload_files)
+        except ReferenceRecordMaterializationError as exc:
+            raise ReferencePackageError(exc.code, str(exc)) from exc
+        expected_records = sum(counts.values())
+        if materialized["records"] != expected_records:
+            _error(
+                "materialized_count_mismatch",
+                f"Materialized {materialized['records']} records, expected {expected_records}",
+            )
         runtime_eligible = normalized["redistribution"] in {
             ReferenceDataset.Redistribution.ADOPT,
             ReferenceDataset.Redistribution.ADAPT,
         }
         blockers = [] if runtime_eligible else [f"redistribution_{normalized['redistribution']}"]
         dataset.dependencies = normalized_dependencies
-        dataset.record_count = sum(counts.values())
+        dataset.record_count = materialized["records"]
         dataset.validation_summary = {
             "valid": True,
             "runtime_eligible": runtime_eligible,
             "blockers": blockers,
             "archive_sha256": package_sha256,
+            "manifest_sha256": manifest_fingerprint,
             "content_checksum": content_checksum,
             "files": counts,
             "records": dataset.record_count,
-            "source_adapter": source_adapter,
+            "search_terms": materialized["search_terms"],
+            "tombstones": materialized["tombstones"],
+            "materialized": True,
+            "source_adapter": dataset.source_adapter or source_adapter,
         }
         dataset.validation_error = ""
-        dataset.validated_at = timezone.now()
-        dataset.state = ReferenceDataset.State.PREVIEW
+        dataset.validated_at = dataset.validated_at or timezone.now()
+        dataset.state = preserved_state or ReferenceDataset.State.PREVIEW
         dataset.save(
             update_fields=[
                 "dependencies",
@@ -470,6 +505,8 @@ def stage_reference_package(package_bytes, *, source_adapter):
         )
         return dataset
     except ReferencePackageError as exc:
+        if preserved_state is not None:
+            raise
         dataset.state = ReferenceDataset.State.FAILED
         dataset.validation_error = str(exc)
         dataset.validation_summary = _failure_summary(
