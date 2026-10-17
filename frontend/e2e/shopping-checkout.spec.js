@@ -4,18 +4,26 @@ import {installApiMocks} from './mock-api.js';
 const sessionId='11111111-1111-4111-8111-111111111111';
 const expenseId='22222222-2222-4222-8222-222222222222';
 const linkId='33333333-3333-4333-8333-333333333333';
+const storeId='44444444-4444-4444-8444-444444444444';
 const now=()=>new Date().toISOString();
 
 function activeSession(){return {id:sessionId,shopping_list:'shop-1',status:'active',started_at:now(),completed_at:null,last_activity_at:now(),started_by:{id:1,name:'Alex',avatar:'',is_self:true},completed_by:null,participants:[{id:1,name:'Alex',avatar:'',is_self:true}]}}
-function completion({open=1}={}){const completedAt=now();return {session:{...activeSession(),status:'completed',completed_at:completedAt,completed_by:{id:1,name:'Alex',avatar:'',is_self:true},participants:[]},completion:{version:1,shopping_list:{id:'shop-1',name:'Supermarkt',store:'Markt'},purchased_items:[{id:'density-0',name:'Artikel 1',quantity:'2×',category:'Kategorie 1',aisle:'',note:'',checked_at:completedAt}],open_items:open?[{id:'density-1',name:'Artikel 2',quantity:'2×',category:'Kategorie 2',aisle:'',note:'',checked_at:null}]:[],purchased_count:1,open_count:open,open_items_policy:'keep',completed_at:completedAt,completed_by:1},context_ref:{type:'shopping_session',id:sessionId}}}
+function completion({open=1,store='Markt',confirmedStore=null}={}){const completedAt=now();return {session:{...activeSession(),status:'completed',completed_at:completedAt,completed_by:{id:1,name:'Alex',avatar:'',is_self:true},participants:[]},completion:{version:1,shopping_list:{id:'shop-1',name:'Supermarkt',store},confirmed_store:confirmedStore,purchased_items:[{id:'density-0',name:'Artikel 1',quantity:'2×',category:'Kategorie 1',aisle:'',note:'',checked_at:completedAt}],open_items:open?[{id:'density-1',name:'Artikel 2',quantity:'2×',category:'Kategorie 2',aisle:'',note:'',checked_at:null}]:[],purchased_count:1,open_count:open,open_items_policy:'keep',completed_at:completedAt,completed_by:1},context_ref:{type:'shopping_session',id:sessionId}}}
 
-async function bootCheckout(page,{count=2,onRoutes=null}={}){
+async function bootCheckout(page,{count=2,stores=[],onRoutes=null}={}){
  const state=await installApiMocks(page,{dismissOnboarding:true});
  state.shoppingLists[0].items=Array.from({length:count},(_,index)=>({id:`density-${index}`,shopping_list:'shop-1',name:`Artikel ${index+1}`,quantity:'2×',category:`Kategorie ${index+1}`,aisle:'',note:'',favorite:false,checked:false,position:(index+1)*1000}));
  let startCalls=0;let completeCalls=[];let historyPayload=completion({open:Math.max(0,count-1)});
  await page.route('**/api/shopping-sessions/start/',route=>{startCalls+=1;return route.fulfill({status:201,contentType:'application/json',body:JSON.stringify({session:activeSession(),cursor:0,activities:[],created:true})})});
  await page.route('**/api/shopping-sessions/current/**',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({session:activeSession(),cursor:0,activities:[]})}));
- await page.route('**/api/shopping-sessions/complete/',async route=>{const body=route.request().postDataJSON();completeCalls.push(body);historyPayload={...completion({open:Math.max(0,count-1)}),completion:{...completion({open:Math.max(0,count-1)}).completion,open_items_policy:body.open_items}};return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(historyPayload)})});
+ await page.route('**/api/shopping-stores/**',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({count:stores.length,results:stores})}));
+ await page.route('**/api/shopping-sessions/complete/',async route=>{
+  const body=route.request().postDataJSON();completeCalls.push(body);
+  const confirmedStore=stores.find(row=>row.id===body.store)||null;
+  const displayStore=confirmedStore?.display_label||'Markt';
+  historyPayload={...completion({open:Math.max(0,count-1),store:displayStore,confirmedStore}),completion:{...completion({open:Math.max(0,count-1),store:displayStore,confirmedStore}).completion,open_items_policy:body.open_items}};
+  return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(historyPayload)});
+ });
  await page.route(`**/api/shopping-sessions/${sessionId}/`,route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(historyPayload)}));
  if(onRoutes)await onRoutes({page,state});
  await page.goto('/?page=shopping&list=shop-1&mode=store');
@@ -31,7 +39,9 @@ test('checkout · explicit finish keeps open items and reload reopens immutable 
  await expect(page.getByRole('button',{name:'1 im Wagen'})).toBeVisible();
  await page.getByRole('button',{name:'Einkauf abschließen'}).click();
  const openDialog=page.getByRole('dialog');
- await expect(openDialog.getByRole('heading',{name:'Noch 1 offen'})).toBeVisible();
+ await expect(openDialog.getByRole('heading',{name:'Einkauf abschließen'})).toBeVisible();
+ await expect(openDialog.getByText('Noch 1 offen',{exact:true})).toBeVisible();
+ await expect(openDialog.getByLabel('Filiale (optional)')).toHaveValue('');
  await openDialog.getByRole('button',{name:'Abbrechen'}).last().click();
  await expect(page.getByRole('dialog')).toHaveCount(0);
  expect(run.completeCalls).toHaveLength(0);
@@ -43,7 +53,7 @@ test('checkout · explicit finish keeps open items and reload reopens immutable 
  await expect(page.getByRole('button',{name:'Beleg scannen'})).toBeVisible();
  await expect(page.getByRole('button',{name:'Betrag eingeben'})).toBeVisible();
  await expect(page.getByRole('button',{name:'Ohne Ausgabe abschließen'})).toBeVisible();
- expect(run.completeCalls).toEqual([{shopping_list:'shop-1',session:sessionId,open_items:'keep'}]);
+ expect(run.completeCalls).toEqual([{shopping_list:'shop-1',session:sessionId,open_items:'keep',store:null}]);
  expect(new URL(page.url()).searchParams.get('session')).toBe(sessionId);
 
  await page.getByRole('button',{name:'Ohne Ausgabe abschließen'}).click();
@@ -58,6 +68,19 @@ test('checkout · explicit finish keeps open items and reload reopens immutable 
  await expect(page.getByRole('dialog')).toHaveCount(0);
  await expect.poll(()=>new URL(page.url()).searchParams.get('session')).toBeNull();
  await expect.poll(()=>run.startCalls).toBeGreaterThan(startsBeforeReload);
+});
+
+test('checkout · assigned family store is suggested and submitted explicitly',async({page})=>{
+ const stores=[{id:storeId,family:'family-1',name:'Markt',branch_label:'Innenstadt',display_label:'Markt · Innenstadt',address:'Marktstraße 1',active:true,shopping_list_ids:['shop-1']}];
+ const run=await bootCheckout(page,{count:1,stores});
+ await page.locator('.store-check').first().click();
+ await page.getByRole('button',{name:'Einkauf abschließen'}).click();
+ const dialog=page.getByRole('dialog');
+ await expect(dialog.getByLabel('Filiale (optional)')).toHaveValue(storeId);
+ await expect(dialog.getByRole('option',{name:/Markt · Innenstadt/})).toBeVisible();
+ await dialog.getByRole('button',{name:'Einkauf abschließen'}).click();
+ await expect(page.getByRole('heading',{name:'Einkauf abgeschlossen'})).toBeVisible();
+ expect(run.completeCalls).toEqual([{shopping_list:'shop-1',session:sessionId,open_items:'keep',store:storeId}]);
 });
 
 test('checkout · amount handoff retries context linking without duplicating the expense request identity',async({page})=>{
@@ -83,6 +106,8 @@ test('checkout · amount handoff retries context linking without duplicating the
  }});
  await page.locator('.store-check').first().click();
  await page.getByRole('button',{name:'Einkauf abschließen'}).click();
+ const checkoutDialog=page.getByRole('dialog');
+ await checkoutDialog.getByRole('button',{name:'Einkauf abschließen'}).click();
  await expect(page.getByRole('heading',{name:'Einkauf abgeschlossen'})).toBeVisible();
  await page.getByRole('button',{name:'Betrag eingeben'}).click();
  const expenseDialog=page.getByRole('dialog');
