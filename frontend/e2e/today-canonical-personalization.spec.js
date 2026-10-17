@@ -65,3 +65,34 @@ test('priority banner is red-alert content and configurable from the home editor
  await page.waitForLoadState('networkidle');
  await expect(page.locator('[data-testid="today-priority-banner"]')).toHaveCount(0);
 });
+
+test('shopping tile can exclude individual shopping lists from its sum and persists the choice',async({page})=>{
+ const state=await installApiMocks(page,{language:'de',dismissOnboarding:true});
+ state.shoppingLists.push({
+  id:'shop-2',family:'family-1',name:'Drogerie',store:'Drogerie',icon:'cart-shopping',archived:false,sort_order:1,
+  items:[
+   {id:'item-2',shopping_list:'shop-2',name:'Zahnpasta',checked:false},
+   {id:'item-3',shopping_list:'shop-2',name:'Seife',checked:false},
+  ],
+ });
+
+ await page.goto('/');
+ await page.waitForLoadState('networkidle');
+ await page.locator('[data-testid="today-layout-edit"]').click();
+ await page.locator('[data-library-widget="shopping"]').getByRole('button',{name:'Hinzufügen'}).click();
+
+ const tileValue=page.locator('[data-testid="today-canonical-grid"] [data-today-widget="shopping"] .today-module-shortcut-value');
+ await expect(tileValue).toHaveText('3');
+ const settings=page.locator('[data-testid="today-shopping-list-settings"]');
+ await expect(settings.getByRole('checkbox',{name:'Supermarkt · 1 offen'})).toBeChecked();
+ await expect(settings.getByRole('checkbox',{name:'Drogerie · 2 offen'})).toBeChecked();
+ await settings.getByRole('checkbox',{name:'Drogerie · 2 offen'}).uncheck();
+ await expect(tileValue).toHaveText('1');
+ await page.getByRole('button',{name:'Speichern'}).click();
+
+ await page.reload();
+ await page.waitForLoadState('networkidle');
+ await expect(page.locator('[data-testid="today-canonical-grid"] [data-today-widget="shopping"] .today-module-shortcut-value')).toHaveText('1');
+ await page.locator('[data-testid="today-layout-edit"]').click();
+ await expect(page.locator('[data-testid="today-shopping-list-settings"]').getByRole('checkbox',{name:'Drogerie · 2 offen'})).not.toBeChecked();
+});
