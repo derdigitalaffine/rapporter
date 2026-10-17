@@ -14,7 +14,7 @@ export const FEATURE_REGISTRY=Object.freeze([
   defineFeature('board',{detail:true,load:()=>import('./BoardHub.jsx')}),
   defineFeature('birthdays',{detail:true,familyContext:true,queryParams:['birthday'],load:()=>import('./BirthdaysHub.jsx')}),
   defineFeature('trips',{detail:true,capability:'travel',load:()=>import('./TravelHub.jsx')}),
-  defineFeature('decisions',{detail:true,load:()=>import('./DecisionsHub.jsx')}),
+  defineFeature('decisions',{detail:true,queryParams:['decision','decision_context_type','decision_context_id','decision_preset'],load:()=>import('./DecisionsHub.jsx')}),
   defineFeature('wishlists',{detail:true,familyContext:true,queryParams:['wishlist'],load:()=>import('./WishlistsHub.jsx')}),
   defineFeature('games',{detail:true,familyContext:true,queryParams:['game','task'],load:()=>import('./GamesHub.jsx')}),
   defineFeature('home'),
