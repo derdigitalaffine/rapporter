@@ -1,7 +1,7 @@
 import {readFileSync} from 'node:fs';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {decisionContextHref,decisionPresetDraft,decisionPresetsFor} from '../src/decision-context.js';
+import {decisionContextClearedHref,decisionContextHref,decisionPresetDraft,decisionPresetsFor} from '../src/decision-context.js';
 
 const source=readFileSync(new URL('../src/DecisionContextPanel.jsx',import.meta.url),'utf8');
 const css=readFileSync(new URL('../src/decision-context-panel.css',import.meta.url),'utf8');
@@ -21,6 +21,7 @@ test('context surfaces only launch the canonical decisions area',()=>{
   assert.doesNotMatch(source,/FormShell|ErrorSummary|\/decisions\//);
   assert.equal(decisionContextHref({type:'trip',id:'trip-9'},'stay'),'/?page=decisions&decision_context_type=trip&decision_context_id=trip-9&decision_preset=stay');
   assert.equal(decisionContextHref(null),'/?page=decisions');
+  assert.equal(decisionContextClearedHref('https://family.example/?page=decisions&decision_context_type=trip&decision_context_id=trip-9&decision_preset=stay','decision-1'),'/?page=decisions&decision=decision-1');
 });
 
 test('shared contextual presets prefill the central decision composer',()=>{
@@ -35,6 +36,7 @@ test('canonical decisions hub owns contextual creation and shopping result trans
   assert.match(hub,/decisionContextFromSearch\(location\.search\)/);
   assert.match(hub,/decisionPresetDraft\(location\.search,en\)/);
   assert.match(hub,/if\(routeContext\)payload\.context=routeContext/);
+  assert.match(hub,/clearContextRoute\(created\.id\)/);
   assert.match(hub,/row\?\.context\?\.type!=='shopping_list'/);
   assert.match(hub,/\/smart\/shopping\/quick-add\//);
   assert.match(hub,/SYNC_CHANGED/);
