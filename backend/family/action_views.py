@@ -9,6 +9,7 @@ from rest_framework.response import Response
 
 from .action_projection import ActionProjectionError, RANKING_VERSION, parse_action_id, project_actions
 from .models import Family, Membership
+from .routine_task_migration_models import RoutineTaskMigration
 from .todo_models import TodoActionPreference, TodoPreference
 from .todo_ranking import FOCUS_RANKING_VERSION, apply_todo_preferences, preference_payload
 
@@ -55,6 +56,40 @@ def _visible_action_ids(*, request, family):
         row["id"]
         for row in project_actions(user=request.user, family=family, scope="all", kind="all")
     }
+
+
+def _apply_routine_migrations(rows, *, family):
+    migrations = list(
+        RoutineTaskMigration.objects.filter(family=family).values("routine_id", "task_id", "snapshot")
+    )
+    if not migrations:
+        return rows
+    migrated_routine_ids = {f"routine:{row['routine_id']}" for row in migrations}
+    by_task = {f"task:{row['task_id']}": row for row in migrations}
+    projected = []
+    for item in rows:
+        if item.get("id") in migrated_routine_ids:
+            continue
+        migration = by_task.get(item.get("id"))
+        if migration:
+            legacy = (migration.get("snapshot") or {}).get("routine") or {}
+            item["migration"] = {
+                "from": "routine",
+                "routine_id": str(migration["routine_id"]),
+                "properties_preserved": True,
+            }
+            item["repeat"] = {
+                **(item.get("repeat") or {}),
+                "target_count": legacy.get("target_count"),
+                "target_period_days": legacy.get("target_period_days"),
+                "reminder_enabled": legacy.get("reminder_enabled", True),
+            }
+            if legacy.get("active") is False and item.get("state") not in {"done", "done_today"}:
+                item["state"] = "paused"
+                item["urgency"] = "none"
+                item["ranking"] = {"version": RANKING_VERSION, "bucket": 7, "reasons": ["paused"]}
+        projected.append(item)
+    return projected
 
 
 def _update_preferences(request, *, family, membership):
@@ -148,6 +183,7 @@ def action_list(request):
             workflow_id=workflow_id,
             task_id=task_id,
         )
+        rows = _apply_routine_migrations(rows, family=family)
     except (ActionProjectionError, ValueError, DjangoValidationError) as exc:
         return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
