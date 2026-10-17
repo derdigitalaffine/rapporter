@@ -1,10 +1,13 @@
 import {useEffect,useState} from 'react';
 import SuperAdmin from './SuperAdmin';
 import SuperAdminAnalytics from './SuperAdminAnalytics';
+import SuperAdminReferenceDatasets from './SuperAdminReferenceDatasets';
 import {ADMIN_SESSION_EXPIRED_EVENT,adminLogin,adminLogout,adminSession} from './superadmin-api';
 import {Icon} from './icons';
 
-function analyticsRequested(){return new URLSearchParams(window.location.search).get('section')==='analytics'}
+function requestedSection(){return new URLSearchParams(window.location.search).get('section')||''}
+function analyticsRequested(){return requestedSection()==='analytics'}
+function referenceDataRequested(){return requestedSection()==='reference-data'}
 
 export default function SuperAdminGate(){
   const [session,setSession]=useState(null);
@@ -48,6 +51,7 @@ export default function SuperAdminGate(){
   if(checking)return <main className="admin-login-shell"><section className="card admin-login-card" role="status"><img src="/brand/icon.svg" alt=""/><h1>Superadmin wird geladen</h1><p>Die getrennte Admin-Sitzung wird geprüft.</p></section></main>;
   if(session?.authenticated&&session.user?.is_superadmin){
     if(analyticsRequested())return <SuperAdminAnalytics onLogout={logout}/>;
+    if(referenceDataRequested())return <SuperAdminReferenceDatasets user={session.user} onLogout={logout}/>;
     return <SuperAdmin user={session.user} session={session.session} onLogout={logout}/>;
   }
   return <main className="admin-login-shell"><section className="card admin-login-card"><div className="admin-login-brand"><img src="/brand/icon.svg" alt=""/><div><strong>FamilyOS</strong><span>Superadmin</span></div></div><small>Getrennte Administration</small><h1>Plattform sicher verwalten</h1><p>Diese PWA verwendet eine eigene Admin-Sitzung. Deine normale FamilyOS-Anmeldung bleibt davon unberührt.</p>{expired&&<div className="admin-notice" role="status"><Icon name="info"/><span>Die Admin-Sitzung ist abgelaufen. Bitte melde dich erneut an.</span></div>}<form onSubmit={submit}><label>E-Mail oder Admin-Benutzername<input value={identifier} onChange={event=>setIdentifier(event.target.value)} autoComplete="username" required autoFocus/></label><label>Passwort<input type="password" value={password} onChange={event=>setPassword(event.target.value)} autoComplete="current-password" required/></label>{error&&<p className="error" role="alert">{error}</p>}<button className="primary" type="submit" disabled={busy}>{busy?'Anmeldung läuft …':'Als Superadmin anmelden'}</button></form><a className="admin-family-link" href="/">Zur FamilyOS-App</a></section></main>;
