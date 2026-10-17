@@ -22,6 +22,7 @@ from family.models import Family, Membership
 
 from .models import Decision, DecisionOption, DecisionVote
 from .serializers import DecisionCreateSerializer, DecisionVoteSerializer
+from .tiebreaks import DecisionTieBreakError, decorate_result, start_tie_break
 
 
 class DecisionApiError(Exception):
@@ -65,7 +66,13 @@ def _membership(user, family_id, *, required=True):
 def _decision_queryset(family):
     return (
         Decision.objects.filter(family=family)
-        .select_related("created_by")
+        .select_related(
+            "created_by",
+            "tie_break__winner_option",
+            "tie_break__game_match",
+            "tie_break__challenger_option",
+            "tie_break__opponent_option",
+        )
         .prefetch_related("options__votes__member__user")
         .order_by("-created_at", "id")
     )
@@ -195,6 +202,7 @@ def _serialize(decision, membership, context=None):
         option_rows.append((option, payload))
     if decision.mode == Decision.Mode.RANKING:
         selected = [option_id for _, option_id in sorted(ranked_selected)]
+    raw_result = _result_summary(decision, option_rows)
     body = {
         "id": str(decision.id),
         "family": str(decision.family_id),
@@ -208,7 +216,7 @@ def _serialize(decision, membership, context=None):
         "options": serialized_options,
         "my_option_ids": selected,
         "total_voters": len(voter_ids),
-        "result": _result_summary(decision, option_rows),
+        "result": decorate_result(decision, membership, raw_result),
         "can_vote": membership.role != Membership.Role.GUEST and decision.is_open,
         "can_close": decision.created_by_id == membership.user_id
         or membership.role in {Membership.Role.OWNER, Membership.Role.ADULT},
@@ -388,3 +396,30 @@ def decision_close(request, decision_id):
         return Response(_serialize(decision, membership, context))
     except DecisionApiError as exc:
         return _error(exc)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def decision_tie_break(request, decision_id):
+    try:
+        membership = _membership(request.user, request.data.get("family"))
+        decision, _ = _visible_decision(request.user, membership.family, decision_id)
+        start_tie_break(
+            decision_id=decision.id,
+            family=membership.family,
+            membership=membership,
+            method=str(request.data.get("method") or ""),
+            game_type=str(request.data.get("game_type") or "") or None,
+        )
+        decision, context = _visible_decision(request.user, membership.family, decision.id)
+        return Response(_serialize(decision, membership, context))
+    except DecisionApiError as exc:
+        return _error(exc)
+    except DecisionTieBreakError as exc:
+        if exc.code == "tie_break_forbidden":
+            http_status = status.HTTP_403_FORBIDDEN
+        elif exc.code in {"decision_still_open", "decision_not_tied", "tie_break_game_active", "game_tie_break_unavailable"}:
+            http_status = status.HTTP_409_CONFLICT
+        else:
+            http_status = status.HTTP_400_BAD_REQUEST
+        return Response({"code": exc.code}, status=http_status)
