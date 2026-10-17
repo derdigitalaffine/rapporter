@@ -25,8 +25,8 @@ export default function ActionOptionsEditor({item,onClose,onSaved}){
  function updateTime(day,field,v){const segment=schedule.segments?.find(s=>(s.weekdays||days).includes(day))||{};const others=(schedule.segments||[]).flatMap(s=>{const rest=(s.weekdays||days).filter(d=>d!==day);return rest.length?[{...s,weekdays:rest}]:[]});const next={...segment,weekdays:[day]};if(field==='preferred_time'){if(v)next.preferred_time=v;else delete next.preferred_time;}else{next.window={start:segment.window?.start||'00:00',end:segment.window?.end||'23:59',[field]:v||(field==='start'?'00:00':'23:59')};}changeSchedule({segments:[...others,next]})}
  async function newRound(template){setBusy(true);setError('');try{const result=await api('/actions/decision-round/',{method:'POST',body:JSON.stringify({action_id:item.id,template_id:template.id,request_id:crypto.randomUUID()})});location.href=result.deep_link}catch(err){setError(err.message)}finally{setBusy(false)}}
  const proposal=value?.prediction?.suggested_schedule_change;const language=de?'de':'en';
- return <FamilySheet labelledBy={titleId} onClose={onClose} busy={busy}>
-  <div className="sheet-head"><h2 id={titleId}>{item.title}</h2><button type="button" onClick={onClose} aria-label={de?'Schließen':'Close'}><Icon name="close"/></button></div>
+ return <FamilySheet className="action-options-sheet" labelledBy={titleId} onClose={onClose} busy={busy}>
+  <div className="sheet-head"><h2 id={titleId}>{item.title}</h2><button type="button" className="sheet-close" disabled={busy} onClick={onClose} aria-label={de?'Schließen':'Close'}><Icon name="close"/></button></div>
   {!value&&!error&&<p role="status">{de?'Wird geladen …':'Loading …'}</p>}
   {value&&<FormShell onSubmit={save}>
    <SymbolPicker value={value.icon||'tasks'} options={value.icon_choices||value.icon_suggestions||[]} onChange={icon=>setValue(current=>({...current,icon}))} disabled={busy}/>
@@ -46,7 +46,7 @@ export default function ActionOptionsEditor({item,onClose,onSaved}){
    {value.decision_templates?.map(template=><button key={template.id} type="button" disabled={busy} onClick={()=>newRound(template)}>{de?'Neue Abstimmungsrunde: ':'New voting round: '}{template.question}</button>)}
    {value.prediction&&<p>{de?'Beobachtungen':'Observations'}: {value.prediction.sample_count} · {de?'Sicherheit':'Confidence'}: {Math.round(value.prediction.confidence*100)}%</p>}
    {proposal&&<div role="status"><p>{de?'Neue bevorzugte Zeit vorschlagen':'Suggested preferred time'}: {proposal.proposed.weekday} {proposal.proposed.preferred_time}</p><button type="button" disabled={busy} onClick={()=>feedback('accept')}>{de?'Übernehmen':'Accept'}</button><button type="button" disabled={busy} onClick={()=>feedback('reject')}>{de?'Nein':'Reject'}</button></div>}
-   {error&&<p role="alert">{error}</p>}<div className="action-sticky-submit"><button type="submit" disabled={busy}>{de?'Speichern':'Save'}</button></div>
+   {error&&<p role="alert">{error}</p>}<div className="action-sticky-submit"><button type="submit" className="primary" disabled={busy}>{de?'Speichern':'Save'}</button></div>
   </FormShell>}{!value&&error&&<p role="alert">{error}</p>}
  </FamilySheet>;
 }
