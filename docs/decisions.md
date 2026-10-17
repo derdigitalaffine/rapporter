@@ -13,6 +13,20 @@ The Decisions area supports four voting modes:
 
 Contextual decisions use the same Decision objects, API, and composer as the central Decisions area. Shopping and Travel expose lightweight launchers only; they do not maintain a second decision form, list, or feature-specific poll model.
 
+### Central Decisions experience
+
+The central Decisions area follows the FamilyOS #223 interaction contract:
+
+- **Open decisions first.** Open decisions are shown before finished ones. When open decisions have real deadlines, the nearest deadline is shown first. Items without deadlines keep their stable server order.
+- **Explainable smartness.** The UI states that deadline-based prioritisation is happening. It never casts a vote, closes a decision, transfers a result, or changes a persisted family order automatically.
+- **Open / Finished / All filters.** These filters are presentation only and do not create another server-side state. Deep links to a finished decision remain visible by opening the relevant combined view.
+- **One clear local action.** Voting is the primary action of an open decision. Closing, clearing a vote, context actions, and result transfer remain visually secondary or destructive according to their semantics.
+- **Results are read-only presentation of the canonical aggregate.** Finished cards use the API `result` object for winner/tie presentation and never recompute a winner in the browser.
+- **Progressive creation.** Question, voting mode, and options are the core form. Deadline and anonymous-result settings live under `More settings`; validation uses the shared FamilyOS form primitives and keeps the draft intact after network/server errors.
+- **Every state stays understandable.** Loading, empty, error, read-only, saved-vote, tie, result, and deadline-attention states are expressed in text as well as visually.
+
+The feature uses 44px-or-larger primary interaction targets, explicit keyboard controls for ranking, native radio/checkbox semantics, visible focus states, and responsive layouts down to the narrow FamilyOS viewport contract. Dragging is not required for any Decision interaction.
+
 ### Shopping
 
 A shopping list exposes **Vote together** next to the existing context action. The launcher offers these presets:
