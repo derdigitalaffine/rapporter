@@ -1,7 +1,8 @@
 import {useEffect,useRef,useState} from 'react';
 import {useTranslation} from 'react-i18next';
 import {Icon} from './icons';
-import {parseShoppingTextDraft,SHOPPING_TEXT_MAX_LINES} from './shopping-text-draft.js';
+import {createShoppingMutationId,stageShoppingAddMutationId} from './shopping-offline';
+import {parseShoppingTextDraft,reconcileShoppingTextLineIds,SHOPPING_TEXT_MAX_LINES} from './shopping-text-draft.js';
 import './shopping-text-i18n';
 import './shopping-text-mode.css';
 
@@ -11,20 +12,33 @@ export default function ShoppingTextMode({items=[],onAddMany,onRename,onRemove})
   const [busy,setBusy]=useState(false);
   const [lineErrors,setLineErrors]=useState({});
   const submitting=useRef(false);
+  const lineMutationIds=useRef(new Map());
   const {rows:preview,overLimit}=parseShoppingTextDraft(draft);
+
+  function changeDraft(nextDraft){
+    const nextRows=parseShoppingTextDraft(nextDraft).rows;
+    lineMutationIds.current=reconcileShoppingTextLineIds(preview,nextRows,lineMutationIds.current,createShoppingMutationId);
+    setDraft(nextDraft);setLineErrors({});
+  }
 
   async function addText(){
     if(!preview.length||overLimit||submitting.current)return;
     submitting.current=true;setBusy(true);setLineErrors({});
     const failed=[];
     try{
-      // One canonical add at a time: bounded load and exact per-line recovery.
-      // queueShoppingAdd supplies the stable replay id once a line is accepted.
+      // Keep one stable id per draft line and stage it immediately before the
+      // existing canonical single-item write. Processing stays bounded to one.
       for(const row of preview){
+        const mutationId=lineMutationIds.current.get(row.signature)||createShoppingMutationId();
+        lineMutationIds.current.set(row.signature,mutationId);
+        stageShoppingAddMutationId(row.cleaned,mutationId);
         try{await onAddMany([row.cleaned])}
-        catch(error){failed.push({raw:row.raw,error:error?.message||t('shoppingText.lineFailed')})}
+        catch(error){failed.push({raw:row.raw,error:error?.message||t('shoppingText.lineFailed'),mutationId})}
       }
-      setDraft(failed.map(row=>row.raw).join('\n'));
+      const failedDraft=failed.map(row=>row.raw).join('\n');
+      const failedRows=parseShoppingTextDraft(failedDraft).rows;
+      lineMutationIds.current=new Map(failedRows.map((row,index)=>[row.signature,failed[index].mutationId]));
+      setDraft(failedDraft);
       setLineErrors(Object.fromEntries(failed.map((row,index)=>[`draft-${index}`,row.error])));
     }finally{
       submitting.current=false;setBusy(false);
@@ -35,12 +49,12 @@ export default function ShoppingTextMode({items=[],onAddMany,onRename,onRemove})
     <div className="shopping-text-head"><span className="round-icon"><Icon name="edit"/></span><div><strong id="shopping-text-title">{t('shoppingText.title')}</strong><small>{t('shoppingText.hint')}</small></div></div>
     <div className="shopping-text-composer">
       <label htmlFor="shopping-text-input">{t('shoppingText.bulkLabel')}</label>
-      <textarea id="shopping-text-input" value={draft} onChange={event=>{setDraft(event.target.value);setLineErrors({})}} placeholder={t('shoppingText.bulkPlaceholder')} disabled={busy}/>
+      <textarea id="shopping-text-input" value={draft} onChange={event=>changeDraft(event.target.value)} placeholder={t('shoppingText.bulkPlaceholder')} disabled={busy}/>
       {preview.length>0&&<div className="shopping-text-preview" aria-label={t('shoppingText.previewTitle')}>
         <div className="shopping-text-preview-head"><strong>{t('shoppingText.previewTitle')}</strong><small>{t('shoppingText.previewCount',{count:preview.length})}</small></div>
         {preview.map(row=>{
           const meta=[row.parsed.values.quantity,row.parsed.values.category].filter(Boolean).join(' · ');
-          return <div className="shopping-text-preview-row" key={row.id}><span><strong>{row.parsed.values.name||row.cleaned}</strong><small>{meta||t('shoppingText.noMetadata')}</small></span>{lineErrors[row.id]&&<em role="alert">{lineErrors[row.id]}</em>}</div>;
+          return <div className="shopping-text-preview-row" key={row.signature}><span><strong>{row.parsed.values.name||row.cleaned}</strong><small>{meta||t('shoppingText.noMetadata')}</small></span>{lineErrors[row.id]&&<em role="alert">{lineErrors[row.id]}</em>}</div>;
         })}
       </div>}
       {overLimit&&<p className="shopping-text-limit" role="alert">{t('shoppingText.tooManyLines',{count:SHOPPING_TEXT_MAX_LINES})}</p>}
