@@ -16,7 +16,7 @@ from .scheduling_rules import normalize_scheduling_rule, parse_scheduling_text
 WEEKDAY_CODES = ["MO", "TU", "WE", "TH", "FR"]
 
 _CARDINALS = {
-    "ein": "1", "eins": "1", "eine": "1", "einen": "1", "einem": "1", "einer": "1",
+    "eins": "1",
     "zwei": "2", "drei": "3", "vier": "4", "fünf": "5", "fuenf": "5", "sechs": "6",
     "sieben": "7", "acht": "8", "neun": "9", "zehn": "10", "elf": "11", "zwölf": "12", "zwoelf": "12",
     "one": "1", "two": "2", "three": "3", "four": "4", "five": "5", "six": "6",
