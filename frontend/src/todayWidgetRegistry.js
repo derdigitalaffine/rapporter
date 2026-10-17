@@ -1,7 +1,9 @@
 export const TODAY_LAYOUT_VERSION=2;
-export const TODAY_WIDGET_SIZES=['compact','medium','wide'];
+export const TODAY_WIDGET_SIZES=['compact','medium','wide','wide-compact'];
 export const LEGACY_SIZE_MAP={compact:'compact',square:'medium',full:'wide'};
 
+const standardSizes=['compact','medium','wide'];
+const shallowWideSizes=['compact','wide','wide-compact'];
 const weekSettings={events:true,waste:true,holidays:true,special:true};
 const tripSettings={show_wishes:false};
 const deprecatedTodoIds=new Set(['tasks','routines']);
@@ -17,22 +19,22 @@ export const TodayWidgetRegistry=[
  entry('situation',0,{component:'TodaySituation',category:'planning',supportedSizes:['compact'],defaultSize:'compact',locked:true}),
  entry('overview',0.5,{category:'planning',supportedSizes:['wide'],defaultSize:'wide'}),
  entry('focus',1,{component:'TodayFocusWidget',category:'planning',defaultSize:'wide'}),
- entry('timeline',2,{component:'TodayTimelineWidget',category:'planning',supportedSizes:TODAY_WIDGET_SIZES,defaultSize:'wide',defaultVisible:false}),
- entry('week',3,{component:'WeekCompassWidget',category:'planning',supportedSizes:TODAY_WIDGET_SIZES,defaultSize:'medium',settingsSchema:weekSettings,defaultVisible:false}),
- entry('todo',4,{component:'TodayTodoWidget',category:'planning',supportedSizes:TODAY_WIDGET_SIZES,defaultSize:'compact',defaultVisible:false}),
+ entry('timeline',2,{component:'TodayTimelineWidget',category:'planning',supportedSizes:standardSizes,defaultSize:'wide',defaultVisible:false}),
+ entry('week',3,{component:'WeekCompassWidget',category:'planning',supportedSizes:standardSizes,defaultSize:'medium',settingsSchema:weekSettings,defaultVisible:false}),
+ entry('todo',4,{component:'TodayTodoWidget',category:'planning',supportedSizes:standardSizes,defaultSize:'compact',defaultVisible:false}),
  entry('quick-actions',5,{component:'TodayQuickActionsWidget',category:'planning',supportedSizes:['compact','wide'],defaultSize:'compact',defaultVisible:false}),
- entry('pinboard',6,{component:'PinboardTodayWidget',category:'collaboration',supportedSizes:TODAY_WIDGET_SIZES,defaultSize:'medium',defaultVisible:false}),
+ entry('pinboard',6,{component:'PinboardTodayWidget',category:'collaboration',supportedSizes:standardSizes,defaultSize:'medium',defaultVisible:false}),
  entry('tomorrow',7,{component:'TodayTomorrowWidget',category:'planning',supportedSizes:['compact','medium'],defaultSize:'compact',defaultVisible:false}),
  entry('family-load',8,{component:'TodayFamilyLoadWidget',category:'family',supportedSizes:['compact','medium'],defaultSize:'compact',defaultVisible:false}),
- entry('trip',9,{category:'planning',supportedSizes:TODAY_WIDGET_SIZES,defaultSize:'medium',defaultVisible:false,settingsSchema:tripSettings}),
- entry('weather',10,{category:'context',supportedSizes:TODAY_WIDGET_SIZES,defaultSize:'medium',defaultVisible:false}),
- entry('shopping',11,{category:'household',defaultSize:'compact',defaultVisible:false}),
- entry('waste',12,{category:'household',supportedSizes:TODAY_WIDGET_SIZES,defaultSize:'medium',defaultVisible:false}),
- entry('inbox',13,{category:'collaboration',supportedSizes:TODAY_WIDGET_SIZES,defaultSize:'medium',defaultVisible:false}),
- entry('games',14,{category:'collaboration',supportedSizes:TODAY_WIDGET_SIZES,defaultSize:'medium',defaultVisible:false,deepLink:'/?page=games'}),
- entry('birthdays',15,{supportedSizes:TODAY_WIDGET_SIZES,defaultSize:'medium',defaultVisible:false}),
- entry('notes',16,{supportedSizes:TODAY_WIDGET_SIZES,defaultSize:'medium',defaultVisible:false}),
- entry('loyalty',17,{category:'household',supportedSizes:TODAY_WIDGET_SIZES,defaultSize:'compact',defaultVisible:false}),
+ entry('trip',9,{category:'planning',supportedSizes:standardSizes,defaultSize:'medium',defaultVisible:false,settingsSchema:tripSettings}),
+ entry('weather',10,{category:'context',supportedSizes:['compact','medium','wide','wide-compact'],defaultSize:'medium',defaultVisible:false}),
+ entry('shopping',11,{category:'household',supportedSizes:shallowWideSizes,defaultSize:'compact',defaultVisible:false}),
+ entry('waste',12,{category:'household',supportedSizes:standardSizes,defaultSize:'medium',defaultVisible:false}),
+ entry('inbox',13,{category:'collaboration',supportedSizes:['compact','medium','wide','wide-compact'],defaultSize:'medium',defaultVisible:false}),
+ entry('games',14,{category:'collaboration',supportedSizes:standardSizes,defaultSize:'medium',defaultVisible:false,deepLink:'/?page=games'}),
+ entry('birthdays',15,{supportedSizes:standardSizes,defaultSize:'medium',defaultVisible:false}),
+ entry('notes',16,{supportedSizes:['compact','medium','wide','wide-compact'],defaultSize:'medium',defaultVisible:false}),
+ entry('loyalty',17,{category:'household',supportedSizes:standardSizes,defaultSize:'compact',defaultVisible:false}),
 ];
 
 export const TodayWidgetsById=Object.fromEntries(TodayWidgetRegistry.map(widget=>[widget.id,widget]));
@@ -95,7 +97,7 @@ function normalizeRow(raw,version){
  const entry=TodayWidgetsById[raw.id];
  if(entry&&!entry.supportedSizes.includes(size)&&!entry.locked)return null;
  if(raw.id==='tasks'&&!['compact','wide'].includes(size))return null;
- if(raw.id==='routines'&&!TODAY_WIDGET_SIZES.includes(size))return null;
+ if(raw.id==='routines'&&!standardSizes.includes(size))return null;
  const defaults=settingsFor(raw.id);
  const allowed=defaults?['id','visible','size','settings']:['id','visible','size'];
  if(Object.keys(raw).some(key=>!allowed.includes(key)))return null;
