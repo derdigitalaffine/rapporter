@@ -1,5 +1,6 @@
 from django.contrib import admin
 from django.urls import include, path
+from django.views.decorators.csrf import csrf_exempt
 
 from auth_identity.password_reset_views import password_reset_confirm, password_reset_request
 from auth_sessions.admin_security_views import (
@@ -43,7 +44,7 @@ from family.calendar_subscription_dav import feed, dav, well_known
 from family.calendar_subscription_member_feed import member_feed
 
 urlpatterns = [
-    path(".well-known/caldav", well_known),
+    path(".well-known/caldav", csrf_exempt(well_known)),
     path("caldav/", dav),
     path("caldav/<path:path>", dav),
     path("calendar-feed/<str:token>/family.ics", feed),
@@ -74,7 +75,7 @@ urlpatterns = [
     path("api/superadmin/auth/reauth/passkey/options/", superadmin_passkey_reauthentication_options, name="superadmin_auth_reauth_passkey_options"),
     path("api/superadmin/auth/reauth/passkey/verify/", superadmin_passkey_reauthentication_verify, name="superadmin_auth_reauth_passkey_verify"),
     path("api/superadmin/auth/passkeys/", superadmin_passkeys, name="superadmin_auth_passkeys"),
-    path("api/superadmin/auth/passkeys/register/options/", superadmin_passkey_registration_options, name="superadmin_auth_passkey_register_options"),
+    path("api/superadmin/auth/passkeys/register/options/", superadmin_passkey_registration_options, name="superadmin_auth_passkeys_register_options"),
     path("api/superadmin/auth/passkeys/register/verify/", superadmin_passkey_registration_verify, name="superadmin_auth_passkey_register_verify"),
     path("api/superadmin/auth/passkeys/<uuid:credential_id>/", superadmin_passkey_detail, name="superadmin_auth_passkey_detail"),
     path("api/superadmin/auth/password/", superadmin_password_change, name="superadmin_auth_password_change"),
