@@ -65,10 +65,14 @@ test('decision cards expose state in text and keep one local primary mutation',(
   assert.match(hub,/className="ghost ghost-danger compact" onClick=\{\(\)=>closeDecision\(row\)\}/);
 });
 
-test('decision CSS is tokenized, touch-safe, focus-visible and narrow-screen safe',()=>{
+test('decision CSS is tokenized, scoped, touch-safe and narrow-screen safe',()=>{
   for(const token of ['--color-border','--color-surface','--color-neutral-soft','--color-muted','--color-focus','--color-text','--space-2','--space-3','--space-4','--space-6','--radius-md'])assert.ok(css.includes(`var(${token})`),token);
   assert.doesNotMatch(css,/var\(--(?:muted|surface|surface-2|border),/);
   assert.doesNotMatch(css,/#[0-9a-f]{3,8}/i);
+  assert.doesNotMatch(css,/!important/);
+  assert.match(css,/\.decisions-hub \.decision-page-head/);
+  assert.match(css,/\.decisions-hub \.decision-check/);
+  assert.match(css,/\.decisions-hub \.decision-vote-option/);
   assert.match(css,/min-height:44px/);
   assert.match(css,/:focus-visible/);
   assert.match(css,/@media\(max-width:359px\)/);
