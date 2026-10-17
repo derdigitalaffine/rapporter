@@ -3,6 +3,7 @@ import {useTranslation} from 'react-i18next';
 import {api} from './api';
 import {Icon} from './icons';
 import {useFamilyPermissions} from './family-permissions';
+import {SYNC_CHANGED} from './offline-sync-engine';
 import {ChoiceField,FormActions,FormField,FormSection,FormShell} from './form-primitives';
 import './decision-context-panel.css';
 
@@ -86,6 +87,7 @@ export default function DecisionContextPanel({family,context}){
   setBusy(`apply:${row.id}`);setError('');setNotice('');
   try{
    await api('/smart/shopping/quick-add/',{method:'POST',body:JSON.stringify({family:family.id,shopping_list:context.id,name:winner.label,quantity:'',category:'',aisle:'',note:''})});
+   window.dispatchEvent(new CustomEvent(SYNC_CHANGED,{detail:{familyId:String(family.id)}}));
    setNotice(w.applied);
   }catch(err){setError(err.message||w.failed)}finally{setBusy('')}
  }
