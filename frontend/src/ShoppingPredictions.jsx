@@ -11,15 +11,29 @@ import {SHOPPING_BUDGET_PURCHASE_EVENT} from './shopping-offline';
 import './shopping-predictions.css';
 
 const isStoreMode=()=>new URLSearchParams(location.search).get('mode')==='store';
+const listFromLocation=()=>new URLSearchParams(location.search).get('list')||'';
 
 function PredictionPanel({family,onAccepted}){
- const {t}=useTranslation();const [rows,setRows]=useState([]);const [busy,setBusy]=useState('');
- async function load(){if(!family){setRows([]);return}try{const result=await api(`/shopping-predictions/?family=${encodeURIComponent(family.id)}`);setRows(result?.suggestions||[])}catch{setRows([])}}
+ const {t}=useTranslation();const [rows,setRows]=useState([]);const [busy,setBusy]=useState('');const [contextList,setContextList]=useState('');
+ async function load(){
+  if(!family){setRows([]);setContextList('');return}
+  const candidate=listFromLocation();
+  try{
+   const suffix=candidate?`&list=${encodeURIComponent(candidate)}`:'';
+   const result=await api(`/shopping-predictions/?family=${encodeURIComponent(family.id)}${suffix}`);
+   setRows(result?.suggestions||[]);setContextList(candidate);
+  }catch{
+   if(candidate){
+    try{const fallback=await api(`/shopping-predictions/?family=${encodeURIComponent(family.id)}`);setRows(fallback?.suggestions||[]);setContextList('');return}catch{}
+   }
+   setRows([]);setContextList('');
+  }
+ }
  useEffect(()=>{load()},[family?.id]);
- async function accept(row){if(busy)return;setBusy(row.key);try{await api('/shopping-predictions/accept/',{method:'POST',body:JSON.stringify({family:family.id,key:row.key})});toast(t('predictionUi.shoppingAdded',{name:row.name}),{type:'success'});await load();await onAccepted?.()}catch(e){toast(e.message||t('saveFailed'),{type:'error'})}finally{setBusy('')}}
+ async function accept(row){if(busy)return;setBusy(row.key);try{const body={family:family.id,key:row.key,...(contextList?{list:contextList}:{})};await api('/shopping-predictions/accept/',{method:'POST',body:JSON.stringify(body)});toast(t('predictionUi.shoppingAdded',{name:row.name}),{type:'success'});await load();await onAccepted?.()}catch(e){toast(e.message||t('saveFailed'),{type:'error'})}finally{setBusy('')}}
  async function feedback(row,action){if(busy)return;setBusy(`${action}:${row.key}`);try{await api('/shopping-predictions/feedback/',{method:'POST',body:JSON.stringify({family:family.id,key:row.key,action})});setRows(current=>current.filter(item=>item.key!==row.key))}catch(e){toast(e.message||t('saveFailed'),{type:'error'})}finally{setBusy('')}}
  if(!rows.length)return null;
- return <section className="shopping-predictions" aria-labelledby="shopping-predictions-title"><div className="shopping-predictions-head"><div><small>{t('predictionUi.shoppingHint')}</small><h2 id="shopping-predictions-title">{t('predictionUi.shoppingTitle')}</h2></div></div><div className="shopping-prediction-list">{rows.map(row=><article className="shopping-prediction" key={row.key}><span className="round-icon"><Icon name="shopping"/></span><div className="grow"><strong>{row.name}</strong><small>{t('predictionUi.shoppingReason',{days:row.prediction?.expected_interval_days,since:row.prediction?.days_since_purchase})}</small></div><div className="shopping-prediction-actions"><button className="primary compact" onClick={()=>accept(row)} disabled={!!busy}><Icon name="plus"/>{t('predictionUi.shoppingAdd')}</button><button type="button" className="secondary compact" onClick={()=>feedback(row,'snoozed')} disabled={!!busy} aria-label={t('predictionUi.shoppingSnoozeLabel',{name:row.name})}>{t('predictionUi.shoppingSnooze')}</button></div><button className="icon-button" onClick={()=>feedback(row,'dismissed')} disabled={!!busy} aria-label={`${row.name}: ${t('predictionUi.shoppingDismiss')}`}><Icon name="close"/></button></article>)}</div></section>
+ return <section className="shopping-predictions" aria-labelledby="shopping-predictions-title"><div className="shopping-predictions-head"><div><small>{t('predictionUi.shoppingHint')}</small><h2 id="shopping-predictions-title">{t('predictionUi.shoppingTitle')}</h2></div></div><div className="shopping-prediction-list">{rows.map(row=>{const storeSpecific=row.prediction?.basis==='shopping_store_purchase_history'&&row.prediction?.shopping_store_label;return <article className="shopping-prediction" key={row.key}><span className="round-icon"><Icon name="shopping"/></span><div className="grow"><strong>{row.name}</strong><small>{storeSpecific?t('predictionUi.shoppingStoreReason',{store:row.prediction.shopping_store_label,days:row.prediction?.expected_interval_days,since:row.prediction?.days_since_purchase}):t('predictionUi.shoppingReason',{days:row.prediction?.expected_interval_days,since:row.prediction?.days_since_purchase})}</small>{row.defaults?.quantity&&<small>{t('predictionUi.shoppingQuantity',{quantity:row.defaults.quantity})}</small>}</div><div className="shopping-prediction-actions"><button className="primary compact" onClick={()=>accept(row)} disabled={!!busy}><Icon name="plus"/>{t('predictionUi.shoppingAdd')}</button><button type="button" className="secondary compact" onClick={()=>feedback(row,'snoozed')} disabled={!!busy} aria-label={t('predictionUi.shoppingSnoozeLabel',{name:row.name})}>{t('predictionUi.shoppingSnooze')}</button></div><button className="icon-button" onClick={()=>feedback(row,'dismissed')} disabled={!!busy} aria-label={`${row.name}: ${t('predictionUi.shoppingDismiss')}`}><Icon name="close"/></button></article>})}</div></section>
 }
 
 export default function SmartShoppingPredicted({family,onChanged,...props}){

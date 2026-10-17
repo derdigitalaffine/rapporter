@@ -36,6 +36,7 @@ class FamilyConfig(AppConfig):
             ShoppingTemplate,
             ShoppingTemplateItem,
         )
+        from .shopping_purchase_context_models import ShoppingPurchaseStoreContext
         from .shopping_reference_models import (
             ReferenceDataset,
             ReferenceDatasetActivationEvent,
@@ -74,6 +75,7 @@ class FamilyConfig(AppConfig):
         core_models.ShoppingSessionParticipant = ShoppingSessionParticipant
         core_models.ShoppingTemplate = ShoppingTemplate
         core_models.ShoppingTemplateItem = ShoppingTemplateItem
+        core_models.ShoppingPurchaseStoreContext = ShoppingPurchaseStoreContext
         core_models.ReferenceDataset = ReferenceDataset
         core_models.ReferenceDatasetActivationEvent = ReferenceDatasetActivationEvent
         core_models.ReferenceDatasetLease = ReferenceDatasetLease

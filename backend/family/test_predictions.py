@@ -17,6 +17,9 @@ from .models import (
     ShoppingPurchaseEvent,
 )
 from .predictions import routine_prediction, shopping_predictions
+from .shopping_models import ShoppingListStoreProfile, ShoppingStore
+from .shopping_purchase_context_models import ShoppingPurchaseStoreContext
+from .shopping_store_predictions import shopping_predictions as store_shopping_predictions
 
 
 class PredictionTests(TestCase):
@@ -95,6 +98,42 @@ class PredictionTests(TestCase):
         self.assertEqual(event.normalized_name, normalize_name("Milch"))
         self.assertEqual(event.quantity, "2")
         self.assertEqual(event.store, "Markt")
+        context = ShoppingPurchaseStoreContext.objects.get(purchase_event=event)
+        self.assertIsNone(context.shopping_store_id)
+        self.assertEqual(context.address_snapshot, "")
+
+    def test_purchase_captures_canonical_store_and_immutable_snapshots(self):
+        store = ShoppingStore.objects.create(
+            family=self.family,
+            name="REWE",
+            branch_label="West",
+            address="Alte Straße 1",
+            created_by=self.user,
+        )
+        ShoppingListStoreProfile.objects.create(shopping_list=self.shopping, store=store)
+        item = ShoppingItem.objects.create(
+            shopping_list=self.shopping,
+            name="Haferdrink",
+            quantity="2 l",
+            added_by=self.user,
+        )
+
+        response = self.client.patch(f"/api/shopping-items/{item.id}/", {"checked": True}, format="json")
+
+        self.assertEqual(response.status_code, 200)
+        event = ShoppingPurchaseEvent.objects.get(source_item_id=item.id)
+        context = ShoppingPurchaseStoreContext.objects.get(purchase_event=event)
+        self.assertEqual(event.store, "REWE · West")
+        self.assertEqual(context.shopping_store_id, store.id)
+        self.assertEqual(context.address_snapshot, "Alte Straße 1")
+
+        store.name = "REWE Center"
+        store.address = "Neue Straße 9"
+        store.save(update_fields=["name", "address", "updated_at"])
+        event.refresh_from_db()
+        context.refresh_from_db()
+        self.assertEqual(event.store, "REWE · West")
+        self.assertEqual(context.address_snapshot, "Alte Straße 1")
 
     def test_clearing_checked_items_keeps_purchase_history(self):
         item = ShoppingItem.objects.create(shopping_list=self.shopping, name="Brot", added_by=self.user)
@@ -137,6 +176,26 @@ class PredictionTests(TestCase):
             )
         return now
 
+    def _store_purchase(self, store, name, purchased_at, *, quantity="", category="", aisle=""):
+        event = ShoppingPurchaseEvent.objects.create(
+            family=self.family,
+            shopping_list=self.shopping,
+            normalized_name=normalize_name(name),
+            display_name=name,
+            quantity=quantity,
+            category=category,
+            aisle=aisle,
+            store=store.display_label,
+            purchased_at=purchased_at,
+            purchased_by=self.user,
+        )
+        ShoppingPurchaseStoreContext.objects.create(
+            purchase_event=event,
+            shopping_store=store,
+            address_snapshot=store.address,
+        )
+        return event
+
     def test_recurring_purchase_is_predicted_and_open_item_suppresses_it(self):
         now = self._purchase_history()
 
@@ -150,6 +209,59 @@ class PredictionTests(TestCase):
         ShoppingItem.objects.create(shopping_list=self.shopping, name="milch", added_by=self.user)
         suppressed = shopping_predictions(self.family, now=now)
         self.assertNotIn(normalize_name("Milch"), {item["key"] for item in suppressed["suggestions"]})
+
+    def test_store_specific_prediction_keeps_same_chain_branches_separate_and_learns_quantity(self):
+        now = timezone.now().replace(microsecond=0)
+        west = ShoppingStore.objects.create(family=self.family, name="REWE", branch_label="West", created_by=self.user)
+        north = ShoppingStore.objects.create(family=self.family, name="REWE", branch_label="Nord", created_by=self.user)
+        ShoppingListStoreProfile.objects.create(shopping_list=self.shopping, store=west)
+
+        for days, quantity in zip((16, 12, 8, 4), ("2 l", "2 l", "1 l", "2 l")):
+            self._store_purchase(west, "Milch", now - timedelta(days=days), quantity=quantity, aisle="Kühlung")
+        for days in (40, 30, 20, 10):
+            self._store_purchase(north, "Milch", now - timedelta(days=days), quantity="1 l", aisle="Gang 4")
+
+        result = store_shopping_predictions(self.family, now=now, list_id=str(self.shopping.id))
+        suggestion = next(item for item in result["suggestions"] if item["key"] == normalize_name("Milch"))
+
+        self.assertEqual(suggestion["prediction"]["basis"], "shopping_store_purchase_history")
+        self.assertEqual(suggestion["prediction"]["shopping_store_id"], str(west.id))
+        self.assertEqual(suggestion["prediction"]["shopping_store_label"], "REWE · West")
+        self.assertEqual(suggestion["prediction"]["expected_interval_days"], 4.0)
+        self.assertEqual(suggestion["defaults"]["quantity"], "2 l")
+        self.assertEqual(suggestion["defaults"]["aisle"], "Kühlung")
+        self.assertEqual(suggestion["defaults"]["store"], "REWE · West")
+
+    def test_store_specific_prediction_falls_back_to_family_history_when_evidence_is_thin(self):
+        now = timezone.now().replace(microsecond=0)
+        west = ShoppingStore.objects.create(family=self.family, name="dm", branch_label="Innenstadt", created_by=self.user)
+        ShoppingListStoreProfile.objects.create(shopping_list=self.shopping, store=west)
+        for days in (21, 16, 11, 6):
+            event = ShoppingPurchaseEvent.objects.create(
+                family=self.family,
+                shopping_list=self.shopping,
+                normalized_name=normalize_name("Zahnpasta"),
+                display_name="Zahnpasta",
+                quantity="2 Stück",
+                purchased_at=now - timedelta(days=days),
+                purchased_by=self.user,
+            )
+            if days in {11, 6}:
+                ShoppingPurchaseStoreContext.objects.create(purchase_event=event, shopping_store=west)
+
+        result = store_shopping_predictions(self.family, now=now, list_id=str(self.shopping.id))
+        suggestion = next(item for item in result["suggestions"] if item["key"] == normalize_name("Zahnpasta"))
+
+        self.assertEqual(suggestion["prediction"]["basis"], "family_purchase_history")
+        self.assertIsNone(suggestion["prediction"]["shopping_store_id"])
+        self.assertEqual(suggestion["defaults"]["quantity"], "2 Stück")
+
+    def test_prediction_api_rejects_cross_family_list_context(self):
+        foreign_list = ShoppingList.objects.create(family=self.other_family, name="Fremd")
+        response = self.client.get(
+            f"/api/shopping-predictions/?family={self.family.id}&list={foreign_list.id}"
+        )
+        self.assertEqual(response.status_code, 403)
 
     def test_recent_purchase_phase_recalibrates_but_one_outlier_does_not_win(self):
         phase_now = self._purchase_offsets("Haferdrink", (76, 62, 48, 34, 29, 24, 19, 14))

@@ -5,7 +5,7 @@ from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 
 from .models import Family, ShoppingList
-from .predictions import (
+from .shopping_store_predictions import (
     accept_all_shopping_predictions,
     accept_shopping_prediction,
     shopping_predictions,
