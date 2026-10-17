@@ -25,6 +25,7 @@ class FamilyConfig(AppConfig):
         from .family_master_models import FamilyMasterData
         from .family_relationship_models import FamilyRelationship
         from .notes_models import Note, NoteRevision, NoteShare
+        from .shopping_autoguess_models import ShoppingItemCreateReceipt
         from .shopping_models import (
             ShoppingListAccess,
             ShoppingListStoreProfile,
@@ -57,6 +58,7 @@ class FamilyConfig(AppConfig):
         core_models.Note = Note
         core_models.NoteShare = NoteShare
         core_models.NoteRevision = NoteRevision
+        core_models.ShoppingItemCreateReceipt = ShoppingItemCreateReceipt
         core_models.ShoppingStore = ShoppingStore
         core_models.ShoppingListAccess = ShoppingListAccess
         core_models.ShoppingListStoreProfile = ShoppingListStoreProfile
