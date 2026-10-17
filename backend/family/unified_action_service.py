@@ -1,6 +1,6 @@
 """Legacy-authoritative dual write, completion commands and repeatable repair."""
 from uuid import UUID
-from django.db import transaction
+from django.db import OperationalError, ProgrammingError, transaction
 from django.utils import timezone
 from rest_framework.exceptions import PermissionDenied, ValidationError, NotFound
 from .models import Task, TaskList, Routine, RoutineLog, Membership, Family, FamilyEvent
@@ -11,12 +11,20 @@ def _migration_for_task(task):
     if not getattr(task, "source", "").startswith("routine-migration:"):
         return None
     from .routine_task_migration_models import RoutineTaskMigration
-    return RoutineTaskMigration.objects.select_related("routine", "task").filter(task_id=task.pk).first()
+    try:
+        return RoutineTaskMigration.objects.select_related("routine", "task").filter(task_id=task.pk).first()
+    except (OperationalError, ProgrammingError):
+        # Signals may run while older migrations are still being applied and the
+        # compatibility table does not exist yet.
+        return None
 
 
 def _migration_for_routine(routine):
     from .routine_task_migration_models import RoutineTaskMigration
-    return RoutineTaskMigration.objects.select_related("routine", "task").filter(routine_id=routine.pk).first()
+    try:
+        return RoutineTaskMigration.objects.select_related("routine", "task").filter(routine_id=routine.pk).first()
+    except (OperationalError, ProgrammingError):
+        return None
 
 
 def mirror(obj):
@@ -26,7 +34,11 @@ def mirror(obj):
             domain_event(row, 'action.created', 'created')
         return row
     task = isinstance(obj, Task)
-    migration = _migration_for_task(obj) if task else None
+    migration = _migration_for_task(obj) if task else _migration_for_routine(obj)
+    if not task and migration is not None:
+        # After handover the task Action is the single canonical Action. Keeping
+        # this redirect also makes old/background Routine writers safe.
+        return mirror(migration.task)
     defaults = {'family_id': obj.family_id, 'title':obj.title if task else obj.name,
                 'kind_hint':'task' if task else 'routine',
                 'state':('done' if obj.completed_at else ('paused' if migration and not migration.routine.active else 'open')) if task else ('open' if obj.active else 'paused')}
