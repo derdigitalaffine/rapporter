@@ -171,7 +171,7 @@ class CalendarSubscriptionTests(TestCase):
         self.assertEqual(account['CalDAVHostName'], 'calendar.example.test')
         self.assertEqual(account['CalDAVPort'], 443)
         self.assertTrue(account['CalDAVUseSSL'])
-        self.assertEqual(account['CalDAVPrincipalURL'], self.grant['caldav_url'])
+        self.assertNotIn('CalDAVPrincipalURL', account)
         self.assertEqual(account['CalDAVUsername'], self.grant['username'])
         self.assertEqual(account['CalDAVPassword'], self.grant['password'])
         self.assertNotIn('SubCalAccountHostName', account)
