@@ -46,12 +46,9 @@ async function installTemplateMocks(page,state){
 
 async function openTools(page){
  await page.goto('/?page=shopping');
- const overflow=page.locator('.shopping-overflow');
- await expect(overflow.locator('summary')).toBeVisible();
- await overflow.locator('summary').click();
- const editListButton=overflow.locator('.shopping-overflow-menu button').first();
- await expect(editListButton).toBeVisible();
- await editListButton.click();
+ const planningButton=page.locator('.shopping-list-switcher').getByRole('button',{name:'Vorlagen'});
+ await expect(planningButton).toBeVisible();
+ await planningButton.click();
  await expect(page.getByTestId('shopping-template-tools')).toBeVisible();
 }
 async function waitForOfflineShell(page){
@@ -63,6 +60,15 @@ async function waitForOfflineShell(page){
   }
  });
 }
+
+test('templates are discoverable from the shopping flow and the empty state',async({page})=>{
+ const state=await installApiMocks(page,{dismissOnboarding:true});state.shoppingLists[0].items=[];await installTemplateMocks(page,state);
+ await page.goto('/?page=shopping');
+ await expect(page.getByRole('button',{name:'Vorlage verwenden'})).toBeVisible();
+ await page.getByRole('button',{name:'Vorlage verwenden'}).click();
+ await expect(page.getByRole('heading',{name:'Vorlagen & Einkaufsorte',level:2})).toBeVisible();
+ await expect(page.getByTestId('shopping-template-tools')).toBeVisible();
+});
 
 test('shopping list can be saved as template, previewed and applied without duplicates',async({page})=>{
  const state=await installApiMocks(page,{dismissOnboarding:true});
@@ -83,18 +89,19 @@ test('shopping list can be saved as template, previewed and applied without dupl
  expect(state.shoppingLists[0].items.find(item=>item.id==='item-checked').checked).toBe(false);
 });
 
-test('store profile assigns legacy store label and exposes safe offers link in store mode',async({page})=>{
+test('shopping place assigns legacy display label and exposes safe offers link in store mode',async({page})=>{
  const state=await installApiMocks(page,{dismissOnboarding:true});await installTemplateMocks(page,state);await openTools(page);
  const tools=page.getByTestId('shopping-template-tools');
- await tools.getByRole('button',{name:'Geschäft speichern'}).first().click();
- const storeForm=tools.locator('form').filter({hasText:'Filiale / Zusatz'});
- await storeForm.getByLabel('Geschäft').fill('REWE');
- await storeForm.getByLabel('Filiale / Zusatz').fill('Innenstadt');
+ await tools.getByRole('button',{name:'Einkaufsort speichern'}).first().click();
+ const storeForm=tools.locator('form').filter({hasText:'Standort / Filialzusatz (optional)'});
+ await storeForm.getByLabel('Name des Einkaufsorts').fill('REWE');
+ await storeForm.getByLabel('Standort / Filialzusatz (optional)').fill('Innenstadt');
  await storeForm.getByLabel('Wochenangebot (HTTPS)').fill('https://offers.example.test/rewe');
- await storeForm.getByRole('button',{name:'Geschäft speichern'}).click();
- await tools.getByLabel('Geschäft dieser Liste zuordnen').selectOption({label:'REWE · Innenstadt'});
+ await storeForm.getByRole('button',{name:'Einkaufsort speichern'}).click();
+ await tools.getByLabel('Einkaufsort für diese Liste').selectOption({label:'REWE · Innenstadt'});
  await tools.getByRole('button',{name:'Zuordnen'}).click();
  await expect(page.locator('.shopping-session-title small')).toContainText('REWE · Innenstadt');
+ await page.locator('.family-sheet .sheet-close').click();
  await expect(tools).not.toBeVisible();
  await page.locator('.shopping-store-entry').click();
  const offers=page.getByRole('link',{name:'Angebote ansehen'});
@@ -122,16 +129,18 @@ test('loaded template can be queued offline and is applied once after reconnect'
  await expect.poll(()=>state.shoppingLists[0].items.filter(item=>item.name==='Brot offline').length,{timeout:10000}).toBe(1);
 });
 
-test('manual template and template tools stay usable in English at 390px',async({page})=>{
- await page.setViewportSize({width:390,height:844});const state=await installApiMocks(page,{language:'en',dismissOnboarding:true});await installTemplateMocks(page,state);await openTools(page);
+test('manual template and planning tools stay usable in English at 390px',async({page})=>{
+ await page.setViewportSize({width:390,height:844});const state=await installApiMocks(page,{language:'en',dismissOnboarding:true});await installTemplateMocks(page,state);
+ await page.goto('/?page=shopping');
+ await page.locator('.shopping-list-switcher').getByRole('button',{name:'Templates'}).click();
  const tools=page.getByTestId('shopping-template-tools');
- await expect(tools.getByRole('heading',{name:'Templates & stores'})).toBeVisible();
+ await expect(tools.getByRole('heading',{name:'Templates & shopping places'})).toBeVisible();
  await tools.getByRole('button',{name:'New template'}).click();
  const form=tools.locator('form').filter({hasText:'Items — one per line'});
  await form.getByLabel('Template name').fill('Breakfast');
  await form.getByLabel('Items — one per line').fill('Coffee\nBread\nMilk');
  await form.getByRole('button',{name:'Save template'}).click();
  await expect(tools.getByText('Breakfast',{exact:true})).toBeVisible();
- const overflow=await page.evaluate(()=>document.documentElement.scrollWidth-window.innerWidth);
- expect(overflow).toBeLessThanOrEqual(0);
+ const overflowWidth=await page.evaluate(()=>document.documentElement.scrollWidth-window.innerWidth);
+ expect(overflowWidth).toBeLessThanOrEqual(0);
 });
