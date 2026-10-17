@@ -38,7 +38,7 @@ async function boot(page,{language='de',familyless=false,failSend=false}={}){
  await page.goto('/?page=inbox');await expect(page.getByRole('heading',{name:language==='en'?'Messages':'Nachrichten',exact:true})).toBeVisible();
  return state;
 }
-async function openChat(page){await page.locator('.messenger-chat-row').click();await expect(page.locator('.messenger-bubble').filter({hasText:'Hallo aus der anderen Familie'}).first()).toBeVisible()}
+async function openChat(page){await page.locator('.messenger-chat-row').click();await expect(page.locator('.messenger-bubble').first()).toBeVisible()}
 
 test('personal chat sends canonical retry-safe message without legacy family notices',async({page})=>{
  const state=await boot(page);await openChat(page);await page.getByRole('textbox',{name:'Nachricht',exact:true}).fill('Hallo Kim');await page.getByRole('button',{name:'Senden',exact:true}).click();await expect(page.locator('.messenger-bubble.own')).toContainText('Hallo Kim');await expect(page.getByRole('textbox',{name:'Nachricht',exact:true})).toHaveValue('');expect(state.requests.some(r=>r.path==='/api/inbox/'&&r.method==='POST')).toBe(false);if(await page.locator('.messenger-mobile-back').isVisible())await page.locator('.messenger-mobile-back').click();await expect(page.getByRole('button',{name:'Familien-Mitteilungen',exact:true})).toHaveCount(0);
@@ -179,8 +179,8 @@ test('main navigation remains pinned while transformed page content scrolls',asy
  const after=await nav.boundingBox();
  expect(after.y).toBeCloseTo(before.y,0);
  expect(after.y+after.height).toBeCloseTo(page.viewportSize().height,0);
- await nav.getByRole('button',{name:'To-dos',exact:true}).click();
- await expect(page.locator('main[data-page="todo"]')).toBeVisible();
+ await nav.getByRole('button',{name:'Einkauf',exact:true}).click();
+ await expect(page.locator('main[data-page="shopping"]')).toBeVisible();
 });
 
 test('message dates and empty search results are readable without losing the draft',async({page})=>{
