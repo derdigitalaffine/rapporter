@@ -4,7 +4,6 @@ import {api} from './api';
 import {useFamilyPermissions} from './family-permissions';
 import {Icon} from './icons';
 import WorkflowSettings from './WorkflowSettings';
-import ShoppingTemplateTools from './ShoppingTemplateTools';
 import ShoppingAudienceFields,{defaultShoppingAudience} from './ShoppingAudienceFields';
 import './workflow-i18n';
 import {confirmAction,toast} from './feedback';
@@ -37,7 +36,6 @@ export default function ListEditor({type,list=null,family,onClose,onSaved}){
   <ErrorSummary errors={errors}/>
   <FormField id="list-name" label={t('name')} required><input value={form.name||''} onChange={e=>set('name',e.target.value)}/></FormField>
   {type==='shopping'&&canManageAudience&&<ShoppingAudienceFields family={audienceFamily} value={audience} onChange={setAudience} compact/>}
-  {type==='shopping'&&<FormField id="list-store" label={t('storeOrShop')}><input value={form.store||''} onChange={e=>set('store',e.target.value)} placeholder={t('storePlaceholder')}/></FormField>}
   <ProgressiveFieldGroup label={t('moreDetails')} defaultOpen={!isNew}>
     <FormField id="list-symbol" label={t('symbol')}><select value={form.icon||''} onChange={e=>set('icon',e.target.value)}><option value={type==='task'?'list-check':'cart-shopping'}>{t('default')}</option><option value="house">{t('homeLabel')}</option><option value="store">{t('store')}</option><option value="star">{t('favorites')}</option></select></FormField>
     {type==='task'&&canManageSettings&&<><label className="toggle-label"><input type="checkbox" checked={!!form.workflow_enabled} onChange={e=>set('workflow_enabled',e.target.checked)}/><span>{t('workflowUi.enabled')}</span></label><small>{t('workflowUi.hint')}</small>{list?.workflow_enabled&&form.workflow_enabled&&<WorkflowSettings list={list}/>}</>}
@@ -45,5 +43,5 @@ export default function ListEditor({type,list=null,family,onClose,onSaved}){
   <FormActions><button type="button" className="secondary" onClick={onClose} disabled={busy}>{t('cancel')}</button><button className="primary" disabled={busy||!form.name.trim()}><Icon name="check"/> {busy?t('saving'):t('save')}</button></FormActions>
   {!isNew&&<button type="button" className="ghost-danger destructive-wide" onClick={archive} disabled={busy}><Icon name="archive"/> {t('archiveList')}</button>}
   {type==='shopping'&&!isNew&&canManageAudience&&<button type="button" className="ghost-danger destructive-wide" onClick={removeList} disabled={busy}><Icon name="delete"/> {t('shoppingStates.deleteList')}</button>}
- </FormShell>{type==='shopping'&&!isNew&&<ShoppingTemplateTools familyId={family?.id||list?.family} list={list} onChanged={onSaved}/>}</FamilySheet>
+ </FormShell></FamilySheet>
 }
