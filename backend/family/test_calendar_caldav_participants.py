@@ -14,11 +14,11 @@ from .models import Family, FamilyEvent, Membership
 class CalDavFamilyParticipantTests(TestCase):
     def setUp(self):
         self.owner_user = get_user_model().objects.create_user('calendar-owner', password='calendar-test-password')
-        self.child_user = get_user_model().objects.create_user('calendar-child')
+        self.child_user = get_user_model().objects.create_user('calendar-child', first_name='Emma', last_name='Miller')
         self.assertEqual(self.child_user.email, '')
         self.family = Family.objects.create(name='Family', slug='calendar-participant-family', timezone='Europe/Berlin')
         self.owner = Membership.objects.create(family=self.family, user=self.owner_user, role='owner', display_name='Alex')
-        self.child = Membership.objects.create(family=self.family, user=self.child_user, role='child', display_name='Emma')
+        self.child = Membership.objects.create(family=self.family, user=self.child_user, role='child', display_name='Emma Miller')
         self.client = APIClient()
         login = self.client.post('/api/auth/login/', {'username': self.owner_user.username, 'password': 'calendar-test-password'}, format='json')
         self.assertEqual(login.status_code, 200, login.data)
@@ -79,11 +79,29 @@ class CalDavFamilyParticipantTests(TestCase):
         result = self.dav('REPORT', path=self.principals, body=body)
         self.assertEqual(result.status_code, 207)
         self.assertIn(f'{self.principals}{self.child.pk}/'.encode(), result.content)
-        self.assertIn(b'Emma', result.content)
+        self.assertIn(b'Emma Miller', result.content)
         self.assertIn(f'mailto:{self.child.pk}@members.familyos.invalid'.encode(), result.content)
         self.assertIn(f'urn:uuid:{self.child.pk}'.encode(), result.content)
         self.assertIn(b'INDIVIDUAL', result.content)
         self.assertIn('calendar-schedule', result.get('DAV', ''))
+
+    def test_ios_davkit_attendee_autocomplete_search_shape(self):
+        body = '''<d:principal-property-search xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav" xmlns:cs="http://calendarserver.org/ns/" type="INDIVIDUAL" test="anyof">
+          <d:property-search><d:prop><d:displayname/></d:prop><d:match match-type="starts-with">Emm</d:match></d:property-search>
+          <d:property-search><d:prop><cs:email-address-set/></d:prop><d:match match-type="starts-with">Emm</d:match></d:property-search>
+          <d:property-search><d:prop><cs:first-name/></d:prop><d:match match-type="starts-with">Emm</d:match></d:property-search>
+          <d:property-search><d:prop><cs:last-name/></d:prop><d:match match-type="starts-with">Emm</d:match></d:property-search>
+          <d:prop><cs:email-address-set/><c:calendar-user-address-set/><c:calendar-user-type/><d:displayname/><cs:last-name/><cs:first-name/><cs:record-type/><d:principal-URL/></d:prop>
+        </d:principal-property-search>'''
+        result = self.dav('REPORT', path=self.principals, body=body)
+        self.assertEqual(result.status_code, 207, result.content)
+        self.assertIn(f'{self.principals}{self.child.pk}/'.encode(), result.content)
+        self.assertIn(b'Emma Miller', result.content)
+        self.assertIn(b'first-name', result.content)
+        self.assertIn(b'last-name', result.content)
+        self.assertIn(b'email-address-set', result.content)
+        self.assertIn(f'{self.child.pk}@members.familyos.invalid'.encode(), result.content)
+        self.assertIn(b'users', result.content)
 
     def test_internal_scheduling_is_discoverable_and_outbox_rejects_outsiders(self):
         discovery = self.dav(
@@ -109,7 +127,7 @@ class CalDavFamilyParticipantTests(TestCase):
         outbox_path = self.schedule_home + 'outbox/'
         scheduled = self.dav(
             'POST', path=outbox_path,
-            body=self.event_body(uuid4(), organizer=owner_address, attendees=[(child_address, 'Emma')], method='REQUEST'),
+            body=self.event_body(uuid4(), organizer=owner_address, attendees=[(child_address, 'Emma Miller')], method='REQUEST'),
             content_type='text/calendar',
         )
         self.assertEqual(scheduled.status_code, 200)
@@ -139,7 +157,7 @@ class CalDavFamilyParticipantTests(TestCase):
         component = Calendar.from_ical(response.content).walk('VEVENT')[0]
         attendee = component['ATTENDEE']
         self.assertEqual(str(attendee), f'mailto:{self.child.pk}@members.familyos.invalid')
-        self.assertEqual(str(attendee.params['CN']), 'Emma')
+        self.assertEqual(str(attendee.params['CN']), 'Emma Miller')
         self.assertEqual(str(attendee.params['SCHEDULE-AGENT']), 'SERVER')
         self.assertNotIn('ORGANIZER', component)
 
@@ -155,12 +173,13 @@ class CalDavFamilyParticipantTests(TestCase):
         child_address = f'mailto:{self.child.pk}@members.familyos.invalid'
         created = self.dav(
             'PUT', path=path,
-            body=self.event_body(event_id, attendees=[(child_address, 'Emma')]),
+            body=self.event_body(event_id, attendees=[(child_address, 'Emma Miller')]),
             content_type='text/calendar', HTTP_IF_NONE_MATCH='*',
         )
         self.assertEqual(created.status_code, 201)
         self.assertEqual(created['Schedule-Tag'], created['ETag'])
         stored = FamilyEvent.objects.get(pk=event_id)
+        self.assertFalse(stored.is_family_event)
         self.assertEqual(set(stored.participants.values_list('pk', flat=True)), {self.owner.pk, self.child.pk})
 
         fetched = self.dav('GET', path=path)
@@ -186,13 +205,15 @@ class CalDavFamilyParticipantTests(TestCase):
             content_type='text/calendar', HTTP_IF_SCHEDULE_TAG_MATCH=created['Schedule-Tag'],
         )
         self.assertEqual(removed.status_code, 204)
-        self.assertEqual(list(FamilyEvent.objects.get(pk=event_id).participants.values_list('pk', flat=True)), [self.owner.pk])
+        updated = FamilyEvent.objects.get(pk=event_id)
+        self.assertFalse(updated.is_family_event)
+        self.assertEqual(list(updated.participants.values_list('pk', flat=True)), [self.owner.pk])
 
         principal_event_id = uuid4(); principal_path = self.home + str(principal_event_id) + '.ics'
         principal_address = f'{self.principals}{self.child.pk}/'
         via_principal = self.dav(
             'PUT', path=principal_path,
-            body=self.event_body(principal_event_id, attendees=[(principal_address, 'Emma')]),
+            body=self.event_body(principal_event_id, attendees=[(principal_address, 'Emma Miller')]),
             content_type='text/calendar', HTTP_IF_NONE_MATCH='*',
         )
         self.assertEqual(via_principal.status_code, 201)
