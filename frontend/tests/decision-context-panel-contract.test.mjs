@@ -1,13 +1,13 @@
 import {readFileSync} from 'node:fs';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
+import {pageLabel} from '../src/app-navigation.js';
 import {decisionContextClearedHref,decisionContextHref,decisionPresetDraft,decisionPresetsFor} from '../src/decision-context.js';
 
 const source=readFileSync(new URL('../src/DecisionContextPanel.jsx',import.meta.url),'utf8');
 const css=readFileSync(new URL('../src/decision-context-panel.css',import.meta.url),'utf8');
 const hub=readFileSync(new URL('../src/DecisionsHub.jsx',import.meta.url),'utf8');
 const registry=readFileSync(new URL('../src/feature-registry.js',import.meta.url),'utf8');
-const navigation=readFileSync(new URL('../src/app-navigation.js',import.meta.url),'utf8');
 
 test('context decision disclosure keeps accessible launcher semantics',()=>{
   assert.match(source,/aria-expanded=\{open\}/);
@@ -46,9 +46,10 @@ test('decision deep-link selectors are owned by the feature registry',()=>{
   assert.match(registry,/defineFeature\('decisions',\{detail:true,queryParams:\['decision','decision_context_type','decision_context_id','decision_preset'\]/);
 });
 
-test('contract navigation exposes its German label before the lazy ContractUI bundle loads',()=>{
-  assert.doesNotMatch(navigation,/contracts-i18n/);
-  assert.match(navigation,/contracts:english\?'Contracts':'Verträge'/);
+test('contract navigation exposes localized labels before the lazy ContractUI bundle loads',()=>{
+  const t=key=>key;
+  assert.equal(pageLabel('contracts',t,{language:'de'}),'Verträge');
+  assert.equal(pageLabel('contracts',t,{language:'en'}),'Contracts');
 });
 
 test('context launcher styles preserve FamilyOS touch and reflow contracts',()=>{
