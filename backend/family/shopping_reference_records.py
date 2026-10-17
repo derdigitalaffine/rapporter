@@ -14,16 +14,18 @@ from .shopping_reference_models import (
 )
 
 
+MAX_MATERIALIZED_RECORDS = 100_000
 MAX_RECORD_JSON_BYTES = 32 * 1024
 MAX_TERMS_PER_RECORD = 64
 MAX_TERM_LENGTH = 200
-_PRIMARY_FIELDS = ("label_de", "label", "name", "display_name", "value")
+_PRIMARY_FIELDS = ("label_de", "label", "name", "display_name", "canonical_name", "product_name", "value")
 _ALIAS_FIELDS = ("aliases", "synonyms")
-_CODE_FIELDS = ("gtin", "ean")
-_ID_FIELDS = ("id", "key", "slug", "store_id", "chain_id")
-_RECORD_KEY_FIELDS = ("id", "gtin", "ean", "key", "slug", "store_id", "chain_id")
-_LOOKUP_FIELDS = ("gtin", "ean", "label_de", "label", "name", "display_name", "id", "key")
+_CODE_FIELDS = ("gtin", "ean", "wikidata_id", "nsi_id", "source_id", "location_ref")
+_ID_FIELDS = ("id", "key", "slug", "store_id", "chain_id", "sample_id", "section_id", "category_id")
+_RECORD_KEY_FIELDS = ("id", "gtin", "ean", "key", "slug", "store_id", "chain_id", "sample_id", "section_id")
+_LOOKUP_FIELDS = ("gtin", "ean", "label_de", "label", "name", "display_name", "canonical_name", "product_name", "id", "key", "store_id", "chain_id")
 _WHITESPACE_RE = re.compile(r"\s+")
+_TOMBSTONE_STATUSES = {"deleted", "removed", "tombstone"}
 
 
 class ReferenceRecordMaterializationError(ValueError):
@@ -64,6 +66,12 @@ def _as_record(value):
     return record
 
 
+def _append_bounded(rows, value, path):
+    if len(rows) >= MAX_MATERIALIZED_RECORDS:
+        _error("too_many_runtime_records", f"{path} exceeds the runtime record budget")
+    rows.append(_as_record(value))
+
+
 def _records_from_file(path, content):
     suffix = PurePosixPath(path).suffix.lower()
     try:
@@ -73,7 +81,14 @@ def _records_from_file(path, content):
 
     if suffix == ".csv":
         try:
-            return [_as_record(row) for row in csv.DictReader(io.StringIO(text))]
+            reader = csv.DictReader(io.StringIO(text))
+            fieldnames = reader.fieldnames or []
+            if not fieldnames or any(not str(name or "").strip() for name in fieldnames) or len(set(fieldnames)) != len(fieldnames):
+                _error("invalid_record_schema", f"{path} requires unique non-empty CSV headers")
+            rows = []
+            for row in reader:
+                _append_bounded(rows, row, path)
+            return rows
         except csv.Error as exc:
             raise ReferenceRecordMaterializationError("invalid_data", f"Invalid CSV: {path}") from exc
     if suffix == ".jsonl":
@@ -82,24 +97,34 @@ def _records_from_file(path, content):
             if not line.strip():
                 continue
             try:
-                rows.append(_as_record(json.loads(line)))
+                _append_bounded(rows, json.loads(line), path)
             except json.JSONDecodeError as exc:
                 raise ReferenceRecordMaterializationError("invalid_data", f"Invalid JSONL: {path}") from exc
         return rows
     if suffix == ".txt":
-        return [_as_record({"value": line.strip()}) for line in text.splitlines() if line.strip()]
+        rows = []
+        for line in text.splitlines():
+            if line.strip():
+                _append_bounded(rows, {"value": line.strip()}, path)
+        return rows
     if suffix == ".json":
         try:
             value = json.loads(text)
         except json.JSONDecodeError as exc:
             raise ReferenceRecordMaterializationError("invalid_data", f"Invalid JSON: {path}") from exc
         if isinstance(value, list):
-            return [_as_record(row) for row in value]
+            rows = []
+            for row in value:
+                _append_bounded(rows, row, path)
+            return rows
         if isinstance(value, dict):
             for key in ("entries", "items", "products", "records"):
                 nested = value.get(key)
                 if isinstance(nested, list):
-                    return [_as_record(row) for row in nested]
+                    rows = []
+                    for row in nested:
+                        _append_bounded(rows, row, path)
+                    return rows
             return [_as_record(value)]
     _error("unsupported_format", f"Unsupported reference file: {path}")
 
@@ -136,7 +161,9 @@ def _lookup_key(record):
 
 
 def _is_tombstone(record):
-    return record.get("tombstone") is True or record.get("deleted") is True
+    if record.get("tombstone") is True or record.get("deleted") is True:
+        return True
+    return normalize_reference_term(record.get("status")) in _TOMBSTONE_STATUSES
 
 
 def _gtin_is_valid(value):
@@ -162,6 +189,25 @@ def _validate_dataset_record(dataset, record, source_path):
             _error("invalid_gtin", f"GTIN/EAN in {source_path} must be a valid GTIN-8/12/13/14 string")
 
 
+def _alias_values(value):
+    if value is None:
+        return []
+    if isinstance(value, list):
+        values = value
+    elif isinstance(value, str):
+        values = re.split(r"[|;]", value)
+    else:
+        _error("invalid_aliases", "aliases/synonyms must be a list or a |/;-separated string")
+    result = []
+    for item in values:
+        if not isinstance(item, str):
+            _error("invalid_aliases", "alias entries must be strings")
+        item = item.strip()
+        if item:
+            result.append(item)
+    return result
+
+
 def _search_terms(record):
     terms = []
     seen = set()
@@ -180,14 +226,7 @@ def _search_terms(record):
         if value:
             add(value, ReferenceDatasetSearchTerm.Kind.PRIMARY)
     for field in _ALIAS_FIELDS:
-        values = record.get(field)
-        if values is None:
-            continue
-        if not isinstance(values, list):
-            _error("invalid_aliases", f"{field} must be a list")
-        for value in values:
-            if not isinstance(value, str):
-                _error("invalid_aliases", f"{field} entries must be strings")
+        for value in _alias_values(record.get(field)):
             add(value, ReferenceDatasetSearchTerm.Kind.ALIAS)
     for field in _CODE_FIELDS:
         value = _scalar(record, field)
@@ -213,6 +252,8 @@ def materialize_reference_dataset(dataset, payload_files):
         rows = _records_from_file(source_path, payload_files[source_path])
         for record in rows:
             ordinal += 1
+            if ordinal > MAX_MATERIALIZED_RECORDS:
+                _error("too_many_runtime_records", f"Package exceeds {MAX_MATERIALIZED_RECORDS} materialized records")
             _validate_dataset_record(dataset, record, source_path)
             record_key = _record_key(record, source_path, ordinal)
             if record_key in seen_keys:
