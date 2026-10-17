@@ -49,8 +49,8 @@ def _href_property(name, href):
 
 def _principal_propfind(request, grant, path):
     principal = f'/caldav/{grant.pk}/principal/'
-    if request.method != 'PROPFIND' or path != principal:
-        return None
+    if path != principal:
+        return _scheduled(core.response(status=404))
     depth = request.headers.get('Depth', 'infinity')
     if depth not in ('0', '1'):
         return _scheduled(core.response(status=403))
@@ -59,20 +59,18 @@ def _principal_propfind(request, grant, path):
     except (ValueError, TypeError, ET.ParseError, OverflowError):
         return _scheduled(core.response(status=400))
     if root.tag != core.q(D, 'propfind') or root.find(core.q(D, 'propname')) is not None:
-        return None
+        return _scheduled(core.response(status=400))
     prop = root.find(core.q(D, 'prop'))
-    if prop is None:
-        return None
-    requested = [node.tag for node in prop]
-    schedule_names = {core.q(C, 'schedule-inbox-URL'), core.q(C, 'schedule-outbox-URL')}
-    if not schedule_names.intersection(requested):
-        return None
+    requested = [node.tag for node in prop] if prop is not None else None
 
     home = f'/caldav/{grant.pk}/home/'
     principals = f'/caldav/{grant.pk}/principals/'
     values = core.props_for(grant, principal, 'principal')
-    values[core.q(C, 'schedule-inbox-URL')] = _href_property('schedule-inbox-URL', home + 'inbox/')
-    values[core.q(C, 'schedule-outbox-URL')] = _href_property('schedule-outbox-URL', home + 'outbox/')
+    if requested is not None:
+        if core.q(C, 'schedule-inbox-URL') in requested:
+            values[core.q(C, 'schedule-inbox-URL')] = _href_property('schedule-inbox-URL', home + 'inbox/')
+        if core.q(C, 'schedule-outbox-URL') in requested:
+            values[core.q(C, 'schedule-outbox-URL')] = _href_property('schedule-outbox-URL', home + 'outbox/')
     rows = [(principal, values)]
     if depth == '1':
         rows.append((home, core.props_for(grant, home, 'home')))
@@ -172,9 +170,10 @@ def _schedule_collection(request, grant, path, kind):
 @csrf_exempt
 def dav(request, path=''):
     actual = '/caldav/' + path
-    # Scheduling resources need authentication before the core DAV router because
-    # they are intentionally not regular calendar collections.
-    if request.method == 'PROPFIND' or actual.endswith('/inbox/') or actual.endswith('/outbox/'):
+    is_principal_propfind = request.method == 'PROPFIND' and actual.endswith('/principal/')
+    is_schedule_collection = actual.endswith('/inbox/') or actual.endswith('/outbox/')
+
+    if is_principal_propfind or is_schedule_collection:
         grant, error = _authenticate(request)
         if error is not None:
             return error
@@ -185,21 +184,8 @@ def dav(request, path=''):
             return _schedule_collection(request, grant, inbox, 'inbox')
         if actual == outbox:
             return _schedule_collection(request, grant, outbox, 'outbox')
-        principal = _principal_propfind(request, grant, actual)
-        if principal is not None:
-            return principal
-        # Avoid charging the same request twice when delegating after an
-        # authenticated PROPFIND.
-        original_limited = core.limited
-        original_authenticate = core.authenticate
-        core.limited = lambda _request, _identifier: None
-        core.authenticate = lambda _request: grant
-        try:
-            result = core.dav(request, path)
-        finally:
-            core.limited = original_limited
-            core.authenticate = original_authenticate
-        return _scheduled(result)
+        if is_principal_propfind:
+            return _principal_propfind(request, grant, actual)
+        return _scheduled(core.response(status=404))
 
-    result = core.dav(request, path)
-    return _scheduled(result)
+    return _scheduled(core.dav(request, path))
