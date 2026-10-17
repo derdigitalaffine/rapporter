@@ -132,7 +132,7 @@ class ReferenceDatasetRecord(TimestampedModel):
     tombstone = models.BooleanField(default=False)
 
     class Meta:
-        ordering = ["dataset_id", "ordinal", "id"]
+        ordering = ["ordinal", "id"]
         constraints = [
             models.UniqueConstraint(fields=["dataset", "record_key"], name="refrec_dataset_key_uniq"),
         ]
@@ -157,7 +157,7 @@ class ReferenceDatasetSearchTerm(TimestampedModel):
     kind = models.CharField(max_length=16, choices=Kind.choices, default=Kind.PRIMARY)
 
     class Meta:
-        ordering = ["term", "record_id"]
+        ordering = ["term", "id"]
         constraints = [
             models.UniqueConstraint(fields=["record", "term"], name="refterm_record_term_uniq"),
         ]
