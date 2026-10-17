@@ -78,6 +78,7 @@ def _session_payload(session, request_user):
         "id": str(session.id),
         "shopping_list": str(session.shopping_list_id),
         "status": session.status,
+        "revision": session.activity_seq,
         "started_at": session.started_at,
         "completed_at": session.completed_at,
         "last_activity_at": session.last_activity_at,
@@ -92,6 +93,16 @@ def _session_payload(session, request_user):
             for row in participants
         ],
     }
+
+
+def _active_peer_participants(session, request_user):
+    cutoff = timezone.now() - PRESENCE_WINDOW
+    return list(
+        session.participants.filter(last_seen_at__gte=cutoff)
+        .exclude(user=request_user)
+        .select_related("user")
+        .order_by("joined_at")
+    )
 
 
 def _item_snapshot(item):
@@ -304,8 +315,13 @@ def shopping_session_complete(request):
         return Response({"detail": "Einkaufsliste nicht gefunden."}, status=status.HTTP_404_NOT_FOUND)
 
     session_id = request.data.get("session")
+    scope = str(request.data.get("scope") or "group").strip().lower()
+    if scope not in {"group", "me"}:
+        return Response({"code": "invalid_completion_scope", "detail": "Ungültige Abschlussart."}, status=status.HTTP_400_BAD_REQUEST)
     open_items_policy = str(request.data.get("open_items") or "").strip().lower()
     store_id = request.data.get("store")
+    expected_revision = request.data.get("expected_revision")
+    confirm_active_peers = request.data.get("confirm_active_peers") is True
     with transaction.atomic():
         sessions = (
             ShoppingSession.objects.select_for_update(of=("self",))
@@ -319,9 +335,55 @@ def shopping_session_complete(request):
         session = sessions.first()
         if not session:
             return Response({"detail": "Einkaufssession nicht gefunden."}, status=status.HTTP_404_NOT_FOUND)
+
+        if scope == "me":
+            if session.status == ShoppingSession.Status.ACTIVE:
+                session.participants.filter(user=request.user).delete()
+                return Response({"left": True, "session": _session_payload(session, request.user)})
+            if session.status == ShoppingSession.Status.COMPLETED:
+                return Response({"left": True, "session": _session_payload(session, request.user)})
+            return Response({"detail": "Einkaufssession ist nicht mehr aktiv."}, status=status.HTTP_409_CONFLICT)
+
         if session.status != ShoppingSession.Status.COMPLETED:
             if session.status != ShoppingSession.Status.ACTIVE:
                 return Response({"detail": "Einkaufssession ist nicht mehr aktiv."}, status=status.HTTP_409_CONFLICT)
+
+            if expected_revision is not None:
+                try:
+                    expected_revision = int(expected_revision)
+                    if expected_revision < 0:
+                        raise ValueError
+                except (TypeError, ValueError):
+                    return Response(
+                        {"code": "invalid_revision", "detail": "Ungültiger Einkaufsstand."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                if expected_revision != session.activity_seq:
+                    return Response(
+                        {
+                            "code": "stale_session",
+                            "detail": "Der Einkauf wurde inzwischen geändert. Bitte Abschluss erneut prüfen.",
+                            "revision": session.activity_seq,
+                            "session": _session_payload(session, request.user),
+                        },
+                        status=status.HTTP_409_CONFLICT,
+                    )
+
+            active_peers = _active_peer_participants(session, request.user)
+            if active_peers and not confirm_active_peers:
+                memberships = _membership_map(session, [row.user for row in active_peers])
+                return Response(
+                    {
+                        "code": "active_peers_confirmation_required",
+                        "detail": "Andere Personen kaufen noch ein. Gruppenabschluss bitte ausdrücklich bestätigen.",
+                        "revision": session.activity_seq,
+                        "participants": [
+                            _person(row.user, memberships.get(row.user_id), request.user)
+                            for row in active_peers
+                        ],
+                    },
+                    status=status.HTTP_409_CONFLICT,
+                )
 
             store = None
             if store_id:
