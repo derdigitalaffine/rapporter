@@ -45,7 +45,7 @@ test('checkout · personal finish leaves the shared session without closing it',
  expect(run.completeBodies).toEqual([{shopping_list:'shop-1',session:sessionId,scope:'me'}]);
 });
 
-test('checkout · active peers require explicit group confirmation and frozen revision',async({page})=>{
+test('checkout · active peers require explicit peer-bound group confirmation and frozen revision',async({page})=>{
  const run=await boot(page);
  const finish=run.dialog.getByRole('button',{name:'Einkauf abschließen'});
  await expect(finish).toBeDisabled();
@@ -53,5 +53,5 @@ test('checkout · active peers require explicit group confirmation and frozen re
  await expect(finish).toBeEnabled();
  await finish.click();
  await expect(page.getByRole('heading',{name:'Einkauf abgeschlossen'})).toBeVisible();
- expect(run.completeBodies).toEqual([{shopping_list:'shop-1',session:sessionId,open_items:'keep',store:null,expected_revision:4,confirm_active_peers:true}]);
+ expect(run.completeBodies).toEqual([{shopping_list:'shop-1',session:sessionId,open_items:'keep',store:null,expected_revision:4,confirm_active_peers:true,confirmed_active_peer_ids:['2']}]);
 });
