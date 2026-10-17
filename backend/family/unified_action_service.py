@@ -62,6 +62,27 @@ def mirror(obj):
 def observe_task(obj, previous=None):
     row = mirror(obj)
     old = (previous or {}).get('completed_at')
+    migration = _migration_for_task(obj)
+    if migration is not None:
+        # Some older clients still call TaskViewSet.toggle without an idempotency
+        # key. Keep that path lossless too by translating the toggle back into the
+        # preserved RoutineLog stream instead of creating a task-only completion.
+        if obj.completed_at and old != obj.completed_at:
+            from .request_context import current_actor
+            log = RoutineLog.objects.create(
+                routine=migration.routine,
+                done_by=current_actor(),
+                done_at=obj.completed_at,
+            )
+            observe_log(log)
+        elif old and not obj.completed_at:
+            log = migration.routine.logs.filter(done_at=old).order_by('-created_at', '-id').first()
+            if log is not None:
+                log.delete()
+            from .routine_task_migration_service import sync_migrated_task_from_routine
+            sync_migrated_task_from_routine(migration.routine)
+            domain_event(row, 'action.reopened', f'reopened:{old.isoformat()}')
+        return row
     if obj.completed_at and old != obj.completed_at:
         from .request_context import current_actor
         ActionCompletion.objects.get_or_create(action=row, occurred_at=obj.completed_at, legacy_log=None,
