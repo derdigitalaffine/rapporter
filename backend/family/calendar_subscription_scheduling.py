@@ -167,6 +167,53 @@ def _schedule_collection(request, grant, path, kind):
     return _scheduled(core.response(status=405), allow)
 
 
+def _apply_schedule_tag(request, result):
+    etag = result.get('ETag')
+    if etag:
+        result['Schedule-Tag'] = etag
+    if result.status_code != 207 or b'schedule-tag' not in request.body or not result.content:
+        return result
+    try:
+        root = ET.fromstring(result.content)
+    except ET.ParseError:
+        return result
+    changed = False
+    for row in root.findall(core.q(D, 'response')):
+        found_prop = None
+        etag_text = None
+        missing = []
+        for propstat in list(row.findall(core.q(D, 'propstat'))):
+            status = propstat.find(core.q(D, 'status'))
+            prop = propstat.find(core.q(D, 'prop'))
+            if status is None or prop is None:
+                continue
+            status_text = status.text or ''
+            if ' 200 ' in status_text:
+                found_prop = prop
+                etag_node = prop.find(core.q(D, 'getetag'))
+                if etag_node is not None and etag_node.text:
+                    etag_text = etag_node.text
+            elif ' 404 ' in status_text:
+                tag = prop.find(core.q(C, 'schedule-tag'))
+                if tag is not None:
+                    missing.append((propstat, prop, tag))
+        if not etag_text or not missing:
+            continue
+        if found_prop is None:
+            propstat = ET.SubElement(row, core.q(D, 'propstat'))
+            found_prop = ET.SubElement(propstat, core.q(D, 'prop'))
+            ET.SubElement(propstat, core.q(D, 'status')).text = 'HTTP/1.1 200 OK'
+        ET.SubElement(found_prop, core.q(C, 'schedule-tag')).text = etag_text
+        for propstat, prop, tag in missing:
+            prop.remove(tag)
+            if len(prop) == 0:
+                row.remove(propstat)
+        changed = True
+    if changed:
+        result.content = ET.tostring(root, encoding='utf-8', xml_declaration=True)
+    return result
+
+
 @csrf_exempt
 def dav(request, path=''):
     actual = '/caldav/' + path
@@ -188,4 +235,7 @@ def dav(request, path=''):
             return _principal_propfind(request, grant, actual)
         return _scheduled(core.response(status=404))
 
-    return _scheduled(core.dav(request, path))
+    schedule_match = request.headers.get('If-Schedule-Tag-Match')
+    if schedule_match and not request.headers.get('If-Match'):
+        request.META['HTTP_IF_MATCH'] = schedule_match
+    return _apply_schedule_tag(request, _scheduled(core.dav(request, path)))
