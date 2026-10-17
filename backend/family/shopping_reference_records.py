@@ -17,6 +17,7 @@ from .shopping_reference_models import (
 MAX_MATERIALIZED_RECORDS = 100_000
 MAX_RECORD_JSON_BYTES = 32 * 1024
 MAX_TERMS_PER_RECORD = 64
+MAX_TOTAL_SEARCH_TERMS = 500_000
 MAX_TERM_LENGTH = 200
 _TOMBSTONE_STATUSES = {"deleted", "removed", "tombstone"}
 _WHITESPACE_RE = re.compile(r"\s+")
@@ -55,8 +56,14 @@ _PRIMARY_FIELDS = (
 )
 _ALIAS_FIELDS = ("aliases", "synonyms")
 _CODE_FIELDS = ("gtin", "ean", "wikidata_id", "nsi_id", "source_id", "location_ref", "mapped_category_id")
-_ID_FIELDS = ("id", "key", "slug", "store_id", "chain_id", "sample_id", "section_id", "category_id")
-_RECORD_KEY_FIELDS = ("id", "gtin", "ean", "key", "slug", "store_id", "chain_id", "sample_id", "section_id")
+_ID_FIELDS = (
+    "id", "key", "slug", "evidence_id", "layout_id", "store_id", "chain_id", "sample_id", "section_id",
+    "category_id",
+)
+_RECORD_KEY_FIELDS = (
+    "id", "gtin", "ean", "key", "slug", "evidence_id", "layout_id", "sample_id", "store_id", "section_id",
+    "chain_id", "category_id",
+)
 _LOOKUP_FIELDS = (
     "gtin", "ean", "label_de", "label", "name", "display_name", "canonical_name", "product_name", "id", "key",
     "store_id", "chain_id",
@@ -288,6 +295,7 @@ def materialize_reference_dataset(dataset, payload_files):
     record_objects = []
     term_specs = []
     seen_keys = set()
+    total_terms = 0
     ordinal = 0
     for source_path in sorted(payload_files):
         rows = _records_from_file(source_path, payload_files[source_path])
@@ -313,16 +321,20 @@ def materialize_reference_dataset(dataset, payload_files):
             )
             record_objects.append(record_object)
             if not tombstone:
-                term_specs.append((record_object, _search_terms(record)))
+                terms = _search_terms(record)
+                total_terms += len(terms)
+                if total_terms > MAX_TOTAL_SEARCH_TERMS:
+                    _error("too_many_search_terms", f"Package exceeds {MAX_TOTAL_SEARCH_TERMS} materialized search terms")
+                term_specs.append((record_object, terms))
 
     with transaction.atomic():
         ReferenceDatasetSearchTerm.objects.filter(dataset=dataset).delete()
         ReferenceDatasetRecord.objects.filter(dataset=dataset).delete()
         ReferenceDatasetRecord.objects.bulk_create(record_objects, batch_size=500)
-        term_objects = []
+        term_batch = []
         for record_object, terms in term_specs:
             for term, kind in terms:
-                term_objects.append(
+                term_batch.append(
                     ReferenceDatasetSearchTerm(
                         dataset=dataset,
                         record=record_object,
@@ -330,11 +342,14 @@ def materialize_reference_dataset(dataset, payload_files):
                         kind=kind,
                     )
                 )
-        if term_objects:
-            ReferenceDatasetSearchTerm.objects.bulk_create(term_objects, batch_size=1000)
+                if len(term_batch) >= 1000:
+                    ReferenceDatasetSearchTerm.objects.bulk_create(term_batch, batch_size=1000)
+                    term_batch = []
+        if term_batch:
+            ReferenceDatasetSearchTerm.objects.bulk_create(term_batch, batch_size=1000)
 
     return {
         "records": len(record_objects),
-        "search_terms": sum(len(terms) for _record, terms in term_specs),
+        "search_terms": total_terms,
         "tombstones": sum(1 for record in record_objects if record.tombstone),
     }
