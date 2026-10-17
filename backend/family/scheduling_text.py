@@ -106,6 +106,7 @@ def _clean(text: str) -> str:
     value = value.replace("’", "'")
     value = re.sub(r"\s+", " ", value)
     value = re.sub(r"[!?;,]+$", "", value).strip()
+    value = re.sub(r"(?<!\d)\.$", "", value).strip()
     return value
 
 
@@ -145,9 +146,11 @@ def _weekday_rule(family_timezone: str, today: date | None, clock: str | None):
         "time_mode": "wall_clock",
         "recurrence": {"frequency": "weekly", "interval": 1, "weekdays": WEEKDAY_CODES},
     }
+    if today is not None:
+        raw["anchor_date"] = today.isoformat()
     if clock:
         raw["segments"] = [{"preferred_time": clock}]
-    return normalize_scheduling_rule(raw, family_timezone, anchor_date=today)
+    return normalize_scheduling_rule(raw, family_timezone)
 
 
 def _canonical_interval(value: str) -> str | None:
