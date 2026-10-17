@@ -43,6 +43,23 @@ class SchedulingPreviewApiTests(TestCase):
         self.assertEqual(len(response.data["occurrences"]), 3)
         self.assertEqual(response.data["timezone"], "Europe/Berlin")
 
+    def test_everyday_wording_uses_tolerant_text_parser_on_api_path(self):
+        response = self.client.post(
+            self.url,
+            {
+                "text": "zweimal die Woche",
+                "anchor_date": "2026-10-17",
+                "language": "de",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.data["rule"]["recurrence"],
+            {"frequency": "weekly", "interval": 1, "times_per_period": 2},
+        )
+        self.assertIn("2-mal pro Woche", response.data["summary"])
+
     def test_structured_rule_is_normalized_before_preview(self):
         response = self.client.post(
             self.url,
