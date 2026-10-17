@@ -1,10 +1,11 @@
 """Bounded CalDAV endpoint for the FamilyOS family calendar.
 
-The calendar is scoped by a revocable CalendarSubscription credential. Reads only
-project native family-shared events; PUT and DELETE write those same resources
-back to FamilyOS with HTTP conditional request protection. Family memberships are
-exposed as searchable CalDAV principals and ATTENDEE values, but no scheduling
-inbox/outbox or invitation delivery is implemented.
+The calendar is scoped by a revocable CalendarSubscription credential. Reads
+project native events assigned to the subscription owner or selected children;
+PUT and DELETE write those same resources back to FamilyOS with HTTP conditional
+request protection. Family memberships are exposed as searchable CalDAV
+principals and ATTENDEE values. Scheduling inbox/outbox handling is layered by
+calendar_subscription_scheduling.
 """
 import base64
 import binascii
@@ -309,11 +310,15 @@ def report_properties(prop):
     return requested
 
 
-def _principal_value(member, tag):
+def _principal_value(grant, member, tag):
     if tag == q(D, 'displayname'):
         return member_label(member)
     if tag == q(C, 'calendar-user-address-set'):
-        return ' '.join((member_calendar_address(member), member_calendar_urn(member)))
+        return ' '.join((
+            member_calendar_address(member),
+            member_calendar_urn(member),
+            member_principal_path(grant, member),
+        ))
     if tag == q(C, 'calendar-user-type'):
         return 'INDIVIDUAL'
     raise ValueError()
@@ -329,16 +334,23 @@ def principal_property_search(root, grant):
     allowed = {q(D, 'displayname'), q(C, 'calendar-user-address-set'), q(C, 'calendar-user-type')}
     for search in searches:
         prop = search.find(q(D, 'prop')); match = search.find(q(D, 'match'))
-        if prop is None or match is None or len(prop) != 1 or prop[0].tag not in allowed or set(match.attrib) - {'caseless'}:
+        if (
+            prop is None or match is None or not len(prop) or len(prop) > 3
+            or set(match.attrib) - {'caseless'}
+            or any(node.tag not in allowed or node.attrib or list(node) for node in prop)
+        ):
             raise ValueError()
-        criteria.append((prop[0].tag, (match.text or '').casefold()))
+        needle = (match.text or '').casefold()
+        criteria.extend((node.tag, needle) for node in prop)
+    if len(criteria) > 10:
+        raise ValueError()
     requested_node = root.find(q(D, 'prop'))
     requested = [node.tag for node in requested_node] if requested_node is not None else list(allowed)
     if any(tag not in allowed and tag not in {q(D, 'resourcetype'), q(D, 'principal-URL')} for tag in requested):
         raise ValueError()
     rows = []
     for member in active_members(grant):
-        if all(match in _principal_value(member, tag).casefold() for tag, match in criteria):
+        if all(match in _principal_value(grant, member, tag).casefold() for tag, match in criteria):
             rows.append((member_principal_path(grant, member), props_for(grant, member_principal_path(grant, member), 'member-principal', member=member)))
         if len(rows) >= 100:
             break
@@ -430,7 +442,7 @@ def _put_event(request, grant, event_id, existing):
             return response(status=412)
         if existing is not None and (locked is None or event_etag(grant, locked) != current):
             return response(status=412)
-        if locked is not None and (locked.source_id or locked.external_id or locked.type != 'calendar.event' or not locked.is_family_event):
+        if locked is not None and (locked.source_id or locked.external_id or locked.type != 'calendar.event'):
             return response(status=403)
         if locked is None:
             event = FamilyEvent(id=event_id, family=grant.family, type='calendar.event', title=title,
@@ -441,8 +453,7 @@ def _put_event(request, grant, event_id, existing):
         else:
             event = locked
             event.title = title; event.starts_at = starts_at; event.ends_at = ends_at; event.payload = payload
-            event.is_family_event = True
-            event.save(update_fields=['title', 'starts_at', 'ends_at', 'payload', 'is_family_event', 'updated_at'])
+            event.save(update_fields=['title', 'starts_at', 'ends_at', 'payload', 'updated_at'])
             status = 204
         event.participants.set(participants)
     result = response(status=status, content_type='text/calendar; charset=utf-8')
@@ -462,7 +473,7 @@ def _delete_event(request, grant, existing):
             return response(status=404)
         if event_etag(grant, locked) != current:
             return response(status=412)
-        if locked.source_id or locked.external_id or locked.type != 'calendar.event' or not locked.is_family_event:
+        if locked.source_id or locked.external_id or locked.type != 'calendar.event':
             return response(status=403)
         locked.delete()
     return response(status=204)
