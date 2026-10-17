@@ -30,15 +30,18 @@ Materialization is bounded:
 - max 100,000 materialized records per package version;
 - max 32 KiB JSON payload per materialized record;
 - max 64 normalized search terms per record;
+- max 500,000 normalized search terms per package version;
 - search terms max 200 characters;
 - CSV headers must be unique and non-empty;
 - all package/archive limits from Slice B still apply before materialization.
 
-Materialization is transactional: a failed new materialization does not leave a half-built record/search index.
+The complete record/term budget is checked before the existing derived index is replaced. Search terms are then written in bounded batches rather than accumulated as an unbounded database-write list. Materialization is transactional: a failed new materialization does not leave a half-built record/search index and does not destroy an already valid derived index.
 
-## Search terms
+## Search terms and stable identity
 
 Search terms are NFKC-normalized, whitespace-collapsed and case-folded. Primary labels, aliases, stable IDs and supported codes are indexed separately by kind. CSV aliases may use `|` or `;`; JSON aliases may be arrays.
+
+Stable record keys prefer the most specific available identity. In particular, branch/sample/store/layout evidence IDs win over a shared chain ID so multiple branches of the same retailer do not collapse into one runtime record.
 
 Tombstones remain versioned records but do not receive searchable terms and are never returned by consumer queries.
 
