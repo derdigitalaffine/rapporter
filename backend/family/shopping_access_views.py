@@ -98,6 +98,11 @@ class ShoppingListViewSet(BaseShoppingListViewSet):
     def get_queryset(self):
         return visible_shopping_lists(self.request.user, self.queryset)
 
+    def perform_destroy(self, instance):
+        if not can_manage_shopping_access(self.request.user, instance):
+            raise PermissionDenied("Du kannst diese Einkaufsliste nicht löschen.")
+        instance.delete()
+
     def create(self, request, *args, **kwargs):
         raw = request.data
         serializer = self.get_serializer(data=_clean_list_payload(raw))
