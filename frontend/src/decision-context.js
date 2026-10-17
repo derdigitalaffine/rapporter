@@ -1,3 +1,5 @@
+import {featureHref} from './navigation.js';
+
 const PRESETS={
   shopping_list:{
     en:[
@@ -28,13 +30,11 @@ export function decisionPresetsFor(type,en=false){
 }
 
 export function decisionContextHref(context,preset=''){
-  const params=new URLSearchParams({page:'decisions'});
-  if(context?.type&&context?.id){
-    params.set('decision_context_type',context.type);
-    params.set('decision_context_id',String(context.id));
-  }
-  if(preset)params.set('decision_preset',preset);
-  return `/?${params.toString()}`;
+  return featureHref('decisions',{
+    decision_context_type:context?.type||null,
+    decision_context_id:context?.id||null,
+    decision_preset:preset||null,
+  },'http://localhost/');
 }
 
 export function decisionContextFromSearch(search=''){
@@ -51,4 +51,13 @@ export function decisionPresetDraft(search='',en=false){
   const preset=decisionPresetsFor(context.type,en).find(item=>item.key===key);
   if(!preset)return null;
   return {question:preset.question,mode:preset.mode,anonymous:false,closes_at:'',options:['','']};
+}
+
+export function decisionContextClearedHref(current,decision=null){
+  return featureHref('decisions',{
+    decision:decision||null,
+    decision_context_type:null,
+    decision_context_id:null,
+    decision_preset:null,
+  },current);
 }
