@@ -79,13 +79,17 @@ test('advanced recurrence exposes comfortable interval and target-count modes',a
  await page.setViewportSize({width:390,height:844});
  const requests=await boot(page);const dialog=await openSchedule(page);
  const repeat=dialog.getByLabel('Wiederholung',{exact:true});
+ await expect(repeat.locator('option[value="interval"]')).toHaveText('Eigenes Intervall');
+ await expect(repeat.locator('option[value="quota"]')).toHaveText('Mehrmals pro Zeitraum');
  await repeat.selectOption('interval');
  await dialog.getByLabel('Alle',{exact:true}).fill('3');
  await dialog.getByLabel('Einheit',{exact:true}).selectOption('weekly');
+ await expect(repeat.locator('option:checked')).toHaveText('Alle 3 Wochen');
  await expect(dialog.getByText('Alle 3 Wochen',{exact:true})).toBeVisible();
  await repeat.selectOption('quota');
  await dialog.getByLabel('Anzahl',{exact:true}).fill('4');
  await dialog.getByLabel('Pro Zeitraum',{exact:true}).selectOption('monthly');
+ await expect(repeat.locator('option:checked')).toHaveText('4× pro Monat');
  await expect(dialog.getByText(/Flexibles Ziel im Kalenderzeitraum/)).toBeVisible();
  expect(await dialog.evaluate(node=>node.scrollWidth<=node.clientWidth)).toBe(true);
  const result=await new AxeBuilder({page}).include('.action-options-sheet').withTags(['wcag2a','wcag2aa','wcag21aa']).analyze();
