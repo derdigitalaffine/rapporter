@@ -124,6 +124,10 @@ class RoutineTaskMigrationTests(TestCase):
             3,
         )
 
+        feed = self.client.get(f"/api/actions/?family={self.family.id}&scope=all")
+        task_row = next(row for row in feed.data["results"] if row["id"] == f"task:{task_id}")
+        self.assertEqual(task_row["primary_action"]["id"], "complete")
+
         undo = self.client.post(
             action_path,
             {
@@ -136,6 +140,23 @@ class RoutineTaskMigrationTests(TestCase):
         )
         self.assertEqual(undo.status_code, 200, undo.data)
         self.assertEqual(self.routine.logs.count(), 2)
+
+    def test_legacy_task_toggle_still_writes_and_undoes_routine_history(self):
+        migrated = self.client.post(self.path, {}, format="json")
+        task_id = migrated.data["task_id"]
+        toggle_path = f"/api/tasks/{task_id}/toggle/"
+        complete = self.client.post(toggle_path, {}, format="json")
+        self.assertEqual(complete.status_code, 200, complete.data)
+        self.assertEqual(self.routine.logs.count(), 2)
+        new_log = self.routine.logs.order_by("-done_at", "-id").first()
+        completion = ActionCompletion.objects.get(legacy_log=new_log)
+        self.assertEqual(completion.action.legacy_task_id, Task.objects.get(pk=task_id).id)
+
+        reopen = self.client.post(toggle_path, {}, format="json")
+        self.assertEqual(reopen.status_code, 200, reopen.data)
+        self.assertEqual(self.routine.logs.count(), 1)
+        completion.refresh_from_db()
+        self.assertIsNotNone(completion.undone_at)
 
     def test_action_feed_replaces_legacy_routine_with_migrated_task(self):
         migrated = self.client.post(self.path, {}, format="json")
