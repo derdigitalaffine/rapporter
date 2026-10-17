@@ -43,7 +43,6 @@ def shared_events(grant, member=None):
         family_id=grant.family_id,
         source__isnull=True,
         type='calendar.event',
-        is_family_event=True,
         external_id='',
         starts_at__isnull=False,
         participants__pk__in=scope_member_ids,
