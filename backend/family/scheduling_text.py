@@ -47,6 +47,11 @@ _DE_ORDINAL_INTERVALS = {
     "zwoelfte": 12, "zwoelfter": 12, "zwoelften": 12, "zwoelftes": 12,
 }
 
+_EN_ORDINAL_INTERVALS = {
+    "first": 1, "second": 2, "third": 3, "fourth": 4, "fifth": 5, "sixth": 6,
+    "seventh": 7, "eighth": 8, "ninth": 9, "tenth": 10, "eleventh": 11, "twelfth": 12,
+}
+
 _DE_NTH = {
     "erste": "ersten", "erster": "ersten", "ersten": "ersten", "erstes": "ersten", "1.": "ersten",
     "zweite": "zweiten", "zweiter": "zweiten", "zweiten": "zweiten", "zweites": "zweiten", "2.": "zweiten",
@@ -57,16 +62,30 @@ _DE_NTH = {
     "letzte": "letzten", "letzter": "letzten", "letzten": "letzten", "letztes": "letzten",
 }
 
+_DE_WEEKDAYS = {
+    "montag": "MO", "dienstag": "TU", "mittwoch": "WE", "donnerstag": "TH",
+    "freitag": "FR", "samstag": "SA", "sonntag": "SU",
+}
+
+_EN_WEEKDAYS = {
+    "monday": "MO", "tuesday": "TU", "wednesday": "WE", "thursday": "TH",
+    "friday": "FR", "saturday": "SA", "sunday": "SU",
+}
+
 _WEEKDAY_FORMS = {
     "montags": "jeden montag", "dienstags": "jeden dienstag", "mittwochs": "jeden mittwoch",
     "donnerstags": "jeden donnerstag", "freitags": "jeden freitag", "samstags": "jeden samstag", "sonntags": "jeden sonntag",
+    "immer montags": "jeden montag", "immer dienstags": "jeden dienstag", "immer mittwochs": "jeden mittwoch",
+    "immer donnerstags": "jeden donnerstag", "immer freitags": "jeden freitag", "immer samstags": "jeden samstag", "immer sonntags": "jeden sonntag",
     "mondays": "every monday", "tuesdays": "every tuesday", "wednesdays": "every wednesday",
     "thursdays": "every thursday", "fridays": "every friday", "saturdays": "every saturday", "sundays": "every sunday",
+    "on mondays": "every monday", "on tuesdays": "every tuesday", "on wednesdays": "every wednesday",
+    "on thursdays": "every thursday", "on fridays": "every friday", "on saturdays": "every saturday", "on sundays": "every sunday",
 }
 
 _SIMPLE = {
     "täglich": "täglich", "taeglich": "täglich", "jeden tag": "täglich", "jeden einzelnen tag": "täglich", "daily": "daily", "every day": "daily",
-    "wöchentlich": "alle 1 wochen", "woechentlich": "alle 1 wochen", "jede woche": "alle 1 wochen", "weekly": "every 1 weeks", "every week": "every 1 weeks",
+    "wöchentlich": "alle 1 wochen", "woechentlich": "alle 1 wochen", "jede woche": "alle 1 wochen", "weekly": "every 1 weeks", "every week": "every 1 weeks", "every other week": "every 2 weeks",
     "monatlich": "alle 1 monate", "jeden monat": "alle 1 monate", "monthly": "every 1 months", "every month": "every 1 months",
     "quartalsweise": "alle 1 quartale", "vierteljährlich": "alle 1 quartale", "vierteljaehrlich": "alle 1 quartale", "quarterly": "every 1 quarters", "every quarter": "every 1 quarters",
     "jährlich": "alle 1 jahre", "jaehrlich": "alle 1 jahre", "jedes jahr": "alle 1 jahre", "yearly": "every 1 years", "annually": "every 1 years", "every year": "every 1 years",
@@ -153,6 +172,37 @@ def _weekday_rule(family_timezone: str, today: date | None, clock: str | None):
     return normalize_scheduling_rule(raw, family_timezone)
 
 
+def _single_weekday_rule(family_timezone: str, today: date | None, clock: str | None, weekday: str, interval: int):
+    raw = {
+        "version": "scheduling-rule-v1",
+        "time_mode": "wall_clock",
+        "recurrence": {"frequency": "weekly", "interval": interval, "weekdays": [weekday]},
+    }
+    if today is not None:
+        raw["anchor_date"] = today.isoformat()
+    if clock:
+        raw["segments"] = [{"preferred_time": clock}]
+    return normalize_scheduling_rule(raw, family_timezone)
+
+
+def _canonical_weekday_interval(value: str) -> tuple[str, int] | None:
+    de_weekdays = "|".join(_DE_WEEKDAYS)
+    de_ordinals = "|".join(sorted((re.escape(item) for item in _DE_ORDINAL_INTERVALS), key=len, reverse=True))
+    de = re.fullmatch(rf"jeden\s+(\d+\.?|{de_ordinals})\s+({de_weekdays})", value)
+    if de:
+        token = de[1]
+        interval = int(token.rstrip(".")) if token[0].isdigit() else _DE_ORDINAL_INTERVALS[token]
+        return _DE_WEEKDAYS[de[2]], interval
+
+    en_weekdays = "|".join(_EN_WEEKDAYS)
+    en_ordinals = "|".join(_EN_ORDINAL_INTERVALS)
+    en = re.fullmatch(rf"every\s+(other|{en_ordinals})\s+({en_weekdays})", value)
+    if en:
+        interval = 2 if en[1] == "other" else _EN_ORDINAL_INTERVALS[en[1]]
+        return _EN_WEEKDAYS[en[2]], interval
+    return None
+
+
 def _canonical_interval(value: str) -> str | None:
     business_en = re.fullmatch(r"(?:every|each)?\s*(\d+)\.?\s*business\s*days?", value)
     if business_en:
@@ -173,20 +223,28 @@ def _canonical_interval(value: str) -> str | None:
 
 
 def _ordinal_interval(value: str) -> str | None:
-    match = re.fullmatch(
+    de = re.fullmatch(
         r"(?:jeden|jede|jedes)\s+(\w+)\s+"
         r"(tag|werktag|woche|monat|quartal|jahr)",
         value,
     )
-    if not match or match[1] not in _DE_ORDINAL_INTERVALS:
-        return None
-    unit = _DE_UNIT_MAP[match[2]]
-    return f"alle {_DE_ORDINAL_INTERVALS[match[1]]} {unit}"
+    if de and de[1] in _DE_ORDINAL_INTERVALS:
+        unit = _DE_UNIT_MAP[de[2]]
+        return f"alle {_DE_ORDINAL_INTERVALS[de[1]]} {unit}"
+
+    en_business = re.fullmatch(r"(?:every|each)\s+(\w+)\s+business\s+day", value)
+    if en_business and en_business[1] in _EN_ORDINAL_INTERVALS:
+        return f"alle {_EN_ORDINAL_INTERVALS[en_business[1]]} werktage"
+
+    en = re.fullmatch(r"(?:every|each)\s+(\w+)\s+(hour|day|week|month|quarter|year)", value)
+    if en and en[1] in _EN_ORDINAL_INTERVALS:
+        return f"every {_EN_ORDINAL_INTERVALS[en[1]]} {_EN_UNIT_MAP[en[2]]}"
+    return None
 
 
 def _canonical_quota(value: str) -> str | None:
     de = re.fullmatch(
-        r"(\d+)\s*(?:x|mal|-\s*mal)?\s*(?:pro|je|die|in der|in jeder)\s+(tag|woche|monat)",
+        r"(\d+)\s*(?:x|mal|-\s*mal)?\s*(?:pro|je|die|im|in der|in jeder)\s+(tag|woche|monat)",
         value,
     )
     if de:
@@ -238,6 +296,11 @@ def parse_flexible_scheduling_text(text: str, family_timezone: str, today: date 
 
     if value in _WEEKDAY_FORMS:
         return parse_scheduling_text(_with_clock(_WEEKDAY_FORMS[value], clock), family_timezone, today=today)
+
+    weekday_interval = _canonical_weekday_interval(value)
+    if weekday_interval:
+        weekday, interval = weekday_interval
+        return _single_weekday_rule(family_timezone, today, clock, weekday, interval)
 
     if value in _SIMPLE:
         return parse_scheduling_text(_with_clock(_SIMPLE[value], clock), family_timezone, today=today)
