@@ -13,6 +13,12 @@ const breadPrediction={
   prediction:{status:'upcoming',expected_interval_days:5,confidence:.78,purchase_count:8,days_since_purchase:4,days_until_expected:1},
   defaults:{quantity:'1',category:'Backwaren',aisle:'Backwaren',store:'Markt'},
 };
+const storePrediction={
+  key:'milch',
+  name:'Milch',
+  prediction:{status:'due',expected_interval_days:4,confidence:.88,purchase_count:4,days_since_purchase:4,days_until_expected:0,basis:'shopping_store_purchase_history',shopping_store_id:'store-west',shopping_store_label:'REWE · West'},
+  defaults:{quantity:'2 l',category:'Molkerei',aisle:'Kühlung',store:'REWE · West'},
+};
 
 test('routine editor shows learned cadence and keeps frequency goals optional',async({page})=>{
   await installApiMocks(page);
@@ -58,6 +64,32 @@ test('shopping prediction can be accepted explicitly without layout overflow',as
   await expect(panel).toHaveCount(0);
   const overflow=await page.evaluate(()=>document.documentElement.scrollWidth-document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(1);
+});
+
+test('shopping prediction explains canonical shopping-place evidence and learned quantity',async({page})=>{
+  await page.setViewportSize({width:390,height:844});
+  await installApiMocks(page);
+  let requestedList='';let acceptedBody=null;let suggestions=[storePrediction];
+  await page.route('**/api/shopping-predictions/**',async route=>{
+    const request=route.request();const url=new URL(request.url());const path=url.pathname;let body={};try{body=request.postDataJSON()||{}}catch{}
+    if(path==='/api/shopping-predictions/'&&request.method()==='GET'){
+      requestedList=url.searchParams.get('list')||'';
+      return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({generated_at:new Date().toISOString(),suggestions})});
+    }
+    if(path==='/api/shopping-predictions/accept/'&&request.method()==='POST'){
+      acceptedBody=body;suggestions=[];
+      return route.fulfill({status:201,contentType:'application/json',body:JSON.stringify({created:true,item:{id:'milk-item',shopping_list:'shop-1',name:'Milch',quantity:'2 l',category:'Molkerei',aisle:'Kühlung',checked:false}})});
+    }
+    return route.fallback();
+  });
+
+  await page.goto('/?page=shopping&list=shop-1');
+  const panel=page.locator('.shopping-predictions');
+  await expect(panel).toContainText('Bei REWE · West meist etwa alle 4 Tage');
+  await expect(panel).toContainText('Gelernte Menge: 2 l');
+  expect(requestedList).toBe('shop-1');
+  await panel.getByRole('button',{name:'Hinzufügen'}).click();
+  await expect.poll(()=>acceptedBody?.list).toBe('shop-1');
 });
 
 test('shopping prediction can be snoozed and bulk accept stays out of hot guesses',async({page})=>{
