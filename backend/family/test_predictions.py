@@ -124,6 +124,19 @@ class PredictionTests(TestCase):
             )
         return now
 
+    def _purchase_offsets(self, name, offsets):
+        now = timezone.now().replace(microsecond=0)
+        for days in offsets:
+            ShoppingPurchaseEvent.objects.create(
+                family=self.family,
+                shopping_list=self.shopping,
+                normalized_name=normalize_name(name),
+                display_name=name,
+                purchased_at=now - timedelta(days=days),
+                purchased_by=self.user,
+            )
+        return now
+
     def test_recurring_purchase_is_predicted_and_open_item_suppresses_it(self):
         now = self._purchase_history()
 
@@ -137,6 +150,64 @@ class PredictionTests(TestCase):
         ShoppingItem.objects.create(shopping_list=self.shopping, name="milch", added_by=self.user)
         suppressed = shopping_predictions(self.family, now=now)
         self.assertNotIn(normalize_name("Milch"), {item["key"] for item in suppressed["suggestions"]})
+
+    def test_recent_purchase_phase_recalibrates_but_one_outlier_does_not_win(self):
+        phase_now = self._purchase_offsets("Haferdrink", (76, 62, 48, 34, 29, 24, 19, 14))
+        outlier_now = self._purchase_offsets("Kaffee", (46, 41, 36, 31, 26, 6))
+
+        phase = next(
+            item for item in shopping_predictions(self.family, now=phase_now)["suggestions"]
+            if item["key"] == normalize_name("Haferdrink")
+        )
+        outlier = next(
+            item for item in shopping_predictions(self.family, now=outlier_now)["suggestions"]
+            if item["key"] == normalize_name("Kaffee")
+        )
+
+        self.assertEqual(phase["prediction"]["expected_interval_days"], 5.0)
+        self.assertEqual(outlier["prediction"]["expected_interval_days"], 5.0)
+        self.assertEqual(phase["prediction"]["recency_weighting"], "exponential")
+        self.assertEqual(phase["prediction"]["basis"], "family_purchase_history")
+
+    def test_hot_guesses_are_bounded_to_four_deterministic_results(self):
+        now = timezone.now().replace(microsecond=0)
+        for index in range(6):
+            name = f"Artikel {index}"
+            for days in (21, 16, 11, 6):
+                ShoppingPurchaseEvent.objects.create(
+                    family=self.family,
+                    shopping_list=self.shopping,
+                    normalized_name=normalize_name(name),
+                    display_name=name,
+                    purchased_at=now - timedelta(days=days),
+                    purchased_by=self.user,
+                )
+
+        result = shopping_predictions(self.family, now=now, limit=50)
+
+        self.assertEqual(len(result["suggestions"]), 4)
+        self.assertEqual([row["name"] for row in result["suggestions"]], ["Artikel 0", "Artikel 1", "Artikel 2", "Artikel 3"])
+
+    def test_snooze_temporarily_hides_suggestion_without_touching_purchase_history(self):
+        now = self._purchase_history("Brot")
+        before = ShoppingPurchaseEvent.objects.filter(family=self.family, normalized_name=normalize_name("Brot")).count()
+
+        response = self.client.post(
+            "/api/shopping-predictions/feedback/",
+            {"family": str(self.family.id), "key": normalize_name("Brot"), "action": "snoozed"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["action"], "snoozed")
+        feedback = ShoppingPredictionFeedback.objects.get(family=self.family, normalized_name=normalize_name("Brot"))
+        self.assertGreater(feedback.suppress_until, now)
+        hidden = shopping_predictions(self.family, now=now)
+        self.assertNotIn(normalize_name("Brot"), {item["key"] for item in hidden["suggestions"]})
+        self.assertEqual(
+            ShoppingPurchaseEvent.objects.filter(family=self.family, normalized_name=normalize_name("Brot")).count(),
+            before,
+        )
 
     def test_prediction_api_accepts_and_dismisses_without_cross_family_access(self):
         self._purchase_history()
