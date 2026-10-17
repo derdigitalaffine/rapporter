@@ -6,7 +6,7 @@ from rest_framework.response import Response
 from .models import Family, Membership, Routine
 from .routine_task_migration_models import RoutineTaskMigration
 from .routine_task_migration_service import migrate_routine_to_task
-from .serializers import TaskSerializer
+from .serializers import RoutineSerializer, TaskSerializer
 
 
 def _membership(user, family_id):
@@ -67,6 +67,19 @@ def routine_task_migration_detail(request, routine_id):
             "task_id": str(migration.task_id),
             "task": _task_payload(request, migration),
         })
+
+    current_values = request.data.get("routine") if isinstance(request.data, dict) else None
+    if current_values is not None:
+        if not isinstance(current_values, dict):
+            return Response({"routine": "Expected an object."}, status=status.HTTP_400_BAD_REQUEST)
+        serializer = RoutineSerializer(
+            routine,
+            data=current_values,
+            partial=True,
+            context={"request": request},
+        )
+        serializer.is_valid(raise_exception=True)
+        routine = serializer.save()
 
     try:
         task, created = migrate_routine_to_task(routine=routine, user=request.user)
