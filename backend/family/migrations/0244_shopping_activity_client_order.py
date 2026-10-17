@@ -25,7 +25,7 @@ class Migration(migrations.Migration):
         migrations.AddConstraint(
             model_name="shoppingsessionactivity",
             constraint=models.UniqueConstraint(
-                condition=models.Q(("client_stream__gt", ""), ("client_sequence__isnull", False)),
+                condition=models.Q(("client_sequence__isnull", False), ("client_stream__gt", "")),
                 fields=("session", "client_stream", "client_sequence"),
                 name="shop_activity_client_seq_uniq",
             ),
