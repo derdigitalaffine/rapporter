@@ -83,3 +83,27 @@ test('finance · reserved shopping item opens and finalizes through the atomic e
  expect(directExpensePosts).toBe(0);
  expect(checkedWrites).toBe(1);
 });
+
+test('shopping · budget planning is secondary and stays out of store mode',async({page})=>{
+ const state=await installApiMocks(page,{dismissOnboarding:true,language:'de'});
+ await page.route(/\/api\/expense-ledgers\/(?:\?.*)?$/,route=>json(route,[]));
+ await page.route(/\/api\/budget-commitments\/source\/shopping_item\/[^/]+\/(?:\?.*)?$/,route=>json(route,{commitment:null}));
+ await page.setViewportSize({width:390,height:844});
+ await page.goto('/?page=shopping');
+ await page.waitForLoadState('networkidle');
+
+ const panel=page.locator('details.shopping-budget-commitment');
+ await expect(panel).toBeVisible();
+ const followsShopping=await page.locator('.shopping-prediction-shell').evaluate(shell=>{
+  const shopping=shell.querySelector('.shopping-page');
+  const tools=shell.querySelector('.shopping-secondary-tools');
+  return Boolean(shopping&&tools&&(shopping.compareDocumentPosition(tools)&Node.DOCUMENT_POSITION_FOLLOWING));
+ });
+ expect(followsShopping).toBe(true);
+
+ const listId=state.shoppingLists[0].id;
+ await page.goto(`/?page=shopping&mode=store&list=${encodeURIComponent(listId)}`);
+ await page.waitForLoadState('networkidle');
+ await expect(page.locator('body')).toHaveClass(/shopping-focus/);
+ await expect(page.locator('details.shopping-budget-commitment')).toBeHidden();
+});
