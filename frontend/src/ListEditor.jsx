@@ -8,6 +8,7 @@ import ShoppingAudienceFields,{defaultShoppingAudience} from './ShoppingAudience
 import './workflow-i18n';
 import {toast} from './feedback';
 import {ErrorSummary,FormActions,FormField,FormShell,ProgressiveFieldGroup} from './form-primitives';
+import SymbolPicker from './SymbolPicker';
 import FamilySheet from './ui/FamilySheet';
 
 function initialAudience(list){
@@ -28,7 +29,7 @@ export default function ListEditor({type,list=null,family,onClose,onSaved}){
   <FormField id="list-name" label={t('name')} required><input value={form.name||''} onChange={e=>set('name',e.target.value)}/></FormField>
   {type==='shopping'&&canManageAudience&&<ShoppingAudienceFields family={audienceFamily} value={audience} onChange={setAudience} compact/>}
   <ProgressiveFieldGroup label={t('moreDetails')} defaultOpen={!isNew}>
-    <FormField id="list-symbol" label={t('symbol')}><select value={form.icon||''} onChange={e=>set('icon',e.target.value)}><option value={type==='task'?'list-check':'cart-shopping'}>{t('default')}</option><option value="house">{t('homeLabel')}</option><option value="store">{t('store')}</option><option value="star">{t('favorites')}</option></select></FormField>
+    <SymbolPicker label={t('symbol')} value={form.icon||initial.icon} onChange={icon=>set('icon',icon)} disabled={busy} options={['list-check','cart-shopping','house','store','star','calendar','utensils','car','broom','pet','school','heart']}/>
     {type==='task'&&canManageSettings&&<><label className="toggle-label"><input type="checkbox" checked={!!form.workflow_enabled} onChange={e=>set('workflow_enabled',e.target.checked)}/><span>{t('workflowUi.enabled')}</span></label><small>{t('workflowUi.hint')}</small>{list?.workflow_enabled&&form.workflow_enabled&&<WorkflowSettings list={list}/>}</>}
   </ProgressiveFieldGroup>
   <FormActions><button type="button" className="secondary" onClick={onClose} disabled={busy}>{t('cancel')}</button><button className="primary" disabled={busy||!form.name.trim()}><Icon name="check"/> {busy?t('saving'):t('save')}</button></FormActions>

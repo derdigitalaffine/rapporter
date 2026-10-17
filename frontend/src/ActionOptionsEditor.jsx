@@ -1,4 +1,6 @@
-import {useEffect,useRef,useState,useId} from 'react';
+import SymbolPicker from './SymbolPicker';
+import FamilySheet from './ui/FamilySheet';
+import {useEffect,useState,useId} from 'react';
 import {useTranslation} from 'react-i18next';
 import {api} from './api';
 import {Icon} from './icons';
@@ -9,12 +11,10 @@ import './unified-actions.css';
 const days=['MO','TU','WE','TH','FR','SA','SU'];
 const labels={de:['Mo','Di','Mi','Do','Fr','Sa','So'],en:['Mon','Tue','Wed','Thu','Fri','Sat','Sun']};
 export default function ActionOptionsEditor({item,onClose,onSaved}){
- const {i18n}=useTranslation();const de=!i18n.language.startsWith('en');const titleId=useId();const panel=useRef(null);
- const [value,setValue]=useState(null);const [error,setError]=useState('');const [busy,setBusy]=useState(false);const [iconFilter,setIconFilter]=useState('');
+ const {i18n}=useTranslation();const de=!i18n.language.startsWith('en');const titleId=useId();
+ const [value,setValue]=useState(null);const [error,setError]=useState('');const [busy,setBusy]=useState(false);
  const [kind,id]=String(item.id).split(':');const path=`/actions/${kind}/${id}/`;
  useEffect(()=>{let active=true;api(path).then(data=>{if(active)setValue(data)}).catch(err=>{if(active)setError(err.message)});return()=>{active=false}},[path]);
- const closeRef=useRef(onClose);closeRef.current=onClose;
- useEffect(()=>{const previous=document.activeElement;panel.current?.focus();const handler=event=>{if(event.key==='Escape'){event.preventDefault();closeRef.current()}if(event.key==='Tab'){const nodes=[...panel.current.querySelectorAll('button,input,select,textarea,summary,[tabindex="0"]')].filter(node=>!node.disabled&&node.getClientRects().length);const first=nodes[0],last=nodes.at(-1);if(event.shiftKey&&document.activeElement===first){event.preventDefault();last?.focus()}else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first?.focus()}}};document.addEventListener('keydown',handler);return()=>{document.removeEventListener('keydown',handler);previous?.focus()}},[]);
  const schedule=value?.schedule&&Object.keys(value.schedule).length?value.schedule:{version:'action-schedule-v1',mode:'learning',segments:[]};
  const recurrence=schedule.recurrence||{frequency:'daily',interval:1};
  function changeSchedule(changes){setValue(current=>{const currentSchedule=current?.schedule&&Object.keys(current.schedule).length?current.schedule:{version:'action-schedule-v1',mode:'learning',segments:[]};return({...current,schedule:{...currentSchedule,...changes}})})}
@@ -25,11 +25,11 @@ export default function ActionOptionsEditor({item,onClose,onSaved}){
  function updateTime(day,field,v){const segment=schedule.segments?.find(s=>(s.weekdays||days).includes(day))||{};const others=(schedule.segments||[]).flatMap(s=>{const rest=(s.weekdays||days).filter(d=>d!==day);return rest.length?[{...s,weekdays:rest}]:[]});const next={...segment,weekdays:[day]};if(field==='preferred_time'){if(v)next.preferred_time=v;else delete next.preferred_time;}else{next.window={start:segment.window?.start||'00:00',end:segment.window?.end||'23:59',[field]:v||(field==='start'?'00:00':'23:59')};}changeSchedule({segments:[...others,next]})}
  async function newRound(template){setBusy(true);setError('');try{const result=await api('/actions/decision-round/',{method:'POST',body:JSON.stringify({action_id:item.id,template_id:template.id,request_id:crypto.randomUUID()})});location.href=result.deep_link}catch(err){setError(err.message)}finally{setBusy(false)}}
  const proposal=value?.prediction?.suggested_schedule_change;const language=de?'de':'en';
- return <div className="sheet-backdrop" onMouseDown={event=>{if(event.target===event.currentTarget&&!busy)onClose()}}><section ref={panel} tabIndex={-1} className="quick-sheet action-options-sheet" role="dialog" aria-modal="true" aria-labelledby={titleId}>
-  <div className="sheet-head"><h2 id={titleId}>{item.title}</h2><button type="button" onClick={onClose} aria-label={de?'Schließen':'Close'}><Icon name="close"/></button></div>
+ return <FamilySheet className="action-options-sheet" labelledBy={titleId} onClose={onClose} busy={busy}>
+  <div className="sheet-head"><h2 id={titleId}>{item.title}</h2><button type="button" className="sheet-close" disabled={busy} onClick={onClose} aria-label={de?'Schließen':'Close'}><Icon name="close"/></button></div>
   {!value&&!error&&<p role="status">{de?'Wird geladen …':'Loading …'}</p>}
   {value&&<FormShell onSubmit={save}>
-   <fieldset className="action-icon-options"><legend>Icon</legend>{(value.icon_suggestions||[]).map(icon=><button type="button" key={icon} aria-label={icon} aria-pressed={value.icon===icon} onClick={()=>setValue(current=>({...current,icon}))}><Icon name={icon}/></button>)}</fieldset>
+   <SymbolPicker value={value.icon||'tasks'} options={value.icon_choices||value.icon_suggestions||[]} onChange={icon=>setValue(current=>({...current,icon}))} disabled={busy}/>
    <SchedulingDependenciesEditor familyId={item.family} anchorType="action" anchorId={value.id} anchorTitle={item.title} disabled={busy}/>
    <details><summary>{de?'Mehr Optionen':'More options'}</summary>
     <FormSection legend={de?'Wiederholung und Lernen':'Repeat and learning'}>
@@ -41,12 +41,12 @@ export default function ActionOptionsEditor({item,onClose,onSaved}){
      <fieldset className="action-day-options"><legend>{de?'Ausgeschlossene Tage':'Excluded days'}</legend>{days.map((day,index)=><label key={day}><input type="checkbox" checked={schedule.excluded_weekdays?.includes(day)||false} onChange={event=>changeSchedule({excluded_weekdays:event.target.checked?[...(schedule.excluded_weekdays||[]),day]:(schedule.excluded_weekdays||[]).filter(d=>d!==day)})}/>{labels[language][index]}</label>)}</fieldset>
      <fieldset className="action-weekday-times"><legend>{de?'Uhrzeit und Zeitfenster je Wochentag':'Preferred time and window per weekday'}</legend>{days.map((day,index)=>{const segment=schedule.segments?.find(s=>(s.weekdays||days).includes(day))||{};return <div key={day}><strong>{labels[language][index]}</strong>{[['preferred_time',de?'Bevorzugt':'Preferred'],['start',de?'Von':'From'],['end',de?'Bis':'To']].map(([field,label])=><label key={field}>{label}<input type="time" value={(field==='preferred_time'?segment.preferred_time:segment.window?.[field])||''} onChange={event=>updateTime(day,field,event.target.value)}/></label>)}</div>})}</fieldset>
     </FormSection>
-    <FormSection legend={de?'Darstellung':'Appearance'}><FormField label={de?'Icons suchen':'Search icons'}><input value={iconFilter} onChange={event=>setIconFilter(event.target.value)}/></FormField><div className="action-icon-options">{value.icon_choices?.filter(icon=>icon.includes(iconFilter.toLowerCase())).map(icon=><button type="button" key={icon} aria-label={icon} aria-pressed={value.icon===icon} onClick={()=>setValue(current=>({...current,icon}))}><Icon name={icon}/><span>{icon}</span></button>)}</div><FormField label={de?'Akzentfarbe':'Accent color'}><select value={value.accent_token||''} onChange={event=>setValue(current=>({...current,accent_token:event.target.value}))}>{value.accent_choices?.map(token=><option key={token} value={token}>{token||(de?'Standard':'Default')}</option>)}</select></FormField></FormSection>
+    <FormSection legend={de?'Darstellung':'Appearance'}><FormField label={de?'Akzentfarbe':'Accent color'}><select value={value.accent_token||''} onChange={event=>setValue(current=>({...current,accent_token:event.target.value}))}>{value.accent_choices?.map(token=><option key={token} value={token}>{token||(de?'Standard':'Default')}</option>)}</select></FormField></FormSection>
    </details>
    {value.decision_templates?.map(template=><button key={template.id} type="button" disabled={busy} onClick={()=>newRound(template)}>{de?'Neue Abstimmungsrunde: ':'New voting round: '}{template.question}</button>)}
    {value.prediction&&<p>{de?'Beobachtungen':'Observations'}: {value.prediction.sample_count} · {de?'Sicherheit':'Confidence'}: {Math.round(value.prediction.confidence*100)}%</p>}
    {proposal&&<div role="status"><p>{de?'Neue bevorzugte Zeit vorschlagen':'Suggested preferred time'}: {proposal.proposed.weekday} {proposal.proposed.preferred_time}</p><button type="button" disabled={busy} onClick={()=>feedback('accept')}>{de?'Übernehmen':'Accept'}</button><button type="button" disabled={busy} onClick={()=>feedback('reject')}>{de?'Nein':'Reject'}</button></div>}
-   {error&&<p role="alert">{error}</p>}<div className="action-sticky-submit"><button type="submit" disabled={busy}>{de?'Speichern':'Save'}</button></div>
+   {error&&<p role="alert">{error}</p>}<div className="action-sticky-submit"><button type="submit" className="primary" disabled={busy}>{de?'Speichern':'Save'}</button></div>
   </FormShell>}{!value&&error&&<p role="alert">{error}</p>}
- </section></div>;
+ </FamilySheet>;
 }

@@ -50,6 +50,47 @@ class MessengerTests(TestCase):
     def send(self, body="hello", **extra):
         return self.post(f"conversations/{self.conv}/messages/", {"client_id": str(uuid.uuid4()), "body": body, **extra})
 
+    def test_location_validation_retry_acl_and_erasure(self):
+        point = {"latitude": 52.520008, "longitude": 13.404954, "accuracy": 12.3}
+        key = str(uuid.uuid4())
+        sent = self.send("", location=point, client_id=key)
+        self.assertEqual(sent.status_code, 201)
+        self.assertEqual(sent.data["location"], {"latitude": 52.52001, "longitude": 13.40495, "accuracy": 12.3})
+        self.assertEqual(self.send("", location=point, client_id=key).data["id"], sent.data["id"])
+        self.assertEqual(self.send("", location={**point, "latitude": 53}, client_id=key).status_code, 400)
+        route = f'/api/chat/conversations/{self.conv}/messages/{sent.data["id"]}/'
+        self.client.force_authenticate(self.outsider)
+        self.assertEqual(self.client.get(f"/api/chat/conversations/{self.conv}/messages/").status_code, 404)
+        self.assertEqual(self.send("", location=point).status_code, 404)
+        self.client.force_authenticate(self.two)
+        rows = self.client.get(f"/api/chat/conversations/{self.conv}/messages/").data["results"]
+        self.assertEqual(rows[0]["location"], sent.data["location"])
+        self.assertEqual(self.client.delete(route).status_code, 403)
+        self.client.force_authenticate(self.one)
+        self.assertIsNone(self.client.delete(route).data["location"])
+        self.assertIsNone(ChatMessage.objects.get(pk=sent.data["id"]).location)
+
+    def test_location_rejects_malformed_values_and_metadata(self):
+        point = {"latitude": 52, "longitude": 13, "accuracy": 12}
+        invalid = [[], "52,13", {}, {**point, "latitude": True}, {**point, "latitude": 91}, {**point, "longitude": -181}, {**point, "accuracy": -1}, {**point, "accuracy": 100001}, {**point, "label": "private metadata"}, {**point, "latitude": "52"}]
+        for value in invalid:
+            with self.subTest(value=value):
+                self.assertEqual(self.send("", location=value).status_code, 400)
+        from .services import validate_location
+        from rest_framework.exceptions import ValidationError
+        for value in (float("nan"), float("inf"), -float("inf")):
+            with self.assertRaises(ValidationError):
+                validate_location({**point, "latitude": value})
+
+    def test_multipart_location_and_text_only_retry_compatibility(self):
+        import json
+        point = {"latitude": 0, "longitude": 0, "accuracy": 0}
+        response = self.client.post(f"/api/chat/conversations/{self.conv}/messages/", {"client_id": str(uuid.uuid4()), "body": "", "location": json.dumps(point)}, format="multipart")
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data["location"], point)
+        self.assertEqual(self.send("").status_code, 400)
+        self.assertIsNone(self.send("normal").data["location"])
+
     def test_direct_consent_idempotent_and_family_owner_is_not_participant(self):
         retry = self.post("conversations/", {"kind": "direct", "friendship_id": str(self.friend.pk)})
         self.assertEqual(retry.data["id"], self.conv)

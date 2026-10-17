@@ -11,7 +11,7 @@ async function boot(page,{language='de',familyless=false,failSend=false}={}){
  const rows=[{id:'message-1',sender_id:9,sender_name:'Kim',client_id:'initial',sequence:1,event_sequence:1,body:'Hallo aus der anderen Familie',created_at:new Date().toISOString(),edited:false,deleted:false,reply:null,attachments:[],reactions:[]}];
  chat.last_message=rows[0];
  const contacts={friends:[{id:friendId,user:{id:9,display_name:'Kim'}}],incoming:[{id:'invite-1',sender:{id:7,display_name:'Jo'},expires_at:new Date().toISOString()}],outgoing:[],blocked:[]};
- const state={chat,rows,contacts,requests:[],failSend};
+ const state={chat,rows,contacts,requests:[],sendKeys:[],failSend};
  await page.route('**/api/chat/**',async route=>{
   const req=route.request(),url=new URL(req.url()),path=url.pathname,method=req.method();let body={};try{body=req.postDataJSON()||{}}catch{}
   state.requests.push({path,method,body});
@@ -23,11 +23,11 @@ async function boot(page,{language='de',familyless=false,failSend=false}={}){
   if(path==='/api/chat/conversations/')return method==='POST'?json(route,chat,201):json(route,{results:[chat]});
   if(path===`/api/chat/conversations/${chatId}/messages/`){
    if(method==='POST'){
-    if(state.failSend)return json(route,{detail:'temporary'},503);
     const raw=req.postData()||'';const text=raw.match(/name="body"\r\n\r\n([\s\S]*?)\r\n--/)?.[1]||'';const key=raw.match(/name="client_id"\r\n\r\n([^\r]+)/)?.[1]||'';
-    const msg={...rows[0],id:'message-'+(rows.length+1),sender_id:1,sender_name:'Alex',body:text,client_id:key,sequence:++chat.revision,event_sequence:chat.revision};rows.push(msg);chat.last_message=msg;return json(route,msg,201)
+    state.sendKeys.push(key);if(state.failSend)return json(route,{detail:'temporary'},503);
+    const msg={...rows[0],id:'message-'+(rows.length+1),sender_id:1,sender_name:'Alex',body:text,location:JSON.parse(raw.match(/name="location"\r\n\r\n([^\r]+)/)?.[1]||'null'),client_id:key,sequence:++chat.revision,event_sequence:chat.revision};rows.push(msg);chat.last_message=msg;return json(route,msg,201)
    }
-   const q=url.searchParams.get('q');return json(route,{results:rows.filter(row=>!q||row.body.includes(q)),cursor:chat.revision,has_more:false,before:1,conversation:chat})
+   const q=url.searchParams.get('q'),before=Number(url.searchParams.get('before')||Infinity),after=Number(url.searchParams.get('after')||0);const matches=rows.filter(row=>(!q||row.body.includes(q))&&row.sequence<before&&row.event_sequence>after);return json(route,{results:after?matches:matches.slice(-50),cursor:chat.revision,has_more:!after&&matches.length>50,before:matches.at(-50)?.sequence||1,conversation:chat})
   }
   if(path===`/api/chat/conversations/${chatId}/`){if(method==='PATCH')Object.assign(chat,body);return json(route,chat)}
   if(path.includes('/messages/')&&method==='DELETE'){rows[0].body='';rows[0].deleted=true;rows[0].event_sequence=++chat.revision;return json(route,rows[0])}
@@ -45,7 +45,7 @@ test('personal chat sends canonical retry-safe message without legacy family not
 });
 
 test('send failure retains draft and stable retry UUID',async({page})=>{
- const state=await boot(page,{failSend:true});await openChat(page);await page.getByRole('textbox',{name:'Nachricht',exact:true}).fill('Retry me');await page.getByRole('button',{name:'Senden',exact:true}).click();await expect(page.getByRole('alert')).toContainText('fehlgeschlagen');await expect(page.getByRole('textbox',{name:'Nachricht',exact:true})).toHaveValue('Retry me');state.failSend=false;await page.getByRole('button',{name:'Senden',exact:true}).click();await expect(page.locator('.messenger-bubble.own')).toContainText('Retry me');expect(state.rows.at(-1).client_id).toMatch(/^[0-9a-f-]{36}$/);
+ const state=await boot(page,{failSend:true});await openChat(page);await page.getByRole('textbox',{name:'Nachricht',exact:true}).fill('Retry me');await page.getByRole('button',{name:'Senden',exact:true}).click();await expect(page.getByRole('alert')).toContainText('Nicht gesendet');await expect(page.getByRole('textbox',{name:'Nachricht',exact:true})).toHaveValue('Retry me');state.failSend=false;await page.getByRole('button',{name:'Senden',exact:true}).click();await expect(page.locator('.messenger-bubble.own')).toContainText('Retry me');expect(state.rows.at(-1).client_id).toMatch(/^[0-9a-f-]{36}$/);
 });
 
 test('email contact invitation and acceptance use explicit personal endpoints',async({page})=>{
@@ -60,8 +60,8 @@ test('friend duels reuse game cards and blocking removes further controls',async
  const state=await boot(page);await openChat(page);await page.locator('.messenger-chat-title').click();await expect(page.getByRole('heading',{name:'Freundesduelle'})).toBeVisible();await expect(page.getByText('Just for fun – ohne Familienaufgaben oder Einsatz.')).toBeVisible();await expect(page.getByText('Aufgaben-Einsatz')).toHaveCount(0);await page.getByRole('button',{name:'Kontakt blockieren',exact:true}).click();const dialog=page.getByRole('alertdialog');await dialog.getByRole('button',{name:'Kontakt blockieren',exact:true}).click();await expect(page.getByText('Dieser Chat ist nur lesbar.')).toBeVisible();await expect(page.getByRole('button',{name:'Senden',exact:true})).toHaveCount(0);expect(state.chat.can_send).toBe(false);
 });
 
-for(const width of [320,390,1440])test(`messenger remains responsive and keyboard accessible at ${width}px`,async({page})=>{
- await page.setViewportSize({width,height:900});await boot(page);await openChat(page);await page.getByRole('textbox',{name:'Nachricht',exact:true}).fill('Keyboard');await page.getByRole('textbox',{name:'Nachricht',exact:true}).press('Enter');await expect(page.locator('.messenger-bubble.own')).toContainText('Keyboard');expect(await page.evaluate(()=>document.documentElement.scrollWidth-document.documentElement.clientWidth)).toBeLessThanOrEqual(1);expect((await page.getByRole('textbox',{name:'Nachricht',exact:true}).boundingBox()).width).toBeGreaterThanOrEqual(100);await expect(page.locator('.global-create-fab')).toBeHidden();for(const control of ['Senden','Sprachnachricht aufnehmen']){const box=await page.getByRole('button',{name:control,exact:true}).boundingBox();expect(box.width).toBeGreaterThanOrEqual(44);expect(box.height).toBeGreaterThanOrEqual(44)}const axe=await new AxeBuilder({page}).include('.messenger-page').analyze();expect(axe.violations.filter(x=>['critical','serious'].includes(x.impact))).toEqual([]);
+for(const width of [320,390,1440])test(`messenger remains responsive and keyboard accessible at ${width}px`,async({page},testInfo)=>{
+ await page.setViewportSize({width,height:900});await boot(page);await openChat(page);await page.getByRole('textbox',{name:'Nachricht',exact:true}).fill('Keyboard');await page.getByRole('textbox',{name:'Nachricht',exact:true}).press('Enter');await expect(page.locator('.messenger-bubble.own')).toContainText('Keyboard');expect(await page.evaluate(()=>document.documentElement.scrollWidth-document.documentElement.clientWidth)).toBeLessThanOrEqual(1);expect((await page.getByRole('textbox',{name:'Nachricht',exact:true}).boundingBox()).width).toBeGreaterThanOrEqual(100);await expect(page.locator('.global-create-fab')).toBeHidden();for(const control of ['Senden','Sprachnachricht aufnehmen']){const box=await page.getByRole('button',{name:control,exact:true}).boundingBox();expect(box.width).toBeGreaterThanOrEqual(44);expect(box.height).toBeGreaterThanOrEqual(44)}const axe=await new AxeBuilder({page}).include('.messenger-page').analyze();expect(axe.violations.filter(x=>['critical','serious'].includes(x.impact))).toEqual([]);await testInfo.attach(`messenger-${width}`,{body:await page.screenshot(),contentType:'image/png'});
 });
 
 test('personal account without family opens messenger and no family tools',async({page})=>{
@@ -167,8 +167,9 @@ test('message dates and empty search results are readable without losing the dra
  await boot(page);await openChat(page);
  await expect(page.locator('.messenger-day')).toHaveCount(1);
  const field=page.getByRole('textbox',{name:'Nachricht',exact:true});await field.fill('Mein Entwurf');
+ await page.locator('.messenger-chat-head').getByRole('button',{name:'Nachrichten durchsuchen',exact:true}).click();
  await page.getByRole('searchbox',{name:'Nachrichten durchsuchen',exact:true}).fill('not-in-chat');
- await page.getByRole('button',{name:'Nachrichten durchsuchen',exact:true}).click();
+ await page.locator('.messenger-search').getByRole('button',{name:'Nachrichten durchsuchen',exact:true}).click();
  await expect(page.getByText('Keine passenden Nachrichten.',{exact:true})).toBeVisible();
  await expect(field).toHaveValue('Mein Entwurf');
  await page.getByRole('searchbox',{name:'Nachrichten durchsuchen',exact:true}).fill('');
@@ -194,4 +195,40 @@ test('dark messenger and main navigation use the current surface colors accessib
  const axe=await new AxeBuilder({page}).include('.messenger-page').include('.bottom-nav').analyze();
  expect(axe.violations.filter(x=>['critical','serious'].includes(x.impact))).toEqual([]);
  await page.screenshot({path:`/tmp/familyos-messenger-dark-${testInfo.project.name}.png`});
+});
+
+test('location requires explicit capture, review and send; retry preserves point and key',async({page})=>{
+ await page.addInitScript(()=>{window.geoRequests=0;Object.defineProperty(navigator,'geolocation',{value:{getCurrentPosition:success=>{window.geoRequests++;success({coords:{latitude:52.52,longitude:13.405,accuracy:12}})}}})});
+ const state=await boot(page,{failSend:true});await openChat(page);
+ await page.getByRole('button',{name:'Standort',exact:true}).click();
+ expect(await page.evaluate(()=>window.geoRequests)).toBe(0);
+ const dialog=page.getByRole('dialog');await dialog.getByRole('button',{name:'Standort ermitteln',exact:true}).click();
+ await expect(dialog).toContainText('52.52000');expect(state.rows).toHaveLength(1);
+ await dialog.getByRole('button',{name:'Zur Nachricht hinzufügen'}).click();await expect(dialog).toHaveCount(0);
+ await page.getByRole('button',{name:'Senden',exact:true}).click();await expect(page.getByRole('alert')).toContainText('Nicht gesendet');
+ await expect(page.locator('.messenger-location-draft')).toContainText('52.52000');
+ state.failSend=false;await page.getByRole('button',{name:'Senden',exact:true}).click();await expect(page.locator('.messenger-bubble.own')).toContainText('In OpenStreetMap öffnen');expect(state.rows.at(-1).location).toEqual({latitude:52.52,longitude:13.405,accuracy:12});expect(state.sendKeys).toHaveLength(2);expect(state.sendKeys[0]).toBe(state.sendKeys[1]);
+ await expect(page.locator('.messenger-location-draft')).toHaveCount(0);
+});
+
+test('location denial can be retried and cancel never sends',async({page})=>{
+ await page.addInitScript(()=>{Object.defineProperty(navigator,'geolocation',{value:{getCurrentPosition:(_success,error)=>error({code:1})}})});
+ const state=await boot(page);await openChat(page);const trigger=page.getByRole('button',{name:'Standort',exact:true});await trigger.click();
+ await page.getByRole('button',{name:'Standort ermitteln',exact:true}).click();await expect(page.getByRole('alert')).toContainText('Standortfreigabe abgelehnt');
+ await expect(page.getByRole('button',{name:'Zur Nachricht hinzufügen'})).toBeDisabled();await page.getByRole('dialog').press('Escape');await expect(trigger).toBeFocused();expect(state.rows).toHaveLength(1);
+});
+
+test('older history preserves anchor and new messages do not interrupt reading',async({page})=>{
+ const state=await boot(page),first=state.rows[0];
+ state.rows.push(...Array.from({length:100},(_,i)=>({...first,id:`older-${i}`,sequence:i+2,event_sequence:i+2,body:`History ${i+2}`})));state.chat.revision=101;
+ await page.locator('.messenger-chat-row').click();const history=page.locator('.messenger-history');
+ await history.evaluate(node=>{node.scrollTop=0});
+ const anchor=page.locator('.messenger-bubble').first(),text=await anchor.textContent(),top=(await anchor.boundingBox()).y;
+ await page.getByRole('button',{name:'Ältere Nachrichten',exact:true}).click();
+ await expect(page.locator('.messenger-bubble')).toHaveCount(100);
+ const same=page.locator('.messenger-bubble').filter({hasText:text}).first();expect(Math.abs((await same.boundingBox()).y-top)).toBeLessThan(3);
+ const position=await history.evaluate(node=>node.scrollTop);
+ state.rows.push({...first,id:'new-live',sequence:102,event_sequence:102,body:'Neue Live-Nachricht'});state.chat.revision=102;
+ await expect(page.getByRole('button',{name:'Neue Nachrichten'})).toBeVisible();expect(Math.abs(await history.evaluate(node=>node.scrollTop)-position)).toBeLessThan(3);
+ await page.getByRole('button',{name:'Neue Nachrichten'}).click();await expect(page.getByText('Neue Live-Nachricht')).toBeInViewport();
 });
