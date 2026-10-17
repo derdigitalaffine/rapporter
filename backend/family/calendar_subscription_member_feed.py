@@ -23,6 +23,11 @@ def member_feed(request, token, member_id):
     ).first()
     if member is None:
         return response(status=404)
+    configured = {str(value) for value in grant.included_member_ids} if isinstance(grant.included_member_ids, list) else set()
+    is_owner = member.user_id == grant.created_by_id
+    is_selected_dependent = member.role in (Membership.Role.CHILD, Membership.Role.TEEN) and str(member.pk) in configured
+    if not (is_owner or is_selected_dependent):
+        return response(status=404)
     try:
         return ics_response(request, grant, shared_events(grant, member))
     except CalendarCapacityError:
