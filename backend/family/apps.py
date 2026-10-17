@@ -40,6 +40,8 @@ class FamilyConfig(AppConfig):
             ReferenceDataset,
             ReferenceDatasetActivationEvent,
             ReferenceDatasetLease,
+            ReferenceDatasetRecord,
+            ReferenceDatasetSearchTerm,
         )
         from .today_models import TodayLayout
         from .todo_models import TodoActionPreference, TodoPreference
@@ -75,6 +77,8 @@ class FamilyConfig(AppConfig):
         core_models.ReferenceDataset = ReferenceDataset
         core_models.ReferenceDatasetActivationEvent = ReferenceDatasetActivationEvent
         core_models.ReferenceDatasetLease = ReferenceDatasetLease
+        core_models.ReferenceDatasetRecord = ReferenceDatasetRecord
+        core_models.ReferenceDatasetSearchTerm = ReferenceDatasetSearchTerm
         core_models.TodayLayout = TodayLayout
         core_models.TodoPreference = TodoPreference
         core_models.TodoActionPreference = TodoActionPreference
