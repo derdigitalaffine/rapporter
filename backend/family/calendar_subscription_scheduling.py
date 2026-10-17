@@ -235,7 +235,7 @@ def dav(request, path=''):
             return _principal_propfind(request, grant, actual)
         return _scheduled(core.response(status=404))
 
-    schedule_match = request.headers.get('If-Schedule-Tag-Match')
-    if schedule_match and not request.headers.get('If-Match'):
+    schedule_match = request.META.get('HTTP_IF_SCHEDULE_TAG_MATCH')
+    if schedule_match and not request.META.get('HTTP_IF_MATCH'):
         request.META['HTTP_IF_MATCH'] = schedule_match
     return _apply_schedule_tag(request, _scheduled(core.dav(request, path)))
