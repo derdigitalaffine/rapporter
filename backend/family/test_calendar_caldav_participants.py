@@ -32,7 +32,9 @@ class CalDavFamilyParticipantTests(TestCase):
         self.public = APIClient()
         self.auth = 'Basic ' + base64.b64encode(f"{self.grant['username']}:{self.grant['password']}".encode()).decode()
         self.home = f"/caldav/{self.grant['id']}/home/family/"
+        self.principal = f"/caldav/{self.grant['id']}/principal/"
         self.principals = f"/caldav/{self.grant['id']}/principals/"
+        self.schedule_home = f"/caldav/{self.grant['id']}/home/"
         self.start = datetime(2026, 10, 20, 15, 0, tzinfo=utc.utc)
 
     def dav(self, method='PROPFIND', path=None, body='', content_type='application/xml', **headers):
@@ -45,8 +47,10 @@ class CalDavFamilyParticipantTests(TestCase):
             **headers,
         )
 
-    def event_body(self, event_id, title='Family event', attendees=(), organizer=None):
+    def event_body(self, event_id, title='Family event', attendees=(), organizer=None, method=None):
         calendar = Calendar(); calendar.add('version', '2.0'); calendar.add('prodid', '-//FamilyOS test//EN')
+        if method:
+            calendar.add('method', method)
         event = Event(); event.add('uid', f'{event_id}@iphone'); event.add('summary', title)
         event.add('dtstart', self.start); event.add('dtend', self.start + timedelta(hours=1))
         if organizer:
@@ -58,15 +62,15 @@ class CalDavFamilyParticipantTests(TestCase):
         return calendar.to_ical()
 
     def test_child_without_email_is_searchable_as_caldav_principal(self):
-        principal = f"/caldav/{self.grant['id']}/principal/"
         propfind = self.dav(
-            path=principal,
+            path=self.principal,
             body='<d:propfind xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav"><d:prop><d:principal-collection-set/><c:calendar-user-address-set/></d:prop></d:propfind>',
             HTTP_DEPTH='0',
         )
         self.assertEqual(propfind.status_code, 207)
         self.assertIn(self.principals.encode(), propfind.content)
         self.assertIn(f'mailto:{self.owner.pk}@members.familyos.invalid'.encode(), propfind.content)
+        self.assertIn('calendar-schedule', propfind.get('DAV', ''))
 
         body = '''<d:principal-property-search xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">
           <d:property-search><d:prop><d:displayname/></d:prop><d:match>Emma</d:match></d:property-search>
@@ -79,9 +83,46 @@ class CalDavFamilyParticipantTests(TestCase):
         self.assertIn(f'mailto:{self.child.pk}@members.familyos.invalid'.encode(), result.content)
         self.assertIn(f'urn:uuid:{self.child.pk}'.encode(), result.content)
         self.assertIn(b'INDIVIDUAL', result.content)
-        self.assertNotIn(b'calendar-schedule', result.get('DAV', '').encode())
-        self.assertNotIn(b'schedule-inbox-URL', result.content)
-        self.assertNotIn(b'schedule-outbox-URL', result.content)
+        self.assertIn('calendar-schedule', result.get('DAV', ''))
+
+    def test_internal_scheduling_is_discoverable_and_outbox_rejects_outsiders(self):
+        discovery = self.dav(
+            path=self.principal,
+            body='<d:propfind xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav"><d:prop><c:schedule-inbox-URL/><c:schedule-outbox-URL/></d:prop></d:propfind>',
+            HTTP_DEPTH='0',
+        )
+        self.assertEqual(discovery.status_code, 207)
+        self.assertIn((self.schedule_home + 'inbox/').encode(), discovery.content)
+        self.assertIn((self.schedule_home + 'outbox/').encode(), discovery.content)
+
+        inbox = self.dav(
+            path=self.schedule_home + 'inbox/',
+            body='<d:propfind xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav"><d:prop><d:resourcetype/><c:schedule-default-calendar-URL/></d:prop></d:propfind>',
+            HTTP_DEPTH='0',
+        )
+        self.assertEqual(inbox.status_code, 207)
+        self.assertIn(b'schedule-inbox', inbox.content)
+        self.assertIn(self.home.encode(), inbox.content)
+
+        owner_address = f'mailto:{self.owner.pk}@members.familyos.invalid'
+        child_address = f'mailto:{self.child.pk}@members.familyos.invalid'
+        outbox_path = self.schedule_home + 'outbox/'
+        scheduled = self.dav(
+            'POST', path=outbox_path,
+            body=self.event_body(uuid4(), organizer=owner_address, attendees=[(child_address, 'Emma')], method='REQUEST'),
+            content_type='text/calendar',
+        )
+        self.assertEqual(scheduled.status_code, 200)
+        self.assertIn(b'schedule-response', scheduled.content)
+        self.assertIn(child_address.encode(), scheduled.content)
+        self.assertIn(b'2.0;Success', scheduled.content)
+
+        outsider = self.dav(
+            'POST', path=outbox_path,
+            body=self.event_body(uuid4(), organizer=owner_address, attendees=[('mailto:outside@example.com', 'Outside')], method='REQUEST'),
+            content_type='text/calendar',
+        )
+        self.assertEqual(outsider.status_code, 403)
 
     def test_existing_family_participant_is_exported_without_public_ics_leak(self):
         event = FamilyEvent.objects.create(
@@ -99,7 +140,7 @@ class CalDavFamilyParticipantTests(TestCase):
         attendee = component['ATTENDEE']
         self.assertEqual(str(attendee), f'mailto:{self.child.pk}@members.familyos.invalid')
         self.assertEqual(str(attendee.params['CN']), 'Emma')
-        self.assertEqual(str(attendee.params['SCHEDULE-AGENT']), 'CLIENT')
+        self.assertEqual(str(attendee.params['SCHEDULE-AGENT']), 'SERVER')
         self.assertNotIn('ORGANIZER', component)
 
         feed_path = self.grant['subscription_url'].replace('https://calendar.example.test', '')
@@ -126,7 +167,7 @@ class CalDavFamilyParticipantTests(TestCase):
         attendees = component['ATTENDEE'] if isinstance(component['ATTENDEE'], list) else [component['ATTENDEE']]
         self.assertEqual({str(value) for value in attendees}, {owner_address, child_address})
         self.assertEqual(str(component['ORGANIZER']), owner_address)
-        self.assertEqual(str(component['ORGANIZER'].params['SCHEDULE-AGENT']), 'CLIENT')
+        self.assertEqual(str(component['ORGANIZER'].params['SCHEDULE-AGENT']), 'SERVER')
 
         removed = self.dav(
             'PUT', path=path,
