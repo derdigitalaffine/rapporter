@@ -1,24 +1,27 @@
 import {readFileSync} from 'node:fs';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {decisionResultState,decisionUrgency,filterDecisions,hasDecisionParticipation,sortDecisions} from '../src/decision-presentation.js';
+import {decisionNeedsVote,decisionResultState,decisionUrgency,filterDecisions,hasDecisionParticipation,sortDecisions} from '../src/decision-presentation.js';
 
 const hub=readFileSync(new URL('../src/DecisionsHub.jsx',import.meta.url),'utf8');
 const css=readFileSync(new URL('../src/decisions.css',import.meta.url),'utf8');
 
 const NOW=Date.parse('2026-10-17T12:00:00Z');
 
-test('open decisions are prioritized deterministically by real deadlines',()=>{
+test('open decisions are prioritized by missing action, then real deadlines',()=>{
   const rows=[
     {id:'closed',is_open:false},
-    {id:'later',is_open:true,closes_at:'2026-10-19T12:00:00Z'},
-    {id:'no-deadline',is_open:true},
-    {id:'soon',is_open:true,closes_at:'2026-10-17T18:00:00Z'},
+    {id:'answered-soon',is_open:true,can_vote:true,my_option_ids:['a'],closes_at:'2026-10-17T14:00:00Z'},
+    {id:'unanswered-later',is_open:true,can_vote:true,my_option_ids:[],closes_at:'2026-10-19T12:00:00Z'},
+    {id:'unanswered-soon',is_open:true,can_vote:true,my_option_ids:[],closes_at:'2026-10-17T18:00:00Z'},
+    {id:'no-deadline',is_open:true,can_vote:false},
   ];
-  assert.deepEqual(sortDecisions(rows,NOW).map(row=>row.id),['soon','later','no-deadline','closed']);
+  assert.deepEqual(sortDecisions(rows,NOW).map(row=>row.id),['unanswered-soon','unanswered-later','answered-soon','no-deadline','closed']);
+  assert.equal(decisionNeedsVote(rows[2]),true);
+  assert.equal(decisionNeedsVote(rows[1]),false);
   assert.equal(decisionUrgency(rows[3],NOW),'soon');
-  assert.equal(decisionUrgency(rows[1],NOW),'upcoming');
-  assert.equal(decisionUrgency(rows[2],NOW),'normal');
+  assert.equal(decisionUrgency(rows[2],NOW),'upcoming');
+  assert.equal(decisionUrgency(rows[4],NOW),'normal');
 });
 
 test('presentation filtering never mutates domain state or invents results',()=>{
