@@ -44,6 +44,20 @@ class ShoppingItemViewSet(AccessShoppingItemViewSet):
 
 
 class ShoppingStoreViewSet(AccessShoppingStoreViewSet):
+    def destroy(self, request, *args, **kwargs):
+        store = self.get_object()
+        if store.list_assignments.exists() or store.shopping_templates.exists():
+            return Response(
+                {
+                    "detail": (
+                        "Dieser Einkaufsort wird noch von einer Einkaufsliste oder Vorlage verwendet. "
+                        "Deaktiviere ihn stattdessen oder entferne zuerst die Zuordnungen."
+                    )
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+        return super().destroy(request, *args, **kwargs)
+
     @action(detail=True, methods=["get"], url_path="learned-order")
     def learned_order(self, request, pk=None):
         store = self.get_object()

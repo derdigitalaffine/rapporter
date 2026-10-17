@@ -78,6 +78,40 @@ class ShoppingTemplateApiTests(TestCase):
         self.shopping.refresh_from_db()
         self.assertEqual(self.shopping.store, "REWE · West")
 
+    def test_store_delete_is_only_allowed_when_unreferenced(self):
+        referenced = self._store(name="REWE", branch_label="Nord")
+        assigned = self.client.post(
+            f"/api/shopping-stores/{referenced['id']}/assign/",
+            {"shopping_list": str(self.shopping.id)},
+            format="json",
+        )
+        self.assertEqual(assigned.status_code, 200, assigned.data)
+
+        blocked = self.client.delete(f"/api/shopping-stores/{referenced['id']}/")
+        self.assertEqual(blocked.status_code, 409, blocked.data)
+        self.assertTrue(ShoppingStore.objects.filter(id=referenced["id"]).exists())
+        self.assertTrue(ShoppingListStoreProfile.objects.filter(shopping_list=self.shopping, store_id=referenced["id"]).exists())
+
+        deactivated = self.client.patch(
+            f"/api/shopping-stores/{referenced['id']}/",
+            {"active": False},
+            format="json",
+        )
+        self.assertEqual(deactivated.status_code, 200, deactivated.data)
+        self.assertFalse(deactivated.data["active"])
+        self.assertTrue(ShoppingListStoreProfile.objects.filter(shopping_list=self.shopping, store_id=referenced["id"]).exists())
+
+        template_store = self._store(name="dm")
+        self._template(name="Drogerie", default_store=template_store["id"])
+        template_blocked = self.client.delete(f"/api/shopping-stores/{template_store['id']}/")
+        self.assertEqual(template_blocked.status_code, 409, template_blocked.data)
+        self.assertTrue(ShoppingStore.objects.filter(id=template_store["id"]).exists())
+
+        disposable = self._store(name="Wochenmarkt")
+        deleted = self.client.delete(f"/api/shopping-stores/{disposable['id']}/")
+        self.assertEqual(deleted.status_code, 204)
+        self.assertFalse(ShoppingStore.objects.filter(id=disposable["id"]).exists())
+
     def test_template_rejects_cross_family_store_and_duplicate_names(self):
         foreign = ShoppingStore.objects.create(family=self.other_family, name="Foreign", created_by=self.other)
         response = self.client.post(

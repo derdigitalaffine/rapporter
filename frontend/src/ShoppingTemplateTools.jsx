@@ -3,7 +3,7 @@ import {useEffect,useMemo,useState} from 'react';
 import {useTranslation} from 'react-i18next';
 import {api} from './api';
 import {Icon} from './icons';
-import {toast} from './feedback';
+import {confirmAction,toast} from './feedback';
 import ShoppingAudienceFields,{defaultShoppingAudience} from './ShoppingAudienceFields';
 import {queueShoppingTemplateApply} from './shopping-offline';
 import './shopping-template-i18n';
@@ -11,14 +11,16 @@ import './shopping-templates.css';
 
 const unwrap=value=>value?.results||value||[];
 const cacheKey=(kind,familyId)=>`familyos-shopping-${kind}:${familyId}`;
+const emptyStoreForm=()=>({name:'',branch_label:'',address:'',website_url:'',offers_url:'',note:'',sort_order:'0'});
 function readCache(kind,familyId){try{return JSON.parse(localStorage.getItem(cacheKey(kind,familyId))||'[]')}catch{return[]}}
 function writeCache(kind,familyId,value){try{localStorage.setItem(cacheKey(kind,familyId),JSON.stringify(value))}catch{}}
 
 export default function ShoppingTemplateTools({familyId,list,onChanged}){
  const {t}=useTranslation();
- const [templates,setTemplates]=useState([]);const [stores,setStores]=useState([]);const [busy,setBusy]=useState(false);const [error,setError]=useState('');const [preview,setPreview]=useState(null);const [templateName,setTemplateName]=useState(list?.name||'');const [manualOpen,setManualOpen]=useState(false);const [manualName,setManualName]=useState('');const [manualItems,setManualItems]=useState('');const [manualStore,setManualStore]=useState('');const [storeOpen,setStoreOpen]=useState(false);const [storeForm,setStoreForm]=useState({name:'',branch_label:'',website_url:'',offers_url:''});const [selectedStore,setSelectedStore]=useState('');const [online,setOnline]=useState(()=>typeof navigator==='undefined'||navigator.onLine);const [listTemplate,setListTemplate]=useState(null);const [listAudience,setListAudience]=useState(defaultShoppingAudience);
+ const [templates,setTemplates]=useState([]);const [stores,setStores]=useState([]);const [busy,setBusy]=useState(false);const [error,setError]=useState('');const [preview,setPreview]=useState(null);const [templateName,setTemplateName]=useState(list?.name||'');const [manualOpen,setManualOpen]=useState(false);const [manualName,setManualName]=useState('');const [manualItems,setManualItems]=useState('');const [manualStore,setManualStore]=useState('');const [storeOpen,setStoreOpen]=useState(false);const [editingStore,setEditingStore]=useState(null);const [storeForm,setStoreForm]=useState(emptyStoreForm);const [selectedStore,setSelectedStore]=useState('');const [online,setOnline]=useState(()=>typeof navigator==='undefined'||navigator.onLine);const [listTemplate,setListTemplate]=useState(null);const [listAudience,setListAudience]=useState(defaultShoppingAudience);
  const activeStores=stores.filter(store=>store.active!==false);
  const assignedStore=useMemo(()=>stores.find(store=>(store.shopping_list_ids||[]).some(id=>String(id)===String(list?.id)))||null,[stores,list?.id]);
+ const assignableStores=useMemo(()=>assignedStore&&!activeStores.some(store=>String(store.id)===String(assignedStore.id))?[assignedStore,...activeStores]:activeStores,[activeStores,assignedStore]);
 
  async function load(){
   if(!familyId)return;
@@ -34,7 +36,7 @@ export default function ShoppingTemplateTools({familyId,list,onChanged}){
   }catch(e){setTemplates(readCache('templates',familyId));setStores(readCache('stores',familyId));setError(e.message||t('shoppingTemplateUi.loadFailed'))}
  }
  useEffect(()=>{const update=()=>setOnline(navigator.onLine);window.addEventListener('online',update);window.addEventListener('offline',update);return()=>{window.removeEventListener('online',update);window.removeEventListener('offline',update)}},[]);
- useEffect(()=>{setTemplateName(list?.name||'');setPreview(null);void load()},[familyId,list?.id,online]);
+ useEffect(()=>{setTemplateName(list?.name||'');setPreview(null);setStoreOpen(false);setEditingStore(null);setStoreForm(emptyStoreForm());void load()},[familyId,list?.id,online]);
  useEffect(()=>{setSelectedStore(assignedStore?.id||'')},[assignedStore?.id]);
 
  async function saveCurrent(){
@@ -84,13 +86,37 @@ export default function ShoppingTemplateTools({familyId,list,onChanged}){
    setListTemplate(null);setListAudience(defaultShoppingAudience());toast(t('shoppingTemplateUi.listCreated'),{type:'success'});window.location.assign(`/?page=shopping&list=${encodeURIComponent(created.id)}`);
   }catch(e){setError(e.message);toast(e.message||t('shoppingTemplateUi.loadFailed'),{type:'error'})}finally{setBusy(false)}
  }
- async function createStore(e){
+ function openStoreEditor(store=null){
+  setEditingStore(store);
+  setStoreForm(store?{
+   name:store.name||'',branch_label:store.branch_label||'',address:store.address||'',website_url:store.website_url||'',offers_url:store.offers_url||'',note:store.note||'',sort_order:String(store.sort_order??0),
+  }:emptyStoreForm());
+  setStoreOpen(true);
+ }
+ function closeStoreEditor(){setStoreOpen(false);setEditingStore(null);setStoreForm(emptyStoreForm())}
+ async function saveStore(e){
   e.preventDefault();if(!online||busy||!storeForm.name.trim())return;
   setBusy(true);setError('');
   try{
-   const saved=await api('/shopping-stores/',{method:'POST',body:JSON.stringify({family:familyId,name:storeForm.name.trim(),branch_label:storeForm.branch_label.trim(),website_url:storeForm.website_url.trim(),offers_url:storeForm.offers_url.trim()})});
-   setStoreForm({name:'',branch_label:'',website_url:'',offers_url:''});setStoreOpen(false);setSelectedStore(saved.id);toast(t('shoppingTemplateUi.storeSaved'),{type:'success'});await load();
+   const payload={name:storeForm.name.trim(),branch_label:storeForm.branch_label.trim(),address:storeForm.address.trim(),website_url:storeForm.website_url.trim(),offers_url:storeForm.offers_url.trim(),note:storeForm.note.trim(),sort_order:Math.max(0,Number.parseInt(storeForm.sort_order||'0',10)||0)};
+   if(!editingStore)payload.family=familyId;
+   const saved=await api(editingStore?`/shopping-stores/${editingStore.id}/`:'/shopping-stores/',{method:editingStore?'PATCH':'POST',body:JSON.stringify(payload)});
+   if(!editingStore)setSelectedStore(saved.id);
+   closeStoreEditor();toast(t('shoppingTemplateUi.storeSaved'),{type:'success'});await load();await onChanged?.();
   }catch(e){setError(e.message);toast(e.message||t('shoppingTemplateUi.loadFailed'),{type:'error'})}finally{setBusy(false)}
+ }
+ async function toggleStore(store){
+  if(!online||busy)return;setBusy(true);setError('');
+  try{await api(`/shopping-stores/${store.id}/`,{method:'PATCH',body:JSON.stringify({active:store.active===false})});toast(t(store.active===false?'shoppingTemplateUi.reactivated':'shoppingTemplateUi.deactivated'),{type:'success'});await load();await onChanged?.()}
+  catch(e){setError(e.message);toast(e.message||t('shoppingTemplateUi.loadFailed'),{type:'error'})}finally{setBusy(false)}
+ }
+ async function deleteStore(store){
+  if(!online||busy)return;
+  const confirmed=await confirmAction({title:t('shoppingTemplateUi.deleteStoreTitle'),message:t('shoppingTemplateUi.deleteStoreMessage',{name:store.display_label}),confirmLabel:t('delete'),danger:true});
+  if(!confirmed)return;
+  setBusy(true);setError('');
+  try{await api(`/shopping-stores/${store.id}/`,{method:'DELETE'});if(String(selectedStore)===String(store.id))setSelectedStore('');toast(t('shoppingTemplateUi.storeDeleted'),{type:'success'});await load()}
+  catch(e){setError(e.message);toast(e.message||t('shoppingTemplateUi.deleteBlocked'),{type:'error'})}finally{setBusy(false)}
  }
  async function changeStoreAssignment(){
   if(!online||busy||!list)return;
@@ -113,9 +139,10 @@ export default function ShoppingTemplateTools({familyId,list,onChanged}){
    {list&&<div className="template-inline-form"><label>{t('shoppingTemplateUi.saveCurrent')}<input value={templateName} onChange={e=>setTemplateName(e.target.value)} placeholder={t('shoppingTemplateUi.templateName')}/></label><button type="button" className="secondary compact" onClick={saveCurrent} disabled={!online||busy||!(list.items||[]).length}><Icon name="archive"/>{t('shoppingTemplateUi.saveTemplate')}</button></div>}
    <div className="template-grid">{templates.length?templates.map(template=><article className="template-card" key={template.id}><div className="template-card-main"><span><Icon name="lists"/></span><div><strong>{template.name}</strong><small>{template.item_count} · {template.default_store_label||t('shoppingTemplateUi.noStore')}</small></div></div>{preview?.template.id===template.id&&<div className="template-preview">{t('shoppingTemplateUi.previewText',{created:preview.result.created,reopened:preview.result.reopened,already:preview.result.already_open})}</div>}<div className="template-actions"><button type="button" className="secondary compact" onClick={()=>inspect(template)} disabled={!online||busy||!list}><Icon name="info"/>{t('shoppingTemplateUi.preview')}</button><button type="button" className="primary compact" onClick={()=>applyTemplate(template)} disabled={busy||!list}><Icon name="check"/>{t('shoppingTemplateUi.apply')}</button><button type="button" className="secondary compact" onClick={()=>beginCreateList(template)} disabled={!online||busy}><Icon name="plus"/>{t('shoppingTemplateUi.createList')}</button></div>{listTemplate?.id===template.id&&<div className="template-inline-form"><ShoppingAudienceFields family={{id:familyId}} value={listAudience} onChange={setListAudience} compact/><div className="template-actions"><button type="button" className="primary compact" onClick={()=>createList(template)} disabled={busy||!online||(listAudience.visibility==='selected'&&!listAudience.visible_members.length)}><Icon name="plus"/>{t('shoppingTemplateUi.createList')}</button><button type="button" className="secondary compact" onClick={()=>{setListTemplate(null);setListAudience(defaultShoppingAudience())}} disabled={busy}>{t('cancel')}</button></div></div>}</article>):<div className="template-notice"><Icon name="lists"/><span>{t('shoppingTemplateUi.empty')}</span></div>}</div>
   </div>
-  <div className="template-section"><div className="template-section-head"><h4>{t('shoppingTemplateUi.stores')}</h4><button type="button" className="secondary compact" onClick={()=>setStoreOpen(value=>!value)} disabled={!online||busy}><Icon name="plus"/>{t('shoppingTemplateUi.addStore')}</button></div>{assignedStore&&<div className="template-store-summary"><Icon name="store"/><div><strong>{assignedStore.display_label}</strong><small>{assignedStore.address||assignedStore.website_url||t('shoppingTemplateUi.assigned')}</small></div>{assignedStore.offers_url&&<a className="secondary compact" href={assignedStore.offers_url} target="_blank" rel="noopener noreferrer">{t('shoppingTemplateUi.offersOpen')} <Icon name="next"/></a>}</div>}
-   {storeOpen&&<form className="template-inline-form" onSubmit={createStore}><label>{t('shoppingTemplateUi.storeName')}<input value={storeForm.name} onChange={e=>setStoreForm(value=>({...value,name:e.target.value}))} required/></label><label>{t('shoppingTemplateUi.branch')}<input value={storeForm.branch_label} onChange={e=>setStoreForm(value=>({...value,branch_label:e.target.value}))}/></label><label>{t('shoppingTemplateUi.website')}<input type="url" inputMode="url" value={storeForm.website_url} onChange={e=>setStoreForm(value=>({...value,website_url:e.target.value}))} placeholder="https://"/></label><label>{t('shoppingTemplateUi.offers')}<input type="url" inputMode="url" value={storeForm.offers_url} onChange={e=>setStoreForm(value=>({...value,offers_url:e.target.value}))} placeholder="https://"/></label><div className="template-actions"><button className="primary compact" disabled={busy}><Icon name="check"/>{t('shoppingTemplateUi.addStore')}</button><button type="button" className="secondary compact" onClick={()=>setStoreOpen(false)}>{t('cancel')}</button></div></form>}
-   {list&&activeStores.length>0&&<div className="template-store-row"><label>{t('shoppingTemplateUi.assignStore')}<select value={selectedStore} onChange={e=>setSelectedStore(e.target.value)}><option value="">{t('shoppingTemplateUi.unassigned')}</option>{activeStores.map(store=><option key={store.id} value={store.id}>{store.display_label}</option>)}</select></label><button type="button" className="secondary compact" onClick={changeStoreAssignment} disabled={!online||busy||String(selectedStore||'')===String(assignedStore?.id||'')}><Icon name="store"/>{selectedStore?t('shoppingTemplateUi.assign'):t('shoppingTemplateUi.removeAssignment')}</button></div>}
+  <div className="template-section"><div className="template-section-head"><div><h4>{t('shoppingTemplateUi.stores')}</h4><p className="template-hint">{t('shoppingTemplateUi.storesHint')}</p></div><button type="button" className="secondary compact" onClick={()=>storeOpen?closeStoreEditor():openStoreEditor()} disabled={!online||busy}><Icon name="plus"/>{t('shoppingTemplateUi.newStore')}</button></div>{assignedStore&&<div className="template-store-summary"><Icon name="store"/><div><strong>{assignedStore.display_label}</strong><small>{assignedStore.address||assignedStore.website_url||t('shoppingTemplateUi.assigned')}{assignedStore.active===false?` · ${t('shoppingTemplateUi.inactive')}`:''}</small></div>{assignedStore.offers_url&&<a className="secondary compact" href={assignedStore.offers_url} target="_blank" rel="noopener noreferrer">{t('shoppingTemplateUi.offersOpen')} <Icon name="next"/></a>}</div>}
+   {storeOpen&&<form className="template-inline-form" onSubmit={saveStore}><strong>{t(editingStore?'shoppingTemplateUi.editStore':'shoppingTemplateUi.newStore')}</strong><label>{t('shoppingTemplateUi.storeName')}<input value={storeForm.name} onChange={e=>setStoreForm(value=>({...value,name:e.target.value}))} required/></label><label>{t('shoppingTemplateUi.branch')}<input value={storeForm.branch_label} onChange={e=>setStoreForm(value=>({...value,branch_label:e.target.value}))}/></label><label>{t('shoppingTemplateUi.address')}<input value={storeForm.address} onChange={e=>setStoreForm(value=>({...value,address:e.target.value}))}/></label><label>{t('shoppingTemplateUi.website')}<input type="url" inputMode="url" value={storeForm.website_url} onChange={e=>setStoreForm(value=>({...value,website_url:e.target.value}))} placeholder="https://"/></label><label>{t('shoppingTemplateUi.offers')}<input type="url" inputMode="url" value={storeForm.offers_url} onChange={e=>setStoreForm(value=>({...value,offers_url:e.target.value}))} placeholder="https://"/></label><label>{t('shoppingTemplateUi.note')}<textarea value={storeForm.note} onChange={e=>setStoreForm(value=>({...value,note:e.target.value}))}/></label><label>{t('shoppingTemplateUi.sortOrder')}<input type="number" min="0" step="1" value={storeForm.sort_order} onChange={e=>setStoreForm(value=>({...value,sort_order:e.target.value}))}/></label><div className="template-actions"><button className="primary compact" disabled={busy}><Icon name="check"/>{t('save')}</button><button type="button" className="secondary compact" onClick={closeStoreEditor}>{t('cancel')}</button></div></form>}
+   <div className="template-grid">{stores.length?stores.map(store=><article className="template-card" key={store.id}><div className="template-card-main"><span><Icon name="store"/></span><div><strong>{store.display_label}</strong><small>{store.address||store.website_url||t('shoppingTemplateUi.noAddress')}{store.active===false?` · ${t('shoppingTemplateUi.inactive')}`:''}</small></div></div><div className="template-actions"><button type="button" className="secondary compact" onClick={()=>openStoreEditor(store)} disabled={!online||busy}><Icon name="edit"/>{t('shoppingTemplateUi.editStore')}</button><button type="button" className="secondary compact" onClick={()=>toggleStore(store)} disabled={!online||busy}>{t(store.active===false?'shoppingTemplateUi.reactivate':'shoppingTemplateUi.deactivate')}</button><button type="button" className="ghost-danger compact" onClick={()=>deleteStore(store)} disabled={!online||busy}>{t('shoppingTemplateUi.deleteStore')}</button></div></article>):<div className="template-notice"><Icon name="store"/><span>{t('shoppingTemplateUi.storesEmpty')}</span></div>}</div>
+   {list&&assignableStores.length>0&&<div className="template-store-row"><label>{t('shoppingTemplateUi.assignStore')}<select value={selectedStore} onChange={e=>setSelectedStore(e.target.value)}><option value="">{t('shoppingTemplateUi.unassigned')}</option>{assignableStores.map(store=><option key={store.id} value={store.id}>{store.display_label}{store.active===false?` · ${t('shoppingTemplateUi.inactive')}`:''}</option>)}</select></label><button type="button" className="secondary compact" onClick={changeStoreAssignment} disabled={!online||busy||String(selectedStore||'')===String(assignedStore?.id||'')}><Icon name="store"/>{selectedStore?t('shoppingTemplateUi.assign'):t('shoppingTemplateUi.removeAssignment')}</button></div>}
   </div>
  </section>
 }
