@@ -58,7 +58,7 @@ class Migration(migrations.Migration):
                 ("from_version", models.CharField(blank=True, max_length=80)),
                 ("to_version", models.CharField(blank=True, max_length=80)),
                 ("state_revision", models.PositiveBigIntegerField(default=0)),
-                ("reason", models.CharField(blank=True, max_length=500)),
+                ("reason_code", models.CharField(blank=True, max_length=80)),
             ],
             options={
                 "ordering": ["-created_at", "-id"],
