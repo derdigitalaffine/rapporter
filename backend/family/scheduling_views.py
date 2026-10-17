@@ -8,9 +8,9 @@ from .action_views import _family_membership
 from .scheduling_rules import (
     describe_scheduling_rule,
     normalize_scheduling_rule,
+    parse_scheduling_text,
     preview_occurrence_dates,
 )
-from .scheduling_text import parse_flexible_scheduling_text
 
 
 def _iso_date(value, label):
@@ -62,7 +62,7 @@ def scheduling_preview(request):
         anchor_day = _iso_date(data.get("anchor_date"), "anchor_date")
         after_day = _iso_date(data.get("after"), "after")
         if has_text:
-            rule = parse_flexible_scheduling_text(
+            rule = parse_scheduling_text(
                 data["text"],
                 family.timezone or "UTC",
                 today=anchor_day,
