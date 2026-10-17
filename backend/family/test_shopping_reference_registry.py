@@ -58,7 +58,7 @@ class ShoppingReferenceRegistryTests(TestCase):
         self.assertEqual(newer.dataset_id, "shopping.de.food-lexicon.sample")
         self.assertEqual(reference_dataset_versions(dataset_id=newer.dataset_id).count(), 2)
 
-    def test_active_registry_filters_state_and_type(self):
+    def test_active_registry_filters_state_type_and_redistribution_rights(self):
         self._dataset(state=ReferenceDataset.State.STAGED)
         active_lexicon = self._dataset(
             dataset_id="shopping.de.food-lexicon.active",
@@ -72,12 +72,37 @@ class ShoppingReferenceRegistryTests(TestCase):
             version="1",
             checksum="c" * 64,
             state=ReferenceDataset.State.ACTIVE,
+            redistribution=ReferenceDataset.Redistribution.ADAPT,
+        )
+        self._dataset(
+            dataset_id="shopping.de.layout-evidence.deferred",
+            dataset_type=ReferenceDataset.DatasetType.STORE_LAYOUT_EVIDENCE,
+            version="1",
+            checksum="d" * 64,
+            state=ReferenceDataset.State.ACTIVE,
+            redistribution=ReferenceDataset.Redistribution.DEFER,
+        )
+        self._dataset(
+            dataset_id="shopping.de.gtin.denied",
+            dataset_type=ReferenceDataset.DatasetType.GTIN_PRODUCT,
+            version="1",
+            checksum="e" * 64,
+            state=ReferenceDataset.State.ACTIVE,
+            redistribution=ReferenceDataset.Redistribution.DENY,
         )
 
         self.assertEqual(active_reference_datasets().count(), 2)
         self.assertEqual(
             list(active_reference_datasets(dataset_type=ReferenceDataset.DatasetType.LEXICON)),
             [active_lexicon],
+        )
+        self.assertEqual(
+            active_reference_datasets(dataset_type=ReferenceDataset.DatasetType.STORE_LAYOUT_EVIDENCE).count(),
+            0,
+        )
+        self.assertEqual(
+            active_reference_datasets(dataset_type=ReferenceDataset.DatasetType.GTIN_PRODUCT).count(),
+            0,
         )
 
     def test_research_manifest_semantics_are_preserved_without_becoming_domain_truth(self):
