@@ -40,7 +40,7 @@ def shopping_item_purchase_after_save(sender, instance, created, **kwargs):
     actor = current_actor() or instance.added_by
     assignment = (
         ShoppingListStoreProfile.objects.select_related("store")
-        .filter(shopping_list=shopping_list)
+        .filter(shopping_list=shopping_list, store__family=shopping_list.family)
         .first()
     )
     store = assignment.store if assignment else None
