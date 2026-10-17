@@ -81,6 +81,41 @@ class ShoppingLearnedOrderTests(TestCase):
         first.session.refresh_from_db()
         self.assertEqual(first.session.activity_seq, 1)
 
+    def test_patch_accepts_client_activity_without_treating_it_as_item_field(self):
+        session = ShoppingSession.objects.create(
+            family=self.family,
+            shopping_list=self.shopping_list,
+            started_by=self.owner,
+        )
+        metadata = {
+            "stream": "store-device",
+            "sequence": 7,
+            "mutation_id": "0a0d1adb-5ab0-44f8-94da-217228074462",
+        }
+
+        response = self.client.patch(
+            f"/api/shopping-items/{self.items[0].id}/",
+            {"checked": True, "client_activity": metadata},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.items[0].refresh_from_db()
+        self.assertTrue(self.items[0].checked)
+        activity = ShoppingSessionActivity.objects.get(session=session)
+        self.assertEqual(activity.kind, ShoppingSessionActivity.Kind.ITEM_CHECKED)
+        self.assertEqual(activity.client_stream, "store-device")
+        self.assertEqual(activity.client_sequence, 7)
+        self.assertEqual(str(activity.mutation_id), metadata["mutation_id"])
+
+        retry = self.client.patch(
+            f"/api/shopping-items/{self.items[0].id}/",
+            {"checked": True, "client_activity": metadata},
+            format="json",
+        )
+        self.assertEqual(retry.status_code, 200)
+        self.assertEqual(ShoppingSessionActivity.objects.filter(session=session).count(), 1)
+
     def test_store_evidence_is_isolated_and_insufficient_evidence_falls_back(self):
         first = self._completed_session(self.store)
         second = self._completed_session(self.store)
