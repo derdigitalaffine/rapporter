@@ -19,12 +19,12 @@ class CalendarSubscriptionMemberScopeTests(TestCase):
         start = datetime(2026, 10, 20, 15, 0, tzinfo=utc.utc)
         self.owner_event = FamilyEvent.objects.create(
             family=self.family, type='calendar.event', title='Owner event',
-            starts_at=start, ends_at=start + timedelta(hours=1), is_family_event=True,
+            starts_at=start, ends_at=start + timedelta(hours=1), is_family_event=False,
         )
         self.owner_event.participants.add(self.owner)
         self.child_event = FamilyEvent.objects.create(
             family=self.family, type='calendar.event', title='Child event',
-            starts_at=start + timedelta(days=1), ends_at=start + timedelta(days=1, hours=1), is_family_event=True,
+            starts_at=start + timedelta(days=1), ends_at=start + timedelta(days=1, hours=1), is_family_event=False,
         )
         self.child_event.participants.add(self.child)
 
@@ -68,7 +68,7 @@ class CalendarSubscriptionMemberScopeTests(TestCase):
         adult_event = FamilyEvent.objects.create(
             family=self.family, type='calendar.event', title='Adult event',
             starts_at=datetime(2026, 10, 22, 15, 0, tzinfo=utc.utc),
-            ends_at=datetime(2026, 10, 22, 16, 0, tzinfo=utc.utc), is_family_event=True,
+            ends_at=datetime(2026, 10, 22, 16, 0, tzinfo=utc.utc), is_family_event=False,
         )
         adult_event.participants.add(adult)
 
