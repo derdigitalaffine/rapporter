@@ -56,6 +56,15 @@ MATOMO_TRACKING_ENABLED=env_bool("MATOMO_TRACKING_ENABLED",False)
 MATOMO_TRACKING_APP_ORIGIN=(os.getenv("MATOMO_TRACKING_APP_ORIGIN","").strip().rstrip("/") or APP_URL)
 MATOMO_TRACKING_TIMEOUT=float(os.getenv("MATOMO_TRACKING_TIMEOUT","4") or "4")
 
+# Shopping store location lookup stays server-side. The public Nominatim default is
+# only called by explicit search/GPS actions; typing continues to use saved stores.
+NOMINATIM_BASE_URL=os.getenv("NOMINATIM_BASE_URL","https://nominatim.openstreetmap.org").strip().rstrip("/")
+NOMINATIM_RATE_LIMIT_ENABLED=env_bool("NOMINATIM_RATE_LIMIT_ENABLED",True)
+SHOPPING_STORE_AUTOCOMPLETE_ENABLED=env_bool("SHOPPING_STORE_AUTOCOMPLETE_ENABLED",True)
+NOMINATIM_TIMEOUT=float(os.getenv("NOMINATIM_TIMEOUT","5") or "5")
+NOMINATIM_USER_AGENT=os.getenv("NOMINATIM_USER_AGENT","FamilyOS/1.0 shopping-store lookup").strip()
+NOMINATIM_CACHE_SECONDS=int(os.getenv("NOMINATIM_CACHE_SECONDS","900") or "900")
+
 # Public OSM raster tiles by default; optionally use a same-origin tile service.
 VEHICLES_OSM_TILE_URL=os.getenv("VEHICLES_OSM_TILE_URL", "https://tile.openstreetmap.org/{z}/{x}/{y}.png").strip()
 

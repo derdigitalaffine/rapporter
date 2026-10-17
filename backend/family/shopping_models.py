@@ -10,6 +10,10 @@ class ShoppingStore(TimestampedModel):
     name = models.CharField(max_length=120)
     branch_label = models.CharField(max_length=120, blank=True)
     address = models.CharField(max_length=240, blank=True)
+    location_provider = models.CharField(max_length=32, blank=True)
+    location_ref = models.CharField(max_length=160, blank=True)
+    latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
     website_url = models.URLField(max_length=500, blank=True)
     offers_url = models.URLField(max_length=500, blank=True)
     note = models.CharField(max_length=500, blank=True)
@@ -28,6 +32,13 @@ class ShoppingStore(TimestampedModel):
 
     class Meta:
         ordering = ["sort_order", "name", "branch_label", "created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["family", "location_provider", "location_ref"],
+                condition=models.Q(location_provider__gt="", location_ref__gt=""),
+                name="shop_store_location_ref_uniq",
+            ),
+        ]
         indexes = [models.Index(fields=["family", "active", "sort_order"], name="shop_store_family_idx")]
 
 
