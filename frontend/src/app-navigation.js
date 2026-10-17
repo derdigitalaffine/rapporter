@@ -57,7 +57,7 @@ export function pageLabel(page,t,i18n){
     birthdays:t('birthdayUi.title'),
     baby:t('babyUi.title'),
     pets:t('petUi.title'),
-    contracts:t('contractUi.title'),
+    contracts:english?'Contracts':'Verträge',
     loyalty:t('loyaltyUi.title'),
     vehicles:t('vehiclesUi.title'),
     trips:english?'Trips':'Reisen',

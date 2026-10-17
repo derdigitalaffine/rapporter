@@ -5,42 +5,19 @@
 .decision-context-panel>button{justify-self:start;min-height:44px}
 .decision-context-toggle{max-width:100%;white-space:normal;text-align:left}
 .decision-context-toggle__indicator{display:grid;place-items:center;flex:0 0 auto;width:24px;height:24px;margin-inline-start:var(--space-1);border-radius:999px;background:var(--color-neutral-soft);font-weight:800;line-height:1}
-.decision-context-panel__body{display:grid;gap:var(--space-4);min-width:0;padding:var(--space-4);border:1px solid var(--color-border);border-radius:var(--radius-md);background:var(--color-neutral-soft);color:var(--color-text)}
+.decision-context-panel__body{display:grid;gap:var(--space-3);min-width:0;padding:var(--space-4);border:1px solid var(--color-border);border-radius:var(--radius-md);background:var(--color-neutral-soft);color:var(--color-text)}
 .decision-context-panel__intro{display:grid;gap:var(--space-1);min-width:0}
 .decision-context-panel__intro strong{font-size:var(--font-size-title);line-height:1.25}
 .decision-context-panel__intro p{margin:0;color:var(--color-muted);font-size:.9rem;line-height:1.45}
 .decision-context-presets{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,12rem),1fr));gap:var(--space-2);min-width:0}
-.decision-context-presets button{width:100%;min-height:44px;justify-content:flex-start;text-align:left;white-space:normal;line-height:1.3}
-.decision-context-form{width:100%;margin:0;padding:0;background:transparent;border:0;box-shadow:none}
-.decision-context-option{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:end;gap:var(--space-2);min-width:0}
-.decision-context-option>.icon-btn{min-width:44px;min-height:44px;margin-bottom:1px}
-.decision-context-add-option{justify-self:start;min-height:44px}
-.decision-context-message,.decision-context-muted{margin:0;font-size:.9rem;line-height:1.45}
-.decision-context-message{padding:var(--space-3);border-radius:var(--radius-md);background:var(--color-surface);font-weight:700}
-.decision-context-message.is-error{color:var(--color-danger);background:var(--color-danger-soft)}
-.decision-context-muted{color:var(--color-muted)}
-.decision-context-recent{display:grid;gap:var(--space-2);min-width:0;padding-top:var(--space-3);border-top:1px solid var(--color-border)}
-.decision-context-recent>article{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:var(--space-3);align-items:center;min-width:0;padding:var(--space-3);border:1px solid var(--color-border);border-radius:var(--radius-md);background:var(--color-surface)}
-.decision-context-recent>article>div:first-child{display:grid;gap:var(--space-1);min-width:0}
-.decision-context-recent b,.decision-context-recent small{overflow-wrap:anywhere}
-.decision-context-recent small{color:var(--color-muted)}
-.decision-context-state{justify-self:start;font-size:.72rem;font-weight:800;padding:2px var(--space-2);border-radius:999px;background:var(--color-neutral-soft)}
-.decision-context-state.is-open{color:var(--color-focus)}
-.decision-context-row-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:var(--space-2);min-width:0}
-.decision-context-row-actions a,.decision-context-row-actions button{min-height:44px;text-decoration:none}
-.decision-context-row-actions small{flex-basis:100%;text-align:right}
+.decision-context-presets a{width:100%;min-height:44px;justify-content:flex-start;text-align:left;white-space:normal;line-height:1.3;text-decoration:none}
+.decision-context-open-all{justify-self:start;min-height:44px}
 .decision-context-panel :where(button,a):focus-visible{outline:3px solid color-mix(in srgb,var(--color-focus) 42%,transparent);outline-offset:2px}
 @media(max-width:640px){
  .decision-context-panel__body{padding:var(--space-3)}
  .decision-context-presets{grid-template-columns:1fr}
- .decision-context-recent>article{grid-template-columns:1fr}
- .decision-context-row-actions{justify-content:stretch}
- .decision-context-row-actions a,.decision-context-row-actions button{flex:1 1 140px;text-align:center;justify-content:center}
- .decision-context-row-actions small{text-align:left}
 }
 @media(max-width:359px){
- .decision-context-panel__body{gap:var(--space-3);padding:var(--space-3)}
- .decision-context-option{grid-template-columns:1fr}
- .decision-context-option>.icon-btn{justify-self:end;margin-bottom:0}
- .decision-context-add-option,.decision-context-row-actions a,.decision-context-row-actions button{width:100%}
+ .decision-context-panel__body{padding:var(--space-3)}
+ .decision-context-presets a,.decision-context-open-all{width:100%;justify-content:center;text-align:center}
 }
