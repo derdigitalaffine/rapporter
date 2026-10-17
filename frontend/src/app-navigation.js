@@ -1,3 +1,5 @@
+import './contracts-i18n';
+
 export const PRIMARY_NAV_IDS=Object.freeze(['home','todo','shopping','calendar','more']);
 
 const PAGE_ICONS=Object.freeze({
