@@ -5,6 +5,7 @@ import {applyShoppingItemAutoguess} from './shopping-item-autoguess.js';
 
 export const SHOPPING_BUDGET_PURCHASE_EVENT='famuhle:shopping-budget-purchase';
 const uuid=()=>globalThis.crypto?.randomUUID?.()||`offline-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+const mutationUuid=()=>globalThis.crypto?.randomUUID?.()||'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,char=>{const random=Math.random()*16|0;const value=char==='x'?random:(random&3)|8;return value.toString(16)});
 const ORDER_META_PREFIX='famuhle-shopping-order-next:';
 
 export function stageShoppingOrderMetadata(targetId,metadata){
@@ -18,7 +19,7 @@ function consumeShoppingOrderMetadata(targetId){
 }
 
 export async function queueShoppingAdd(familyId,payload){
-  const mutationId=uuid();
+  const mutationId=mutationUuid();
   const guessed=applyShoppingItemAutoguess(payload).payload;
   const mutationPayload={...guessed,client_mutation_id:mutationId};
   if(offlineEngine(familyId)){const {item}=await addShoppingLocally(familyId,mutationPayload);return {localId:item.id,payload:mutationPayload,id:mutationId}}
@@ -28,7 +29,7 @@ export async function queueShoppingAdd(familyId,payload){
 }
 export async function queueShoppingPatch(familyId,targetId,payload){
   const target=String(targetId);
-  const mutationId=uuid();
+  const mutationId=mutationUuid();
   const orderMeta=consumeShoppingOrderMetadata(target);
   const mutationPayload=orderMeta?{...payload,client_activity:{...orderMeta,mutation_id:mutationId}}:payload;
   // A budget reservation is an online finance transition, not an offline
