@@ -230,6 +230,8 @@ def to_event_recurrence(rule, family_timezone):
     recurrence = normalized.get("recurrence")
     if not recurrence or recurrence.get("frequency") == "once":
         raise ValueError("Current event recurrence requires a repeating frequency.")
+    if recurrence.get("frequency") == "hourly" or recurrence.get("times_per_period") or recurrence.get("business_days"):
+        raise ValueError("Action cadence is not representable by the current event payload.")
     return deepcopy(recurrence)
 
 
@@ -245,7 +247,20 @@ def _describe_recurrence(recurrence, language):
     de = language.casefold().startswith("de")
     frequency = recurrence.get("frequency")
     interval = recurrence.get("interval", 1)
+    target = recurrence.get("times_per_period")
+    if target:
+        period = {
+            "daily": ("Tag", "day"),
+            "weekly": ("Woche", "week"),
+            "monthly": ("Monat", "month"),
+        }[frequency][0 if de else 1]
+        return f"{target}-mal pro {period}" if de else f"{target} times per {period}"
+    if recurrence.get("business_days"):
+        if de:
+            return "Jeden Werktag" if interval == 1 else f"Alle {interval} Werktage"
+        return "Every business day" if interval == 1 else f"Every {interval} business days"
     names = {
+        "hourly": ("Stunde", "hour"),
         "daily": ("Tag", "day"),
         "weekly": ("Woche", "week"),
         "monthly": ("Monat", "month"),
@@ -256,9 +271,15 @@ def _describe_recurrence(recurrence, language):
         return ("Einmal am " if de else "Once on ") + recurrence["date"]
     unit = names.get(frequency, (frequency, frequency))[0 if de else 1]
     if interval == 1:
-        base = f"Jeden {unit}" if de else f"Every {unit}"
+        if de:
+            base = {
+                "Stunde": "Jede Stunde", "Tag": "Jeden Tag", "Woche": "Jede Woche",
+                "Monat": "Jeden Monat", "Quartal": "Jedes Quartal", "Jahr": "Jedes Jahr",
+            }.get(unit, f"Jede {unit}")
+        else:
+            base = f"Every {unit}"
     else:
-        plural = {"Tag": "Tage", "Woche": "Wochen", "Monat": "Monate", "Quartal": "Quartale", "Jahr": "Jahre"}.get(unit, unit + "s") if de else unit + "s"
+        plural = {"Stunde": "Stunden", "Tag": "Tage", "Woche": "Wochen", "Monat": "Monate", "Quartal": "Quartale", "Jahr": "Jahre"}.get(unit, unit + "s") if de else unit + "s"
         base = f"Alle {interval} {plural}" if de else f"Every {interval} {plural}"
 
     weekday_names = {
@@ -274,7 +295,7 @@ def _describe_recurrence(recurrence, language):
         for item in recurrence["nth_weekdays"]:
             ordinal = ordinal_names[item["ordinal"]][0 if de else 1]
             weekday = weekday_names[item["weekday"]][0 if de else 1]
-            details.append(f"{ordinal} {weekday}" if de else f"{ordinal} {weekday}")
+            details.append(f"{ordinal} {weekday}")
     elif recurrence.get("weekdays"):
         details.extend(weekday_names[item][0 if de else 1] for item in recurrence["weekdays"])
     if recurrence.get("months"):
@@ -282,7 +303,7 @@ def _describe_recurrence(recurrence, language):
         month_names_en = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
         month_names = month_names_de if de else month_names_en
         details.append(", ".join(month_names[item - 1] for item in recurrence["months"]))
-    return base + ((": " if de else ": ") + ", ".join(details) if details else "")
+    return base + (": " + ", ".join(details) if details else "")
 
 
 def describe_scheduling_rule(rule, family_timezone, language="de"):
@@ -310,11 +331,15 @@ def preview_occurrence_dates(rule, family_timezone, after=None, limit=5):
     """Return bounded occurrence dates for editor/API previews.
 
     Explicit exclusions win over recurrence/includes. Pauses suspend occurrences;
-    explicit includes add dates but do not bypass a pause or exclusion.
+    explicit includes add dates but do not bypass a pause or exclusion. Action-only
+    hourly/target-count cadences deliberately return no fabricated date slots.
     """
     normalized = normalize_scheduling_rule(rule, family_timezone)
     if not isinstance(limit, int) or isinstance(limit, bool) or not 1 <= limit <= MAX_PREVIEW:
         raise ValueError(f"Preview limit must be between 1 and {MAX_PREVIEW}.")
+    recurrence = normalized.get("recurrence") or {}
+    if recurrence.get("frequency") == "hourly" or recurrence.get("times_per_period"):
+        return []
     after_day = _iso_date(after, "after") if isinstance(after, str) else after
     if after_day is not None and not isinstance(after_day, date):
         raise ValueError("after must be a date or ISO date.")
