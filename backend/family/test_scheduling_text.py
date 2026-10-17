@@ -76,6 +76,13 @@ class FlexibleSchedulingTextTests(SimpleTestCase):
             {"frequency": "quarterly", "interval": 1, "nth_weekdays": [{"weekday": "MO", "ordinal": 1}]},
         )
 
+    def test_existing_article_based_interval_phrase_is_preserved(self):
+        rule = self.parse("alle zwei Monate an einem ersten Montag")
+        self.assertEqual(
+            rule["recurrence"],
+            {"frequency": "monthly", "interval": 2, "nth_weekdays": [{"weekday": "MO", "ordinal": 1}]},
+        )
+
     def test_simple_adverb_forms_map_to_expected_cadence(self):
         cases = {
             "wöchentlich": {"frequency": "weekly", "interval": 1},
