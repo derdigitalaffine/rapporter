@@ -31,6 +31,9 @@ function recurrenceRule(value,anchor){
 function recurrenceKind(recurrence){
  if(!recurrence)return 'none';
  if(recurrence.times_per_period)return 'quota';
+ const weekdays=recurrence.weekdays||[];
+ const fixedWeekdays=recurrence.frequency==='weekly'&&Number(recurrence.interval||1)===1&&weekdays.length===WEEKDAYS.length&&WEEKDAYS.every(day=>weekdays.includes(day));
+ if(fixedWeekdays)return 'business_daily';
  if(recurrence.business_days&&Number(recurrence.interval||1)===1)return 'business_daily';
  if(recurrence.business_days||recurrence.frequency==='hourly'||Number(recurrence.interval||1)>1)return 'interval';
  return recurrence.frequency||'none';
@@ -167,7 +170,7 @@ export default function SchedulingRecurrenceEditor({
    {recurrence?.business_days&&<p className="scheduling-recurrence-hint">{de?'Gezählt werden Montag bis Freitag; Wochenenden werden beim Intervall übersprungen.':'Only Monday through Friday are counted; weekends are skipped by the interval.'}</p>}
   </section>}
 
-  {kind==='business_daily'&&<p className="scheduling-recurrence-hint">{de?'Bestehender Werktagsrhythmus: Montag bis Freitag. Beim nächsten Ändern wird er als fester Mo–Fr-Rhythmus gespeichert.':'Existing weekday rhythm: Monday through Friday. The next edit stores it as a fixed Mon–Fri rhythm.'}</p>}
+  {kind==='business_daily'&&<p className="scheduling-recurrence-hint">{recurrence?.business_days?(de?'Bestehender Werktagsrhythmus: Montag bis Freitag. Beim nächsten Ändern wird er als fester Mo–Fr-Rhythmus gespeichert.':'Existing weekday rhythm: Monday through Friday. The next edit stores it as a fixed Mon–Fri rhythm.'):(de?'Fester Rhythmus von Montag bis Freitag; es entstehen echte geplante Wochentage.':'Fixed Monday-to-Friday rhythm with real planned weekdays.')}</p>}
 
   {kind==='quota'&&<section className="scheduling-recurrence-cadence" aria-label={de?'Flexibles Ziel':'Flexible target'}>
    <FormRow>
