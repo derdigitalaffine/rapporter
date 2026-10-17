@@ -8,7 +8,8 @@
 .app-widget-grid.today-widget-grid>.today-widget{align-self:start;min-width:0}
 .app-widget-grid.today-widget-grid>.today-widget[data-today-widget="situation"]{grid-column:1/-1}
 .app-widget-grid.today-widget-grid>.today-widget[data-widget-size="compact"]>.today-section,
-.app-widget-grid.today-widget-grid>.today-widget[data-widget-size="medium"]>.today-section{height:auto;min-height:0}
+.app-widget-grid.today-widget-grid>.today-widget[data-widget-size="medium"]>.today-section,
+.app-widget-grid.today-widget-grid>.today-widget[data-widget-size="wide-compact"]>.today-section{height:auto;min-height:0}
 
 /* TodaySituation is the permanent orientation anchor from the Today contract.
  * Keep it visible in the editor, but do not offer controls that the persisted
@@ -22,16 +23,50 @@ html[lang^="en"] .today-layout-editor [data-editor-widget-id="situation"] .today
 .app-widget-grid.today-widget-grid>.today-widget[data-widget-size="compact"]{--today-dashboard-density:.88}
 .app-widget-grid.today-widget-grid>.today-widget[data-widget-size="medium"]{--today-dashboard-density:.95}
 .app-widget-grid.today-widget-grid>.today-widget[data-widget-size="wide"]{--today-dashboard-density:1}
+.app-widget-grid.today-widget-grid>.today-widget[data-widget-size="wide-compact"]{--today-dashboard-density:.86;grid-column:1/-1}
+.app-widget-grid.today-widget-grid>.today-widget[data-widget-size="wide-compact"] .today-section{padding-block:clamp(12px,1.8vw,18px)}
+
+.today-module-shortcut{display:flex;align-items:center;justify-content:space-between;gap:18px;min-height:118px}
+.today-module-shortcut-main{display:flex;align-items:center;gap:14px;min-width:0}
+.today-module-shortcut-main>div{display:grid;gap:2px;min-width:0}
+.today-module-shortcut-main small{color:var(--muted);font-size:.7rem;font-weight:800;letter-spacing:.08em}
+.today-module-shortcut-main h2{margin:0;font-size:clamp(1rem,1.5vw,1.2rem)}
+.today-module-shortcut-icon{display:grid;place-items:center;flex:0 0 auto;width:42px;height:42px;border-radius:14px;background:var(--soft);color:var(--text)}
+.today-module-shortcut-value{font-size:1.5rem;line-height:1.1}
+.today-module-shortcut .today-link{white-space:nowrap}
+
+.today-priority-banner{display:flex;align-items:center;gap:12px;margin:0 0 14px;padding:12px 14px;border:1px solid #c84b52;border-radius:16px;background:#b62f39;color:#fff;box-shadow:0 8px 22px rgba(116,25,32,.16)}
+.today-priority-banner-icon{display:grid;place-items:center;flex:0 0 auto;width:34px;height:34px;border-radius:11px;background:rgba(255,255,255,.16)}
+.today-priority-banner .grow{display:grid;gap:2px;min-width:0}
+.today-priority-banner strong{font-size:.95rem}
+.today-priority-banner span:not(.today-priority-banner-icon){font-size:.82rem;opacity:.9;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.today-priority-banner a{display:inline-flex;align-items:center;gap:6px;flex:0 0 auto;color:#fff;font-weight:800;text-decoration:none}
+.today-priority-banner a:hover{text-decoration:underline}
+
+.today-priority-settings{margin:14px 0 4px;padding:14px;border:1px solid var(--line);border-radius:16px;background:var(--surface)}
+.today-priority-settings legend{padding:0 6px;font-weight:800}
+.today-priority-settings p{margin:0 0 10px;color:var(--muted);font-size:.9rem}
+.today-priority-settings label{display:flex;align-items:center;gap:9px;padding:6px 0;font-weight:650}
+.today-priority-settings input{width:18px;height:18px}
+
+@media(max-width:620px){
+ .today-priority-banner{align-items:flex-start;flex-wrap:wrap}
+ .today-priority-banner .grow{min-width:calc(100% - 50px)}
+ .today-priority-banner a{margin-left:46px}
+ .today-module-shortcut{align-items:flex-start;flex-direction:column;gap:10px}
+}
 
 @media(min-width:768px){
  .app-widget-grid.today-widget-grid>.today-widget[data-widget-size="wide"]{grid-column:span 6}
+ .app-widget-grid.today-widget-grid>.today-widget[data-widget-size="wide-compact"]{grid-column:span 6}
  .app-widget-grid.today-widget-grid>.today-widget[data-widget-size="medium"]{grid-column:span 3}
  .app-widget-grid.today-widget-grid>.today-widget[data-widget-size="compact"]{grid-column:span 3}
  .app-widget-grid.today-widget-grid>.today-widget[data-today-widget="situation"]{grid-column:span 6}
 }
 
 @media(min-width:1180px){
- .app-widget-grid.today-widget-grid>.today-widget[data-widget-size="wide"]{grid-column:span 12}
+ .app-widget-grid.today-widget-grid>.today-widget[data-widget-size="wide"],
+ .app-widget-grid.today-widget-grid>.today-widget[data-widget-size="wide-compact"]{grid-column:span 12}
  .app-widget-grid.today-widget-grid>.today-widget[data-widget-size="medium"]{grid-column:span 6}
  .app-widget-grid.today-widget-grid>.today-widget[data-widget-size="compact"]{grid-column:span 4}
  .app-widget-grid.today-widget-grid>.today-widget[data-today-widget="situation"]{grid-column:span 12}
