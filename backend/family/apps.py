@@ -97,6 +97,7 @@ class FamilyConfig(AppConfig):
         from . import scheduling_dependency_signals  # noqa: F401
         from . import signals  # noqa: F401
         from . import shopping_session_signals  # noqa: F401
+        from . import routine_task_migration_models  # noqa: F401
         from . import unified_action_models  # noqa: F401
         from . import unified_action_signals  # noqa: F401
         from . import travel_signals  # noqa: F401

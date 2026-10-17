@@ -6,7 +6,17 @@ const starterNames=['Bad putzen','Bettwäsche wechseln','Kühlschrank reinigen',
 async function boot(page){
  const state=await installApiMocks(page,{dismissOnboarding:true});
  const rows=Array.from({length:12},(_,i)=>({id:`routine-${i}`,family:state.family.id,name:starterNames[i]||`Routine ${i}`,icon:i===0?'sparkles':i===1?'bed':i===2?'snowflake':i===3?'droplets':'history',active:true,target_count:i===0?1:null,target_period_days:7,reminder_enabled:true,logs:[],log_count:0,period_count:0,last_done_at:null,prediction:i===0?{status:'overdue',expected_at:new Date(Date.now()-86400000).toISOString()}:i===1?{status:'due',expected_at:new Date().toISOString()}:{status:'not_enough_data'}}));
- const requests=[];
+ const requests=[];const migrationRequests=[];const migrations=[];
+ await page.route('**/api/routine-migrations/**',async route=>{
+  const req=route.request();const path=new URL(req.url()).pathname;let body={};try{body=req.postDataJSON()||{}}catch{}
+  if(req.method()==='GET'&&path.endsWith('/routine-migrations/'))return route.fulfill({json:{results:migrations}});
+  const routineId=path.split('/').filter(Boolean).at(-1);const existing=migrations.find(item=>item.routine_id===routineId);
+  if(req.method()==='GET')return route.fulfill({json:existing?{migrated:true,...existing,task:{id:existing.task_id,title:'Migrated task'}}:{migrated:false,routine_id:routineId}});
+  if(req.method()==='POST'){
+   migrationRequests.push(body);const row=rows.find(item=>item.id===routineId);if(body.routine&&row)Object.assign(row,body.routine);const item=existing||{routine_id:routineId,task_id:'task-migrated'};if(!existing)migrations.push(item);return route.fulfill({status:existing?200:201,json:{migrated:true,created:!existing,...item,task:{id:item.task_id,family:state.family.id,title:row?.name||'Migrated task',source:`routine-migration:${routineId}`}}});
+  }
+  return route.fallback();
+ });
  await page.route('**/api/routines/**',async route=>{
   const req=route.request();const path=new URL(req.url()).pathname;let body={};try{body=req.postDataJSON()||{}}catch{}
   if(req.method()==='GET')return route.fulfill({json:{results:rows,next:null}});
@@ -18,10 +28,12 @@ async function boot(page){
   if(req.method()==='PATCH'){const row=rows.find(x=>path.includes(`/${x.id}/`));Object.assign(row,body);return route.fulfill({json:row})}
   return route.fallback()
  });
- await page.goto('/?page=routines');await page.waitForLoadState('networkidle');return{rows,requests}
+ await page.goto('/?page=routines');await page.waitForLoadState('networkidle');return{rows,requests,migrationRequests,migrations}
 }
 
 test('routines · all entries visible, record, Undo and optional goal',async({page})=>{const state=await boot(page);await expect(page.locator('.routine-card')).toHaveCount(12);await expect(page.getByText('2',{exact:true}).first()).toBeVisible();await page.getByRole('button',{name:'Bad putzen jetzt erledigt',exact:true}).click();await expect(page.locator('.routine-card').filter({hasText:'Bad putzen'})).toContainText('Zuletzt:');expect(state.requests[0].request_id).toBeTruthy();await page.getByRole('button',{name:'Rückgängig',exact:true}).click();await expect.poll(()=>state.rows[0].log_count).toBe(0);await page.locator('.page-head').getByRole('button',{name:'Routine anlegen',exact:true}).click();const dialog=page.getByRole('dialog');await dialog.getByLabel('Name',{exact:true}).fill('Lüften');await dialog.getByLabel('Häufigkeitsziel verwenden').check();await dialog.getByLabel('Wie oft?',{exact:true}).fill('3');await dialog.getByLabel('Innerhalb von wie vielen Tagen?').fill('1');await dialog.getByRole('button',{name:'Speichern',exact:true}).click();await expect(page.getByText('Lüften',{exact:true})).toBeVisible();expect(state.rows.at(-1).target_count).toBe(3);await page.reload();await expect(page.getByText('Lüften',{exact:true})).toBeVisible()});
+
+test('routines · editing an old routine always offers explicit lossless task migration',async({page})=>{const state=await boot(page);const card=page.locator('.routine-card').filter({hasText:'Bettwäsche wechseln'});await card.getByRole('button',{name:'Routine bearbeiten: Bettwäsche wechseln'}).click();const dialog=page.getByRole('dialog');await expect(dialog.getByRole('button',{name:'Als Aufgabe übernehmen',exact:true})).toBeVisible();await expect(dialog).toContainText('Name, Rhythmus, Ziel, Erinnerungen und dein bisheriger Verlauf bleiben erhalten.');await dialog.getByLabel('Name',{exact:true}).fill('Bettwäsche als Aufgabe');await dialog.getByRole('button',{name:'Als Aufgabe übernehmen',exact:true}).click();await expect.poll(()=>state.migrationRequests.length).toBe(1);expect(state.migrationRequests[0].routine.name).toBe('Bettwäsche als Aufgabe');await expect(page).toHaveURL(/page=todo/);await expect(page).toHaveURL(/task=task-migrated/)});
 
 test('routines · starter routine is editable and deletable like every other routine',async({page})=>{const state=await boot(page);const card=page.locator('.routine-card').filter({hasText:'Bettwäsche wechseln'});await card.getByRole('button',{name:'Routine bearbeiten: Bettwäsche wechseln'}).click();let dialog=page.getByRole('dialog');await dialog.getByLabel('Name',{exact:true}).fill('Bettwäsche frisch beziehen');await dialog.getByLabel('Symbol').selectOption('house');await dialog.getByRole('button',{name:'Speichern',exact:true}).click();await expect(page.getByText('Bettwäsche frisch beziehen',{exact:true})).toBeVisible();expect(state.rows.find(row=>row.id==='routine-1')?.name).toBe('Bettwäsche frisch beziehen');await page.locator('.routine-card').filter({hasText:'Bettwäsche frisch beziehen'}).getByRole('button',{name:'Routine bearbeiten: Bettwäsche frisch beziehen'}).click();dialog=page.getByRole('dialog');await dialog.getByRole('button',{name:'Routine löschen',exact:true}).click();const confirm=page.getByRole('alertdialog');await expect(confirm).toBeVisible();await confirm.getByRole('button',{name:'Löschen',exact:true}).click();await expect(page.getByText('Bettwäsche frisch beziehen',{exact:true})).toHaveCount(0);expect(state.rows.some(row=>row.id==='routine-1')).toBe(false)});
 
