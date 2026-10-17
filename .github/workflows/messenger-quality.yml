@@ -37,6 +37,7 @@ jobs:
       - run: npm run e2e -- messenger.spec.js
         working-directory: frontend
       - run: npm run build-storybook && npm run test:workbench -- --grep familyos-messenger
+        if: always()
         working-directory: frontend
       - uses: actions/upload-artifact@v4
         if: always()

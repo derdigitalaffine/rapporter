@@ -11,7 +11,7 @@ async function boot(page,{language='de',familyless=false,failSend=false}={}){
  const rows=[{id:'message-1',sender_id:9,sender_name:'Kim',client_id:'initial',sequence:1,event_sequence:1,body:'Hallo aus der anderen Familie',created_at:new Date().toISOString(),edited:false,deleted:false,reply:null,attachments:[],reactions:[]}];
  chat.last_message=rows[0];
  const contacts={friends:[{id:friendId,user:{id:9,display_name:'Kim'}}],incoming:[{id:'invite-1',sender:{id:7,display_name:'Jo'},expires_at:new Date().toISOString()}],outgoing:[],blocked:[]};
- const state={chat,rows,contacts,requests:[],failSend};
+ const state={chat,rows,contacts,requests:[],sendKeys:[],failSend};
  await page.route('**/api/chat/**',async route=>{
   const req=route.request(),url=new URL(req.url()),path=url.pathname,method=req.method();let body={};try{body=req.postDataJSON()||{}}catch{}
   state.requests.push({path,method,body});
@@ -23,8 +23,8 @@ async function boot(page,{language='de',familyless=false,failSend=false}={}){
   if(path==='/api/chat/conversations/')return method==='POST'?json(route,chat,201):json(route,{results:[chat]});
   if(path===`/api/chat/conversations/${chatId}/messages/`){
    if(method==='POST'){
-    if(state.failSend)return json(route,{detail:'temporary'},503);
     const raw=req.postData()||'';const text=raw.match(/name="body"\r\n\r\n([\s\S]*?)\r\n--/)?.[1]||'';const key=raw.match(/name="client_id"\r\n\r\n([^\r]+)/)?.[1]||'';
+    state.sendKeys.push(key);if(state.failSend)return json(route,{detail:'temporary'},503);
     const msg={...rows[0],id:'message-'+(rows.length+1),sender_id:1,sender_name:'Alex',body:text,location:JSON.parse(raw.match(/name="location"\r\n\r\n([^\r]+)/)?.[1]||'null'),client_id:key,sequence:++chat.revision,event_sequence:chat.revision};rows.push(msg);chat.last_message=msg;return json(route,msg,201)
    }
    const q=url.searchParams.get('q'),before=Number(url.searchParams.get('before')||Infinity),after=Number(url.searchParams.get('after')||0);const matches=rows.filter(row=>(!q||row.body.includes(q))&&row.sequence<before&&row.event_sequence>after);return json(route,{results:after?matches:matches.slice(-50),cursor:chat.revision,has_more:!after&&matches.length>50,before:matches.at(-50)?.sequence||1,conversation:chat})
@@ -207,7 +207,7 @@ test('location requires explicit capture, review and send; retry preserves point
  await dialog.getByRole('button',{name:'Zur Nachricht hinzufügen'}).click();await expect(dialog).toHaveCount(0);
  await page.getByRole('button',{name:'Senden',exact:true}).click();await expect(page.getByRole('alert')).toContainText('Nicht gesendet');
  await expect(page.locator('.messenger-location-draft')).toContainText('52.52000');
- state.failSend=false;await page.getByRole('button',{name:'Senden',exact:true}).click();await expect(page.locator('.messenger-bubble.own')).toContainText('In OpenStreetMap öffnen');expect(state.rows.at(-1).location).toEqual({latitude:52.52,longitude:13.405,accuracy:12});
+ state.failSend=false;await page.getByRole('button',{name:'Senden',exact:true}).click();await expect(page.locator('.messenger-bubble.own')).toContainText('In OpenStreetMap öffnen');expect(state.rows.at(-1).location).toEqual({latitude:52.52,longitude:13.405,accuracy:12});expect(state.sendKeys).toHaveLength(2);expect(state.sendKeys[0]).toBe(state.sendKeys[1]);
  await expect(page.locator('.messenger-location-draft')).toHaveCount(0);
 });
 
