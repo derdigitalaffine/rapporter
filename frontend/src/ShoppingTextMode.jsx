@@ -16,16 +16,16 @@ export default function ShoppingTextMode({items=[],onAddMany,onRename,onRemove})
   async function addText(){
     if(!preview.length||overLimit||submitting.current)return;
     submitting.current=true;setBusy(true);setLineErrors({});
-    const failed=[];const errors={};
+    const failed=[];
     try{
       // One canonical add at a time: bounded load and exact per-line recovery.
       // queueShoppingAdd supplies the stable replay id once a line is accepted.
       for(const row of preview){
         try{await onAddMany([row.cleaned])}
-        catch(error){failed.push(row.raw);errors[row.id]=error?.message||t('shoppingText.lineFailed')}
+        catch(error){failed.push({raw:row.raw,error:error?.message||t('shoppingText.lineFailed')})}
       }
-      setDraft(failed.join('\n'));
-      setLineErrors(errors);
+      setDraft(failed.map(row=>row.raw).join('\n'));
+      setLineErrors(Object.fromEntries(failed.map((row,index)=>[`draft-${index}`,row.error])));
     }finally{
       submitting.current=false;setBusy(false);
     }
