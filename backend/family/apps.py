@@ -36,7 +36,11 @@ class FamilyConfig(AppConfig):
             ShoppingTemplate,
             ShoppingTemplateItem,
         )
-        from .shopping_reference_models import ReferenceDataset
+        from .shopping_reference_models import (
+            ReferenceDataset,
+            ReferenceDatasetActivationEvent,
+            ReferenceDatasetLease,
+        )
         from .today_models import TodayLayout
         from .todo_models import TodoActionPreference, TodoPreference
         from .travel_models import Trip, TripPhoto
@@ -69,6 +73,8 @@ class FamilyConfig(AppConfig):
         core_models.ShoppingTemplate = ShoppingTemplate
         core_models.ShoppingTemplateItem = ShoppingTemplateItem
         core_models.ReferenceDataset = ReferenceDataset
+        core_models.ReferenceDatasetActivationEvent = ReferenceDatasetActivationEvent
+        core_models.ReferenceDatasetLease = ReferenceDatasetLease
         core_models.TodayLayout = TodayLayout
         core_models.TodoPreference = TodoPreference
         core_models.TodoActionPreference = TodoActionPreference
