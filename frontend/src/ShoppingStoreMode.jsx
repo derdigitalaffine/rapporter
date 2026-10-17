@@ -5,6 +5,7 @@ import {Icon} from './icons';
 import {toast} from './feedback';
 import ShoppingCheckoutFlow from './ShoppingCheckoutFlow';
 import ShoppingCompletionSummary from './ShoppingCompletionSummary';
+import {stageShoppingOrderMetadata} from './shopping-offline';
 import './store-i18n';
 import './shopping-template-i18n';
 import './shopping-session-i18n';
@@ -15,10 +16,22 @@ import './shopping-session.css';
 const unwrap=value=>value?.results||value||[];
 const byPosition=(a,b)=>(Number(a.position??2147483647)-Number(b.position??2147483647))||String(a.id).localeCompare(String(b.id),undefined,{numeric:true});
 const participantGlyph=person=>{const avatar=String(person?.avatar||'').trim();if(avatar&&avatar.length<=4&&!avatar.includes('/'))return avatar;return String(person?.name||'?').trim().slice(0,1).toLocaleUpperCase()||'?'};
+const uuid=()=>globalThis.crypto?.randomUUID?.()||`stream-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
+function nextOrderMetadata(sessionId){
+ if(!sessionId||typeof sessionStorage==='undefined')return null;
+ const key=`famuhle-shopping-order-stream:${String(sessionId)}`;
+ let state=null;
+ try{state=JSON.parse(sessionStorage.getItem(key)||'null')}catch{}
+ if(!state?.stream)state={stream:uuid(),sequence:0};
+ state.sequence=Math.max(0,Number(state.sequence)||0)+1;
+ try{sessionStorage.setItem(key,JSON.stringify(state))}catch{}
+ return {stream:state.stream,sequence:state.sequence};
+}
 
 export default function ShoppingStoreMode({list,onLeave,onToggle,onDetails,onAdd,syncStatus,initialStatusFilter='open'}){
  const {t}=useTranslation();
- const [cartOpen,setCartOpen]=useState(false);const [offersUrl,setOffersUrl]=useState('');const [statusFilter,setStatusFilter]=useState(initialStatusFilter);const [completingIds,setCompletingIds]=useState([]);const [session,setSession]=useState(null);const [sessionError,setSessionError]=useState('');const [remotePatches,setRemotePatches]=useState({});const [remotePulse,setRemotePulse]=useState(null);const [online,setOnline]=useState(()=>typeof navigator==='undefined'||navigator.onLine);const [checkoutOpen,setCheckoutOpen]=useState(false);const [checkoutHiddenIds,setCheckoutHiddenIds]=useState([]);const [historySessionId,setHistorySessionId]=useState(()=>typeof location==='undefined'?'':new URLSearchParams(location.search).get('session')||'');const [historyPayload,setHistoryPayload]=useState(null);const [historyError,setHistoryError]=useState('');
+ const [cartOpen,setCartOpen]=useState(false);const [offersUrl,setOffersUrl]=useState('');const [storeContext,setStoreContext]=useState(null);const [learnedOrder,setLearnedOrder]=useState(null);const [statusFilter,setStatusFilter]=useState(initialStatusFilter);const [completingIds,setCompletingIds]=useState([]);const [session,setSession]=useState(null);const [sessionError,setSessionError]=useState('');const [remotePatches,setRemotePatches]=useState({});const [remotePulse,setRemotePulse]=useState(null);const [online,setOnline]=useState(()=>typeof navigator==='undefined'||navigator.onLine);const [checkoutOpen,setCheckoutOpen]=useState(false);const [checkoutHiddenIds,setCheckoutHiddenIds]=useState([]);const [historySessionId,setHistorySessionId]=useState(()=>typeof location==='undefined'?'':new URLSearchParams(location.search).get('session')||'');const [historyPayload,setHistoryPayload]=useState(null);const [historyError,setHistoryError]=useState('');
  const cursorRef=useRef(0);const startedRef=useRef(false);const pulseTimerRef=useRef(null);
  const baseItems=(list?.items||[]).filter(item=>!checkoutHiddenIds.includes(String(item.id)));
  const items=useMemo(()=>{
@@ -28,8 +41,9 @@ export default function ShoppingStoreMode({list,onLeave,onToggle,onDetails,onAdd
   return rows;
  },[baseItems,remotePatches,checkoutHiddenIds]);
  const open=items.filter(x=>!x.checked);const checked=items.filter(x=>x.checked);
- useEffect(()=>{let active=true;setOffersUrl('');if(!list?.family||!list?.id)return()=>{active=false};api(`/shopping-stores/?family=${encodeURIComponent(list.family)}`).then(value=>{if(!active)return;const store=unwrap(value).find(row=>(row.shopping_list_ids||[]).some(id=>String(id)===String(list.id)));setOffersUrl(store?.offers_url||'')}).catch(()=>{});return()=>{active=false}},[list?.family,list?.id]);
- useEffect(()=>{setStatusFilter(initialStatusFilter);setCompletingIds([]);setSession(null);setSessionError('');setRemotePatches({});setRemotePulse(null);setCheckoutOpen(false);setCheckoutHiddenIds([]);cursorRef.current=0;startedRef.current=false;if(pulseTimerRef.current){clearTimeout(pulseTimerRef.current);pulseTimerRef.current=null}},[list?.id,initialStatusFilter]);
+ useEffect(()=>{let active=true;setOffersUrl('');setStoreContext(null);if(!list?.family||!list?.id)return()=>{active=false};api(`/shopping-stores/?family=${encodeURIComponent(list.family)}`).then(value=>{if(!active)return;const store=unwrap(value).find(row=>(row.shopping_list_ids||[]).some(id=>String(id)===String(list.id)));setOffersUrl(store?.offers_url||'');setStoreContext(store||null)}).catch(()=>{if(active)setStoreContext(null)});return()=>{active=false}},[list?.family,list?.id]);
+ useEffect(()=>{if(!list?.id||!storeContext?.id){setLearnedOrder(null);return}let active=true;api(`/shopping-stores/${encodeURIComponent(storeContext.id)}/learned-order/?shopping_list=${encodeURIComponent(list.id)}`).then(payload=>{if(active)setLearnedOrder(payload?.source==='learned'?payload:null)}).catch(()=>{if(active)setLearnedOrder(null)});return()=>{active=false}},[list?.id,storeContext?.id]);
+ useEffect(()=>{setStatusFilter(initialStatusFilter);setCompletingIds([]);setSession(null);setSessionError('');setRemotePatches({});setRemotePulse(null);setCheckoutOpen(false);setCheckoutHiddenIds([]);setLearnedOrder(null);cursorRef.current=0;startedRef.current=false;if(pulseTimerRef.current){clearTimeout(pulseTimerRef.current);pulseTimerRef.current=null}},[list?.id,initialStatusFilter]);
  useEffect(()=>{const update=()=>setOnline(navigator.onLine);window.addEventListener('online',update);window.addEventListener('offline',update);return()=>{window.removeEventListener('online',update);window.removeEventListener('offline',update)}},[]);
  useEffect(()=>{const update=()=>{const id=new URLSearchParams(location.search).get('session')||'';setHistorySessionId(id)};window.addEventListener('popstate',update);return()=>window.removeEventListener('popstate',update)},[]);
  useEffect(()=>{
@@ -86,7 +100,9 @@ export default function ShoppingStoreMode({list,onLeave,onToggle,onDetails,onAdd
   return()=>{stopped=true;if(timer)clearTimeout(timer)};
  },[list?.id,online,t,historySessionId]);
  useEffect(()=>()=>{if(pulseTimerRef.current)clearTimeout(pulseTimerRef.current)},[]);
- const visibleItems=useMemo(()=>statusFilter==='open'?[...open].sort(byPosition):statusFilter==='done'?[...checked].sort(byPosition):[...open].sort(byPosition).concat([...checked].sort(byPosition)),[statusFilter,open,checked]);
+ const learnedRank=useMemo(()=>{if(learnedOrder?.source!=='learned')return null;const map=new Map();(learnedOrder.ordered_items||[]).forEach((row,index)=>map.set(String(row.id),index));return map},[learnedOrder]);
+ const sortForStore=rows=>[...rows].sort((a,b)=>{if(learnedRank){const ar=learnedRank.has(String(a.id))?learnedRank.get(String(a.id)):Number.MAX_SAFE_INTEGER;const br=learnedRank.has(String(b.id))?learnedRank.get(String(b.id)):Number.MAX_SAFE_INTEGER;if(ar!==br)return ar-br}return byPosition(a,b)});
+ const visibleItems=useMemo(()=>statusFilter==='open'?sortForStore(open):statusFilter==='done'?sortForStore(checked):sortForStore(open).concat(sortForStore(checked)),[statusFilter,open,checked,learnedRank]);
  const groups=useMemo(()=>{
   const rows=[...visibleItems];
   const byAisle=rows.length>0&&rows.filter(x=>x.aisle?.trim()).length>rows.length/2;
@@ -95,6 +111,7 @@ export default function ShoppingStoreMode({list,onLeave,onToggle,onDetails,onAdd
  },[visibleItems,t]);
  async function toggle(item){
   const target=!item.checked;const id=String(item.id);const confirmInline=target&&statusFilter==='open';const previousPatch=remotePatches[id];
+  if(target&&session?.id){const metadata=nextOrderMetadata(session.id);if(metadata)stageShoppingOrderMetadata(id,metadata)}
   setRemotePatches(current=>({...current,[id]:{...(current[id]||{}),checked:target,checked_at:target?new Date().toISOString():null}}));
   if(confirmInline){
    setCompletingIds(ids=>ids.includes(id)?ids:[...ids,id]);
