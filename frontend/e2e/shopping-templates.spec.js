@@ -69,7 +69,7 @@ test('templates are discoverable from the shopping flow and the empty state',asy
  await page.goto('/?page=shopping');
  await expect(page.getByRole('button',{name:'Vorlage verwenden'})).toBeVisible();
  await page.getByRole('button',{name:'Vorlage verwenden'}).click();
- await expect(page.getByRole('heading',{name:'Vorlagen & Einkaufsorte'})).toBeVisible();
+ await expect(page.getByRole('heading',{name:'Vorlagen & Einkaufsorte',level:2})).toBeVisible();
  await expect(page.getByTestId('shopping-template-tools')).toBeVisible();
 });
 
@@ -104,7 +104,7 @@ test('shopping place assigns legacy display label and exposes safe offers link i
  await tools.getByLabel('Einkaufsort für diese Liste').selectOption({label:'REWE · Innenstadt'});
  await tools.getByRole('button',{name:'Zuordnen'}).click();
  await expect(page.locator('.shopping-session-title small')).toContainText('REWE · Innenstadt');
- await page.getByRole('button',{name:'Schließen'}).first().click();
+ await page.locator('.family-sheet .sheet-close').click();
  await expect(tools).not.toBeVisible();
  await page.locator('.shopping-store-entry').click();
  const offers=page.getByRole('link',{name:'Angebote ansehen'});
