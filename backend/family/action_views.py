@@ -51,13 +51,6 @@ def _family_membership(request):
     return membership.family, membership, None
 
 
-def _visible_action_ids(*, request, family):
-    return {
-        row["id"]
-        for row in project_actions(user=request.user, family=family, scope="all", kind="all")
-    }
-
-
 def _apply_routine_migrations(rows, *, family):
     migrations = list(
         RoutineTaskMigration.objects.filter(family=family).values("routine_id", "task_id", "snapshot")
@@ -83,13 +76,29 @@ def _apply_routine_migrations(rows, *, family):
                 "target_count": legacy.get("target_count"),
                 "target_period_days": legacy.get("target_period_days"),
                 "reminder_enabled": legacy.get("reminder_enabled", True),
+                "last_done_at": item.get("completed_at"),
             }
             if legacy.get("active") is False and item.get("state") not in {"done", "done_today"}:
                 item["state"] = "paused"
                 item["urgency"] = "none"
                 item["ranking"] = {"version": RANKING_VERSION, "bucket": 7, "reasons": ["paused"]}
+            elif legacy.get("active") is not False:
+                # A migrated routine remains a repeatable task even after today's
+                # first completion. The Todo runner sees `complete` plus the
+                # completion_command and therefore uses the canonical command API.
+                item["primary_action"] = {
+                    **(item.get("primary_action") or {}),
+                    "kind": "task",
+                    "id": "complete",
+                    "method": "POST",
+                }
         projected.append(item)
     return projected
+
+
+def _visible_action_ids(*, request, family):
+    rows = project_actions(user=request.user, family=family, scope="all", kind="all")
+    return {row["id"] for row in _apply_routine_migrations(rows, family=family)}
 
 
 def _update_preferences(request, *, family, membership):
