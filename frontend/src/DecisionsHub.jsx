@@ -33,7 +33,7 @@ export default function DecisionsHub({family,onBack}){
  const modeLabels={single:w.single,multiple:w.multiple,ranking:w.ranking,rating:w.rating};
  function updateOption(index,value){setDraft(old=>({...old,options:old.options.map((item,i)=>i===index?value:item)}))}
  function addOption(){setDraft(old=>old.options.length>=10?old:{...old,options:[...old.options,'']})}
- function removeOption(index){setDraft(old=>old.options.length<=2?old:{...old,options:old.options.filter((_,i)=>i!==index)}))}
+ function removeOption(index){setDraft(old=>old.options.length<=2?old:{...old,options:old.options.filter((_,i)=>i!==index)})}
  async function createDecision(e){e.preventDefault();if(busy)return;setBusy('create');setError('');setNotice('');try{const payload={family:familyId,question:draft.question.trim(),mode:draft.mode,anonymous:draft.anonymous,options:draft.options.map(value=>value.trim())};if(draft.closes_at)payload.closes_at=new Date(draft.closes_at).toISOString();const created=await api('/decisions/',{method:'POST',body:JSON.stringify(payload)});setRows(old=>[created,...old]);setDraft(emptyDraft());setCreating(false);setNotice(w.created)}catch(e){setError(e.message||w.failed)}finally{setBusy('')}}
  function selectedFor(row){return choices[row.id]??row.my_option_ids??[]}
  function rankingFor(row){const current=choices[row.id]??row.my_option_ids??[];return current.length===row.options.length?current:row.options.map(option=>option.id)}
