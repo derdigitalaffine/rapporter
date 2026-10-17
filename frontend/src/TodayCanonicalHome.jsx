@@ -8,7 +8,7 @@ import {formatDateTime} from './locale';
 import {featureHref} from './navigation';
 import {isWarningEvent} from './calendar-event-ui';
 import {useTodayCoreData} from './todayCoreData';
-import {useCreateActions} from './useCreateActions';
+import {readCreateActionsSnapshot} from './useCreateActions';
 import {requestCreate} from './create-request';
 import './create-i18n';
 import './onboarding.css';
@@ -70,7 +70,7 @@ function ModuleShortcut({page,icon,title,value,detail,language}){
 
 function TodayQuickActions({family,viewer,language}){
  const userId=viewer?.user||viewer?.id||null;
- const {ranked}=useCreateActions({userId,page:'home',family,entitlements:null});
+ const {ranked}=readCreateActionsSnapshot({familyId:family?.id,userId,page:'home'});
  const de=language.startsWith('de');
  const actions=(ranked||[]).slice(0,6);
  return <section className="today-section today-quick-actions" data-testid="today-quick-actions">
