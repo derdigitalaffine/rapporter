@@ -34,6 +34,14 @@ test('quick-add keeps two explicit same-name items distinct instead of silently 
  const again=(await request('/smart/shopping/quick-add/','POST',{family:'f',shopping_list:list.id,name:'milk',quantity:''})).value;
  assert.equal(first.reused,false);assert.equal(again.reused,false);assert.notEqual(again.item.id,first.item.id);assert.equal((await e.list('shopping_item')).length,2);
 });
+test('quick-add reuses the same offline item for the same client mutation id',async()=>{
+ await setup();const e=offlineEngine('f');e.schedule=()=>{};navigator.onLine=false;
+ const list=(await request('/shopping-lists/','POST',{family:'f',name:'Food'})).value;
+ const mutation=crypto.randomUUID();
+ const first=(await request('/smart/shopping/quick-add/','POST',{family:'f',shopping_list:list.id,name:'Milk',client_mutation_id:mutation})).value;
+ const again=(await request('/smart/shopping/quick-add/','POST',{family:'f',shopping_list:list.id,name:'Milk',client_mutation_id:mutation})).value;
+ assert.equal(first.item.id,mutation);assert.equal(again.item.id,mutation);assert.equal(again.reused,true);assert.equal((await e.list('shopping_item')).length,1);
+});
 
 test('logout in another tab stops old writes without erasing the newly selected account',async()=>{
  await setup();const old=offlineEngine('f'),account=old.accountId;old.schedule=()=>{};

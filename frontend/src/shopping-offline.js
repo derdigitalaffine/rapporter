@@ -7,6 +7,18 @@ export const SHOPPING_BUDGET_PURCHASE_EVENT='famuhle:shopping-budget-purchase';
 const uuid=()=>globalThis.crypto?.randomUUID?.()||`offline-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 const mutationUuid=()=>globalThis.crypto?.randomUUID?.()||'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,char=>{const random=Math.random()*16|0;const value=char==='x'?random:(random&3)|8;return value.toString(16)});
 const ORDER_META_PREFIX='famuhle-shopping-order-next:';
+const stagedAddMutationIds=new Map();
+const addStageKey=name=>String(name??'').normalize('NFKC').replace(/\s+/g,' ').trim().toLocaleLowerCase('de-DE');
+
+export const createShoppingMutationId=()=>mutationUuid();
+export function stageShoppingAddMutationId(name,mutationId){
+  const key=addStageKey(name);if(!key||!mutationId)return;
+  stagedAddMutationIds.set(key,String(mutationId));
+}
+function consumeShoppingAddMutationId(name){
+  const key=addStageKey(name);if(!key)return null;
+  const value=stagedAddMutationIds.get(key)||null;stagedAddMutationIds.delete(key);return value;
+}
 
 export function stageShoppingOrderMetadata(targetId,metadata){
   if(typeof sessionStorage==='undefined')return;
@@ -19,8 +31,10 @@ function consumeShoppingOrderMetadata(targetId){
 }
 
 export async function queueShoppingAdd(familyId,payload){
-  const mutationId=mutationUuid();
-  const guessed=applyShoppingItemAutoguess(payload).payload;
+  const stagedMutationId=consumeShoppingAddMutationId(payload?.name);
+  const mutationId=payload?.client_mutation_id||stagedMutationId||mutationUuid();
+  const {client_mutation_id:_clientMutationId,...inputPayload}=payload||{};
+  const guessed=applyShoppingItemAutoguess(inputPayload).payload;
   const mutationPayload={...guessed,client_mutation_id:mutationId};
   if(offlineEngine(familyId)){const {item}=await addShoppingLocally(familyId,mutationPayload);return {localId:item.id,payload:mutationPayload,id:mutationId}}
   const localId=`offline-${uuid()}`;
