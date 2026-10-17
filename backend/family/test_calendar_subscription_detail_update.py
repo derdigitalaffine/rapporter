@@ -26,6 +26,7 @@ class CalendarSubscriptionDetailUpdateTests(TestCase):
             is_family_event=True,
             payload={'location': 'Secret place', 'description': 'Never exported'},
         )
+        self.event.participants.add(self.membership)
         self.client = APIClient()
         login = self.client.post('/api/auth/login/', {'username': self.user.username, 'password': 'calendar-test-password'}, format='json')
         self.assertEqual(login.status_code, 200, login.data)
@@ -85,6 +86,32 @@ class CalendarSubscriptionDetailUpdateTests(TestCase):
         listing = self.client.get(self.path)
         self.assertEqual(listing.data['subscriptions'][0]['detail_level'], 'title')
 
+    def test_scope_only_accepts_active_children_and_teens(self):
+        child_user = get_user_model().objects.create_user('scope-child')
+        child = Membership.objects.create(family=self.family, user=child_user, role=Membership.Role.CHILD, display_name='Sam')
+        teen_user = get_user_model().objects.create_user('scope-teen')
+        teen = Membership.objects.create(family=self.family, user=teen_user, role=Membership.Role.TEEN, display_name='Taylor')
+        adult_user = get_user_model().objects.create_user('scope-adult')
+        adult = Membership.objects.create(family=self.family, user=adult_user, role=Membership.Role.ADULT, display_name='Morgan')
+
+        listing = self.client.get(self.path)
+        self.assertEqual({row['id'] for row in listing.data['selectable_members']}, {str(child.pk), str(teen.pk)})
+
+        rejected = self.client.post(self.path, {
+            'name': 'Invalid scope',
+            'detail_level': 'title',
+            'included_member_ids': [str(adult.pk)],
+        }, format='json')
+        self.assertEqual(rejected.status_code, 400)
+
+        created = self.client.post(self.path, {
+            'name': 'Kids scope',
+            'detail_level': 'title',
+            'included_member_ids': [str(child.pk), str(teen.pk)],
+        }, format='json')
+        self.assertEqual(created.status_code, 201, created.data)
+        self.assertEqual(created.data['included_member_ids'], [str(child.pk), str(teen.pk)])
+
     def test_apple_profile_installs_one_writable_family_caldav_account(self):
         other_user = get_user_model().objects.create_user('detail-sam')
         sam = Membership.objects.create(family=self.family, user=other_user, role=Membership.Role.CHILD, display_name='Sam')
@@ -94,6 +121,7 @@ class CalendarSubscriptionDetailUpdateTests(TestCase):
 
         created = self.client.post(self.path, {'name': 'Family iPhones', 'detail_level': 'title'}, format='json')
         self.assertEqual(created.status_code, 201, created.data)
+        self.assertEqual(created.data['included_member_ids'], [])
         detail = self.path + created.data['id'] + '/'
         profile_response = self.client.get(detail + 'profile/')
         self.assertEqual(profile_response.status_code, 200)
@@ -117,5 +145,16 @@ class CalendarSubscriptionDetailUpdateTests(TestCase):
         titles = {str(event['SUMMARY']) for event in Calendar.from_ical(calendar_response.content).walk('VEVENT')}
         self.assertIn(self.event.title, titles)
         self.assertIn(alex_only.title, titles)
-        self.assertIn(sam_only.title, titles)
+        self.assertNotIn(sam_only.title, titles)
         self.assertNotIn(selected_private.title, titles)
+
+        scoped = self.client.patch(detail, {'included_member_ids': [str(sam.pk)]}, format='json')
+        self.assertEqual(scoped.status_code, 200, scoped.data)
+        self.assertEqual(scoped.data['included_member_ids'], [str(sam.pk)])
+        scoped_titles = {str(event['SUMMARY']) for event in Calendar.from_ical(
+            self.public.get(calendar_path, HTTP_AUTHORIZATION=auth).content
+        ).walk('VEVENT')}
+        self.assertIn(self.event.title, scoped_titles)
+        self.assertIn(alex_only.title, scoped_titles)
+        self.assertIn(sam_only.title, scoped_titles)
+        self.assertNotIn(selected_private.title, scoped_titles)

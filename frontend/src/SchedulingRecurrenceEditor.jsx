@@ -78,8 +78,12 @@ export default function SchedulingRecurrenceEditor({
  const presets=useMemo(()=>presetOptions(de,allowActionCadence),[de,allowActionCadence]);
  const dateFormatter=useMemo(()=>new Intl.DateTimeFormat(de?'de-DE':'en-GB',{weekday:'short',day:'2-digit',month:'short',year:'numeric'}),[de]);
  const unitLabels=de?{hourly:'Stunden',daily:'Tage',business_daily:'Werktage',weekly:'Wochen',monthly:'Monate',quarterly:'Quartale',yearly:'Jahre'}:{hourly:'hours',daily:'days',business_daily:'business days',weekly:'weeks',monthly:'months',quarterly:'quarters',yearly:'years'};
+ const singleIntervalLabels=de?{hourly:'Jede Stunde',daily:'Jeden Tag',business_daily:'Jeden Werktag',weekly:'Jede Woche',monthly:'Jeden Monat',quarterly:'Jedes Quartal',yearly:'Jedes Jahr'}:{hourly:'Every hour',daily:'Every day',business_daily:'Every business day',weekly:'Every week',monthly:'Every month',quarterly:'Every quarter',yearly:'Every year'};
  const periodLabels=de?{daily:'Tag',weekly:'Woche',monthly:'Monat'}:{daily:'day',weekly:'week',monthly:'month'};
  const intervalUnit=recurrence?.business_days?'business_daily':frequency;
+ const intervalCount=Math.max(1,Number(recurrence?.interval||1));
+ const intervalMenuLabel=kind==='interval'?(intervalCount===1?singleIntervalLabels[intervalUnit]:(de?`Alle ${intervalCount} ${unitLabels[intervalUnit]}`:`Every ${intervalCount} ${unitLabels[intervalUnit]}`)):(de?'Eigenes Intervall':'Custom interval');
+ const quotaMenuLabel=kind==='quota'?(de?`${recurrence?.times_per_period||1}× pro ${periodLabels[frequency]}`:`${recurrence?.times_per_period||1}× per ${periodLabels[frequency]}`):(de?'Mehrmals pro Zeitraum':'Multiple times per period');
 
  function setRecurrence(next){onChange?.(next)}
  function change(changes){setRecurrence({...recurrence,...changes})}
@@ -146,14 +150,14 @@ export default function SchedulingRecurrenceEditor({
   </div>
 
   {showNaturalLanguage&&<div className="scheduling-recurrence-phrase">
-   <FormField label={de?'In eigenen Worten':'In your own words'} description={de?'Zum Beispiel: „alle 3 Tage“, „alle 3 Werktage“, „2x pro Woche“ oder „erster Montag im Quartal“':'For example: “every 3 days”, “every 3 business days”, “2 times per week” or “first Monday of the quarter”'}>
+   <FormField label={de?'In eigenen Worten':'In your own words'} description={de?'Zum Beispiel: „alle drei Tage“, „jeden dritten Werktag“, „zweimal die Woche“, „montags um 8 Uhr“ oder „erster Montag im Quartal“':'For example: “every three days”, “every 3 business days”, “twice a week”, “Mondays at 8” or “first Monday of the quarter”'}>
     {fieldProps=><div className="scheduling-recurrence-phrase-input"><input {...fieldProps} value={phrase} disabled={disabled} onChange={event=>setPhrase(event.target.value)} onKeyDown={event=>{if(event.key==='Enter'){event.preventDefault();parsePhrase()}}} placeholder={de?'Wiederholung beschreiben …':'Describe recurrence …'}/><button type="button" disabled={disabled||previewBusy||!phrase.trim()||!familyId} onClick={parsePhrase}>{de?'Erkennen':'Interpret'}</button></div>}
    </FormField>
   </div>}
 
-  <FormField label={de?'Wiederholung':'Repeat'}><select value={kind} disabled={disabled} onChange={event=>changeKind(event.target.value)}>{allowNone&&<option value="none">{de?'Keine':'None'}</option>}{allowOnce&&<option value="once">{de?'Einmalig':'Once'}</option>}<option value="daily">{de?'Täglich':'Daily'}</option>{cadenceVisible&&<option value="business_daily">{de?'Werktags (Mo–Fr)':'Business days (Mon–Fri)'}</option>}<option value="weekly">{de?'Wöchentlich':'Weekly'}</option><option value="monthly">{de?'Monatlich':'Monthly'}</option><option value="quarterly">{de?'Quartalsweise':'Quarterly'}</option><option value="yearly">{de?'Jährlich':'Yearly'}</option>{cadenceVisible&&<option value="interval">{de?'Alle N …':'Every N …'}</option>}{cadenceVisible&&<option value="quota">{de?'N-mal pro Zeitraum':'N times per period'}</option>}</select></FormField>
+  <FormField label={de?'Wiederholung':'Repeat'}><select value={kind} disabled={disabled} onChange={event=>changeKind(event.target.value)}>{allowNone&&<option value="none">{de?'Keine':'None'}</option>}{allowOnce&&<option value="once">{de?'Einmalig':'Once'}</option>}<option value="daily">{de?'Täglich':'Daily'}</option>{cadenceVisible&&<option value="business_daily">{de?'Werktags (Mo–Fr)':'Business days (Mon–Fri)'}</option>}<option value="weekly">{de?'Wöchentlich':'Weekly'}</option><option value="monthly">{de?'Monatlich':'Monthly'}</option><option value="quarterly">{de?'Quartalsweise':'Quarterly'}</option><option value="yearly">{de?'Jährlich':'Yearly'}</option>{cadenceVisible&&<option value="interval">{intervalMenuLabel}</option>}{cadenceVisible&&<option value="quota">{quotaMenuLabel}</option>}</select></FormField>
 
-  {kind==='interval'&&<section className="scheduling-recurrence-cadence" aria-label={de?'Benutzerdefiniertes Intervall':'Custom interval'}>
+  {kind==='interval'&&<section className="scheduling-recurrence-cadence" aria-label={de?'Eigenes Intervall':'Custom interval'}>
    <FormRow>
     <FormField label={de?'Alle':'Every'}><input type="number" min="1" max="1200" inputMode="numeric" required disabled={disabled} value={recurrence?.interval||1} onChange={event=>change({interval:Math.max(1,Number(event.target.value)||1)})}/></FormField>
     <FormField label={de?'Einheit':'Unit'}><select value={intervalUnit} disabled={disabled} onChange={event=>changeIntervalUnit(event.target.value)}>{INTERVAL_UNITS.map(unit=><option key={unit} value={unit}>{unitLabels[unit]}</option>)}</select></FormField>
