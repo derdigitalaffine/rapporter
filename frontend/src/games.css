@@ -114,8 +114,7 @@
  .quiz-options{grid-template-columns:1fr}
 }
 @media(max-width:420px){
- .game-match-head{grid-template-columns:44px minmax(0,1fr) auto;padding:var(--space-2) var(--space-3)}
- .game-match-head>.turn-dot{grid-column:3}
+ .game-match-head{grid-template-columns:44px minmax(0,1fr) auto auto;padding:var(--space-2) var(--space-3)}
  .games-status{align-items:flex-start;flex-direction:column}
  .games-result{grid-template-columns:auto minmax(0,1fr)}
  .games-result span:last-child{grid-column:2}
