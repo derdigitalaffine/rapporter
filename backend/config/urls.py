@@ -1,5 +1,6 @@
 from django.contrib import admin
 from django.urls import include, path
+from django.views.decorators.csrf import csrf_exempt
 
 from auth_identity.password_reset_views import password_reset_confirm, password_reset_request
 from auth_sessions.admin_security_views import (
@@ -43,7 +44,7 @@ from family.calendar_subscription_dav import feed, dav, well_known
 from family.calendar_subscription_member_feed import member_feed
 
 urlpatterns = [
-    path(".well-known/caldav", well_known),
+    path(".well-known/caldav", csrf_exempt(well_known)),
     path("caldav/", dav),
     path("caldav/<path:path>", dav),
     path("calendar-feed/<str:token>/family.ics", feed),
