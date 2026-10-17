@@ -63,7 +63,7 @@ class FlexibleSchedulingTextTests(SimpleTestCase):
     def test_weekday_inflection_and_relaxed_clock_are_understood(self):
         rule = self.parse("montags um 8 Uhr")
         self.assertEqual(rule["recurrence"], {"frequency": "weekly", "weekdays": ["MO"]})
-        self.assertEqual(rule["segments"], [{"preferred_time": "08:00", "weekdays": ["MO", "TU", "WE", "TH", "FR", "SA", "SU"]}])
+        self.assertEqual(rule["segments"], [{"preferred_time": "08:00"}])
 
         english = self.parse("Mondays at 8:30")
         self.assertEqual(english["recurrence"], {"frequency": "weekly", "weekdays": ["MO"]})
