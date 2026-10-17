@@ -96,7 +96,7 @@ def shopping_reference_search(request):
         terms = terms.filter(term__startswith=query)
 
     record_ids = list(
-        terms.order_by("record_id")
+        terms.order_by("dataset__dataset_id", "record__record_key")
         .values_list("record_id", flat=True)
         .distinct()[: limit + 1]
     )
