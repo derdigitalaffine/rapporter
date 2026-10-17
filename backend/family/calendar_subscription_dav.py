@@ -213,6 +213,21 @@ def multistatus(rows, requested):
     return response(data, status=207)
 
 
+def query_targets_events(root):
+    filters = root.findall(q(C, 'filter'))
+    if len(filters) != 1 or filters[0].attrib:
+        raise ValueError()
+    top = [node for node in filters[0] if node.tag == q(C, 'comp-filter')]
+    if len(top) != 1 or set(top[0].attrib) != {'name'} or top[0].get('name') != 'VCALENDAR':
+        raise ValueError()
+    components = [node.get('name') for node in top[0] if node.tag == q(C, 'comp-filter')]
+    if not components or 'VEVENT' in components:
+        return True
+    if len(components) == 1 and components[0] in ('VTODO', 'VJOURNAL', 'VFREEBUSY'):
+        return False
+    raise ValueError()
+
+
 def query_range(root):
     allowed = {q(C, 'filter'), q(C, 'comp-filter'), q(C, 'time-range')}
     filters = root.findall(q(C, 'filter'))
@@ -235,6 +250,39 @@ def query_range(root):
     return start, end
 
 
+def _calendar_name(value):
+    return bool(value) and len(value) <= 128 and all(char.isalnum() or char == '-' for char in value)
+
+
+def _validate_calendar_data_comp(node, depth=0):
+    if depth > 6 or node.tag != q(C, 'comp') or set(node.attrib) != {'name'} or not _calendar_name(node.get('name')):
+        raise ValueError()
+    for child in node:
+        if child.tag == q(C, 'comp'):
+            _validate_calendar_data_comp(child, depth + 1)
+        elif child.tag == q(C, 'prop'):
+            if list(child) or set(child.attrib) - {'name', 'novalue'} or not _calendar_name(child.get('name')):
+                raise ValueError()
+            if child.get('novalue', 'no') not in ('yes', 'no'):
+                raise ValueError()
+        elif child.tag in (q(C, 'allprop'), q(C, 'allcomp')):
+            if list(child) or child.attrib:
+                raise ValueError()
+        else:
+            raise ValueError()
+
+
+def _validate_expand(node):
+    if list(node) or set(node.attrib) != {'start', 'end'}:
+        raise ValueError()
+    start, end = [
+        datetime.strptime(node.get(key), '%Y%m%dT%H%M%SZ').replace(tzinfo=dt_timezone.utc)
+        for key in ('start', 'end')
+    ]
+    if end <= start or end - start > timedelta(days=1830):
+        raise ValueError()
+
+
 def report_properties(prop):
     if prop is None:
         return [q(D, 'getetag'), q(C, 'calendar-data')]
@@ -245,21 +293,18 @@ def report_properties(prop):
                 raise ValueError()
             requested.append(node.tag)
             continue
-        if node.attrib:
+        if set(node.attrib) - {'content-type', 'version'}:
             raise ValueError()
-        children = list(node)
-        if len(children) > 1:
+        if node.get('content-type', 'text/calendar') != 'text/calendar' or node.get('version', '2.0') != '2.0':
             raise ValueError()
-        if children:
-            expand = children[0]
-            if expand.tag != q(C, 'expand') or list(expand) or set(expand.attrib) != {'start', 'end'}:
-                raise ValueError()
-            start, end = [
-                datetime.strptime(expand.get(key), '%Y%m%dT%H%M%SZ').replace(tzinfo=dt_timezone.utc)
-                for key in ('start', 'end')
-            ]
-            if end <= start or end - start > timedelta(days=1830):
-                raise ValueError()
+        comp_nodes = [child for child in node if child.tag == q(C, 'comp')]
+        expand_nodes = [child for child in node if child.tag == q(C, 'expand')]
+        if len(comp_nodes) > 1 or len(expand_nodes) > 1 or len(comp_nodes) + len(expand_nodes) != len(list(node)):
+            raise ValueError()
+        if comp_nodes:
+            _validate_calendar_data_comp(comp_nodes[0])
+        if expand_nodes:
+            _validate_expand(expand_nodes[0])
         requested.append(node.tag)
     return requested
 
@@ -518,6 +563,8 @@ def dav(request, path=''):
         except (ValueError, TypeError):
             return response(status=403)
         if root.tag == q(C, 'calendar-query'):
+            if not query_targets_events(root):
+                return multistatus([], requested)
             bounds = query_range(root)
             selected = events if bounds is None else [event for event in events if overlaps(event, *bounds)]
             return multistatus([resource(event) for event in selected], requested)
