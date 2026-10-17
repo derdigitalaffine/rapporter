@@ -322,6 +322,16 @@ def shopping_session_complete(request):
     store_id = request.data.get("store")
     expected_revision = request.data.get("expected_revision")
     confirm_active_peers = request.data.get("confirm_active_peers") is True
+    confirmed_peer_ids_raw = request.data.get("confirmed_active_peer_ids")
+    if confirmed_peer_ids_raw is None:
+        confirmed_peer_ids = set()
+    elif isinstance(confirmed_peer_ids_raw, list):
+        confirmed_peer_ids = {str(value) for value in confirmed_peer_ids_raw}
+    else:
+        return Response(
+            {"code": "invalid_peer_confirmation", "detail": "Ungültige Bestätigung aktiver Personen."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
     with transaction.atomic():
         sessions = (
             ShoppingSession.objects.select_for_update(of=("self",))
@@ -370,7 +380,10 @@ def shopping_session_complete(request):
                     )
 
             active_peers = _active_peer_participants(session, request.user)
-            if active_peers and not confirm_active_peers:
+            active_peer_ids = {str(row.user_id) for row in active_peers}
+            if active_peers and (
+                not confirm_active_peers or confirmed_peer_ids != active_peer_ids
+            ):
                 memberships = _membership_map(session, [row.user for row in active_peers])
                 return Response(
                     {
