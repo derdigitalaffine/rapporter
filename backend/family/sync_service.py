@@ -126,6 +126,11 @@ def apply_mutation(request, family, mutation):
                 if not isinstance(data, dict):
                     raise ValidationError({'data': 'Expected an object.'})
                 data = dict(data)
+                client_activity = None
+                if kind == 'shopping_item' and op == 'update' and 'client_activity' in data:
+                    client_activity = data.pop('client_activity')
+                    if not isinstance(client_activity, dict):
+                        raise ValidationError({'client_activity': 'Expected an object.'})
                 if kind != 'shopping_item':
                     if 'family' in data and str(data['family']) != str(family.pk):
                         raise ValidationError({'family': 'Family is immutable.'})
@@ -154,6 +159,8 @@ def apply_mutation(request, family, mutation):
                         serializer.validated_data['checked_at'] = timezone.now()
                     view.perform_create(serializer)
                 else:
+                    if kind == 'shopping_item' and client_activity is not None:
+                        serializer.instance._shopping_client_activity = client_activity
                     view.perform_update(serializer)
                 obj = serializer.instance
                 if kind == 'shopping_list' and (op == 'create' or access_data):
