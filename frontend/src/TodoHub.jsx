@@ -74,13 +74,13 @@ function FocusSection({items,text,language,busyId,onPrimary,onSecondary,onPrefer
 
 function ViewOptions({text,value,onChange}){
  const groupLabels={date:text.groupDate,status:text.groupStatus,list:text.groupList,person:text.groupPerson,none:text.groupNone};
- const sortLabels={due:text.sortDue,priority:text.sortPriority,newest:text.sortNewest,oldest:text.sortOldest};
+ const sortLabels={due:text.sortDue,priority:text.sortPriority,title:text.sortTitle};
  const densityLabels={compact:text.densityCompact,comfortable:text.densityComfortable};
  return <details className="todo-view-options">
   <summary><Icon name="settings" size={16}/><span>{text.viewOptions}</span><small>{groupLabels[value.group]} · {sortLabels[value.sort]} · {densityLabels[value.density]}</small></summary>
   <div className="todo-view-option-fields">
    <label>{text.groupBy}<select value={value.group} onChange={event=>onChange('group',event.target.value)}><option value="date">{text.groupDate}</option><option value="status">{text.groupStatus}</option><option value="list">{text.groupList}</option><option value="person">{text.groupPerson}</option><option value="none">{text.groupNone}</option></select></label>
-   <label>{text.sortBy}<select value={value.sort} onChange={event=>onChange('sort',event.target.value)}><option value="due">{text.sortDue}</option><option value="priority">{text.sortPriority}</option><option value="newest">{text.sortNewest}</option><option value="oldest">{text.sortOldest}</option></select></label>
+   <label>{text.sortBy}<select value={value.sort} onChange={event=>onChange('sort',event.target.value)}><option value="due">{text.sortDue}</option><option value="priority">{text.sortPriority}</option><option value="title">{text.sortTitle}</option></select></label>
    <label>{text.density}<select value={value.density} onChange={event=>onChange('density',event.target.value)}><option value="compact">{text.densityCompact}</option><option value="comfortable">{text.densityComfortable}</option></select></label>
   </div>
  </details>
@@ -91,7 +91,7 @@ export function RecurringWorkspace(props){return <TodoHub {...props} initialWork
 
 export default function TodoHub({family,data,onCreate,onChanged,currentUserId,userId,initialWorkspace='upcoming',recurringOnly=false}){
  const {i18n}=useTranslation();
- const language=i18n.language||'de';const de=!language.startsWith('en');const text={...labels[de?'de':'en'],title:de?'Aufgaben':'Tasks',all:de?'Alle':'All',routinesNow:de?'Wiederkehrend':'Recurring',close:de?'Schließen':'Close',discard:de?'Verwerfen':'Discard',keepEditing:de?'Weiter bearbeiten':'Keep editing',deleteCaptureDraft:de?'Die noch nicht gespeicherte Eingabe verwerfen?':'Discard the unsaved entry?',viewOptions:de?'Ansicht':'View',groupBy:de?'Gruppieren':'Group by',groupDate:de?'Datum':'Date',groupStatus:de?'Status':'Status',groupList:de?'Liste':'List',groupPerson:de?'Person':'Person',groupNone:de?'Keine':'None',sortBy:de?'Sortieren':'Sort',sortDue:de?'Fälligkeit':'Due date',sortPriority:de?'Priorität':'Priority',sortNewest:de?'Neueste':'Newest',sortOldest:de?'Älteste':'Oldest',density:de?'Dichte':'Density',densityCompact:de?'Kompakt':'Compact',densityComfortable:de?'Komfortabel':'Comfortable',tomorrow:de?'Morgen':'Tomorrow',thisWeek:de?'Diese Woche':'This week',later:de?'Später':'Later',undated:de?'Ohne Termin':'No date',noList:de?'Ohne Liste':'No list',noPerson:de?'Nicht zugewiesen':'Unassigned',statusOpen:de?'Offen':'Open',statusActive:de?'In Arbeit':'In progress',statusWaiting:de?'Wartend':'Waiting',statusPaused:de?'Pausiert':'Paused'};
+ const language=i18n.language||'de';const de=!language.startsWith('en');const text={...labels[de?'de':'en'],title:de?'Aufgaben':'Tasks',all:de?'Alle':'All',routinesNow:de?'Wiederkehrend':'Recurring',close:de?'Schließen':'Close',discard:de?'Verwerfen':'Discard',keepEditing:de?'Weiter bearbeiten':'Keep editing',deleteCaptureDraft:de?'Die noch nicht gespeicherte Eingabe verwerfen?':'Discard the unsaved entry?',viewOptions:de?'Ansicht':'View',groupBy:de?'Gruppieren':'Group by',groupDate:de?'Datum':'Date',groupStatus:de?'Status':'Status',groupList:de?'Liste':'List',groupPerson:de?'Person':'Person',groupNone:de?'Keine':'None',sortBy:de?'Sortieren':'Sort',sortDue:de?'Fälligkeit':'Due date',sortPriority:de?'Priorität':'Priority',sortTitle:de?'Titel A–Z':'Title A–Z',density:de?'Dichte':'Density',densityCompact:de?'Kompakt':'Compact',densityComfortable:de?'Komfortabel':'Comfortable',tomorrow:de?'Morgen':'Tomorrow',thisWeek:de?'Diese Woche':'This week',later:de?'Später':'Later',undated:de?'Ohne Termin':'No date',noList:de?'Ohne Liste':'No list',noPerson:de?'Nicht zugewiesen':'Unassigned',statusOpen:de?'Offen':'Open',statusActive:de?'In Arbeit':'In progress',statusWaiting:de?'Wartend':'Waiting',statusPaused:de?'Pausiert':'Paused'};
  const [view,setViewState]=useState(()=>workspaceView(location.search,initialWorkspace));
  const [query,setQuery]=useState(''),[list,setList]=useState(''),[person,setPerson]=useState('');
  const [completed,setCompleted]=useState(()=>new URLSearchParams(location.search).get('mode')==='completed');
@@ -209,8 +209,11 @@ export default function TodoHub({family,data,onCreate,onChanged,currentUserId,us
  }
 
  const visible=useMemo(()=>visibleActions(actions,{view,query,list,person,completed,recurring}),[actions,view,query,list,person,completed,recurring]);
- const visibleFocus=focus.filter(item=>visible.some(row=>row.id===item.id));
- const groups=useMemo(()=>groupActions(visible,{mode:viewPreferences.group,sort:viewPreferences.sort}),[visible,viewPreferences.group,viewPreferences.sort]);
+ const smartFocusActive=view==='today'&&preferences.smart_ranking_enabled!==false&&preferences.today_sort!=='chronological';
+ const focusIds=useMemo(()=>new Set(focus.map(item=>item.id)),[focus]);
+ const visibleFocus=smartFocusActive?focus.filter(item=>visible.some(row=>row.id===item.id)):[];
+ const listActions=useMemo(()=>smartFocusActive?visible.filter(item=>!focusIds.has(item.id)):visible,[visible,focusIds,smartFocusActive]);
+ const groups=useMemo(()=>groupActions(listActions,{mode:viewPreferences.group,sort:viewPreferences.sort}),[listActions,viewPreferences.group,viewPreferences.sort]);
  const tabItems=[['upcoming',text.upcoming],['today',text.today],['all',text.all],['more',text.more]];
  const taskLists=data?.task_lists||[];
  const rowProps={language,busyId,onPrimary,onSecondary,onOpen:openItem,density:viewPreferences.density};
@@ -224,7 +227,7 @@ export default function TodoHub({family,data,onCreate,onChanged,currentUserId,us
    <ViewOptions text={text} value={viewPreferences} onChange={updateViewPreference}/>
    <div className="todo-live" role="status" aria-live="polite">{notice}{lastAction&&<button ref={undoRef} type="button" onClick={undo} disabled={busyId===lastAction.itemId}><Icon name="refresh" size={14}/> {text.undo}</button>}</div>
    {loading?<div className="todo-loading" role="status"><Icon name="refresh"/>…</div>:!error&&visible.length===0?<div className="todo-empty"><Icon name="check" size={24}/><span>{query||list||person||recurring?(de?'Keine passenden Aufgaben.':'No matching tasks.'):text.empty}</span></div>:<>
-    {view==='today'&&preferences.smart_ranking_enabled!==false&&<FocusSection items={visibleFocus} text={text} {...rowProps} onPreference={updatePreference}/>} 
+    {smartFocusActive&&<FocusSection items={visibleFocus} text={text} {...rowProps} onPreference={updatePreference}/>} 
     {viewPreferences.group==='none'?<div className="todo-rows todo-rows--ungrouped">{groups[0]?.items.map(item=><TodoActionRow key={item.id} item={item} language={language} density={viewPreferences.density} busy={busyId===item.id} onPrimary={onPrimary} onSecondary={onSecondary} onOpen={openItem}/>)}</div>:groups.map(group=><Section key={`${view}-${viewPreferences.group}-${group.key}`} title={groupTitle(group,text)} items={group.items} {...rowProps} defaultOpen/>)}
    </>}
    {lastAction?.completion?.id&&<div className="action-duration-chips" role="group" aria-label={language.startsWith('en')?'Actual duration':'Tatsächliche Dauer'}>{[5,10,15,30,60].map(minutes=><button key={minutes} type="button" onClick={async()=>{try{await api(`/actions/completions/${lastAction.completion.id}/duration/`,{method:'PATCH',body:JSON.stringify({duration_minutes:minutes})});setNotice(`${minutes} min ✓`)}catch(err){setError(err.message)}}}>{minutes} min</button>)}</div>}
