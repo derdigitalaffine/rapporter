@@ -99,6 +99,8 @@ def _preventive_appointments(baby):
     exam_by_token = {_private_event_token(baby, exam): (exam, window) for exam, _, window in U_EXAMS}
     for reference in PediatricPreventiveEventReference.objects.filter(baby=baby).select_related("event"):
         exam_by_token[reference.event.external_id] = (reference.rule_key, f"{reference.start_day}–{reference.end_day} Tage")
+    for record in baby.health_records.filter(event__isnull=False).select_related("event"):
+        exam_by_token.setdefault(record.event.external_id, (record.title, ""))
     events = list(FamilyEvent.objects.filter(family=baby.family, external_id__in=exam_by_token).order_by("starts_at"))
     questions = AppointmentQuestion.objects.filter(baby=baby, event__in=events).order_by("created_at")
     questions_by_event = {}

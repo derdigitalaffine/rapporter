@@ -251,3 +251,21 @@ class ChildrenHubTests(TestCase):
         values.update(birth_date="2018-01-01",client_identity_key=str(self.child.client_identity_key))
         self.assertEqual(self.client.post(path,values,format="json").status_code,400)
         self.assertFalse(BabyProfile.objects.filter(membership=child).exists())
+
+    def test_manual_vaccination_appointment_reuses_private_questions_without_official_provenance(self):
+        values = {"key":"manual:appointment","title":"Documented vaccine","state":"planned","expected_version":0,
+                  "planned_at":(timezone.now()+timedelta(days=2)).isoformat()}
+        response = self.client.post(f"/api/baby/profiles/{self.child.id}/health/",values,format="json")
+        self.assertEqual(response.status_code,200,response.data)
+        event = FamilyEvent.objects.get()
+        from .reference_models import PediatricPreventiveEventReference
+        self.assertFalse(PediatricPreventiveEventReference.objects.filter(event=event).exists())
+        response = self.client.post(f"/api/baby/profiles/{self.child.id}/appointment-questions/",{"event":str(event.id),"text":"Question for the practice"},format="json")
+        self.assertEqual(response.status_code,201,response.data)
+        response = self.client.get(f"/api/baby/profiles/{self.child.id}/development/")
+        appointment = next(row for row in response.data["preventive_appointments"] if row["id"] == str(event.id))
+        self.assertEqual(appointment["questions"][0]["text"],"Question for the practice")
+        self.assertNotIn("Question for the practice",str(event.payload))
+        self.assertEqual(self.client.post(f"/api/baby/profiles/{self.other.id}/appointment-questions/",{"event":str(event.id),"text":"Wrong child"},format="json").status_code,403)
+        FamilyRelationship.objects.create(family=self.family,child_membership=self.other.membership,related_membership=self.parent_member,kind="parent",has_custody=True,status="active")
+        self.assertEqual(self.client.post(f"/api/baby/profiles/{self.other.id}/appointment-questions/",{"event":str(event.id),"text":"Still the wrong child"},format="json").status_code,400)

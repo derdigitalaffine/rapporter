@@ -71,3 +71,9 @@ Real virtual-keyboard, VoiceOver/TalkBack and genuine browser 200% zoom acceptan
 remain #773. Automated screenshots are not physical acceptance. #753, #235 and #238
 remain open for their broader scope. General CI #599 is evaluated independently;
 focused green jobs do not establish a globally green release.
+
+The focused navigation gate selects the two changed optional-care-module cases in
+more-page.spec.js. The complete file still runs in general CI, including older To-do
+expectations outside this delivery. No unrelated test is deleted or skipped. The new
+backend job uses the official Docker Hub PostgreSQL image after ECR pulls repeatedly
+failed before test execution; it retains PostgreSQL and all migration/test assertions.

@@ -12,7 +12,7 @@ from family.models import FamilyEvent
 
 from .child_identity_service import child_scope_access
 from .growth_service import corrected_age_days, chronological_age_days
-from .models import AppointmentQuestion, BabyProfile, DevelopmentObservation, DevelopmentReference
+from .models import AppointmentQuestion, BabyProfile, ChildHealthRecord, DevelopmentObservation, DevelopmentReference
 from .reference_models import PediatricPreventiveEventReference
 from .reference_service import BUNDLED_SOURCE, BUNDLED_U_EXAMS, all_preventive_exam_keys, preventive_exam_rules
 
@@ -228,7 +228,9 @@ def add_appointment_question(user, baby_id, *, event_id, text):
     baby = _baby_for_user(user, baby_id)
     event = FamilyEvent.objects.filter(pk=event_id, family=baby.family).first()
     valid_tokens = {_private_event_token(baby, name) for name in all_preventive_exam_keys()}
-    if not event or (event.external_id not in valid_tokens and not PediatricPreventiveEventReference.objects.filter(baby=baby,event=event).exists()):
+    if not event or (event.external_id not in valid_tokens
+                     and not PediatricPreventiveEventReference.objects.filter(baby=baby,event=event).exists()
+                     and not ChildHealthRecord.objects.filter(baby=baby,event=event).exists()):
         raise ValidationError({"event": "Preventive appointment not found for this baby."})
     value = str(text or "").strip()
     if not value:
