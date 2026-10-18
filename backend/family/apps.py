@@ -24,6 +24,18 @@ class FamilyConfig(AppConfig):
         from .create_action_models import CreateActionPreference, CreateActionStat, CreateActionUsageReceipt
         from .family_master_models import FamilyMasterData
         from .family_relationship_models import FamilyRelationship
+        from .meal_models import (
+            MealDish,
+            MealIngredient,
+            MealPlanDayTag,
+            MealPlanEntry,
+            MealPlanTemplate,
+            MealPlanTemplateDayTag,
+            MealPlanTemplateEntry,
+            MealShoppingTransfer,
+            MealShoppingTransferItem,
+            MealTag,
+        )
         from .notes_models import Note, NoteRevision, NoteShare
         from .shopping_autoguess_models import ShoppingItemCreateReceipt
         from .shopping_models import (
@@ -63,6 +75,16 @@ class FamilyConfig(AppConfig):
         core_models.CreateActionUsageReceipt = CreateActionUsageReceipt
         core_models.FamilyMasterData = FamilyMasterData
         core_models.FamilyRelationship = FamilyRelationship
+        core_models.MealTag = MealTag
+        core_models.MealDish = MealDish
+        core_models.MealIngredient = MealIngredient
+        core_models.MealPlanEntry = MealPlanEntry
+        core_models.MealPlanDayTag = MealPlanDayTag
+        core_models.MealPlanTemplate = MealPlanTemplate
+        core_models.MealPlanTemplateEntry = MealPlanTemplateEntry
+        core_models.MealPlanTemplateDayTag = MealPlanTemplateDayTag
+        core_models.MealShoppingTransfer = MealShoppingTransfer
+        core_models.MealShoppingTransferItem = MealShoppingTransferItem
         core_models.Note = Note
         core_models.NoteShare = NoteShare
         core_models.NoteRevision = NoteRevision
