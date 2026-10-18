@@ -3,7 +3,7 @@ import {api} from './api';
 import {Icon} from './icons';
 import {featureHref} from './navigation';
 import i18n from './i18n';
-import './meal-planning.css';
+import './meal-today.css';
 
 const slotOrder=slot=>({'Frühstück':0,'Mittagessen':1,'Abendessen':2}[slot]??10);
 
