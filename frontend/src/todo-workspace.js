@@ -1,6 +1,6 @@
 export const TODO_VIEWS=new Set(['upcoming','today','all','lists','more']);
 export const TODO_GROUP_MODES=new Set(['date','status','list','person','none']);
-export const TODO_SORT_MODES=new Set(['due','priority','newest','oldest']);
+export const TODO_SORT_MODES=new Set(['due','priority','title']);
 export const TODO_DENSITIES=new Set(['compact','comfortable']);
 export const DEFAULT_TODO_VIEW_PREFERENCES=Object.freeze({group:'date',sort:'due',density:'compact'});
 
@@ -47,7 +47,6 @@ function timeOf(value){
  return Number.isNaN(time)?null:time;
 }
 function actionTime(item){return timeOf(actionDate(item))}
-function createdTime(item){return timeOf(item?.created_at)||timeOf(item?.updated_at)||actionTime(item)}
 function priorityRank(item){
  const priority=String(item?.priority||item?.urgency||'normal').toLowerCase();
  return {urgent:0,critical:0,high:1,normal:2,medium:2,low:3,none:4}[priority]??2;
@@ -70,15 +69,7 @@ export function sortActions(actions,mode='due'){
    const priority=priorityRank(a)-priorityRank(b);
    return priority||compareDue(a,b);
   }
-  if(normalized==='newest'||normalized==='oldest'){
-   const aTime=createdTime(a),bTime=createdTime(b);
-   if(aTime!==bTime){
-    if(aTime===null)return 1;
-    if(bTime===null)return -1;
-    return normalized==='newest'?bTime-aTime:aTime-bTime;
-   }
-   return stableCompare(a,b);
-  }
+  if(normalized==='title')return stableCompare(a,b);
   return compareDue(a,b);
  });
 }
