@@ -129,7 +129,7 @@ export default function ShoppingStoreMode({list,onLeave,onToggle,onDetails,onAdd
  const requestedOrderMode=orderSnapshot?.mode||'categories';
  const effectiveOrderMode=requestedOrderMode==='learned'&&!learnedRank?'categories':requestedOrderMode;
  const sortForStore=rows=>[...rows].sort((a,b)=>{if(effectiveOrderMode==='learned'&&learnedRank){const ar=learnedRank.has(String(a.id))?learnedRank.get(String(a.id)):Number.MAX_SAFE_INTEGER;const br=learnedRank.has(String(b.id))?learnedRank.get(String(b.id)):Number.MAX_SAFE_INTEGER;if(ar!==br)return ar-br}return byPosition(a,b)});
- const visibleItems=useMemo(()=>statusFilter==='open'?sortForStore(open):statusFilter==='done'?sortForStore(checked):sortForStore(open).concat(sortForStore(checked)),[statusFilter,open,checked,learnedRank,effectiveOrderMode]);
+ const visibleItems=useMemo(()=>statusFilter==='open'?sortForStore(open):statusFilter==='done'?sortForStore(checked):sortForStore(items),[statusFilter,open,checked,items,learnedRank,effectiveOrderMode]);
  const groups=useMemo(()=>{
   const rows=[...visibleItems];
   if(effectiveOrderMode!=='categories')return rows.length?[{name:t(effectiveOrderMode==='learned'?'shoppingTemplateUi.storeOrderLearned':'shoppingTemplateUi.storeOrderManual'),rows}]:[];
