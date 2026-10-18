@@ -136,6 +136,13 @@ test('pregnancy widget is opt-in and disappears on revoked pregnancy permission'
  await add.getByRole('button',{name:'Hinzufügen',exact:true}).click();
  await library.getByRole('button',{name:'Speichern',exact:true}).click();
  await expect(page.locator('.today-pregnancy-widget')).toContainText('02.01.2027');
+ for(const width of [320,390,1024,1440]){
+  await page.setViewportSize({width,height:844});
+  const widget=page.locator('.today-pregnancy-widget');
+  expect(await widget.evaluate(element=>element.scrollWidth<=element.clientWidth)).toBe(true);
+  expect((await new AxeBuilder({page}).include('.today-pregnancy-widget').analyze()).violations).toEqual([]);
+  await widget.screenshot({path:test.info().outputPath(`pregnancy-widget-${width}.png`)});
+ }
  module.permissions.can_view_pregnancy=false;module.active_pregnancy=null;
  await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
  await expect(page.locator('.today-pregnancy-widget')).toHaveCount(0);
