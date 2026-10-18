@@ -23,7 +23,7 @@ async function openStore(page,{count=24,beforeGoto=null}={}){
  return state;
 }
 
-test('store · peer checks preserve personal filter, focus, scroll and ordering choice',async({page})=>{
+test.only('store · peer checks preserve personal filter, focus, scroll and ordering choice',async({page})=>{
  await page.setViewportSize({width:390,height:844});
  let releaseRemote=false;let sentRemote=false;
  await openStore(page,{beforeGoto:async({page})=>{
@@ -58,7 +58,7 @@ test('store · peer checks preserve personal filter, focus, scroll and ordering 
  await expect(page.getByRole('button',{name:'1 im Wagen'})).toBeVisible();
 });
 
-test('store · reduced motion removes row transitions and completion transform',async({page})=>{
+test.only('store · reduced motion removes row transitions and completion transform',async({page})=>{
  await page.emulateMedia({reducedMotion:'reduce'});
  await page.setViewportSize({width:390,height:844});
  await openStore(page,{count:8});
