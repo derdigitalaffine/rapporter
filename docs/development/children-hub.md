@@ -60,7 +60,8 @@ No automatic deletion/backfill or claim of a lossless schema downgrade.
 
 ## Verification and remaining gates
 
-Dedicated children-hub-regressions runs the complete baby backend suite, migration
+Dedicated children-hub-regressions runs the complete baby backend suite plus shared
+custody/calendar and child relationship privacy regressions, migration
 drift/migration/system checks, desktop/mobile domain E2E, sibling/delegation/deny/error
 flows and 320/390/1024/1440 English axe/overflow/screenshots. Production-backed Children
 stories join the existing Workbench viewport, reduced-motion and a11y matrix.

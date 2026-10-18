@@ -46,7 +46,7 @@ jobs:
       - working-directory: backend
         run: python manage.py makemigrations --check --dry-run && python manage.py migrate && python manage.py check
       - working-directory: backend
-        run: python manage.py test baby
+        run: python manage.py test baby family.test_family_relationship_child_privacy family.test_calendar_custody_sync
 
   browser:
     name: children / ${{ matrix.project }}

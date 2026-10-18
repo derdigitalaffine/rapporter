@@ -61,16 +61,12 @@ test('custodian sees full access and can delegate without a Guardian switch',asy
  await page.goto('/?page=baby&baby=older&view=more');
  await expect(page.getByText('Sorgeberechtigt · Voller Zugriff')).toBeVisible();
  await page.getByRole('button',{name:'Care Circle bearbeiten',exact:true}).click();
- const dialog=page.getByRole('dialog');
+ const dialog=page.getByRole('dialog',{name:'Care Circle · Robin',exact:true});
  await expect(dialog.getByRole('checkbox',{name:/Guardian|Sorgeberechtigt/})).toHaveCount(0);
  await dialog.getByRole('checkbox',{name:'Pflege erfassen'}).check();
  await dialog.getByLabel('Dein aktuelles Passwort').fill('fixture-password');
  await dialog.getByRole('button',{name:'Speichern',exact:true}).click();
- await expect.poll(async()=>{
-  if(!await dialog.count())return 'closed';
-  const errors=await dialog.getByRole('alert').allTextContents();
-  return errors.length?errors.join(' | '):`open; writes=${writes.length}; invalid=${await dialog.locator(':invalid').count()}`;
- }).toBe('closed');
+ await expect(dialog).toHaveCount(0);
  expect(writes.at(-1).body.care_circle).toContainEqual({membership:'member-2',can_log_care:true,can_view_growth_development:false});
 });
 
