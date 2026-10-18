@@ -207,6 +207,18 @@ class MealPlanningTests(TestCase):
         response = self.client.get(f"/api/meal-plan/shopping-preview/?family={self.other.id}&start=2026-10-19&end=2026-10-19")
         self.assertEqual(response.status_code, 403)
 
+    def test_api_rejects_moving_existing_object_between_joined_families(self):
+        Membership.objects.create(family=self.other, user=self.alice, role=Membership.Role.ADULT, display_name="Alice")
+        dish = self._dish()
+        response = self.client.patch(
+            f"/api/meal-dishes/{dish.id}/",
+            {"family": str(self.other.id)},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        dish.refresh_from_db()
+        self.assertEqual(dish.family_id, self.family.id)
+
     def test_api_rejects_foreign_shopping_list_transfer(self):
         self._planned_dish()
         response = self.client.post(
