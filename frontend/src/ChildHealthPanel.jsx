@@ -7,16 +7,10 @@ import FamilySheet from './ui/FamilySheet';
 import BabyPreventivePanel from './BabyPreventivePanel';
 import {ChoiceField,FormActions,FormField,ProgressiveFieldGroup} from './form-primitives';
 import {localDateTime} from './children-context';
-import {formatCivilDate,formatDateTime} from './locale';
+import {formatCivilDate} from './locale';
 import {featureHref} from './navigation';
+import {healthDateLabel,healthDoseLabel,visibleHealthItems} from './children-health-ui';
 import './children-i18n';
-
-export function healthDateLabel(row,language,timeZone='UTC'){
- if(row.planned_at)return formatDateTime(language,row.planned_at,{timeZone,day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
- if(row.occurred_on)return formatCivilDate(language,row.occurred_on);
- if(row.window_start&&row.window_end)return `${formatCivilDate(language,row.window_start)} – ${formatCivilDate(language,row.window_end)}`;
- return '';
-}
 
 export default function ChildHealthPanel({baby,timeZone='UTC'}){
  const {t,i18n}=useTranslation(),c=key=>t(`childrenUi.${key}`);
@@ -34,7 +28,7 @@ export default function ChildHealthPanel({baby,timeZone='UTC'}){
   await api(`/baby/profiles/${baby.id}/health/reminders/`,{method:'POST',body:JSON.stringify({remind_at:remindAt,entries:data.items.filter(row=>selected.includes(row.key)).map(row=>({key:row.key,expected_version:row.version,reference_checksum:row.reference?.checksum||''}))})});
   setReminderOpen(false);resetSelection();toast(c('reminderCreated'),{type:'success'});window.dispatchEvent(new CustomEvent('familyos:actions-changed',{detail:{family:baby.family}}));await load();
  }
- const rows=(data?.items||[]).filter(row=>row.kind===kind&&(view==='history'?(row.state==='done'||row.historical&&row.state!=='planned'):(row.state!=='done'&&(!row.historical||row.state==='planned'))));
+ const rows=visibleHealthItems(data?.items||[],kind,view,i18n.language);
  const selectable=row=>row.kind==='vaccination'&&!row.historical&&!['done','planned'].includes(row.state)&&!row.reminder;
  const select=(key,checked)=>setSelected(value=>checked?[...value,key]:value.filter(item=>item!==key));
  const source=data?.vaccination_reference;
@@ -55,28 +49,28 @@ export default function ChildHealthPanel({baby,timeZone='UTC'}){
   {bulk&&<h3>{c('selectHistory')}</h3>}
   {reminding&&<h3>{c('selectVaccines')}</h3>}
   <div className="child-health-list">{rows.map(row=><article className="child-health-row" key={row.key}>
-   {(bulk||reminding)&&<label className="child-history-select"><input type="checkbox" aria-label={`${c(bulk?'done':'selectReminders')}: ${row.title}${row.dose?` · ${c('dose')} ${row.dose}`:''}`} checked={selected.includes(row.key)} disabled={busy||reminding&&!selectable(row)} onChange={event=>select(row.key,event.target.checked)}/></label>}
-   <div className="child-record-main"><button type="button" className="child-record-open" disabled={busy} onClick={()=>setEditor(row)}><Icon name={row.kind==='exam'?'calendar':'heart'}/><span><strong>{row.title}{row.dose?` · ${c('dose')} ${row.dose}`:''}</strong><small>{healthDateLabel(row,i18n.language,timeZone)||c('record')}</small></span><span className={`child-record-state state-${row.state}`}>{c(row.state)}</span><Icon name="next" size={16}/></button>
+   {(bulk||reminding)&&<label className="child-history-select"><input type="checkbox" aria-label={`${c(bulk?'done':'selectReminders')}: ${row.title}${row.dose?` · ${healthDoseLabel(row,c)}`:''}`} checked={selected.includes(row.key)} disabled={busy||reminding&&!selectable(row)} onChange={event=>select(row.key,event.target.checked)}/></label>}
+   <div className="child-record-main"><button type="button" className="child-record-open" disabled={busy} onClick={()=>setEditor(row)}><Icon name={row.kind==='exam'?'calendar':'heart'}/><span><strong>{row.title}{row.dose?` · ${healthDoseLabel(row,c)}`:''}</strong><small>{healthDateLabel(row,i18n.language,timeZone)||c('record')}</small></span><span className={`child-record-state state-${row.state}`}>{c(row.state)}</span><Icon name="next" size={16}/></button>
    {row.reminder&&<a className="child-reminder-link" href={featureHref('todo',{task:row.reminder.task})}><Icon name="tasks" size={14}/>{c(row.reminder.completed?'reminderDone':'reminderTask')}{row.reminder.due_at?` · ${healthDateLabel({planned_at:row.reminder.due_at},i18n.language,timeZone)}`:''}</a>}</div>
    {!bulk&&!reminding&&row.state!=='done'&&<button type="button" className="ghost icon-button" title={c('markDone')} aria-label={`${c('markDone')}: ${row.title}`} disabled={busy} onClick={()=>done(row)}><Icon name="check"/></button>}
   </article>)}</div>
   {data&&!loading&&!error&&!rows.length&&<p className="child-empty">{c(view==='history'?'noHistory':'noCurrent')}</p>}
   {data&&kind==='exam'&&<ProgressiveFieldGroup label={t('babyUi.questionForAppointment')}><BabyPreventivePanel baby={baby} t={t} language={i18n.language.startsWith('de')?'de':'en'} timeZone={timeZone} allowPlanning={false}/></ProgressiveFieldGroup>}
   {editor&&<HealthEditor key={`${baby.id}:${editor.key}`} row={editor} c={c} onSave={save} onReload={load} onClose={()=>setEditor(null)}/>}
-  {reminderOpen&&<VaccinationReminderEditor c={c} count={selected.length} onSave={saveReminders} onClose={()=>setReminderOpen(false)}/>}
+  {reminderOpen&&<VaccinationReminderEditor c={c} count={selected.length} onSave={saveReminders} onReload={async()=>{resetSelection();await load()}} onClose={()=>setReminderOpen(false)}/>}
  </section>;
 }
 
-export function VaccinationReminderEditor({c,count,onSave,onClose}){
- const [when,setWhen]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState('');
+export function VaccinationReminderEditor({c,count,onSave,onClose,onReload}){
+ const [when,setWhen]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState(''),[conflict,setConflict]=useState(false);
  async function close(){if(busy)return;if(when&&!await confirmAction({title:c('close'),message:c('unsaved'),confirmLabel:c('discard'),cancelLabel:c('keep')}))return;onClose()}
- async function submit(event){event.preventDefault();setBusy(true);setError('');try{await onSave(new Date(when).toISOString())}catch(err){setError(err.message||c('error'))}finally{setBusy(false)}}
+ async function submit(event){event.preventDefault();setBusy(true);setError('');setConflict(false);try{await onSave(new Date(when).toISOString())}catch(err){setError(err.message||c('error'));setConflict(err.status===409)}finally{setBusy(false)}}
  return <FamilySheet labelledBy="vaccination-reminder-title" busy={busy} onClose={close}>
   <div className="sheet-head"><h2 id="vaccination-reminder-title">{c('reminders')}</h2><button type="button" className="sheet-close" disabled={busy} aria-label={c('close')} onClick={close}><Icon name="close"/></button></div>
   <form className="child-record-form" onSubmit={submit}>
    <p>{c('reminderCount')}: <strong>{count}</strong></p><p className="child-muted">{c('reminderPrivacy')}</p>
    <FormField label={c('remindAt')} required><input type="datetime-local" value={when} disabled={busy} onChange={event=>setWhen(event.target.value)}/></FormField>
-   {error&&<div className="integration-notice" role="alert">{error}</div>}
+   {error&&<div className="integration-notice" role="alert">{error}{conflict&&onReload&&<button type="button" className="secondary" disabled={busy} onClick={async()=>{if(await confirmAction({title:c('reload'),message:c('unsaved'),confirmLabel:c('discard'),cancelLabel:c('keep')})){onClose();await onReload()}}}>{c('reload')}</button>}</div>}
    <FormActions><button type="button" className="secondary" disabled={busy} onClick={close}>{c('cancel')}</button><button className="primary" disabled={busy||!when}><Icon name="tasks"/>{c('createReminders')}</button></FormActions>
   </form>
  </FamilySheet>;
@@ -89,7 +83,7 @@ export function HealthEditor({row,c,onSave,onClose,onReload}){
  async function close(){if(busy)return;if(JSON.stringify(initial)!==JSON.stringify(form)&&!await confirmAction({title:c('close'),message:c('unsaved'),confirmLabel:c('discard'),cancelLabel:c('keep')}))return;onClose()}
  async function submit(event){event.preventDefault();setBusy(true);setError('');setConflict(false);try{await onSave({...form,key:row.key,expected_version:row.version,event_starts_at:row.event_starts_at||null,reference_checksum:row.reference?.checksum||'',occurred_on:form.occurred_on||null,planned_at:form.planned_at?new Date(form.planned_at).toISOString():null})}catch(err){setError(err.message||c('error'));setConflict(err.status===409)}finally{setBusy(false)}}
  return <FamilySheet labelledBy="child-health-editor-title" busy={busy} onClose={close}>
-  <div className="sheet-head"><h2 id="child-health-editor-title">{row.title||c('vaccination')}</h2><button type="button" className="sheet-close" disabled={busy} aria-label={c('close')} onClick={close}><Icon name="close"/></button></div>
+  <div className="sheet-head"><h2 id="child-health-editor-title">{row.title||c('vaccination')}{row.dose?` · ${healthDoseLabel(row,c)}`:''}</h2><button type="button" className="sheet-close" disabled={busy} aria-label={c('close')} onClick={close}><Icon name="close"/></button></div>
   <form onSubmit={submit} className="child-record-form">
    <fieldset disabled={busy} className="child-form-fields"><legend className="form-sr-only">{c('record')}</legend>
     {row.key.startsWith('manual:')&&<FormField label={c('name')} required><input maxLength={160} value={form.title} onChange={event=>set('title',event.target.value)}/></FormField>}

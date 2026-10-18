@@ -164,7 +164,7 @@ export default function TodayCanonicalHome({data,family,open,unreadMessages=null
   weather:<ModuleShortcut page="weather" icon="weather" title={de?'Wetter':'Weather'} detail={de?'Wetter öffnen':'Open weather'} language={language}/>,
   trip:<ModuleShortcut page="trips" icon="route" title={de?'Reise':'Trip'} detail={de?'Reisen öffnen':'Open trips'} language={language}/>,
   loyalty:<ModuleShortcut page="loyalty" icon="favorite" title={de?'Bonuskarten':'Loyalty cards'} detail={de?'Karten öffnen':'Open cards'} language={language}/>,
- }),[family.id,data,unreadMessages,language,de,excludedShoppingLists,viewer,pregnancy.available,pregnancy.pregnancy,pregnancy.error]);
+ }),[family.id,data,unreadMessages,language,de,excludedShoppingLists,viewer,pregnancy.available,pregnancy.pregnancy,pregnancy.error,pregnancy.loading]);
  const header=<header className="today-hero"><div className="today-greeting"><p>{formatDateTime(language,new Date(),{timeZone:family.timezone||'UTC',weekday:'long',day:'numeric',month:'long'})} · {family.name}</p><h1>{greeting(displayFamily,language)}</h1></div></header>;
  return <div data-testid="today-canonical-home">
   <TodayLayout

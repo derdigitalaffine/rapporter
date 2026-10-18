@@ -21,7 +21,7 @@ export const ReminderRetainsDate={render:()=> <Reminder/>,play:async({canvasElem
  const dialog=within(await within(canvasElement.ownerDocument.body).findByRole('dialog',{name:'An Impfungen erinnern'}));
  const input=dialog.getByLabelText(/An Terminvereinbarung erinnern am/);
  fireEvent.change(input,{target:{value:'2030-01-02T10:30'}});
- await userEvent.click(dialog.getByRole('button',{name:'Aufgaben anlegen',exact:true}));
+ await userEvent.click(dialog.getByRole('button',{name:'Aufgabe anlegen',exact:true}));
  await expect(dialog.getByRole('alert')).toHaveTextContent('Speichern fehlgeschlagen');
  await expect(input).toHaveValue('2030-01-02T10:30');
 }};

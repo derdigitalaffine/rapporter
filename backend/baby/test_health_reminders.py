@@ -1,7 +1,8 @@
-import uuid
+import importlib
 from datetime import timedelta
 
 from django.contrib.auth import get_user_model
+from django.db import connection
 from django.test import TestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
@@ -105,6 +106,27 @@ class HealthReminderTests(TestCase):
         self.assertEqual(self.client.post(self.path,payload,format="json").status_code,409)
         self.assertEqual(Task.objects.count(),1)
         self.assertEqual(Task.objects.get().due_at,self.due)
+
+    def test_task_completion_is_independent_and_deletion_requires_a_fresh_selection(self):
+        self.client.post(self.path,self.payload((1,)),format="json")
+        task=Task.objects.get()
+        task.completed_at=timezone.now()
+        task.save()
+        row=ChildHealthRecord.objects.get()
+        self.assertEqual(row.state,"unknown")
+        guard=importlib.import_module("baby.migrations.0007_childhealthrecord_reminder_task").guard_reverse
+        from django.apps import apps
+        with connection.schema_editor() as editor:
+            with self.assertRaises(RuntimeError):
+                guard(apps,editor)
+        task.delete()
+        row.refresh_from_db()
+        self.assertIsNone(row.reminder_task_id)
+        self.assertEqual(self.client.post(self.path,self.payload((1,)),format="json").status_code,409)
+        payload=self.payload((1,))
+        payload["entries"][0]["expected_version"]=row.version
+        self.assertEqual(self.client.post(self.path,payload,format="json").status_code,200)
+        self.assertEqual(Task.objects.count(),1)
 
     def test_done_planned_and_historical_are_not_automatically_reminded(self):
         for state in ["done","planned"]:

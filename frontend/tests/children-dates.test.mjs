@@ -4,6 +4,7 @@ import {formatCivilDate,formatDateTime} from '../src/locale.js';
 import {FEATURE_REGISTRY,featureAvailability} from '../src/feature-registry.js';
 import {featureHref} from '../src/navigation.js';
 import {TodayWidgetsById,normalizeTodayLayout} from '../src/todayWidgetRegistry.js';
+import {healthDateLabel,healthDoseLabel,visibleHealthItems} from '../src/children-health-ui.js';
 
 test('German civil dates always have padded TT.MM.JJJJ, without timezone drift',()=>{
  assert.equal(formatCivilDate('de','2026-01-02'),'02.01.2026');
@@ -11,6 +12,18 @@ test('German civil dates always have padded TT.MM.JJJJ, without timezone drift',
  assert.equal(formatCivilDate('en','2026-01-02'),'02/01/2026');
  for(const value of ['',null,'2026-02-31','2026-1-2','invalid'])assert.equal(formatCivilDate('de',value),'');
  assert.equal(formatDateTime('de','2026-01-01T23:30:00Z',{timeZone:'Europe/Berlin',day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}),'02.01.2026, 00:30');
+ assert.equal(healthDateLabel({window_start:'2026-01-02',window_end:'2026-02-03'},'de'),'02.01.2026 – 03.02.2026');
+ assert.equal(healthDateLabel({occurred_on:'2026-01-02'},'de'),'02.01.2026');
+ assert.equal(healthDoseLabel({dose:'booster-3'},key=>({booster:'Auffrischung'})[key]),'Auffrischung');
+});
+test('vaccination calendar is chronological without mutating or interpreting medical state',()=>{
+ const items=[{title:'Later',key:'later',kind:'vaccination',state:'unknown',window_start:'2027-01-01'},
+  {title:'First',key:'first',kind:'vaccination',state:'later',window_start:'2026-11-01'},
+  {title:'Done',key:'done',kind:'vaccination',state:'done',occurred_on:'2026-10-01'},
+  {title:'Unknown',key:'old',kind:'vaccination',state:'unknown',historical:true,window_end:'2026-01-01'}];
+ assert.deepEqual(visibleHealthItems(items,'vaccination','current').map(row=>row.key),['first','later']);
+ assert.deepEqual(visibleHealthItems(items,'vaccination','history').map(row=>row.key),['done','old']);
+ assert.equal(items[0].key,'later');assert.equal(items[1].state,'later');
 });
 test('pregnancy and children use distinct registered routes and capability checks',()=>{
  assert.equal(typeof FEATURE_REGISTRY.find(row=>row.id==='pregnancy').load,'function');

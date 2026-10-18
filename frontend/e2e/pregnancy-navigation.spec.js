@@ -44,7 +44,7 @@ test('two menu entries and hierarchical back preserve pregnancy functions',async
  await page.getByRole('button',{name:'Termin',exact:true}).click();
  await expect(page.getByLabel('Terminbezeichnung')).toBeVisible();
  await nav.getByRole('button',{name:'Mehr',exact:true}).click();
- await expect(page.getByText('Geburtswünsche',{exact:true})).toBeVisible();
+ await expect(page.getByRole('heading',{name:'Geburtswünsche',exact:true})).toBeVisible();
  await page.getByRole('button',{name:'Zurück zur Übersicht',exact:true}).click();
  await expect(page.locator('.pregnancy-status')).toBeVisible();
  await page.getByRole('button',{name:'Zurück zu Mehr',exact:true}).click();
@@ -72,14 +72,14 @@ test('vaccination selections are explicit, failed reminder retains date and succ
  await expect(checks.nth(0)).not.toBeChecked();await expect(checks.nth(1)).not.toBeChecked();
  expect(writes).toHaveLength(0);
  await checks.nth(0).check();await checks.nth(1).check();
- await page.getByRole('button',{name:'Aufgaben anlegen (2)',exact:true}).click();
+ await page.getByRole('button',{name:'Aufgabe anlegen (2)',exact:true}).click();
  const dialog=page.getByRole('dialog',{name:'An Impfungen erinnern',exact:true});
  const date=dialog.getByLabel(/An Terminvereinbarung erinnern am/);
  await date.fill('2030-01-02T10:30');
- await dialog.getByRole('button',{name:'Aufgaben anlegen',exact:true}).click();
+ await dialog.getByRole('button',{name:'Aufgabe anlegen',exact:true}).click();
  await expect(dialog.getByRole('alert')).toHaveText('Erneut versuchen');
  await expect(date).toHaveValue('2030-01-02T10:30');
- await dialog.getByRole('button',{name:'Aufgaben anlegen',exact:true}).click();
+ await dialog.getByRole('button',{name:'Aufgabe anlegen',exact:true}).click();
  await expect(dialog).toHaveCount(0);
  await expect(page.getByRole('link',{name:/Erinnerungsaufgabe/})).toHaveCount(2);
  expect(writes).toHaveLength(2);expect(writes[1]).toEqual(writes[0]);

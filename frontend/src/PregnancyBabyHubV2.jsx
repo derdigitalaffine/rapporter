@@ -83,7 +83,7 @@ export default function PregnancyBabyHub({family,onBack,onModuleChange,onCreate,
     setSection(pregnancyMode?(['add','more'].includes(view)?view:'pregnancy'):['growth','development'].includes(view)?'longterm':['now','health','more','longterm'].includes(view)?view:context?defaultChildView(context,row):'more');
    }
    if(requested&&!next.some(item=>String(item.id)===String(requested)))setError(c('noChildContext'));
-  }catch(err){if(revision===requestRevision.current)setError(err.message||t('babyUi.error'))}
+  }catch(err){if(revision===requestRevision.current){if([401,403,404].includes(err.status)){setModule(null);setPregnancies([]);setBabies([])}setError(err.message||t('babyUi.error'))}}
  }
  useEffect(()=>{initialized.current=false;setModule(null);setBabies([]);setPregnancies([]);setSelectedBaby('');refresh();return()=>{requestRevision.current++}},[family?.id,pregnancyMode]);
  useEffect(()=>{const changed=event=>{if(String(event.detail?.family)===String(family?.id))refresh()};window.addEventListener('familyos:children-changed',changed);return()=>window.removeEventListener('familyos:children-changed',changed)},[family?.id]);
@@ -155,11 +155,14 @@ function PregnancyPanel({family,pregnancy,t,busy,action,refresh,canManage,canMan
  const [birth,setBirth]=useState({});
  const [addMode,setAddMode]=useState('journal');
  useEffect(()=>{
+  let live=true;
+  setPreferences('');setContraction(null);
   if(!pregnancy)return;
   setDue(pregnancy.expected_due_date);
   setBirth(Object.fromEntries((pregnancy.babies||[]).map(row=>[row.id,{pregnancy_baby:row.id,display_name:row.display_name||row.stable_label,birth_date:dateToday(),gestational_age_weeks:null,gestational_age_days:0,birth_weight_g:null,birth_length_cm:null,birth_head_circumference_cm:null,growth_reference_sex:'unspecified'}])));
-  api(`/baby/pregnancies/${pregnancy.id}/birth-preferences/`).then(data=>setPreferences(data.birth_preferences||'')).catch(()=>{});
-  api(`/baby/pregnancies/${pregnancy.id}/utilities/`).then(data=>setContraction((data.sessions||[]).find(row=>row.kind==='contraction'&&!row.ended_at)||null)).catch(()=>{});
+  api(`/baby/pregnancies/${pregnancy.id}/birth-preferences/`).then(data=>{if(live)setPreferences(data.birth_preferences||'')}).catch(()=>{});
+  api(`/baby/pregnancies/${pregnancy.id}/utilities/`).then(data=>{if(live)setContraction((data.sessions||[]).find(row=>row.kind==='contraction'&&!row.ended_at)||null)}).catch(()=>{});
+  return()=>{live=false};
  },[pregnancy?.id]);
  if(!pregnancy){
   if(!canManage&&!canManageChild)return <Panel><div className="smart-empty"><Icon name="heart"/><strong>{t('babyUi.emptyPregnancy')}</strong></div></Panel>;

@@ -7,7 +7,7 @@ import {Icon} from './icons';
 
 export function useActivePregnancy(family,module){
  const permitted=Boolean(module?.enabled&&module?.authorized&&module?.permissions?.can_view_pregnancy);
- const [state,setState]=useState({family:null,pregnancy:null,error:false,available:false});
+ const [state,setState]=useState({family:null,pregnancy:null,error:false,available:false,loading:false});
  const revision=useRef(0);
  const [attempt,setAttempt]=useState(0);
  useEffect(()=>{
@@ -17,12 +17,12 @@ export function useActivePregnancy(family,module){
   async function load(){
    const current=++revision.current;
    // Revalidation never renders stale sensitive contents after focus/auth changes.
-   setState({family:family.id,pregnancy:null,error:false,available:false});
+   setState(previous=>({family:family.id,pregnancy:null,error:false,loading:true,available:previous.available||Boolean(module.active_pregnancy)}));
    try{
     const row=await api(`/baby/module/?family=${encodeURIComponent(family.id)}`);
     if(!live||current!==revision.current)return;
     const allowed=row.enabled&&row.authorized&&row.permissions?.can_view_pregnancy;
-    setState({family:family.id,pregnancy:allowed?row.active_pregnancy:null,error:false,available:Boolean(allowed&&row.active_pregnancy)});
+    setState({family:family.id,pregnancy:allowed?row.active_pregnancy:null,error:false,loading:false,available:Boolean(allowed&&row.active_pregnancy)});
    }catch(error){if(live&&current===revision.current)setState({family:family.id,pregnancy:null,error:![401,403,404].includes(error.status),available:![401,403,404].includes(error.status)&&Boolean(module.active_pregnancy)})}
   }
   const visible=()=>{if(document.visibilityState==='visible')load()};
@@ -39,7 +39,7 @@ export default function PregnancyTodayWidget({state,language='de'}){
  const de=language.startsWith('de');
  return <section className="today-section today-pregnancy-widget" aria-label={de?'Schwangerschaft':'Pregnancy'}>
   <h2>{de?'Schwangerschaft':'Pregnancy'}</h2>
-  {state.error?<div role="alert"><p>{de?'Schwangerschaft konnte nicht geladen werden.':'Could not load pregnancy.'}</p><button type="button" className="secondary" onClick={state.retry}><Icon name="refresh"/>{de?'Erneut laden':'Try again'}</button></div>:state.pregnancy?<PregnancyStatus pregnancy={state.pregnancy} language={language} compact/>:null}
+  {state.loading?<div className="pregnancy-widget-state" role="status">{de?'Wird geladen':'Loading'}</div>:state.error?<div className="pregnancy-widget-state" role="alert"><p>{de?'Schwangerschaft konnte nicht geladen werden.':'Could not load pregnancy.'}</p><button type="button" className="secondary" onClick={state.retry}><Icon name="refresh"/>{de?'Erneut laden':'Try again'}</button></div>:state.pregnancy?<PregnancyStatus pregnancy={state.pregnancy} language={language} compact/>:null}
   <a className="today-link" href={featureHref('pregnancy')}>{de?'Schwangerschaft öffnen':'Open pregnancy'}<Icon name="next"/></a>
  </section>;
 }

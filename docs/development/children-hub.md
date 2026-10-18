@@ -81,8 +81,8 @@ links; changing an existing reminder is a Task operation, not silent reschedulin
 Task completion and clinical documentation remain separate. No new push scheduler,
 notification preference, Task model or local health persistence is introduced.
 
-Rollback UI first and retain 0007 while needed: dropping the nullable link loses private
-associations, although generic Tasks and clinical records survive. Task deletion sets the
+Rollback UI first and retain 0007 while needed: its reverse guard refuses to drop private
+associations until explicitly reconciled. Generic Tasks and clinical records survive. Task deletion sets the
 link null. Child removal does not delete shared Tasks. Published vaccine-only packages
 retain the explicit bundled U-exam fallback; they no longer hide all check-ups.
 

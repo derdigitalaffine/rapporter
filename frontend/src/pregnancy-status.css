@@ -11,4 +11,5 @@
 .pregnancy-status--compact .pregnancy-status-heading strong{font-size:1.4rem}
 .pregnancy-status--compact .pregnancy-status-facts{grid-template-columns:1fr}
 .today-pregnancy-widget h2{font-size:1rem;margin:0 0 1rem}
+.today-pregnancy-widget .pregnancy-status,.pregnancy-widget-state{min-height:174px}
 .today-pregnancy-widget .today-link{display:flex;align-items:center;gap:.5rem;min-height:44px;margin-top:.75rem}
