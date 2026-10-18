@@ -19,6 +19,24 @@
 .child-view-switch button[aria-pressed=true]{box-shadow:inset 0 -2px var(--primary);font-weight:700}
 .child-muted{color:var(--muted);font-size:.85rem;line-height:1.5;display:flex;align-items:center;gap:.5rem}
 .child-health-list{display:grid;min-width:0}
+.child-record-main{flex:1;min-width:0}
+.child-record-main .child-record-open{width:100%}
+.child-reminder-link{display:flex;align-items:center;gap:.4rem;min-height:44px;padding:.25rem .25rem .25rem 2rem;font-size:.8rem;color:var(--primary);overflow-wrap:anywhere}
+.child-kind-switch{display:flex;gap:.5rem;margin-bottom:1rem}
+.child-kind-switch button{display:flex;align-items:center;justify-content:center;gap:.5rem;flex:1;min-width:0;min-height:44px;border:1px solid var(--border);border-radius:6px;background:transparent;color:var(--text);font:inherit;padding:.65rem .4rem;font-size:.9rem}
+.child-kind-switch button[aria-pressed=true]{background:var(--primary-soft);border-color:var(--primary);font-weight:700}
+.child-reference{padding:.8rem 0 1rem;border-block:1px solid var(--border);margin-bottom:.75rem;display:grid;gap:.4rem;font-size:.85rem;min-width:0}
+.child-reference>div,.child-reference a{display:flex;align-items:center;gap:.5rem}
+.child-reference p{display:grid;gap:.3rem;margin:0;overflow-wrap:anywhere}
+.child-reference small{color:var(--muted);line-height:1.5}
+.child-reference a{width:fit-content;min-height:44px;color:var(--primary)}
+.child-area-links{display:flex;justify-content:flex-end;margin:0 0 .5rem}
+.child-area-links a{display:flex;align-items:center;gap:.5rem;min-height:44px;font-size:.85rem;color:var(--muted);text-decoration:none}
+.baby-page .pregnancy-hero{padding:1.25rem 0}
+.baby-page .pregnancy-hero .baby-chip-row{margin-top:1rem}
+.baby-page .baby-more-body{display:grid;min-width:0;gap:.75rem}
+.baby-page .baby-more-body h3{font-size:1.1rem}
+.baby-page .baby-panel input,.baby-page .baby-panel select,.baby-page .baby-panel textarea{min-height:44px;max-width:100%}
 .child-health-row{display:flex;align-items:center;gap:.5rem;border-bottom:1px solid var(--border);min-width:0;padding:.4rem 0}
 .child-history-select{display:grid;place-items:center;width:44px;min-height:44px;flex:none}
 .child-history-select input{width:22px;height:22px;margin:0;accent-color:var(--primary)}

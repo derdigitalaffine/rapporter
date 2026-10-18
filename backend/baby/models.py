@@ -146,6 +146,7 @@ class ChildHealthRecord(BabyBaseModel):
     batch = models.CharField(max_length=80, blank=True)
     reference = models.JSONField(default=dict, blank=True)
     event = models.ForeignKey("family.FamilyEvent", null=True, blank=True, on_delete=models.SET_NULL, related_name="child_health_records")
+    reminder_task = models.ForeignKey("family.Task", null=True, blank=True, on_delete=models.SET_NULL, related_name="child_health_records")
     version = models.PositiveIntegerField(default=1)
     updated_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL)
 

@@ -24,6 +24,7 @@ export const FEATURE_REGISTRY=Object.freeze([
   defineFeature('shopping',{queryParams:['mode','list','item']}),
   defineFeature('routines',{familyContext:true,queryParams:['routine']}),
   defineFeature('baby',{familyContext:true,queryParams:['baby','view','event'],capability:'pregnancy_baby',load:()=>import('./PregnancyBabyHub.jsx')}),
+  defineFeature('pregnancy',{familyContext:true,queryParams:['view'],capability:'pregnancy_baby',load:()=>import('./PregnancyBabyHub.jsx')}),
   defineFeature('pets',{familyContext:true,capability:'pets',load:()=>import('./PetCareHub.jsx')}),
   defineFeature('more'),
   defineFeature('settings',{detail:true,load:()=>import('./SettingsHub.jsx')}),
@@ -61,7 +62,8 @@ export function featureAvailability(page,{entitlements=null,role=null,babyModule
   if(page==='statistics'&&role==='guest')return 'denied';
   if(feature.capability&&entitlements&&!entitlements.capabilities?.includes(feature.capability))return 'locked';
   if(page==='statistics'&&!entitlements)return 'pending';
-  const module=page==='baby'?babyModule:page==='pets'?petModule:null;
+  const module=['baby','pregnancy'].includes(page)?babyModule:page==='pets'?petModule:null;
   if(module&&!module.can_manage&&(!module.enabled||!module.authorized))return 'denied';
+  if(page==='pregnancy'&&module?.enabled&&!module.can_manage&&!module.permissions?.can_view_pregnancy)return 'denied';
   return 'available';
 }

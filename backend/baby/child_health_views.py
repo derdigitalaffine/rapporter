@@ -6,7 +6,7 @@ from rest_framework.response import Response
 from auth_sessions.service import require_fresh_session
 from telemetry.service import record_audit_event
 from .child_identity_service import child_profile, child_scope_access, require_child_guardian, _serialize_guardian_rows
-from .child_health_service import health_payload, save_health_record, serialize_record
+from .child_health_service import health_payload, save_health_record, serialize_record, create_health_reminders
 from .family_modules import set_care_circle
 from .models import CareCircleAccess, ChildHealthRecord
 from .reference_models import PediatricPreventiveEventReference
@@ -25,6 +25,32 @@ class HealthInput(serializers.Serializer):
     note = serializers.CharField(required=False, max_length=4000, allow_blank=True)
     batch = serializers.CharField(required=False, max_length=80, allow_blank=True)
     reference_checksum = serializers.CharField(required=False, max_length=64, allow_blank=True)
+
+
+class ReminderEntry(serializers.Serializer):
+    key = serializers.RegexField(r"^vaccination:[A-Za-z0-9_.:-]{1,100}$", max_length=120)
+    expected_version = serializers.IntegerField(min_value=0)
+    reference_checksum = serializers.RegexField(r"^[a-f0-9]{64}$")
+
+
+class ReminderInput(serializers.Serializer):
+    entries = ReminderEntry(many=True, min_length=1, max_length=100)
+    remind_at = serializers.DateTimeField()
+
+    def validate_entries(self, entries):
+        if len({row["key"] for row in entries}) != len(entries):
+            raise serializers.ValidationError("Choose each entry once.")
+        return entries
+
+
+@api_view(["POST"])
+def child_health_reminders(request, baby_id):
+    baby = child_profile(baby_id)
+    child_scope_access(request.user, baby, "development")
+    serializer = ReminderInput(data=request.data)
+    serializer.is_valid(raise_exception=True)
+    rows = create_health_reminders(request.user, baby, **serializer.validated_data)
+    return Response({"records": [serialize_record(row) for row in rows]})
 
 
 @api_view(["GET", "POST"])

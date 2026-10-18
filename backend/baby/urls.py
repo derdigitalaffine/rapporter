@@ -20,6 +20,7 @@ urlpatterns = [
     path("baby/profiles/", secure_views.baby_profiles),
     path("baby/profiles/<uuid:baby_id>/", profile_views.baby_profile_detail),
     path("baby/profiles/<uuid:baby_id>/health/", child_health_views.child_health),
+    path("baby/profiles/<uuid:baby_id>/health/reminders/", child_health_views.child_health_reminders),
     path("baby/profiles/<uuid:baby_id>/care-circle/", child_health_views.child_care_circle),
     path("baby/health-events/<uuid:event_id>/", child_health_views.child_health_event),
     path("baby/profiles/<uuid:baby_id>/family-profile/", profile_views.child_family_profile),

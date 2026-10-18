@@ -48,7 +48,7 @@ export default function TodayLayout({family,header,onboarding,widgets,persistenc
   nl:{tomorrow:'Afspraken en taken voor de volgende lokale kalenderdag.',load:'Concrete overlappende afspraken en dringende items, zonder gezinsscore.'},
   th:{tomorrow:'นัดหมายและงานที่ครบกำหนดในวันถัดไปตามเวลาครอบครัว',load:'นัดหมายที่ทับซ้อนและรายการเร่งด่วนที่ชัดเจน ไม่มีคะแนนครอบครัว'}
  }[String(language||'de').split('-')[0]];
- const s={...baseStrings,tomorrow:contextLabels.tomorrow,'family-load':contextLabels.load,descriptions:{...baseStrings.descriptions,tomorrow:contextDescriptions?.tomorrow||baseStrings.descriptions.tomorrow,'family-load':contextDescriptions?.load||baseStrings.descriptions['family-load']}};
+ const s={...baseStrings,pregnancy:language.startsWith('de')?'Schwangerschaft':'Pregnancy',tomorrow:contextLabels.tomorrow,'family-load':contextLabels.load,descriptions:{...baseStrings.descriptions,pregnancy:language.startsWith('de')?'Aktiver Schwangerschaftsstand aus deinem geschützten Bereich.':'Active pregnancy from your protected area.',tomorrow:contextDescriptions?.tomorrow||baseStrings.descriptions.tomorrow,'family-load':contextDescriptions?.load||baseStrings.descriptions['family-load']}};
  const availableWidgets=widgets||{};
  const localPersistence=persistence==='local';
  const editButton=useRef(null);

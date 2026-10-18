@@ -80,14 +80,14 @@ test('optional care modules are not duplicated when promoted to the main navigat
  const main=await bootMore(page,{babyModule:activeModule,petModule:activeModule});
  await expect(page.locator('.bottom-nav').getByRole('button',{name:'Kinder',exact:true})).toBeVisible();
  await expect(page.locator('.bottom-nav').getByRole('button',{name:'Tiere',exact:true})).toBeVisible();
- await expect(main.getByRole('button',{name:'Schwangerschaft & Kinder',exact:true})).toHaveCount(0);
+ await expect(main.getByRole('button',{name:'Kinder',exact:true})).toHaveCount(0);
  await expect(main.getByRole('button',{name:'Haustiere',exact:true})).toHaveCount(0);
 });
 
 test('manageable care modules remain reachable from More while not in the main navigation',async({page})=>{
  const manageableModule={enabled:false,authorized:false,can_manage:true,show_in_main_navigation:false};
  const main=await bootMore(page,{babyModule:manageableModule,petModule:manageableModule});
- await expect(main.getByRole('button',{name:'Schwangerschaft & Kinder',exact:true})).toBeVisible();
+ await expect(main.getByRole('button',{name:'Kinder',exact:true})).toBeVisible();
  await expect(main.getByRole('button',{name:'Haustiere',exact:true})).toBeVisible();
  await expect(page.locator('.bottom-nav').getByRole('button',{name:'Kinder',exact:true})).toHaveCount(0);
  await expect(page.locator('.bottom-nav').getByRole('button',{name:'Tiere',exact:true})).toHaveCount(0);
