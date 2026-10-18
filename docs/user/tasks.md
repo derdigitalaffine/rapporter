@@ -22,14 +22,16 @@ Erledigte Einträge verschwinden aus der aktiven Arbeitsliste. Über **Mehr → 
 Unter **Ansicht** lassen sich drei Dinge unabhängig voneinander einstellen:
 
 - **Gruppieren:** Datum, Status, Liste, Person oder keine Gruppen
-- **Sortieren:** Fälligkeit, Priorität, Neueste oder Älteste
+- **Sortieren:** Fälligkeit, Priorität oder Titel A–Z
 - **Dichte:** Kompakt oder Komfortabel
 
 Die kompakte Darstellung ist der Standard. Sie reduziert Kartenabstände und visuelles Rauschen, behält aber große Bedienziele für Erledigen und Schnellaktionen bei. Die gewählte Ansicht wird pro Familie und Benutzer lokal im Browser gespeichert.
 
 ## Heute und Smart To-do
 
-Wenn Smart Ranking aktiviert ist, kann `Heute` zusätzlich **Als Nächstes** mit begründeten Vorschlägen zeigen. Diese Vorschläge verändern weder Aufgaben noch Routinen automatisch und ersetzen nicht die normal sortierte Gesamtliste.
+Wenn Smart Ranking aktiviert und `Heute sortieren` auf **Smart & fachlich** steht, kann `Heute` zusätzlich **Als Nächstes** mit begründeten Vorschlägen zeigen. Diese hervorgehobenen Einträge werden nicht noch einmal in der darunterliegenden Arbeitsliste dupliziert. Mit **Chronologisch** bleibt der Fokus ausgeblendet und alle Einträge erscheinen in der deterministisch sortierten Liste.
+
+Smart To-do verändert weder Aufgaben noch Routinen automatisch.
 
 ## Routinen verwalten
 
