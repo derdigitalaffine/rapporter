@@ -56,6 +56,7 @@ export function BabyCreateSheet({family,context,onClose,onOpenPage,onSuccessfulC
   const [view,setView]=useState('root');
   const [error,setError]=useState('');
   const [childBusy,setChildBusy]=useState(false),[childDirty,setChildDirty]=useState(false);
+  const [attempt,setAttempt]=useState(0);
   useEffect(()=>{let live=true;(async()=>{
     setModuleState(null);setPregnancies([]);setBabies([]);setSelectedIds([]);setView(context?.intent==='child'?'child':'root');setError('');setChildDirty(false);
     try{
@@ -67,8 +68,8 @@ export function BabyCreateSheet({family,context,onClose,onOpenPage,onSuccessfulC
       if(state.permissions?.can_log_care||state.permissions?.can_view_growth_development)jobs.push(api(`/baby/profiles/?family=${encodeURIComponent(family.id)}`).then(data=>{if(!live)return;const rows=data.babies||[];setBabies(rows);const requested=rows.find(row=>String(row.id)===String(context?.babyId));if(requested)setSelectedIds([requested.id]);else if(rows.length===1)setSelectedIds([rows[0].id])}));
       await Promise.all(jobs);
     }catch(err){if(live)setError(err.message||t('babyUi.error'))}
-  })();return()=>{live=false}},[family.id,t]);
-  if(!moduleState)return <BabySheet family={family} title={t('createUi.baby')} onClose={onClose}><Loading label={t('babyUi.loading')}/></BabySheet>;
+  })();return()=>{live=false}},[family.id,t,attempt]);
+  if(!moduleState)return <BabySheet family={family} title={t('createUi.baby')} onClose={onClose}>{error?<><ErrorNotice message={error}/><button type="button" className="secondary" onClick={()=>setAttempt(value=>value+1)}>{t('childrenUi.reload')}</button></>:<Loading label={t('babyUi.loading')}/>}</BabySheet>;
   const activePregnancy=pregnancies.find(row=>row.status==='active');
   const selectedBaby=babies.find(row=>String(row.id)===String(selectedIds[0]));
   const canCare=Boolean(childPermissions(selectedBaby,moduleState).can_log_care);

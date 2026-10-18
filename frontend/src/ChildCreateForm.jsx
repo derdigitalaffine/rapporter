@@ -4,6 +4,7 @@ import {api} from './api';
 import {Icon} from './icons';
 import {FormActions,FormField} from './form-primitives';
 import './children-i18n';
+import './children-hub.css';
 
 export default function ChildCreateForm({family,canRecordCustody,onBusyChange,onDirtyChange,onSaved,onCancel}){
  const {t}=useTranslation(),c=key=>t(`childrenUi.${key}`),key=useRef(crypto.randomUUID());

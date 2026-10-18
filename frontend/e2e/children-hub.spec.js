@@ -1,6 +1,7 @@
 import {test,expect} from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import {installApiMocks} from './mock-api.js';
+import {openCreateAction} from './create-helpers.js';
 
 async function children(page,{language='de'}={}){
  const app=await installApiMocks(page,{language});
@@ -101,6 +102,26 @@ test('unavailable child link never falls back to a sibling',async({page})=>{
  await expect(page.getByRole('alert')).toContainText('kein freigegebenes Kind');
  await expect(page.getByRole('heading',{name:'Vorsorge & Impfungen',exact:true})).toHaveCount(0);
  await expect(page.getByLabel('Kind auswählen')).toHaveValue('');
+});
+
+test('global child create keeps the same identity key and input across retries, custody stays opt-in',async({page})=>{
+ await children(page);
+ const requests=[];
+ await page.route('**/api/baby/managed-children/',route=>{requests.push(route.request().postDataJSON());return route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({detail:'Erneut versuchen'})})});
+ await page.goto('/?page=baby&baby=older&view=health');
+ await openCreateAction(page,'Schwangerschaft & Kinder');
+ const dialog=page.getByRole('dialog');
+ await dialog.getByRole('button',{name:'Kind hinzufügen',exact:true}).click();
+ await expect(dialog.getByRole('checkbox',{name:'Ich bin für dieses Kind sorgeberechtigt.'})).not.toBeChecked();
+ await dialog.getByLabel('Name',{exact:true}).fill('Neues Kind');
+ await dialog.getByLabel('Geburtsdatum',{exact:true}).fill('2020-04-12');
+ await dialog.getByRole('button',{name:'Speichern',exact:true}).click();
+ await expect(dialog.getByRole('alert')).toContainText('Erneut versuchen');
+ await expect(dialog.getByLabel('Name',{exact:true})).toHaveValue('Neues Kind');
+ await dialog.getByRole('button',{name:'Speichern',exact:true}).click();
+ await expect.poll(()=>requests.length).toBe(2);
+ expect(requests[1]).toEqual(requests[0]);
+ expect(requests[0].custody_for_self).toBe(false);
 });
 
 for(const width of [320,390,1024,1440])test(`health event link, English labels, axe and overflow at ${width}px`,async({page})=>{
