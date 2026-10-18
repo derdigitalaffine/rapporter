@@ -110,6 +110,7 @@ urlpatterns = [
     path("api/", include("telemetry.urls")),
     path("api/", include("entitlements.urls")),
     path("api/", include("family_statistics.urls")),
+    path("api/", include("family.meal_urls")),
     path("api/", include("family.urls")),
     path("api/", include("expenses.urls")),
     path("api/", include("vehicles.urls")),

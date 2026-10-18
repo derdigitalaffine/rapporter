@@ -17,6 +17,7 @@ export const FEATURE_REGISTRY=Object.freeze([
   defineFeature('decisions',{detail:true,queryParams:['decision','decision_context_type','decision_context_id','decision_preset'],load:()=>import('./DecisionsHub.jsx')}),
   defineFeature('wishlists',{detail:true,familyContext:true,queryParams:['wishlist'],load:()=>import('./WishlistsHub.jsx')}),
   defineFeature('games',{detail:true,familyContext:true,queryParams:['game','task'],load:()=>import('./GamesHub.jsx')}),
+  defineFeature('meals',{detail:true,familyContext:true,queryParams:['date','view'],load:()=>import('./MealPlanningHub.jsx')}),
   defineFeature('home'),
   defineFeature('legacy-home',{detail:true}),
   defineFeature('todo',{queryParams:['todo','task','routine','list','mode','view']}),

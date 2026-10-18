@@ -29,6 +29,7 @@ export const TodayWidgetRegistry=[
  entry('trip',9,{category:'planning',supportedSizes:standardSizes,defaultSize:'medium',defaultVisible:false,settingsSchema:tripSettings}),
  entry('weather',10,{category:'context',supportedSizes:['compact','medium','wide','wide-compact'],defaultSize:'medium',defaultVisible:false}),
  entry('shopping',11,{category:'household',supportedSizes:shallowWideSizes,defaultSize:'compact',defaultVisible:false}),
+ entry('meals',11.5,{component:'MealTodayWidget',category:'household',supportedSizes:standardSizes,defaultSize:'medium',defaultVisible:true,deepLink:'/?page=meals'}),
  entry('waste',12,{category:'household',supportedSizes:standardSizes,defaultSize:'medium',defaultVisible:false}),
  entry('inbox',13,{category:'collaboration',supportedSizes:['compact','medium','wide','wide-compact'],defaultSize:'medium',defaultVisible:false}),
  entry('games',14,{category:'collaboration',supportedSizes:standardSizes,defaultSize:'medium',defaultVisible:false,deepLink:'/?page=games'}),
