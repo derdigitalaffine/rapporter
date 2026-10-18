@@ -42,11 +42,11 @@ test('store · peer checks preserve personal filter, focus, scroll and ordering 
  await allFilter.click();
  await expect(allFilter).toHaveAttribute('aria-pressed','true');
  await expect(page.getByLabel('Sortierung im Laden')).toHaveValue('categories');
+ await allFilter.focus();
+ await expect(allFilter).toBeFocused();
  await page.evaluate(()=>window.scrollTo(0,520));
  const beforeScroll=await page.evaluate(()=>window.scrollY);
  expect(beforeScroll).toBeGreaterThan(200);
- await allFilter.focus();
- await expect(allFilter).toBeFocused();
 
  releaseRemote=true;
  await expect(page.getByText('Sam hat Artikel 1 abgehakt',{exact:true})).toBeVisible({timeout:6000});
