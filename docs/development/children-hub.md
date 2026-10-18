@@ -69,6 +69,8 @@ route with existing child/event selectors. Legacy `baby&view=pregnancy` remains 
 Both route adapters use the same existing module/identity/permission APIs. The in-app
 back button explicitly navigates to the feature overview, then More, never history.back.
 Pregnancy reads do not preload children, and Children does not preload pregnancy contents.
+Module managers retain grant administration even without pregnancy content access;
+explicit grant changes refresh the area after the existing Fresh Reauth transaction.
 
 POST `/api/baby/profiles/:id/health/reminders/` accepts unique entries (1..100), each with
 key, expected_version and reference_checksum, plus explicit future remind_at. It locks

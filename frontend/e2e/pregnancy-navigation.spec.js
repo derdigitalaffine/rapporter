@@ -7,16 +7,25 @@ async function setup(page,{pregnancyAccess=true}={}){
  const pregnancy={id:'pregnancy-1',status:'active',expected_due_date:'2027-01-02',progress:{week:28,day:3,days_until_due:81},babies:[{id:'expected-1',stable_label:'A',display_name:'Baby'}]};
  const permissions={can_log_care:true,can_view_growth_development:true,can_manage_account:true,is_guardian:true,source:'custody'};
  const module={enabled:true,authorized:true,can_manage:true,show_in_main_navigation:false,permissions:{...permissions,can_view_pregnancy:pregnancyAccess},active_pregnancy:pregnancyAccess?pregnancy:null};
- const writes=[];let failed=false;
+ const writes=[],reads=[];let failed=false;
  const items=[{key:'exam:U6',kind:'exam',title:'U6',state:'unknown',version:0,historical:false,window_start:'2027-01-02',window_end:'2027-02-03'},
   ...[1,2].map(dose=>({key:`vaccination:test:${dose}`,kind:'vaccination',title:'Synthetische Testreferenz',dose,state:'unknown',version:0,historical:false,window_start:'2027-01-02',window_end:'2027-02-03',reference:{checksum:'a'.repeat(64)}}))];
  await page.route('**/api/baby/**',route=>{
   const request=route.request(),path=new URL(request.url()).pathname.replace('/api','');
   const json=(body,status=200)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)});
   if(request.method()!=='GET')writes.push({path,body:request.postDataJSON()});
+  else reads.push(path);
   if(path==='/baby/module/')return json(module);
   if(path==='/baby/profiles/')return json({babies:[{id:'child-1',family:'family-1',display_name:'Robin',birth_date:'2018-01-02',permissions}]});
   if(path==='/baby/pregnancies/')return json({pregnancies:[pregnancy]});
+  if(path==='/baby/care-circle/'){
+   if(request.method()==='PUT'){
+    const own=request.postDataJSON().care_circle.find(row=>row.membership==='member-1');
+    module.permissions.can_view_pregnancy=Boolean(own?.can_view_pregnancy);
+    module.authorized=true;module.active_pregnancy=module.permissions.can_view_pregnancy?pregnancy:null;
+   }
+   return json({care_circle:[]});
+  }
   if(path.endsWith('/birth-preferences/'))return json({birth_preferences:''});
   if(path.endsWith('/utilities/'))return json({sessions:[]});
   if(path.endsWith('/health/reminders/')){
@@ -27,8 +36,36 @@ async function setup(page,{pregnancyAccess=true}={}){
   if(path.endsWith('/health/'))return json({items,vaccination_reference_available:true,vaccination_reference:{title:'Synthetische Testreferenz',version:'Teststand 1',effective_from:'2026-01-02'}});
   return json({});
  });
- return {module,writes,pregnancy};
+ return {module,writes,reads,pregnancy};
 }
+
+test('module manager can still administer pregnancy grants without reading pregnancy or child contents',async({page})=>{
+ const {reads,module}=await setup(page,{pregnancyAccess:false});
+ module.authorized=false;
+ await page.goto('/?page=pregnancy&view=more');
+ await expect(page.getByRole('button',{name:'Schwangerschaft · Care Circle bearbeiten',exact:true})).toBeVisible();
+ await expect(page.locator('.pregnancy-status')).toHaveCount(0);
+ expect(reads).not.toContain('/baby/pregnancies/');
+ expect(reads).not.toContain('/baby/profiles/');
+ await page.getByRole('button',{name:'Zurück zu Mehr',exact:true}).click();
+ await expect(page).toHaveURL(/page=more/);
+});
+
+test('explicit pregnancy permission refreshes the separate area after fresh reauthentication',async({page})=>{
+ const {reads}=await setup(page,{pregnancyAccess:false});
+ await page.goto('/?page=pregnancy&view=more');
+ await page.getByRole('button',{name:'Schwangerschaft · Care Circle bearbeiten',exact:true}).click();
+ const dialog=page.getByRole('dialog',{name:'Schwangerschaft · Care Circle',exact:true});
+ await dialog.getByRole('checkbox',{name:/Alex/}).check();
+ await dialog.getByLabel('Dein aktuelles Passwort').fill('synthetic-password');
+ expect(reads).not.toContain('/baby/pregnancies/');
+ await dialog.getByRole('button',{name:'Speichern',exact:true}).click();
+ await expect(dialog).toHaveCount(0);
+ await expect(page.getByRole('navigation',{name:'Schwangerschaft',exact:true}).getByRole('button',{name:'Übersicht',exact:true})).toBeVisible();
+ expect(reads).toContain('/baby/pregnancies/');
+ await page.getByRole('button',{name:'Zurück zur Übersicht',exact:true}).click();
+ await expect(page.locator('.pregnancy-status')).toBeVisible();
+});
 
 test('two menu entries and hierarchical back preserve pregnancy functions',async({page})=>{
  await setup(page);
