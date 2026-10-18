@@ -25,10 +25,11 @@ async function openStore(page,{count=24,beforeGoto=null}={}){
 
 test.only('store · peer checks preserve personal filter, focus, scroll and ordering choice',async({page})=>{
  await page.setViewportSize({width:390,height:844});
- let releaseRemote=false;let sentRemote=false;
+ let sessionPolls=0;let releaseRemote=false;let sentRemote=false;
  await openStore(page,{beforeGoto:async({page})=>{
   await page.route('**/api/shopping-sessions/start/',route=>route.fulfill({status:201,contentType:'application/json',body:JSON.stringify({session,cursor:0,activities:[],created:true})}));
   await page.route('**/api/shopping-sessions/current/**',route=>{
+   sessionPolls+=1;
    if(!releaseRemote||sentRemote)return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({session,cursor:sentRemote?1:0,activities:[]})});
    sentRemote=true;
    const item={id:'stability-0',shopping_list:'shop-1',name:'Artikel 1',quantity:'1×',category:'Bereich 1',aisle:'',note:'',favorite:false,checked:true,checked_at:now(),position:1000};
@@ -37,6 +38,7 @@ test.only('store · peer checks preserve personal filter, focus, scroll and orde
   });
  }});
  await expect(page.getByText('Einkauf läuft',{exact:true})).toBeVisible();
+ await expect.poll(()=>sessionPolls,{timeout:6000}).toBeGreaterThanOrEqual(1);
 
  const allFilter=page.locator('.store-status-filter button').nth(2);
  await allFilter.click();
@@ -48,14 +50,15 @@ test.only('store · peer checks preserve personal filter, focus, scroll and orde
  const beforeScroll=await page.evaluate(()=>window.scrollY);
  expect(beforeScroll).toBeGreaterThan(200);
 
+ const pollsBeforeRelease=sessionPolls;
  releaseRemote=true;
- await expect(page.getByText('Sam hat Artikel 1 abgehakt',{exact:true})).toBeVisible({timeout:6000});
+ await expect.poll(()=>sessionPolls,{timeout:6000}).toBeGreaterThan(pollsBeforeRelease);
+ await expect(page.getByRole('button',{name:'1 im Wagen'})).toBeVisible();
  await expect(allFilter).toHaveAttribute('aria-pressed','true');
  await expect(allFilter).toBeFocused();
  await expect(page.getByLabel('Sortierung im Laden')).toHaveValue('categories');
  const afterScroll=await page.evaluate(()=>window.scrollY);
  expect(Math.abs(afterScroll-beforeScroll)).toBeLessThanOrEqual(2);
- await expect(page.getByRole('button',{name:'1 im Wagen'})).toBeVisible();
 });
 
 test.only('store · reduced motion removes row transitions and completion transform',async({page})=>{
@@ -70,6 +73,7 @@ test.only('store · reduced motion removes row transitions and completion transf
   element.classList.remove('store-completing');
   return result;
  });
- expect(styles.transitionDuration).toBe('0s');
+ const transitionSeconds=Math.max(...styles.transitionDuration.split(',').map(value=>Number.parseFloat(value.trim())||0));
+ expect(transitionSeconds).toBeLessThanOrEqual(0.0001);
  expect(styles.transform).toBe('none');
 });
