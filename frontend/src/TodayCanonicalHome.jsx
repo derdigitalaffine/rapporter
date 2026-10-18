@@ -1,5 +1,6 @@
 import {useMemo,useState} from 'react';
 import TodayOverview from './TodayOverview';
+import MealTodayWidget from './MealTodayWidget';
 import TodayLayout from './TodayLayout';
 import OnboardingCard from './OnboardingCard';
 import {Icon} from './icons';
@@ -155,6 +156,7 @@ export default function TodayCanonicalHome({data,family,open,unreadMessages=null
  const widgets=useMemo(()=>({
   overview:<TodayOverview family={family} data={data} unreadMessages={unreadMessages} language={language}/>,
   'quick-actions':<TodayQuickActions family={family} viewer={viewer} language={language}/>,
+  meals:<MealTodayWidget family={family}/>,
   shopping:<ModuleShortcut page="shopping" icon="shopping" title={de?'Einkauf':'Shopping'} value={openShoppingCount(data,excludedShoppingLists)} detail={de?'Liste öffnen':'Open list'} language={language}/>,
   inbox:<ModuleShortcut page="inbox" icon="inbox" title={de?'Nachrichten':'Messages'} value={unreadMessages} detail={de?'Postfach öffnen':'Open inbox'} language={language}/>,
   notes:<ModuleShortcut page="notes" icon="edit" title={de?'Notizzettel':'Notes'} detail={de?'Notizen öffnen':'Open notes'} language={language}/>,
