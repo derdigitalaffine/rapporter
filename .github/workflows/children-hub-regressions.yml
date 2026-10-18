@@ -1,0 +1,82 @@
+name: children-hub-regressions
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: children-hub-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  permissions-and-history:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: famuhle
+          POSTGRES_USER: famuhle
+          POSTGRES_PASSWORD: test-password
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd="pg_isready -U famuhle"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+    env:
+      POSTGRES_HOST: 127.0.0.1
+      POSTGRES_DB: famuhle
+      POSTGRES_USER: famuhle
+      POSTGRES_PASSWORD: test-password
+      DJANGO_SECRET_KEY: ci-only-secret
+      DJANGO_DEBUG: "true"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - run: pip install -r backend/requirements.txt
+      - working-directory: backend
+        run: python manage.py makemigrations --check --dry-run && python manage.py migrate && python manage.py check
+      - working-directory: backend
+        run: python manage.py test baby family.test_family_relationship_child_privacy family.test_calendar_custody_sync
+
+  browser:
+    name: children / ${{ matrix.project }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        project: [mobile-chromium, desktop-chromium]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - working-directory: frontend
+        run: npm ci --prefer-offline --no-audit --no-fund
+      - working-directory: frontend
+        run: npm run build
+      - working-directory: frontend
+        run: npx playwright install --with-deps chromium
+      - working-directory: frontend
+        run: npm run e2e -- --project=${{ matrix.project }} --reporter=line,github,html e2e/children-hub.spec.js e2e/pregnancy-baby.spec.js e2e/pregnancy-baby-care.spec.js
+      - working-directory: frontend
+        run: npm run e2e -- --project=${{ matrix.project }} --reporter=line,github,html e2e/more-page.spec.js --grep "optional care modules|manageable care modules"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: children-${{ matrix.project }}-${{ github.run_attempt }}
+          path: |
+            frontend/playwright-report
+            frontend/test-results
+          retention-days: 14

@@ -75,9 +75,9 @@ class FamilyManagedChildTests(TestCase):
         self.assertEqual(response.status_code, 403)
         self.assertFalse(BabyProfile.objects.filter(family=self.family).exists())
 
-    def test_cross_family_create_is_not_found(self):
+    def test_cross_family_create_is_denied(self):
         response = self.create_child(user=self.owner, family=self.other_family)
-        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.status_code, 403)
         self.assertFalse(BabyProfile.objects.filter(family=self.other_family).exists())
 
     def test_family_profile_read_and_patch_syncs_birthday_for_custodian(self):

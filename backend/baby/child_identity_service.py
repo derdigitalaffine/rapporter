@@ -41,6 +41,7 @@ def _bootstrap_guardian_allowed(membership, baby):
     return CareCircleAccess.objects.filter(
         family=baby.family,
         membership=membership,
+        baby__isnull=True,
         is_guardian=True,
     ).exists()
 
@@ -121,14 +122,65 @@ def child_scope_access(user, baby, scope):
     try:
         membership, authority = require_child_guardian(user, baby)
     except PermissionDenied:
-        return care_access(user, baby.family, scope)
+        return care_access(user, baby.family, scope, baby=baby)
     return membership, SimpleNamespace(
-        can_view_pregnancy=True,
+        can_view_pregnancy=False,
         can_log_care=True,
         can_view_growth_development=True,
         is_guardian=True,
         source=getattr(authority, "source", "legacy_guardian"),
     )
+
+
+def child_access_overview(user, family):
+    """Bulk projection of the same custody/legacy/care policy, without granting rights."""
+    actor = active_membership(user, family)
+    global_access = CareCircleAccess.objects.filter(family=family, membership=actor, baby__isnull=True).first()
+    custody_ids = set(FamilyRelationship.objects.filter(
+        family=family, related_membership=actor, has_custody=True,
+        status=FamilyRelationship.Status.ACTIVE, child_membership__role=Membership.Role.CHILD,
+    ).values_list("child_membership_id", flat=True)) if actor.role in MANAGER_ROLES else set()
+    grants = {row.baby_id: row for row in CareCircleAccess.objects.filter(family=family, membership=actor, baby__isnull=False)}
+    result = []
+    for baby in BabyProfile.objects.filter(family=family, active=True).select_related("membership", "family").prefetch_related("guardians"):
+        guardians = list(baby.guardians.all())
+        legacy = next((row for row in guardians if row.membership_id == actor.id), None)
+        bootstrap = not guardians and bool(global_access and global_access.is_guardian)
+        authority = baby.membership_id in custody_ids or bool(legacy) or bootstrap
+        grant = grants.get(baby.id)
+        care = authority or bool(global_access and global_access.can_log_care) or bool(grant and grant.can_log_care)
+        growth = authority or bool(global_access and global_access.can_view_growth_development) or bool(grant and grant.can_view_growth_development)
+        if not care and not growth:
+            continue
+        manage = baby.membership_id in custody_ids or bool(legacy and legacy.can_manage_account) or bootstrap
+        result.append((baby, {
+            "can_log_care": care, "can_view_growth_development": growth,
+            "can_manage_account": manage, "can_manage_care_circle": manage,
+            "is_guardian": authority,
+            "source": "custody" if baby.membership_id in custody_ids else "legacy_guardian" if authority else "care_circle",
+        }))
+    return global_access, result
+
+
+@transaction.atomic
+def attach_existing_child(user, child, *, birth_date, client_identity_key):
+    require_child_membership_guardian(user, child, manage=True)
+    child = Membership.objects.select_for_update().select_related("family", "user").get(pk=child.pk)
+    existing = BabyProfile.objects.filter(membership=child).first()
+    if existing:
+        return existing
+    if BabyProfile.objects.filter(client_identity_key=client_identity_key).exists():
+        raise ValidationError({"client_identity_key": "This creation key is already in use."})
+    profile, _ = UserProfile.objects.get_or_create(user=child.user)
+    known = (profile.birth_year, profile.birth_month, profile.birth_day)
+    requested = (birth_date.year, birth_date.month, birth_date.day)
+    if any(value and value != candidate for value, candidate in zip(known, requested)):
+        raise ValidationError({"birth_date": "Use the birthday of the existing child profile."})
+    if not all(known):
+        profile.birth_year, profile.birth_month, profile.birth_day = birth_date.year, birth_date.month, birth_date.day
+        profile.save(update_fields=["birth_year", "birth_month", "birth_day", "updated_at"])
+    return BabyProfile.objects.create(family=child.family,membership=child,display_name=child.display_name or child.user.get_username(),
+        birth_date=birth_date,client_identity_key=client_identity_key,created_by=user)
 
 
 def _require_guardian_manager_or_owner_bootstrap(user, baby):
@@ -233,6 +285,7 @@ def guardian_settings_for_family(user, family):
     legacy_guardian = CareCircleAccess.objects.filter(
         family=family,
         membership=actor,
+        baby__isnull=True,
         is_guardian=True,
     ).exists()
     babies = (
@@ -413,6 +466,7 @@ def attach_identity_to_orphan_baby(baby_id):
 
     for access in CareCircleAccess.objects.filter(
         family=baby.family,
+        baby__isnull=True,
         is_guardian=True,
         membership__role__in=MANAGER_ROLES,
     ).select_related("membership"):
@@ -440,6 +494,7 @@ def reconcile_orphan_child_identities(*, apply=False):
     }
     guardian_family_ids = set(
         CareCircleAccess.objects.filter(
+            baby__isnull=True,
             is_guardian=True,
             membership__role__in=MANAGER_ROLES,
         ).values_list("family_id", flat=True)

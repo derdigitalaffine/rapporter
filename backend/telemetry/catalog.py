@@ -86,6 +86,7 @@ AUDIT_EVENT_SPECS = {
     "auth.session.revoked": AuditSpec(frozenset({"auth_method"})),
     "family.created": AuditSpec(),
     "family.custody.changed": AuditSpec(frozenset({"scope"})),
+    "baby.care_circle.changed": AuditSpec(frozenset({"scope"})),
     "membership.joined": AuditSpec(frozenset({"role"})),
     "membership.removed": AuditSpec(frozenset({"role"})),
     "membership.role_changed": AuditSpec(frozenset({"role"})),

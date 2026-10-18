@@ -9,7 +9,7 @@ from django.db import transaction
 from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
-from family.models import FamilyEvent, Membership, ShoppingItem, ShoppingList, Task, TaskList, UserProfile
+from family.models import Family, FamilyEvent, Membership, ShoppingItem, ShoppingList, Task, TaskList, UserProfile
 
 from .family_modules import care_access, require_manager, require_module
 from .models import BabyGrowthReferenceSetting, BabyProfile, CareCircleAccess, ManagedChildGuardian, PregnancyBaby, PregnancyJournalEntry, PregnancyJourney
@@ -104,7 +104,7 @@ def _sync_birth_profile(user, membership, *, display_name, birth_date):
 
 def _ensure_guardians(baby):
     """Legacy reconciliation helper; new child creation must not call this."""
-    guardian_access = CareCircleAccess.objects.filter(family=baby.family, is_guardian=True, membership__role__in=[Membership.Role.OWNER, Membership.Role.ADULT]).select_related("membership")
+    guardian_access = CareCircleAccess.objects.filter(family=baby.family, baby__isnull=True, is_guardian=True, membership__role__in=[Membership.Role.OWNER, Membership.Role.ADULT]).select_related("membership")
     for access in guardian_access:
         ManagedChildGuardian.objects.get_or_create(baby=baby, membership=access.membership, defaults={"can_manage_account": True})
 
@@ -112,6 +112,7 @@ def _ensure_guardians(baby):
 @transaction.atomic
 def create_managed_child(user, family, *, display_name, birth_date, birth_time=None, gestational_age_weeks=None, gestational_age_days=None, birth_weight_g=None, birth_length_cm=None, birth_head_circumference_cm=None, growth_reference_sex="unspecified", source_pregnancy=None, source_pregnancy_baby=None, client_identity_key=None):
     require_manager(user, family)
+    Family.objects.select_for_update().get(pk=family.id)
     if source_pregnancy_baby:
         existing = BabyProfile.objects.select_for_update().filter(source_pregnancy_baby=source_pregnancy_baby).first()
         identity_key = source_pregnancy_baby.id
@@ -121,6 +122,8 @@ def create_managed_child(user, family, *, display_name, birth_date, birth_time=N
     else:
         raise ValidationError({"client_identity_key": "A stable client identity key is required when no pregnancy baby is supplied."})
     if existing:
+        if existing.family_id != family.id:
+            raise ValidationError({"client_identity_key": "Identity key is unavailable."})
         return existing
     if source_pregnancy and source_pregnancy.family_id != family.id:
         raise ValidationError("Pregnancy does not belong to this family.")

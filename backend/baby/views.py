@@ -34,6 +34,7 @@ from .models import (
 )
 from .pregnancy_service import archive_pregnancy, complete_birth, create_managed_child, create_pregnancy, pregnancy_progress, pregnancy_template_items
 from .report_service import audited_export
+from .child_identity_service import child_access_overview
 
 
 class ModuleInput(serializers.Serializer):
@@ -187,19 +188,30 @@ def module_detail(request):
     family = requested_family(request)
     membership = active_membership(request.user, family)
     setting = module_setting(family)
-    access = CareCircleAccess.objects.filter(family=family, membership=membership).first() if setting.enabled else None
+    access, children = child_access_overview(request.user, family) if setting.enabled else (None, [])
     if request.method == "GET":
         can_manage = membership.role in {Membership.Role.OWNER, Membership.Role.ADULT}
+        can_delete_tracking = can_manage and len(children) == BabyProfile.objects.filter(family=family, active=True).count() and all(permissions["can_manage_account"] for _, permissions in children)
         return Response({
             "key": MODULE_KEY,
             "enabled": setting.enabled,
             "show_in_main_navigation": setting.show_in_main_navigation,
-            "authorized": bool(access and (access.can_view_pregnancy or access.can_log_care or access.can_view_growth_development)),
+            "authorized": bool(children or (access and access.can_view_pregnancy)),
             "can_manage": can_manage,
-            "permissions": _serialize_access(access) if access else None,
+            "can_record_custody_on_create": membership.role == Membership.Role.OWNER,
+            "can_delete_tracking": can_delete_tracking,
+            "permissions": {
+                "can_view_pregnancy": bool(access and access.can_view_pregnancy),
+                "can_log_care": any(permissions["can_log_care"] for _, permissions in children),
+                "can_view_growth_development": any(permissions["can_view_growth_development"] for _, permissions in children),
+                "is_guardian": any(permissions["is_guardian"] for _, permissions in children),
+            },
         })
     require_manager(request.user, family)
     if request.method == "DELETE":
+        from .child_identity_service import require_child_guardian
+        for child in BabyProfile.objects.filter(family=family):
+            require_child_guardian(request.user, child, manage=True)
         if request.data.get("confirm") != "DELETE":
             raise ValidationError({"confirm": "Send DELETE to permanently remove Pregnancy & Baby tracking data."})
         with transaction.atomic():
@@ -226,10 +238,12 @@ def care_circle(request):
     require_manager(request.user, family)
     require_module(family)
     if request.method == "PUT":
+        from auth_sessions.service import require_fresh_session
+        require_fresh_session(request)
         serializer = CareCircleRow(data=request.data.get("care_circle", []), many=True)
         serializer.is_valid(raise_exception=True)
         set_care_circle(request.user, family, serializer.validated_data)
-    rows = CareCircleAccess.objects.filter(family=family).select_related("membership__user").order_by("membership__display_name")
+    rows = CareCircleAccess.objects.filter(family=family, baby__isnull=True).select_related("membership__user").order_by("membership__display_name")
     return Response({"care_circle": [_serialize_access(row) for row in rows]})
 
 
@@ -349,7 +363,7 @@ def baby_profiles(request):
     family = requested_family(request)
     require_module(family)
     membership = active_membership(request.user, family)
-    access = CareCircleAccess.objects.filter(family=family, membership=membership).first()
+    access = CareCircleAccess.objects.filter(family=family, membership=membership, baby__isnull=True).first()
     if not access or not (access.can_log_care or access.can_view_growth_development):
         raise PermissionDenied("Baby profiles are limited to the Care Circle.")
     if request.method == "POST":

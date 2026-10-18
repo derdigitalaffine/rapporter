@@ -10,6 +10,7 @@ from family.models import Family, Membership
 from .care_service import care_summary, create_handover, handover_payload, record_care_log
 from .family_modules import set_module
 from .pregnancy_service import create_managed_child
+from .testing import grant_test_custody
 
 User = get_user_model()
 
@@ -20,6 +21,7 @@ class CareSummaryTests(TestCase):
         Membership.objects.create(family=self.family, user=self.owner, role=Membership.Role.OWNER, display_name='Alex')
         set_module(self.owner, self.family, enabled=True)
         self.baby = create_managed_child(self.owner, self.family, display_name='Mia', birth_date=date.today()-timedelta(days=60), growth_reference_sex='female', client_identity_key=uuid.uuid4())
+        grant_test_custody(self.owner, self.baby)
 
     def test_active_sleep_is_clipped_to_requested_window(self):
         now = timezone.now()

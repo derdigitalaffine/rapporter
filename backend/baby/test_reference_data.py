@@ -13,6 +13,7 @@ from .development_service import ensure_u_exam_events
 from .family_modules import set_module
 from .pregnancy_service import create_managed_child
 from .reference_models import PediatricPreventiveEventReference, PediatricReferencePackage
+from .testing import grant_test_custody
 from .reference_service import (
     DEFAULT_SOURCE_KEY,
     create_reference_draft,
@@ -75,7 +76,7 @@ class PediatricReferenceTests(TestCase):
         )
 
     def baby(self, name="Mia"):
-        return create_managed_child(
+        baby = create_managed_child(
             self.owner,
             self.family,
             display_name=name,
@@ -83,6 +84,8 @@ class PediatricReferenceTests(TestCase):
             growth_reference_sex="female",
             client_identity_key=uuid.uuid4(),
         )
+        grant_test_custody(self.owner, baby)
+        return baby
 
     def test_only_superadmin_can_create_or_mutate_reference_packages(self):
         with self.assertRaises(PermissionDenied):

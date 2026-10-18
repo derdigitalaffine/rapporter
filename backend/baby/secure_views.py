@@ -11,13 +11,15 @@ from .models import AppointmentQuestion, BabyProfile, CareCircleAccess, Developm
 from .pregnancy_service import archive_pregnancy, complete_birth, create_managed_child
 from .template_service import pregnancy_template_items, refresh_existing_preparation_tasks
 from .views import AlreadyBornInput, BirthBabyInput, ObservationInput, _serialize_baby, _serialize_pregnancy, requested_family
+from .child_identity_service import child_access_overview
+from .reference_models import PediatricPreventiveEventReference
 
 
 def _guardian_access(user, family):
     membership = require_manager(user, family)
-    access = CareCircleAccess.objects.filter(family=family, membership=membership).first()
-    if not access or not access.is_guardian:
-        raise PermissionDenied("Managed child identities can only be created by an authorized guardian.")
+    access = CareCircleAccess.objects.filter(family=family, membership=membership, baby__isnull=True).first()
+    if not access or not access.can_view_pregnancy:
+        raise PermissionDenied("Pregnancy access is required for this transition.")
     return membership, access
 
 
@@ -77,21 +79,28 @@ def pregnancy_templates(request, pregnancy_id):
 def baby_profiles(request):
     family = requested_family(request)
     require_module(family)
-    membership = active_membership(request.user, family)
-    access = CareCircleAccess.objects.filter(family=family, membership=membership).first()
-    if not access or not (access.can_log_care or access.can_view_growth_development):
-        raise PermissionDenied("Baby profiles are limited to the Care Circle.")
     if request.method == "POST":
-        _guardian_access(request.user, family)
+        require_manager(request.user, family)
         serializer = AlreadyBornInput(data=request.data)
         serializer.is_valid(raise_exception=True)
         baby = create_managed_child(request.user, family, **serializer.validated_data)
         return Response(_serialize_baby(baby), status=201)
-    return Response({"babies": [_serialize_baby(row) for row in BabyProfile.objects.filter(family=family, active=True).order_by("birth_date", "created_at")]})
+    _, rows = child_access_overview(request.user, family)
+    result = []
+    for baby, permissions in rows:
+        payload = _serialize_baby(baby)
+        if not permissions["can_view_growth_development"]:
+            payload = {key: payload[key] for key in ("id", "family", "membership", "display_name", "birth_date")}
+        result.append({**payload, "permissions": permissions})
+    return Response({"babies": result})
 
 
 def _preventive_appointments(baby):
     exam_by_token = {_private_event_token(baby, exam): (exam, window) for exam, _, window in U_EXAMS}
+    for reference in PediatricPreventiveEventReference.objects.filter(baby=baby).select_related("event"):
+        exam_by_token[reference.event.external_id] = (reference.rule_key, f"{reference.start_day}–{reference.end_day} Tage")
+    for record in baby.health_records.filter(event__isnull=False).select_related("event"):
+        exam_by_token.setdefault(record.event.external_id, (record.title, ""))
     events = list(FamilyEvent.objects.filter(family=baby.family, external_id__in=exam_by_token).order_by("starts_at"))
     questions = AppointmentQuestion.objects.filter(baby=baby, event__in=events).order_by("created_at")
     questions_by_event = {}

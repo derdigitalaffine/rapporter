@@ -60,7 +60,16 @@ class ManagedChildAppearanceTests(TestCase):
         profile.refresh_from_db()
         self.assertEqual(profile.avatar_key, '')
 
-    def test_adult_can_manage_child_avatar_without_child_guardian_permission(self):
+    def test_adult_without_custody_cannot_manage_child_avatar(self):
+        self.client.force_authenticate(self.adult)
+        response = self.client.post(self._url(), {'avatar': self._image()}, format='multipart')
+        self.assertEqual(response.status_code, 403, response.data)
+
+    def test_custodian_can_manage_child_avatar_without_extra_guardian_row(self):
+        from family.family_relationship_models import FamilyRelationship
+        adult = Membership.objects.get(family=self.family,user=self.adult)
+        FamilyRelationship.objects.create(family=self.family,child_membership=self.child_membership,
+            related_membership=adult,kind="parent",has_custody=True,status="active")
         self.client.force_authenticate(self.adult)
         response = self.client.post(self._url(), {'avatar': self._image()}, format='multipart')
         self.assertEqual(response.status_code, 200, response.data)
