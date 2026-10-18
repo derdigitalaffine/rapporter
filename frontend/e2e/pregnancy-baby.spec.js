@@ -34,7 +34,7 @@ test('Pregnancy & children stays private, reload-safe and responsive in German',
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBeTruthy();
   await page.reload();
   await expect(page.getByRole('heading',{name:'Schwangerschaft & Kinder',exact:true}).last()).toBeVisible();
-  await expect(page.getByText(/Care Circle/).first()).toBeVisible();
+  await expect(page.getByText('Geschützter Familienbereich',{exact:true})).toBeVisible();
 });
 
 test('disabled module is opt-in and usable in English without entering main nav',async({page})=>{

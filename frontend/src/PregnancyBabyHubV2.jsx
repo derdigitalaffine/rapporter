@@ -118,7 +118,7 @@ export default function PregnancyBabyHub({family,onBack,onModuleChange,onCreate}
    {babies.length>0&&<div className="child-context-bar"><MemberAvatar person={{...family.memberships?.find(row=>String(row.id)===String(baby?.membership)),display_name:baby?.display_name}} decorative/><label className="baby-selector"><span>{c('select')}</span><select value={baby?.id||''} onChange={event=>selectChild(event.target.value)}>{!baby&&<option value="">{c('select')}</option>}{babies.map(row=><option value={row.id} key={row.id}>{row.display_name}</option>)}</select></label>{baby&&<span className="child-access-label"><Icon name={permissions.source==='custody'?'lock':'members'} size={16}/>{permissions.source==='custody'?c('custody'):permissions.is_guardian?c('legacy'):c('delegated')}</span>}</div>}
    <PrimaryNav items={primaryItems} active={section} onChange={selectSection} label={c('title')}/>
    {baby&&section!=='pregnancy'&&<div className="child-current-context" aria-live="polite"><span>{c('child')}: <strong>{baby.display_name}</strong> · {childAgeMonths(baby)<24?`${childAgeMonths(baby)} ${c('months')}`:`${Math.floor(childAgeMonths(baby)/12)} ${c('years')}`}</span>{onCreate&&canCare&&childAgeMonths(baby)<24&&<button type="button" className="primary" onClick={()=>onCreate('baby',{babyId:baby.id})}><Icon name="plus"/>{t('babyUi.add')}</button>}</div>}
-   {section==='pregnancy'&&canPregnancy&&<PregnancyPanel family={family} pregnancy={activePregnancy} t={t} busy={busy} action={action} refresh={refresh} canManage={!!module.can_manage} canManageChild={!!module.can_manage}/>}
+   {section==='pregnancy'&&canPregnancy&&<PregnancyPanel family={family} pregnancy={activePregnancy} t={t} busy={busy} action={action} refresh={refresh} onCreateChild={babies.length&&onCreate?()=>onCreate('baby',{intent:'child'}):null} canManage={!!module.can_manage} canManageChild={!!module.can_manage}/>}
    {section==='now'&&baby&&canCare&&<BabyCarePanel key={baby.id} baby={baby} t={t}/>}
    {section==='health'&&baby&&canGrowth&&<ChildHealthPanel key={baby.id} baby={baby}/>}
    {section==='longterm'&&baby&&canGrowth&&<div className="baby-combined-section" key={baby.id}><div><h2 className="baby-lifecycle-heading">{baby.display_name} · {t('babyUi.growthDevelopment')}</h2><p className="baby-section-intro">{t('babyUi.percentileNote')}</p></div><GrowthPanel baby={baby} t={t} busy={busy} action={action}/><DevelopmentPanel family={family} baby={baby} t={t} language={i18n.language.startsWith('en')?'en':'de'} busy={busy} action={action}/></div>}
@@ -133,7 +133,7 @@ function DisabledSetup({module,busy,t,onEnable}){
  return <Panel><div className="baby-locked"><Icon name="heart" size={30}/><h2>{t('babyUi.disabled')}</h2><p>{t('babyUi.activateHint')}</p>{module.can_manage?<button className="primary" disabled={busy} onClick={onEnable}><Icon name="plus"/>{t('babyUi.enable')}</button>:<span>{t('babyUi.noAccess')}</span>}</div></Panel>;
 }
 
-function PregnancyPanel({family,pregnancy,t,busy,action,refresh,canManage,canManageChild}){
+function PregnancyPanel({family,pregnancy,t,busy,action,refresh,canManage,canManageChild,onCreateChild}){
  const [due,setDue]=useState('');
  const [count,setCount]=useState(1);
  const [journal,setJournal]=useState('');
@@ -145,7 +145,6 @@ function PregnancyPanel({family,pregnancy,t,busy,action,refresh,canManage,canMan
  const [showBirth,setShowBirth]=useState(false);
  const [birth,setBirth]=useState({});
  const [addMode,setAddMode]=useState('journal');
- const [born,setBorn]=useState({name:'',birth_date:dateToday(),gestational_age_weeks:'',birth_weight_g:'',growth_reference_sex:'unspecified'});
  useEffect(()=>{
   if(!pregnancy)return;
   setDue(pregnancy.expected_due_date);
@@ -157,7 +156,7 @@ function PregnancyPanel({family,pregnancy,t,busy,action,refresh,canManage,canMan
   if(!canManage&&!canManageChild)return <Panel><div className="smart-empty"><Icon name="heart"/><strong>{t('babyUi.emptyPregnancy')}</strong></div></Panel>;
   return <>
    {canManage&&<Panel><h2>{t('babyUi.pregnancy')}</h2><div className="form-grid"><label>{t('babyUi.dueDate')}<input type="date" value={due} onChange={e=>setDue(e.target.value)}/></label><label>{t('babyUi.babyCount')}<select value={count} onChange={e=>setCount(Number(e.target.value))}><option value="1">1</option><option value="2">2</option><option value="3">3</option></select></label></div><button className="primary" disabled={busy||!due} onClick={()=>action(async()=>{await api('/baby/pregnancies/',{method:'POST',body:JSON.stringify({family:family.id,expected_due_date:due,baby_count:count})});await refresh()},t('babyUi.created'))}><Icon name="plus"/>{t('babyUi.startPregnancy')}</button></Panel>}
-   {canManageChild&&<AlreadyBorn family={family} value={born} setValue={setBorn} t={t} busy={busy} action={action} refresh={refresh}/>} 
+   {canManageChild&&onCreateChild&&<button type="button" className="secondary" disabled={busy} onClick={onCreateChild}><Icon name="plus"/>{t('childrenUi.addChild')}</button>}
   </>;
  }
  async function archive(){
@@ -180,10 +179,6 @@ function PregnancyPanel({family,pregnancy,t,busy,action,refresh,canManage,canMan
  </>;
 }
 
-function AlreadyBorn({family,value,setValue,t,busy,action,refresh}){
- const set=(key,next)=>setValue(current=>({...current,[key]:next}));
- return <Panel><h3>{t('babyUi.alreadyBorn')}</h3><div className="form-grid"><label>{t('babyUi.name')}<input value={value.name} onChange={e=>set('name',e.target.value)}/></label><label>{t('babyUi.birthDate')}<input type="date" value={value.birth_date} onChange={e=>set('birth_date',e.target.value)}/></label><label>{t('babyUi.gestation')}<input type="number" min="20" max="44" value={value.gestational_age_weeks} onChange={e=>set('gestational_age_weeks',e.target.value)}/></label><label>{t('babyUi.birthWeight')}<input inputMode="numeric" value={value.birth_weight_g} onChange={e=>set('birth_weight_g',e.target.value)}/></label></div><button className="secondary" disabled={busy||!value.name||!value.birth_date} onClick={()=>action(async()=>{await api('/baby/profiles/',{method:'POST',body:JSON.stringify({family:family.id,client_identity_key:uid(),display_name:value.name,birth_date:value.birth_date,gestational_age_weeks:value.gestational_age_weeks?Number(value.gestational_age_weeks):null,birth_weight_g:value.birth_weight_g?Number(value.birth_weight_g):null,growth_reference_sex:value.growth_reference_sex})});await refresh()},t('babyUi.created'))}>{t('babyUi.save')}</button></Panel>;
-}
 
 function GrowthPanel({baby,t,busy,action}){
  const [data,setData]=useState(null);

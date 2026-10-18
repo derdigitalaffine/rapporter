@@ -48,19 +48,19 @@ test('older child starts with neutral health history; sibling switch preserves s
  await page.getByRole('button',{name:'Bisheriger Stand',exact:true}).click();
  await expect(page.getByRole('button',{name:/U9.*Nicht dokumentiert/})).toBeVisible();
  await page.getByLabel('Kind auswählen').selectOption('younger');
- await expect(page.locator('.baby-quick-grid')).toBeVisible();
+ await expect(page.getByRole('button',{name:/Stillen.*Timer starten/})).toBeVisible();
  await expect(page.getByRole('button',{name:'Vorsorge & Impfungen',exact:true})).toHaveCount(0);
  await page.getByRole('button',{name:'Mehr',exact:true}).click();
- await expect(page.getByRole('button',{name:'Care Circle bearbeiten'})).toHaveCount(0);
+ await expect(page.getByRole('button',{name:'Care Circle bearbeiten',exact:true})).toHaveCount(0);
  await page.goBack();
- await expect(page.locator('.baby-quick-grid')).toBeVisible();
+ await expect(page.getByRole('button',{name:/Stillen.*Timer starten/})).toBeVisible();
 });
 
 test('custodian sees full access and can delegate without a Guardian switch',async({page})=>{
  const {writes}=await children(page);
  await page.goto('/?page=baby&baby=older&view=more');
  await expect(page.getByText('Sorgeberechtigt · Voller Zugriff')).toBeVisible();
- await page.getByRole('button',{name:'Care Circle bearbeiten'}).click();
+ await page.getByRole('button',{name:'Care Circle bearbeiten',exact:true}).click();
  const dialog=page.getByRole('dialog');
  await expect(dialog.getByRole('checkbox',{name:/Guardian|Sorgeberechtigt/})).toHaveCount(0);
  await dialog.getByRole('checkbox',{name:'Pflege erfassen'}).check();
@@ -113,11 +113,11 @@ test('global child create keeps the same identity key and input across retries, 
  const dialog=page.getByRole('dialog');
  await dialog.getByRole('button',{name:'Kind hinzufügen',exact:true}).click();
  await expect(dialog.getByRole('checkbox',{name:'Ich bin für dieses Kind sorgeberechtigt.'})).not.toBeChecked();
- await dialog.getByLabel('Name',{exact:true}).fill('Neues Kind');
- await dialog.getByLabel('Geburtsdatum',{exact:true}).fill('2020-04-12');
+ await dialog.getByRole('textbox',{name:'Name',exact:true}).fill('Neues Kind');
+ await dialog.getByLabel(/^Geburtsdatum/).fill('2020-04-12');
  await dialog.getByRole('button',{name:'Speichern',exact:true}).click();
  await expect(dialog.getByRole('alert')).toContainText('Erneut versuchen');
- await expect(dialog.getByLabel('Name',{exact:true})).toHaveValue('Neues Kind');
+ await expect(dialog.getByRole('textbox',{name:'Name',exact:true})).toHaveValue('Neues Kind');
  await dialog.getByRole('button',{name:'Speichern',exact:true}).click();
  await expect.poll(()=>requests.length).toBe(2);
  expect(requests[1]).toEqual(requests[0]);
