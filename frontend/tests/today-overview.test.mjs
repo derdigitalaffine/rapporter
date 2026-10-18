@@ -9,7 +9,7 @@ const timelineStyles=await readFile(new URL('../src/today-core-widgets.css',impo
 
 test('fresh and explicit reset defaults follow the current Today core sequence',()=>{
  const rows=defaultTodayWidgets();
- assert.deepEqual(rows.filter(row=>row.visible).map(row=>row.id),['situation','focus','timeline','week','todo','quick-actions','pinboard']);
+ assert.deepEqual(rows.filter(row=>row.visible).map(row=>row.id),['situation','focus','timeline','week','todo','quick-actions','pinboard','meals']);
  assert.deepEqual(TodayWidgetsById.overview.supportedSizes,['wide']);
  assert.equal(normalizeTodayLayout({version:2,revision:0,widgets:rows}).widgets.find(row=>row.id==='overview').visible,false);
 });
