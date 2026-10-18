@@ -8,7 +8,7 @@ from rest_framework.test import APIClient
 
 from family.family_relationship_models import FamilyRelationship
 from family.models import Family, Membership, FamilyEvent
-from .models import CareCircleAccess, ChildHealthRecord, FamilyModuleSetting
+from .models import BabyProfile, CareCircleAccess, ChildHealthRecord, FamilyModuleSetting
 from .pregnancy_service import create_managed_child
 from .family_modules import set_module
 from .reference_service import create_reference_draft, publish_reference_package, DEFAULT_SOURCE_KEY
@@ -233,3 +233,21 @@ class ChildrenHubTests(TestCase):
         user.refresh_from_db()
         self.assertEqual(user.password,password)
         self.assertEqual(user.email,"child@example.invalid")
+
+    def test_attach_preserves_partial_birthday_and_rejects_an_existing_creation_key(self):
+        from family.models import UserProfile
+        user = get_user_model().objects.create_user(username="partial-birthday")
+        child = Membership.objects.create(family=self.family,user=user,role="child",display_name="Existing child")
+        FamilyRelationship.objects.create(family=self.family,child_membership=child,related_membership=self.parent_member,kind="parent",has_custody=True,status="active")
+        profile, _ = UserProfile.objects.get_or_create(user=user)
+        profile.birth_year = 2018
+        profile.save()
+        values = {"family":str(self.family.id),"membership":str(child.id),"display_name":"Existing child","birth_date":"2019-01-01","client_identity_key":str(uuid.uuid4())}
+        path = "/api/baby/managed-children/"
+        self.assertEqual(self.client.post(path,values,format="json").status_code,400)
+        profile.refresh_from_db()
+        self.assertEqual(profile.birth_year,2018)
+        self.assertFalse(BabyProfile.objects.filter(membership=child).exists())
+        values.update(birth_date="2018-01-01",client_identity_key=str(self.child.client_identity_key))
+        self.assertEqual(self.client.post(path,values,format="json").status_code,400)
+        self.assertFalse(BabyProfile.objects.filter(membership=child).exists())

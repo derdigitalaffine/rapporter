@@ -29,7 +29,7 @@ test('Pregnancy & children stays private, reload-safe and responsive in German',
   await installApiMocks(page,{language:'de'});
   await installBabyMocks(page,{enabled:true,authorized:true,canManage:true,showInNav:true});
   await page.goto('/?page=more');
-  await page.getByRole('button',{name:'Schwangerschaft & Kinder',exact:true}).click();
+  await page.locator('.bottom-nav').getByRole('button',{name:'Kinder',exact:true}).click();
   await expect(page.getByRole('heading',{name:'Schwangerschaft & Kinder',exact:true}).last()).toBeVisible();
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBeTruthy();
   await page.reload();

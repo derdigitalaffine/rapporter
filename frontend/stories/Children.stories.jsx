@@ -16,24 +16,24 @@ function Editor({fail=false}){
 export const VaccinationEditor={render:()=> <Editor/>,play:async({canvasElement})=>{
  await userEvent.click(within(canvasElement).getByRole('button',{name:'Impfung dokumentieren'}));
  const dialog=within(await within(canvasElement.ownerDocument.body).findByRole('dialog'));
- await expect(dialog.getByLabelText('Impfung / Impfstoff')).toBeVisible();
- await userEvent.type(dialog.getByLabelText('Impfung / Impfstoff'),'Dokumentierter Impfstoff');
+ await expect(dialog.getByRole('textbox',{name:'Impfung / Impfstoff'})).toBeVisible();
+ await userEvent.type(dialog.getByRole('textbox',{name:'Impfung / Impfstoff'}),'Dokumentierter Impfstoff');
  await userEvent.click(dialog.getByRole('button',{name:'Weitere Angaben'}));
  await expect(dialog.getByLabelText('Charge (optional)')).toBeVisible();
 }};
 export const FailedSaveRetainsInput={render:()=> <Editor fail/>,play:async({canvasElement})=>{
  await userEvent.click(within(canvasElement).getByRole('button',{name:'Impfung dokumentieren'}));
  const dialog=within(await within(canvasElement.ownerDocument.body).findByRole('dialog'));
- await userEvent.type(dialog.getByLabelText('Impfung / Impfstoff'),'Dokumentierter Impfstoff');
+ await userEvent.type(dialog.getByRole('textbox',{name:'Impfung / Impfstoff'}),'Dokumentierter Impfstoff');
  await userEvent.click(dialog.getByRole('button',{name:'Speichern',exact:true}));
  await expect(dialog.getByRole('alert')).toHaveTextContent('Speichern fehlgeschlagen');
- await expect(dialog.getByLabelText('Impfung / Impfstoff')).toHaveValue('Dokumentierter Impfstoff');
+ await expect(dialog.getByRole('textbox',{name:'Impfung / Impfstoff'})).toHaveValue('Dokumentierter Impfstoff');
 }};
 export const ChildIdentity={render:()=> <ChildCreateForm family={{id:'fixture',memberships:[{id:'existing-child',role:'child',display_name:'Robin'}]}} canRecordCustody onSaved={()=>{}} onCancel={()=>{}}/>,play:async({canvasElement})=>{
  const canvas=within(canvasElement);
  await expect(canvas.getByRole('checkbox',{name:'Ich bin für dieses Kind sorgeberechtigt.'})).not.toBeChecked();
  await userEvent.selectOptions(canvas.getByLabelText('Aktives Kind'),'existing-child');
- await expect(canvas.getByLabelText('Name')).toHaveValue('Robin');
+ await expect(canvas.getByRole('textbox',{name:'Name',exact:true})).toHaveValue('Robin');
 }};
 export const CustodyIsNotAToggle={
  beforeEach:()=>{

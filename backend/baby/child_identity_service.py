@@ -173,7 +173,8 @@ def attach_existing_child(user, child, *, birth_date, client_identity_key):
         raise ValidationError({"client_identity_key": "This creation key is already in use."})
     profile, _ = UserProfile.objects.get_or_create(user=child.user)
     known = (profile.birth_year, profile.birth_month, profile.birth_day)
-    if all(known) and known != (birth_date.year, birth_date.month, birth_date.day):
+    requested = (birth_date.year, birth_date.month, birth_date.day)
+    if any(value and value != candidate for value, candidate in zip(known, requested)):
         raise ValidationError({"birth_date": "Use the birthday of the existing child profile."})
     if not all(known):
         profile.birth_year, profile.birth_month, profile.birth_day = birth_date.year, birth_date.month, birth_date.day

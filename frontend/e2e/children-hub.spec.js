@@ -42,10 +42,10 @@ test('older child starts with neutral health history; sibling switch preserves s
  const {writes}=await children(page);
  await page.goto('/?page=baby');
  await expect(page.getByRole('heading',{name:'Vorsorge & Impfungen',exact:true})).toBeVisible();
- await expect(page.getByRole('button',{name:/J1 Nicht dokumentiert/})).toBeVisible();
+ await expect(page.getByRole('button',{name:/J1.*Nicht dokumentiert/})).toBeVisible();
  expect(writes).toHaveLength(0);
  await page.getByRole('button',{name:'Bisheriger Stand',exact:true}).click();
- await expect(page.getByRole('button',{name:/U9 Nicht dokumentiert/})).toBeVisible();
+ await expect(page.getByRole('button',{name:/U9.*Nicht dokumentiert/})).toBeVisible();
  await page.getByLabel('Kind auswählen').selectOption('younger');
  await expect(page.locator('.baby-quick-grid')).toBeVisible();
  await expect(page.getByRole('button',{name:'Vorsorge & Impfungen',exact:true})).toHaveCount(0);
