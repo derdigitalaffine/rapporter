@@ -20,7 +20,8 @@
 .child-muted{color:var(--muted);font-size:.85rem;line-height:1.5;display:flex;align-items:center;gap:.5rem}
 .child-health-list{display:grid;min-width:0}
 .child-health-row{display:flex;align-items:center;gap:.5rem;border-bottom:1px solid var(--border);min-width:0;padding:.4rem 0}
-.child-health-row>input{width:22px;height:22px;margin:11px;flex:none;accent-color:var(--primary)}
+.child-history-select{display:grid;place-items:center;width:44px;min-height:44px;flex:none}
+.child-history-select input{width:22px;height:22px;margin:0;accent-color:var(--primary)}
 .child-record-open{display:flex;align-items:center;gap:.7rem;background:transparent;border:0;padding:.65rem .25rem;color:var(--text);flex:1;min-width:0;min-height:60px;text-align:left;font:inherit}
 .child-record-open>span:first-of-type{flex:1;min-width:0;display:grid;gap:.3rem}
 .child-record-open strong{font-size:.95rem;overflow-wrap:anywhere}

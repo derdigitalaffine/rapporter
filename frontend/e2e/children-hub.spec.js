@@ -89,6 +89,9 @@ test('historical completion is explicit and sends no appointment date',async({pa
  await page.goto('/?page=baby&baby=older&view=health');
  await page.getByRole('button',{name:'Bisheriger Stand',exact:true}).click();
  await page.getByRole('button',{name:'Bisherigen Stand ergänzen'}).click();
+ const target=await page.locator('.child-history-select').boundingBox();
+ expect(target.width).toBeGreaterThanOrEqual(44);
+ expect(target.height).toBeGreaterThanOrEqual(44);
  await page.getByRole('checkbox',{name:'Erledigt: U9',exact:true}).check();
  await page.getByRole('button',{name:/Ausgewählte als erledigt dokumentieren/}).click();
  await expect.poll(()=>writes.length).toBe(1);
