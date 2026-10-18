@@ -6,6 +6,7 @@ import {featureHref} from '../src/navigation.js';
 
 const widgetSource=await readFile(new URL('../src/TodayCoreWidgets.jsx',import.meta.url),'utf8');
 const timelineStyles=await readFile(new URL('../src/today-core-widgets.css',import.meta.url),'utf8');
+const mealSource=await readFile(new URL('../src/MealPlanningHub.jsx',import.meta.url),'utf8');
 
 test('fresh and explicit reset defaults follow the current Today core sequence',()=>{
  const rows=defaultTodayWidgets();
@@ -31,6 +32,12 @@ test('overview links and optional card deep links are owned by central navigatio
  assert.equal(featureHref('todo',{todo:'today'},current),'/?page=todo&todo=today');
  assert.equal(featureHref('loyalty',{card:'one'},current),'/?page=loyalty&card=one');
  for(const page of ['calendar','shopping','board','inbox','more'])assert.equal(new URL(featureHref(page,{},current),'https://example.test').searchParams.get('page'),page);
+});
+
+test('meal planning derives today from the family timezone rather than UTC serialization',()=>{
+ assert.ok(mealSource.includes("timeZone:family?.timezone||'Europe/Berlin'"));
+ assert.ok(mealSource.includes('familyToday(family)'));
+ assert.equal(mealSource.includes('toISOString().slice(0,10)'),false);
 });
 
 test('Today timeline only projects open tasks with a real due time today',()=>{
