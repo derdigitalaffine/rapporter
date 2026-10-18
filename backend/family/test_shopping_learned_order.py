@@ -29,25 +29,48 @@ class ShoppingLearnedOrderTests(TestCase):
         self.client = APIClient()
         self.client.force_authenticate(self.owner)
 
-    def _completed_session(self, store=None):
+    def _item(self, name):
+        return next(item for item in self.items if item.name == name)
+
+    def _completed_session(self, store=None, purchased_names=None):
+        names = [item.name for item in self.items] if purchased_names is None else purchased_names
+        purchased = [self._item(name) for name in names]
         return ShoppingSession.objects.create(
             family=self.family,
             shopping_list=self.shopping_list,
             status=ShoppingSession.Status.COMPLETED,
             completed_by=self.owner,
-            snapshot={"confirmed_store": {"id": str((store or self.store).id)}},
+            snapshot={
+                "confirmed_store": {"id": str((store or self.store).id)},
+                "purchased_items": [
+                    {"id": str(item.id), "name": item.name}
+                    for item in purchased
+                ],
+            },
+        )
+
+    def _activity(self, session, stream, name, kind, client_sequence, server_sequence):
+        item = self._item(name)
+        return ShoppingSessionActivity.objects.create(
+            session=session,
+            sequence=server_sequence,
+            kind=kind,
+            item_id=item.id,
+            item_name=name,
+            actor=self.owner,
+            client_stream=stream,
+            client_sequence=client_sequence,
         )
 
     def _path(self, session, stream, names, server_sequences):
         for client_sequence, (name, server_sequence) in enumerate(zip(names, server_sequences), start=1):
-            ShoppingSessionActivity.objects.create(
-                session=session,
-                sequence=server_sequence,
-                kind=ShoppingSessionActivity.Kind.ITEM_CHECKED,
-                item_name=name,
-                actor=self.owner,
-                client_stream=stream,
-                client_sequence=client_sequence,
+            self._activity(
+                session,
+                stream,
+                name,
+                ShoppingSessionActivity.Kind.ITEM_CHECKED,
+                client_sequence,
+                server_sequence,
             )
 
     def test_two_device_paths_ignore_reversed_server_receipt_order(self):
@@ -62,6 +85,67 @@ class ShoppingLearnedOrderTests(TestCase):
         self.assertEqual([row["name"] for row in result["ordered_items"]], ["Apples", "Bread", "Milk"])
         self.assertEqual(result["evidence"]["streams"], 2)
         self.assertGreater(result["confidence"], 0)
+
+    def test_parallel_paths_in_one_session_never_create_cross_stream_edges(self):
+        frozen = ShoppingItem.objects.create(
+            shopping_list=self.shopping_list,
+            name="Frozen",
+            position=40,
+            added_by=self.owner,
+        )
+        self.items.append(frozen)
+        session = self._completed_session()
+        self._path(session, "person-a", ["Apples", "Bread"], [40, 10])
+        self._path(session, "person-b", ["Milk", "Frozen"], [20, 30])
+
+        result = learned_order_for_store(self.store, self.shopping_list.items.all())
+
+        self.assertEqual(result["source"], "learned")
+        self.assertEqual(result["evidence"]["streams"], 2)
+        self.assertEqual(result["evidence"]["pair_observations"], 2)
+
+    def test_only_items_in_final_purchase_snapshot_contribute(self):
+        for stream in ["purchase-a", "purchase-b"]:
+            session = self._completed_session(purchased_names=["Apples", "Bread"])
+            self._path(session, stream, ["Apples", "Milk", "Bread"], [1, 2, 3])
+
+        result = learned_order_for_store(self.store, self.shopping_list.items.all())
+
+        self.assertEqual(result["source"], "learned")
+        self.assertEqual([row["name"] for row in result["ordered_items"]], ["Apples", "Bread", "Milk"])
+        self.assertEqual(result["evidence"]["streams"], 2)
+        self.assertEqual(result["evidence"]["pair_observations"], 2)
+
+    def test_reopen_and_recheck_use_terminal_client_position(self):
+        for stream in ["recheck-a", "recheck-b"]:
+            session = self._completed_session()
+            self._activity(session, stream, "Apples", ShoppingSessionActivity.Kind.ITEM_CHECKED, 1, 90)
+            self._activity(session, stream, "Bread", ShoppingSessionActivity.Kind.ITEM_CHECKED, 2, 10)
+            self._activity(session, stream, "Apples", ShoppingSessionActivity.Kind.ITEM_REOPENED, 3, 80)
+            self._activity(session, stream, "Apples", ShoppingSessionActivity.Kind.ITEM_CHECKED, 4, 20)
+            self._activity(session, stream, "Milk", ShoppingSessionActivity.Kind.ITEM_CHECKED, 5, 70)
+
+        result = learned_order_for_store(self.store, self.shopping_list.items.all())
+
+        self.assertEqual(result["source"], "learned")
+        self.assertEqual([row["name"] for row in result["ordered_items"]], ["Bread", "Apples", "Milk"])
+        self.assertEqual(result["evidence"]["streams"], 2)
+        self.assertEqual(result["evidence"]["pair_observations"], 4)
+
+    def test_legacy_completed_session_without_purchase_snapshot_does_not_contribute(self):
+        session = ShoppingSession.objects.create(
+            family=self.family,
+            shopping_list=self.shopping_list,
+            status=ShoppingSession.Status.COMPLETED,
+            completed_by=self.owner,
+            snapshot={"confirmed_store": {"id": str(self.store.id)}},
+        )
+        self._path(session, "legacy", ["Apples", "Bread", "Milk"], [1, 2, 3])
+
+        result = learned_order_for_store(self.store, self.shopping_list.items.all())
+
+        self.assertEqual(result["source"], "legacy")
+        self.assertEqual(result["evidence"]["streams"], 0)
 
     def test_retry_is_idempotent_for_same_stream_sequence_and_mutation(self):
         retry_list = ShoppingList.objects.create(family=self.family, name="Retry")
