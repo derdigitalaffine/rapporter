@@ -188,7 +188,12 @@ def ensure_u_exam_events(user, baby_id):
     reference_locale = "de-DE" if baby.family.locale.startswith("de") else baby.family.locale
     for rule in preventive_exam_rules(locale=reference_locale):
         name = rule["key"]
-        event_date = baby.birth_date + timedelta(days=rule["target_day"])
+        today = timezone.localdate(now, zone)
+        if baby.birth_date + timedelta(days=rule["end_day"]) < today:
+            continue
+        event_date = max(baby.birth_date + timedelta(days=rule["target_day"]), today + timedelta(days=1))
+        if event_date > baby.birth_date + timedelta(days=rule["end_day"]):
+            continue
         starts_at = datetime.combine(event_date, time(hour=9), tzinfo=zone)
         event, event_created = FamilyEvent.objects.get_or_create(
             family=baby.family,
@@ -223,7 +228,7 @@ def add_appointment_question(user, baby_id, *, event_id, text):
     baby = _baby_for_user(user, baby_id)
     event = FamilyEvent.objects.filter(pk=event_id, family=baby.family).first()
     valid_tokens = {_private_event_token(baby, name) for name in all_preventive_exam_keys()}
-    if not event or event.external_id not in valid_tokens:
+    if not event or (event.external_id not in valid_tokens and not PediatricPreventiveEventReference.objects.filter(baby=baby,event=event).exists()):
         raise ValidationError({"event": "Preventive appointment not found for this baby."})
     value = str(text or "").strip()
     if not value:

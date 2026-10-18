@@ -21,12 +21,15 @@ def _root():
     return path
 
 
-def _authorize(user, family, scope):
+def _authorize(user, family, scope, *, baby=None):
     require_module(family)
     if scope == BabyPrivateMedia.Scope.PREGNANCY:
         return care_access(user, family, "pregnancy")
     if scope == BabyPrivateMedia.Scope.DEVELOPMENT:
-        return care_access(user, family, "development")
+        from .child_identity_service import child_scope_access
+        if baby is None or baby.family_id != family.id:
+            raise ValidationError({"baby": "A child context is required."})
+        return child_scope_access(user, baby, "development")
     raise ValidationError({"scope": "Use pregnancy or development."})
 
 
@@ -65,7 +68,7 @@ def _sanitize_image(raw):
 
 
 def save_private_media(*, user, family, upload, scope, pregnancy=None, baby=None):
-    _authorize(user, family, scope)
+    _authorize(user, family, scope, baby=baby)
     if scope == BabyPrivateMedia.Scope.PREGNANCY:
         if pregnancy is None or pregnancy.family_id != family.id:
             raise ValidationError({"pregnancy": "Pregnancy does not belong to this family."})
@@ -116,14 +119,14 @@ def get_private_media_for_user(*, user, media_id):
     row = BabyPrivateMedia.objects.select_related("family", "pregnancy", "baby").filter(pk=media_id).first()
     if not row:
         raise ValidationError({"media": "Media not found."})
-    _authorize(user, row.family, row.scope)
+    _authorize(user, row.family, row.scope, baby=row.baby)
     return row, media_path(row)
 
 
 def delete_private_media(*, user, media_id):
     row, path = get_private_media_for_user(user=user, media_id=media_id)
     if row.created_by_id != user.id:
-        _, access = _authorize(user, row.family, row.scope)
+        _, access = _authorize(user, row.family, row.scope, baby=row.baby)
         if not access.is_guardian:
             raise PermissionDenied("Only the uploader or a guardian can delete this media.")
     row.delete()

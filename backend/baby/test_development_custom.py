@@ -9,6 +9,7 @@ from family.models import Family, Membership
 
 from .family_modules import set_module
 from .pregnancy_service import create_managed_child
+from .testing import grant_test_custody
 
 
 User = get_user_model()
@@ -29,6 +30,7 @@ class CustomDevelopmentObservationTests(TestCase):
             growth_reference_sex="female",
             client_identity_key=uuid.uuid4(),
         )
+        grant_test_custody(self.owner, self.baby)
         self.client = APIClient()
         self.client.force_authenticate(self.owner)
 

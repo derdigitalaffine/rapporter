@@ -13,6 +13,7 @@ from .development_service import ensure_u_exam_events
 from .family_modules import set_care_circle, set_module
 from .models import PregnancyJournalEntry
 from .pregnancy_service import create_managed_child, create_pregnancy, prenatal_calendar_event
+from .testing import grant_test_custody
 
 
 User=get_user_model()
@@ -38,7 +39,7 @@ class BabyPrivacyTests(TestCase):
                 'can_view_pregnancy':True,
                 'can_log_care':True,
                 'can_view_growth_development':True,
-                'is_guardian':True,
+                'is_guardian':False,
             },
             {
                 'membership':self.caregiver_membership.id,
@@ -67,7 +68,7 @@ class BabyPrivacyTests(TestCase):
         pregnancy.refresh_from_db()
         self.assertEqual(pregnancy.notes,'')
 
-    def test_non_guardian_caregiver_cannot_complete_birth_or_create_child_identity(self):
+    def test_pregnancy_manager_can_complete_birth_without_inferred_custody(self):
         self._circle_with_caregiver()
         pregnancy=create_pregnancy(self.owner,self.family,expected_due_date=date.today()+timedelta(days=1))
         expected=pregnancy.expected_babies.get()
@@ -81,7 +82,7 @@ class BabyPrivacyTests(TestCase):
                 'growth_reference_sex':'female',
             }]
         },format='json')
-        self.assertEqual(birth.status_code,403)
+        self.assertEqual(birth.status_code,200)
         direct=client.post('/api/baby/profiles/',{
             'family':str(self.family.id),
             'client_identity_key':str(uuid.uuid4()),
@@ -90,14 +91,18 @@ class BabyPrivacyTests(TestCase):
             'gestational_age_weeks':40,
             'growth_reference_sex':'female',
         },format='json')
-        self.assertEqual(direct.status_code,403)
-        self.assertFalse(Membership.objects.filter(family=self.family,role=Membership.Role.CHILD).exists())
+        self.assertEqual(direct.status_code,201)
+        from .models import ManagedChildGuardian
+        from family.family_relationship_models import FamilyRelationship
+        self.assertFalse(ManagedChildGuardian.objects.filter(baby__family=self.family).exists())
+        self.assertFalse(FamilyRelationship.objects.filter(family=self.family,has_custody=True).exists())
 
     def test_preventive_calendar_event_does_not_expose_child_identity_or_exam(self):
         baby=create_managed_child(
             self.owner,self.family,display_name='Mia',birth_date=date.today()-timedelta(days=120),
             gestational_age_weeks=40,growth_reference_sex='female',client_identity_key=uuid.uuid4(),
         )
+        grant_test_custody(self.owner,baby)
         events=ensure_u_exam_events(self.owner,baby.id)
         self.assertTrue(events)
         for event in events:

@@ -143,7 +143,7 @@ class PediatricPreventiveEventReference(models.Model):
     source_version = models.CharField(max_length=96)
     source_checksum = models.CharField(max_length=64, blank=True)
     locale = models.CharField(max_length=16, default="de-DE")
-    rule_key = models.CharField(max_length=64)
+    rule_key = models.CharField(max_length=120)
     start_day = models.PositiveIntegerField()
     end_day = models.PositiveIntegerField()
     target_day = models.PositiveIntegerField()

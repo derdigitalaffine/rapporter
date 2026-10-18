@@ -15,6 +15,7 @@ from .growth_service import corrected_age_days, growth_payload
 from .models import BabyCareLog, BabyProfile, CareCircleAccess, FamilyModuleSetting, PregnancyJourney, ReportExportAudit
 from .pregnancy_service import complete_birth, create_managed_child, create_pregnancy
 from .report_service import audited_export
+from .testing import grant_test_custody
 
 
 User = get_user_model()
@@ -40,7 +41,7 @@ class BabyDomainTests(TestCase):
             can_view_pregnancy=pregnancy,
             can_log_care=care,
             can_view_growth_development=growth,
-            is_guardian=True,
+            is_guardian=False,
         )
 
     def create_baby(self, **overrides):
@@ -52,7 +53,9 @@ class BabyDomainTests(TestCase):
             "client_identity_key": uuid.uuid4(),
         }
         data.update(overrides)
-        return create_managed_child(self.owner, self.family, **data)
+        baby = create_managed_child(self.owner, self.family, **data)
+        grant_test_custody(self.owner, baby)
+        return baby
 
     def test_module_is_off_by_default_and_sensitive_access_requires_care_circle(self):
         setting = FamilyModuleSetting.objects.create(family=self.family, module_key="pregnancy_baby")

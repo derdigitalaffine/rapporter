@@ -9,6 +9,7 @@ from family.models import Family, Membership
 
 from .family_modules import set_module
 from .pregnancy_service import create_managed_child
+from .testing import grant_test_custody
 
 User = get_user_model()
 
@@ -19,6 +20,7 @@ class PreventiveQuestionTests(TestCase):
         Membership.objects.create(family=self.family, user=self.owner, role=Membership.Role.OWNER, display_name='Alex')
         set_module(self.owner, self.family, enabled=True)
         self.baby = create_managed_child(self.owner, self.family, display_name='Mia', birth_date=date.today()-timedelta(days=100), gestational_age_weeks=40, growth_reference_sex='female', client_identity_key=uuid.uuid4())
+        grant_test_custody(self.owner, self.baby)
         self.client = APIClient(); self.client.force_authenticate(self.owner)
 
     def test_questions_are_linked_to_private_preventive_event_and_returned(self):

@@ -37,7 +37,7 @@ class BabyPrivateMediaTests(TestCase):
         Membership.objects.create(family=self.family,user=self.denied,role=Membership.Role.ADULT,display_name='Denied')
         set_module(self.owner,self.family,enabled=True)
         set_care_circle(self.owner,self.family,[
-            {'membership':self.owner_membership.id,'can_view_pregnancy':True,'can_log_care':True,'can_view_growth_development':True,'is_guardian':True},
+            {'membership':self.owner_membership.id,'can_view_pregnancy':True,'can_log_care':True,'can_view_growth_development':True,'is_guardian':False},
             {'membership':self.allowed_membership.id,'can_view_pregnancy':True,'can_log_care':False,'can_view_growth_development':True,'is_guardian':False},
         ])
         self.pregnancy=create_pregnancy(self.owner,self.family,expected_due_date=date.today()+timedelta(days=90))

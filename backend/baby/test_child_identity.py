@@ -23,6 +23,7 @@ from .child_identity_service import (
 from .family_modules import care_access, set_module
 from .models import BabyProfile, CareCircleAccess, ManagedChildGuardian
 from .pregnancy_service import create_managed_child
+from .testing import grant_test_custody
 
 
 User = get_user_model()
@@ -49,6 +50,7 @@ class ChildIdentityTests(TestCase):
             birth_date=date(2022, 4, 5),
             client_identity_key=uuid.uuid4(),
         )
+        self.custody = grant_test_custody(self.owner, self.baby)
 
     def test_managed_child_exists_without_login_credentials(self):
         child_user = self.baby.membership.user
@@ -74,7 +76,7 @@ class ChildIdentityTests(TestCase):
         with self.assertRaises(PermissionDenied):
             require_child_guardian(self.caregiver, self.baby, manage=True)
 
-        self.assertTrue(
+        self.assertFalse(
             ManagedChildGuardian.objects.filter(
                 baby=self.baby,
                 membership=self.owner_membership,
@@ -83,6 +85,7 @@ class ChildIdentityTests(TestCase):
         )
 
     def test_guardians_are_child_specific_and_cross_family_targets_are_rejected(self):
+        grant_test_custody(self.other_owner, self.baby)
         updated = replace_child_guardians(
             self.owner,
             self.baby.id,
@@ -166,14 +169,16 @@ class ChildIdentityTests(TestCase):
 
     def test_disabling_module_preserves_child_identity_and_guardians(self):
         child_user_id = self.baby.membership.user_id
-        guardian_id = self.baby.guardians.get(membership=self.owner_membership).id
+        custody_id = self.custody.id
         set_module(self.owner, self.family, enabled=False)
         self.assertTrue(User.objects.filter(pk=child_user_id).exists())
         self.assertTrue(Membership.objects.filter(pk=self.baby.membership_id, role=Membership.Role.CHILD).exists())
         self.assertTrue(BabyProfile.objects.filter(pk=self.baby.pk, membership_id=self.baby.membership_id).exists())
-        self.assertTrue(ManagedChildGuardian.objects.filter(pk=guardian_id).exists())
+        from family.family_relationship_models import FamilyRelationship
+        self.assertTrue(FamilyRelationship.objects.filter(pk=custody_id,has_custody=True).exists())
 
     def test_legacy_reconcile_is_idempotent_and_ambiguous_rows_require_review(self):
+        CareCircleAccess.objects.filter(family=self.family,membership=self.owner_membership,baby__isnull=True).update(is_guardian=True)
         orphan = BabyProfile.objects.create(
             family=self.family,
             display_name="Legacy Child",

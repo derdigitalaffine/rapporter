@@ -30,13 +30,17 @@ class FamilyModuleSetting(BabyBaseModel):
 class CareCircleAccess(BabyBaseModel):
     family = models.ForeignKey("family.Family", on_delete=models.CASCADE, related_name="baby_care_circle")
     membership = models.ForeignKey("family.Membership", on_delete=models.CASCADE, related_name="baby_care_access")
+    baby = models.ForeignKey("BabyProfile", null=True, blank=True, on_delete=models.CASCADE, related_name="care_circle")
     can_view_pregnancy = models.BooleanField(default=False)
     can_log_care = models.BooleanField(default=False)
     can_view_growth_development = models.BooleanField(default=False)
     is_guardian = models.BooleanField(default=False)
 
     class Meta:
-        constraints = [models.UniqueConstraint(fields=["family", "membership"], name="baby_care_circle_member_unique")]
+        constraints = [
+            models.UniqueConstraint(fields=["family", "membership"], condition=models.Q(baby__isnull=True), name="baby_family_care_member_unique"),
+            models.UniqueConstraint(fields=["baby", "membership"], condition=models.Q(baby__isnull=False), name="baby_child_care_member_unique"),
+        ]
 
 
 class PregnancyJourney(BabyBaseModel):
@@ -121,6 +125,32 @@ class ManagedChildGuardian(BabyBaseModel):
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=["baby", "membership"], name="baby_guardian_member_unique")]
+
+
+class ChildHealthRecord(BabyBaseModel):
+    class State(models.TextChoices):
+        UNKNOWN = "unknown", "Not documented"
+        PLANNED = "planned", "Planned"
+        DONE = "done", "Done"
+        LATER = "later", "Later"
+
+    baby = models.ForeignKey(BabyProfile, on_delete=models.CASCADE, related_name="health_records")
+    key = models.CharField(max_length=120)
+    kind = models.CharField(max_length=16, choices=[("exam", "Check-up"), ("vaccination", "Vaccination")])
+    title = models.CharField(max_length=160)
+    state = models.CharField(max_length=16, choices=State.choices, default=State.UNKNOWN)
+    occurred_on = models.DateField(null=True, blank=True)
+    planned_at = models.DateTimeField(null=True, blank=True)
+    practice = models.CharField(max_length=160, blank=True)
+    note = models.TextField(blank=True)
+    batch = models.CharField(max_length=80, blank=True)
+    reference = models.JSONField(default=dict, blank=True)
+    event = models.ForeignKey("family.FamilyEvent", null=True, blank=True, on_delete=models.SET_NULL, related_name="child_health_records")
+    version = models.PositiveIntegerField(default=1)
+    updated_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["baby", "key"], name="baby_child_health_key_unique")]
 
 
 class PregnancyUtilitySession(BabyBaseModel):

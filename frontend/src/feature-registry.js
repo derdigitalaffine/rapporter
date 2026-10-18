@@ -22,7 +22,7 @@ export const FEATURE_REGISTRY=Object.freeze([
   defineFeature('tasks',{familyContext:true,queryParams:['task','list','mode','view']}),
   defineFeature('shopping',{queryParams:['mode','list','item']}),
   defineFeature('routines',{familyContext:true,queryParams:['routine']}),
-  defineFeature('baby',{familyContext:true,capability:'pregnancy_baby',load:()=>import('./PregnancyBabyHub.jsx')}),
+  defineFeature('baby',{familyContext:true,queryParams:['baby','view','event'],capability:'pregnancy_baby',load:()=>import('./PregnancyBabyHub.jsx')}),
   defineFeature('pets',{familyContext:true,capability:'pets',load:()=>import('./PetCareHub.jsx')}),
   defineFeature('more'),
   defineFeature('settings',{detail:true,load:()=>import('./SettingsHub.jsx')}),

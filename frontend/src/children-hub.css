@@ -1,0 +1,56 @@
+.baby-page{min-width:0;max-width:1180px;margin-inline:auto}
+.baby-page .page-head h1{font-size:1.35rem;line-height:1.25;overflow-wrap:anywhere}
+.baby-page .baby-panel,.baby-page .card.baby-panel{border:0;border-radius:0;box-shadow:none;background:transparent;padding:1.1rem 0;margin:0;border-bottom:1px solid var(--border)}
+.baby-page .baby-primary-nav{display:flex;flex-wrap:wrap;gap:.25rem;border-bottom:1px solid var(--border);margin:0 0 1rem;padding-bottom:.25rem}
+.baby-page .baby-primary-nav button{flex:1 1 130px;min-height:44px;min-width:0;border:0;border-radius:6px;box-shadow:none;background:transparent;text-align:center;padding:.65rem .5rem;font-size:.9rem}
+.baby-page .baby-primary-nav button.active{background:var(--primary-soft,#e6eeef);color:var(--text);box-shadow:inset 0 -2px var(--primary)}
+.baby-page .baby-primary-nav button:focus-visible,.child-record-open:focus-visible,.child-view-switch button:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
+.child-context-bar{display:flex;align-items:center;gap:.8rem;flex-wrap:wrap;padding:.75rem 0 1rem}
+.child-context-bar .baby-selector{flex:1;min-width:160px;max-width:360px;margin:0}
+.child-context-bar .baby-selector select{width:100%;min-height:44px}
+.child-access-label{display:flex;align-items:center;gap:.4rem;font-size:.8rem;color:var(--muted)}
+.child-current-context,.child-section-head{display:flex;align-items:center;justify-content:space-between;gap:.75rem;flex-wrap:wrap;margin-bottom:1rem}
+.child-current-context{font-size:.9rem;min-height:44px}
+.child-section-head h2{font-size:1.15rem;margin:0;line-height:1.35;overflow-wrap:anywhere}
+.child-section-head button{max-width:100%;white-space:normal;text-align:left}
+.child-health,.child-circle{padding:1rem 0;min-width:0}
+.child-view-switch{display:flex;border-bottom:1px solid var(--border);margin-bottom:1rem;gap:.5rem}
+.child-view-switch button{border:0;border-radius:0;background:transparent;min-height:44px;padding:.5rem .25rem;flex:1;color:var(--text);font:inherit;font-size:.9rem}
+.child-view-switch button[aria-pressed=true]{box-shadow:inset 0 -2px var(--primary);font-weight:700}
+.child-muted{color:var(--muted);font-size:.85rem;line-height:1.5;display:flex;align-items:center;gap:.5rem}
+.child-health-list{display:grid;min-width:0}
+.child-health-row{display:flex;align-items:center;gap:.5rem;border-bottom:1px solid var(--border);min-width:0;padding:.4rem 0}
+.child-health-row>input{width:22px;height:22px;margin:11px;flex:none;accent-color:var(--primary)}
+.child-record-open{display:flex;align-items:center;gap:.7rem;background:transparent;border:0;padding:.65rem .25rem;color:var(--text);flex:1;min-width:0;min-height:60px;text-align:left;font:inherit}
+.child-record-open>span:first-of-type{flex:1;min-width:0;display:grid;gap:.3rem}
+.child-record-open strong{font-size:.95rem;overflow-wrap:anywhere}
+.child-record-open small{font-size:.77rem;color:var(--muted);overflow-wrap:anywhere}
+.child-record-state{font-size:.75rem;background:var(--surface-alt,#eef2f3);border-radius:4px;padding:.35rem .5rem;max-width:130px;overflow-wrap:anywhere}
+.child-record-state.state-done{background:var(--success-soft,#e2f1e9)}
+.child-history-actions{display:flex;flex-wrap:wrap;gap:.5rem;margin:1rem 0}
+.child-form-fields{border:0;padding:0;margin:0;min-width:0;display:grid;gap:1rem}
+.child-record-form{display:grid;gap:1rem}
+.child-record-form input,.child-record-form textarea{max-width:100%;min-width:0}
+.child-record-form .form-actions{position:sticky;bottom:0;background:var(--surface,#fff);padding:.8rem 0;margin:0}
+.child-record-form .choice-field__options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
+.child-circle-people{display:flex;flex-wrap:wrap;gap:1rem}
+.child-circle-person{display:flex;align-items:center;gap:.65rem;min-height:48px;padding:.5rem 0}
+.child-circle-person span{display:grid;gap:.25rem}
+.child-circle-person small,.child-delegation small{color:var(--muted);font-size:.8rem}
+.child-delegation{border:0;border-top:1px solid var(--border);border-radius:0;padding:.75rem 0;margin:0;min-width:0;display:grid;gap:.5rem}
+.child-delegation legend{font-weight:700;padding:.25rem 0}
+.child-delegation label{display:flex;align-items:center;gap:.65rem;min-height:44px}
+.child-delegation input{height:22px;width:22px;accent-color:var(--primary)}
+.child-delegation span{display:grid;gap:.2rem}
+.child-secondary-links{display:flex;flex-wrap:wrap;gap:.5rem;margin:1rem 0}
+.child-secondary-links a,.child-secondary-links button{display:flex;align-items:center;gap:.5rem;min-height:44px;padding:.6rem;color:var(--text);font:inherit;font-size:.9rem;background:transparent;border:0;text-decoration:none}
+.child-empty{padding:1.5rem 0;color:var(--muted)}
+.child-empty a{display:inline-flex;align-items:center;gap:.5rem;min-height:44px}
+.baby-page .pregnancy-hero h2{font-size:1.7rem;margin:.5rem 0}
+.baby-page .baby-more-details{border:0;border-top:1px solid var(--border);border-radius:0;background:transparent}
+.baby-page .baby-more-details>.baby-more-body{padding:0}
+.baby-page .baby-child-card{border-radius:8px}
+.baby-page .baby-quick-grid button,.baby-page .baby-add-choices button{border-radius:8px;min-height:48px}
+.baby-page .baby-add-card{margin:0}
+@media(max-width:520px){.child-access-label{width:100%;margin-left:56px}.child-record-open{flex-wrap:wrap;gap:.45rem}.child-record-state{font-size:.72rem;max-width:110px}.child-record-open>svg:last-child{display:none}.child-section-head{align-items:stretch}.child-section-head>button{width:100%}.baby-page .baby-primary-nav button{flex-basis:40%;font-size:.85rem}.child-record-form .choice-field__options{grid-template-columns:1fr}.child-record-open>span:first-of-type{min-width:100px}}
+@media(prefers-reduced-motion:reduce){.baby-page *{scroll-behavior:auto;transition:none;animation:none}}
