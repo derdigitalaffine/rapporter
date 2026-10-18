@@ -1,6 +1,6 @@
 # Shopping: manuelle Reihenfolge, Listenwechsel und Store Mode
 
-Dieses Dokument beschreibt den UX- und Datenvertrag aus #536 sowie die darauf aufbauenden Bedienflow-Slices #547 und #549.
+Dieses Dokument beschreibt den UX- und Datenvertrag aus #536 sowie die darauf aufbauenden Bedienflow-Slices #547 und #549. Für den Store Mode dokumentiert es außerdem den stabilen Sortiermodus aus #780 und den aktuell ausgelieferten Lernvertrag aus #782.
 
 ## Planung: manuelle Artikelreihenfolge
 
@@ -29,7 +29,7 @@ Der Store-Status (`open` oder `done`) kann für diesen Recovery-Pfad als URL-Zus
 
 ## Store Mode: Offen, Erledigt, Alle
 
-Der Store Mode startet im normalen Einkaufsflow mit `Offen`. `Erledigt` zeigt bereits abgehakte Artikel und erlaubt das Wiederöffnen. `Alle` zeigt beide Zustände, wobei die manuelle Reihenfolge innerhalb der Statusgruppen stabil bleibt.
+Der Store Mode startet im normalen Einkaufsflow mit `Offen`. `Erledigt` zeigt bereits abgehakte Artikel und erlaubt das Wiederöffnen. `Alle` zeigt beide Zustände in derselben aktiven Store-Reihenfolge. Ein Remote-Check verschiebt einen Artikel in `Alle` deshalb nicht allein wegen seines neuen Erledigt-Status an das Ende der Ansicht; persönlicher Filter, Fokus und sichtbarer Laufweg bleiben stabil.
 
 Kategorie-/Gangabschnitte folgen dem realen Laufweg: Entscheidend ist die Position des jeweils ersten sichtbaren Artikels in der kanonischen `ShoppingItem.position`, nicht die alphabetische Bezeichnung der Kategorie oder des Gangs. Eine manuell festgelegte Reihenfolge wird damit nicht durch eine zweite Smart-/Alphabet-Sortierung überschrieben.
 
@@ -38,6 +38,40 @@ Der Store Header ist auf Orientierung reduziert: Zurück, Listenname mit offenem
 Das Abhaken ist offline-fähig. In `Offen` erhält die Zeile unmittelbar eine kurze Inline-Bestätigung (Häkchen/erledigter Zustand) und verlässt danach ruhig die offene Liste. Bei `prefers-reduced-motion` entfällt die kurze Übergangsverzögerung. Erfolgreiche Standardaktionen sind absichtlich leise: Es gibt weder nach jedem Artikel einen Erfolgs-/Undo-Toast noch nach jeder erfolgreichen Synchronisierung einen `Liste synchronisiert`-Toast. `Erledigt` bleibt der eindeutige Wiederherstellungsweg.
 
 Fehler, relevante Offline-Zustände und fehlgeschlagene Synchronisierung bleiben sichtbar. Erfolgreiche Synchronisierung ist dagegen der Normalfall und erzeugt keine Benachrichtigungskaskade.
+
+## Store-Sortierung: Manuell, Kategorien, Gelernt
+
+Der Store Mode bietet drei bewusst auswählbare Sortierarten: `Manuell`, `Kategorien` und `Gelernt`. Ohne explizite Auswahl ist `Kategorien` der sichere Standard. Die Auswahl ist eine geräte-/browserlokale Präferenz pro Family und konkretem Store; sie wird derzeit in `localStorage` gespeichert und ist keine serverseitige Kontoeinstellung.
+
+Eine Änderung der Auswahl sortiert einen bereits laufenden Einkauf nicht mitten in der Session um. Beim Eintritt in den Store Mode wird ein `orderSnapshot` für diesen Lauf eingefroren. Die geänderte Präferenz gilt beim nächsten Start. Damit bleiben persönliche Scrollposition, Fokus und Wegfolge während eines laufenden Mehrpersonen-Einkaufs unabhängig von späteren Checks oder neuem Lernwissen.
+
+`Manuell` verwendet die kanonische `ShoppingItem.position`. `Kategorien` gruppiert nach Gang/Kategorie auf Basis dieser stabilen Reihenfolge. `Gelernt` wird nur für einen bestätigten konkreten `ShoppingStore` angeboten. Kann keine belastbare gelernte Reihenfolge geliefert werden, fällt der Store Mode sichtbar und nicht blockierend auf Kategorien/kanonische Reihenfolge zurück.
+
+### Datenherkunft und Kausalität von `Gelernt`
+
+Die gelernte Reihenfolge ist **keine zweite persistierte Einkaufs- oder Tracking-Domain**. `GET /api/shopping-stores/<store_id>/learned-order/?shopping_list=<list_id>` berechnet eine abgeleitete Projektion aus den bestehenden kanonischen Shopping-Daten neu.
+
+In die Projektion gehen nur erfolgreich abgeschlossene `ShoppingSession`s für die konkrete Filiale ein. Die unveränderlichen `snapshot.purchased_items` des Checkouts sind die endgültige Wahrheit darüber, welche Artikel tatsächlich gekauft wurden. Historische Check-Events allein machen einen Artikel nicht zu gekaufter Evidenz; ältere abgeschlossene Sessions ohne diesen finalen Snapshot werden für die Lernprojektion nicht erraten.
+
+Die Wegfolge wird pro kausalem Client-Stream ausgewertet. `client_sequence` bestimmt die Reihenfolge innerhalb dieses Streams; Reopen und erneutes Abhaken werden auf den terminalen client-lokalen Zustand normalisiert. Die globale Collaboration-`sequence`, Server-Empfangszeit und Client-Uhr erzeugen keine künstliche Gesamtstrecke zwischen zwei Personen oder Geräten. Parallel `Obst → Brot` und `Milch → TK` wird deshalb nicht zu `Obst → Milch → Brot → TK` vermischt.
+
+Die Projektion ist vorsichtig: einzelne bzw. zu wenige unabhängige Pfade reichen nicht für `source=learned`; widersprüchliche Kanten werden deterministisch behandelt und schwache Evidenz fällt auf die bestehende Reihenfolge zurück. Manuelle Planungspositionen werden durch das Lernen nicht überschrieben.
+
+### Privacy- und Scope-Vertrag
+
+Der breitere familien-/storeweite Lernpool darf nur Beobachtungen aus aktuell familienweit sichtbaren Quelllisten verwenden. Eine explizite `ShoppingListAccess.visibility=family` ist zulässig; Listen ohne Access-Zeile behalten den kanonischen Legacy-Familien-Scope. `private`- und `selected`-Listen werden nicht in diesen breiteren Pool gemischt.
+
+Die Berechtigung wird beim Neuaufbau der Projektion aus dem **aktuellen** Listen-Scope gelesen. Wird eine ehemals familienweite Liste auf `selected` oder `private` verengt, fällt ihre bisherige Evidenz beim nächsten Abruf aus dem breiteren Lernpool. Wird die Quellliste gelöscht, entfernt das bestehende `CASCADE` ihre `ShoppingSession`s und Aktivitäten; daraus kann danach ebenfalls keine gelernte Evidenz mehr entstehen. Dafür gibt es weder einen separaten Tracking-Speicher noch eine Kopie persönlicher Haushaltswege.
+
+### Aus, Retention, Rebuild und Rollback
+
+`Gelernt` ist opt-in. Wer `Manuell` oder `Kategorien` auswählt, verwendet die Lernprojektion beim nächsten Store-Mode-Start nicht. Diese Auswahl ist derzeit der vorhandene **Aus-Schalter für die Nutzung** der Smart-Sortierung.
+
+Das Umschalten auf `Manuell`/`Kategorien` oder das Löschen der lokalen Präferenz ist **kein Daten-Reset**: Es löscht keine Checkout-History und verändert keine kanonischen `ShoppingSession`s. Ein eigener nutzerseitiger „Lerndaten vergessen“-Cutoff ist derzeit noch nicht implementiert und bleibt Teil von #782. Ein solcher Reset darf nicht heimlich die kanonische Kaufhistorie löschen, sondern braucht einen expliziten serverseitigen Evidenz-/Cutoff-Vertrag.
+
+Es gibt aktuell keinen separat persistierten Modell- oder Reihenfolge-Cache, dessen Lebensdauer unabhängig von Shopping-Daten wäre. Die Projektion ist aus den kanonischen Sessions/Activities rebuildbar. Entsprechend folgt ihre aktuell nutzbare Evidenz dem Lebenszyklus und Scope dieser Quelldaten: Scope-Verengung und Listenlöschung wirken beim nächsten Rebuild; eine zusätzliche zeitbasierte Aging-/Retention-Regel für Filialumbauten ist noch nicht ausgeliefert und bleibt in #782 offen.
+
+Rollback ist deshalb ohne Datenmigration möglich: `Gelernt` kann clientseitig nicht gewählt bzw. auf `Kategorien`/`Manuell` zurückgestellt werden, während die kanonischen Checkout-Daten unverändert bleiben. Eine spätere Modellversion, Aging-Regel oder Reset-Grenze muss weiterhin deterministisch aus denselben kanonischen Ereignissen rebuildbar und deaktivierbar bleiben.
 
 ## Checkout, Purchase-History und Ausgabe
 
@@ -74,4 +108,6 @@ Serverseitig stehen dafür neben Start/Current/Complete auch ACL-gesicherte Deta
 
 ## Regressionen
 
-Backend-Tests decken Persistenz, Family-Scoping, vollständige Sequenzen, die Unabhängigkeit von Check-off und Reihenfolge sowie Checkout-Idempotenz, History-ACLs und Geschenk-Privacy ab. Playwright deckt zusätzlich sichtbare/touch-sichere Reorder-Controls, den kompakten Listenwechsel, No-list/Empty/Completed/Offline-Zustände, 320-px-Mobile-Reflow ohne Horizontaloverflow, Desktop-Reflow, reduzierte Planning-Chrome, Laufweg-Gruppierung, Store-Filter, leises Add/Check-off, automatischen Online-Refresh sowie tastatur- und pointerbasiertes Planning-Reorder auf Desktop und Mobile ab. Der Checkout-E2E prüft den expliziten Abschluss, Keep/Cancel, die reload-sichere Session-Zusammenfassung, den optionalen Expense-Handoff und den Context-Link zurück zur `ShoppingSession`.
+Backend-Tests decken Persistenz, Family-Scoping, vollständige Sequenzen, die Unabhängigkeit von Check-off und Reihenfolge sowie Checkout-Idempotenz, History-ACLs und Geschenk-Privacy ab. Für die gelernte Store-Reihenfolge decken sie zusätzlich finale Checkout-Käufe, client-lokale Kausalität statt Server-Empfangsreihenfolge, parallele Streams, Reopen/Recheck, Store-Isolation sowie den Ausschluss von `private`/`selected`, Scope-Verengung und Quelllistenlöschung aus dem breiteren Familienpool ab.
+
+Playwright deckt zusätzlich sichtbare/touch-sichere Reorder-Controls, den kompakten Listenwechsel, No-list/Empty/Completed/Offline-Zustände, 320-px-Mobile-Reflow ohne Horizontaloverflow, Desktop-Reflow, reduzierte Planning-Chrome, Laufweg-Gruppierung, Store-Filter, leises Add/Check-off, automatischen Online-Refresh sowie tastatur- und pointerbasiertes Planning-Reorder auf Desktop und Mobile ab. Store-Mode-Regressionen prüfen bei 390×844 außerdem stabile Filter-/Fokus-/Viewport-Reihenfolge bei Live-Checks sowie `prefers-reduced-motion`. Der Checkout-E2E prüft den expliziten Abschluss, Keep/Cancel, die reload-sichere Session-Zusammenfassung, den optionalen Expense-Handoff und den Context-Link zurück zur `ShoppingSession`.
