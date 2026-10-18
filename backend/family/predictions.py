@@ -24,7 +24,8 @@ MIN_INTERVAL_DAYS = 1.0
 MAX_INTERVAL_SAMPLES = 12
 MIN_SHOPPING_PURCHASES = 3
 MIN_SHOPPING_CONFIDENCE = 0.50
-MAX_SHOPPING_SUGGESTIONS = 8
+MAX_SHOPPING_SUGGESTIONS = 4
+SHOPPING_RECENCY_DECAY = 0.82
 
 
 def _zone(family: Family):
@@ -34,27 +35,50 @@ def _zone(family: Family):
         return timezone.get_current_timezone()
 
 
-def _weighted_median(values):
+def _weighted_value_median(values, weights):
     if not values:
         return None
-    ordered = sorted(enumerate(values, start=1), key=lambda row: row[1])
-    total = sum(index for index, _ in ordered)
-    threshold = total / 2
-    running = 0
-    for weight, value in ordered:
+    ordered = sorted(zip(values, weights), key=lambda row: row[0])
+    threshold = sum(weight for _, weight in ordered) / 2
+    running = 0.0
+    for value, weight in ordered:
         running += weight
         if running >= threshold:
             return float(value)
-    return float(ordered[-1][1])
+    return float(ordered[-1][0])
 
 
-def _interval_stats(intervals):
+def _weighted_median(values):
+    if not values:
+        return None
+    return _weighted_value_median(values, list(range(1, len(values) + 1)))
+
+
+def _exponential_recency_median(values, decay=SHOPPING_RECENCY_DECAY):
+    """Robust median whose older observations fade instead of disappearing.
+
+    Values are chronological (oldest -> newest). A decay of 0.82 gives the
+    latest few intervals enough influence to adapt to a changed household
+    rhythm while a single unusual purchase still cannot dominate the median.
+    """
+    if not values:
+        return None
+    size = len(values)
+    weights = [decay ** (size - index - 1) for index in range(size)]
+    return _weighted_value_median(values, weights)
+
+
+def _interval_stats(intervals, *, recency_decay=None):
     usable = [float(value) for value in intervals if value >= MIN_INTERVAL_DAYS][-MAX_INTERVAL_SAMPLES:]
     if not usable:
         return None
-    expected = _weighted_median(usable)
-    deviations = [abs(value - expected) for value in usable]
-    mad = float(median(deviations)) if deviations else 0.0
+    if recency_decay is None:
+        expected = _weighted_median(usable)
+        mad = float(median([abs(value - expected) for value in usable])) if usable else 0.0
+    else:
+        expected = _exponential_recency_median(usable, recency_decay)
+        deviations = [abs(value - expected) for value in usable]
+        mad = _exponential_recency_median(deviations, recency_decay) if deviations else 0.0
     sample_component = min(1.0, 0.20 + 0.16 * len(usable))
     variability = mad / max(expected, 1.0)
     regularity = max(0.15, 1.0 - min(1.0, variability * 3.0))
@@ -191,7 +215,10 @@ def shopping_predictions(family: Family, now=None, list_id=None, limit=MAX_SHOPP
     for key, rows in grouped.items():
         if len(rows) < MIN_SHOPPING_PURCHASES or key in open_names or key in suppressed:
             continue
-        stats = _interval_stats(_event_intervals(rows, family))
+        stats = _interval_stats(
+            _event_intervals(rows, family),
+            recency_decay=SHOPPING_RECENCY_DECAY,
+        )
         if not stats or stats["interval_count"] < 2 or stats["confidence"] < MIN_SHOPPING_CONFIDENCE:
             continue
         last = rows[-1].purchased_at.astimezone(zone)
@@ -227,15 +254,18 @@ def shopping_predictions(family: Family, now=None, list_id=None, limit=MAX_SHOPP
                 "reason": "usually_every_n_days",
                 "last_purchased_at": rows[-1].purchased_at,
                 "days_since_purchase": max(0, (local_now.date() - last.date()).days),
+                "basis": "family_purchase_history",
+                "recency_weighting": "exponential",
             },
             "defaults": _learned_defaults(rows),
             "score": round(score, 2),
         })
 
     suggestions.sort(key=lambda row: (-row["score"], row["name"].casefold()))
+    bounded_limit = max(1, min(int(limit or MAX_SHOPPING_SUGGESTIONS), MAX_SHOPPING_SUGGESTIONS))
     return {
         "generated_at": now,
-        "suggestions": suggestions[: max(1, min(int(limit or MAX_SHOPPING_SUGGESTIONS), 50))],
+        "suggestions": suggestions[:bounded_limit],
     }
 
 
@@ -250,7 +280,7 @@ def _target_list(family, list_id=None):
 
 def _suggestion_by_key(family, key, now=None):
     normalized = normalize_name(key)
-    result = shopping_predictions(family, now=now, limit=50)
+    result = shopping_predictions(family, now=now)
     return next((row for row in result["suggestions"] if row["key"] == normalized), None)
 
 

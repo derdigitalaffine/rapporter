@@ -10,6 +10,10 @@ class ShoppingStore(TimestampedModel):
     name = models.CharField(max_length=120)
     branch_label = models.CharField(max_length=120, blank=True)
     address = models.CharField(max_length=240, blank=True)
+    location_provider = models.CharField(max_length=32, blank=True)
+    location_ref = models.CharField(max_length=160, blank=True)
+    latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
     website_url = models.URLField(max_length=500, blank=True)
     offers_url = models.URLField(max_length=500, blank=True)
     note = models.CharField(max_length=500, blank=True)
@@ -28,6 +32,13 @@ class ShoppingStore(TimestampedModel):
 
     class Meta:
         ordering = ["sort_order", "name", "branch_label", "created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["family", "location_provider", "location_ref"],
+                condition=models.Q(location_provider__gt="", location_ref__gt=""),
+                name="shop_store_location_ref_uniq",
+            ),
+        ]
         indexes = [models.Index(fields=["family", "active", "sort_order"], name="shop_store_family_idx")]
 
 
@@ -169,14 +180,30 @@ class ShoppingSessionActivity(TimestampedModel):
         on_delete=models.SET_NULL,
         related_name="shopping_session_activities",
     )
+    # Learning uses only this client-local ordering. ``sequence`` remains the
+    # server cursor for collaboration and is deliberately never a learning clock.
+    client_stream = models.CharField(max_length=128, blank=True, default="")
+    client_sequence = models.PositiveBigIntegerField(null=True, blank=True)
+    mutation_id = models.UUIDField(null=True, blank=True)
 
     class Meta:
         ordering = ["sequence"]
         constraints = [
             models.UniqueConstraint(fields=["session", "sequence"], name="shop_session_activity_seq_uniq"),
+            models.UniqueConstraint(
+                fields=["session", "client_stream", "client_sequence"],
+                condition=models.Q(client_stream__gt="", client_sequence__isnull=False),
+                name="shop_activity_client_seq_uniq",
+            ),
+            models.UniqueConstraint(
+                fields=["session", "mutation_id"],
+                condition=models.Q(mutation_id__isnull=False),
+                name="shop_activity_mutation_uniq",
+            ),
         ]
         indexes = [
             models.Index(fields=["session", "sequence"], name="shop_session_cursor_idx"),
+            models.Index(fields=["session", "client_stream", "client_sequence"], name="shop_activity_client_idx"),
         ]
 
 

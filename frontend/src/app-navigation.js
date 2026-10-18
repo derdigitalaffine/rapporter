@@ -2,6 +2,7 @@ export const PRIMARY_NAV_IDS=Object.freeze(['home','todo','shopping','calendar',
 
 const PAGE_ICONS=Object.freeze({
   home:'home',
+  'legacy-home':'history',
   todo:'tasks',
   tasks:'tasks',
   shopping:'shopping',
@@ -41,6 +42,7 @@ export function pageLabel(page,t,i18n){
   const english=i18n.language?.startsWith('en');
   const labels={
     home:t('today'),
+    'legacy-home':t('moreUi.legacyHome'),
     todo:english?'Tasks':'Aufgaben',
     tasks:english?'Tasks':'Aufgaben',
     shopping:t('shopping'),
@@ -57,7 +59,7 @@ export function pageLabel(page,t,i18n){
     birthdays:t('birthdayUi.title'),
     baby:t('babyUi.title'),
     pets:t('petUi.title'),
-    contracts:t('contractUi.title'),
+    contracts:english?'Contracts':'Verträge',
     loyalty:t('loyaltyUi.title'),
     vehicles:t('vehiclesUi.title'),
     trips:english?'Trips':'Reisen',

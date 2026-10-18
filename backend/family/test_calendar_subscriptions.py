@@ -32,6 +32,7 @@ class CalendarSubscriptionTests(TestCase):
         self.public = APIClient()
         self.start = datetime(2026, 3, 22, 9, tzinfo=utc.utc)
         self.event = self.make_event('Shared, family; ü\nSecond line', payload={'location': 'Never exported', 'description': 'Private note'})
+        self.event.participants.add(self.membership)
 
     def make_event(self, title, **kwargs):
         values = dict(family=self.family, type='calendar.event', title=title, starts_at=self.start, ends_at=self.start + timedelta(hours=1), is_family_event=True)
@@ -217,6 +218,7 @@ class CalendarSubscriptionTests(TestCase):
             starts_at=self.start + timedelta(days=1),
             ends_at=self.start + timedelta(days=1, hours=1),
         )
+        second.participants.add(self.membership)
         self.create()
         query = '<c:calendar-query xmlns:c="urn:ietf:params:xml:ns:caldav"><c:filter><c:comp-filter name="VCALENDAR"><c:comp-filter name="VEVENT"><c:time-range start="20260322T000000Z" end="20260324T000000Z"/></c:comp-filter></c:comp-filter></c:filter></c:calendar-query>'
         response = self.dav('REPORT', body=query)
@@ -244,6 +246,7 @@ class CalendarSubscriptionTests(TestCase):
         self.assertEqual(stored.title, 'Created on iPhone')
         self.assertTrue(stored.is_family_event)
         self.assertEqual(stored.payload['caldav_uid'], 'iphone-stable-uid@example.test')
+        self.assertEqual(list(stored.participants.values_list('pk', flat=True)), [self.membership.pk])
         fetched = self.dav('GET', path=path)
         parsed = Calendar.from_ical(fetched.content).walk('VEVENT')[0]
         self.assertEqual(str(parsed['UID']), 'iphone-stable-uid@example.test')
@@ -330,10 +333,9 @@ class CalendarSubscriptionTests(TestCase):
             self.assertEqual(self.client.post(self.detail + 'reveal/').status_code, 403)
             self.assertEqual(self.client.post(self.detail + 'reveal/', secure=True).status_code, 200)
 
-    def test_whole_family_flag_is_independent_of_attendance_selection(self):
+    def test_member_feed_and_subscription_are_participant_scoped(self):
         other_user = get_user_model().objects.create_user('other-family-member')
         other_member = Membership.objects.create(family=self.family, user=other_user, role='adult')
-        self.event.participants.add(self.membership)
         self.create()
         response = self.public.get(self.feed)
         self.assertEqual(response.status_code, 200)
@@ -344,6 +346,4 @@ class CalendarSubscriptionTests(TestCase):
         member_feed = f"/calendar-feed/{self.grant['password']}/member/{other_member.pk}.ics"
         member_response = self.public.get(member_feed)
         self.assertEqual(member_response.status_code, 200)
-        member_components = Calendar.from_ical(member_response.content).walk('VEVENT')
-        self.assertEqual(len(member_components), 1)
-        self.assertEqual(str(member_components[0]['SUMMARY']), self.event.title)
+        self.assertEqual(Calendar.from_ical(member_response.content).walk('VEVENT'), [])

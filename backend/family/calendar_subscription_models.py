@@ -14,6 +14,7 @@ class CalendarSubscription(TimestampedModel):
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='calendar_subscriptions')
     name = models.CharField(max_length=80)
     detail_level = models.CharField(max_length=16, choices=DetailLevel.choices, default=DetailLevel.TITLE)
+    included_member_ids = models.JSONField(default=list, blank=True)
     token_digest = models.CharField(max_length=64, unique=True)
     credentials_encrypted = models.TextField()
     revoked_at = models.DateTimeField(null=True, blank=True)

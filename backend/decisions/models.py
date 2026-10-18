@@ -9,6 +9,8 @@ class Decision(TimestampedModel):
     class Mode(models.TextChoices):
         SINGLE = "single", "Single choice"
         MULTIPLE = "multiple", "Multiple choice"
+        RANKING = "ranking", "Ranking"
+        RATING = "rating", "Rating"
 
     family = models.ForeignKey(Family, on_delete=models.CASCADE, related_name="decisions")
     question = models.CharField(max_length=500)
@@ -52,6 +54,8 @@ class DecisionVote(TimestampedModel):
     decision = models.ForeignKey(Decision, on_delete=models.CASCADE, related_name="votes")
     option = models.ForeignKey(DecisionOption, on_delete=models.CASCADE, related_name="votes")
     member = models.ForeignKey(Membership, on_delete=models.CASCADE, related_name="decision_votes")
+    rank = models.PositiveSmallIntegerField(null=True, blank=True)
+    score = models.PositiveSmallIntegerField(null=True, blank=True)
 
     class Meta:
         ordering = ["created_at", "id"]
@@ -60,5 +64,61 @@ class DecisionVote(TimestampedModel):
                 fields=["decision", "option", "member"],
                 name="decision_vote_member_option_uq",
             ),
+            models.CheckConstraint(
+                condition=models.Q(rank__isnull=True) | models.Q(rank__gte=1),
+                name="decision_vote_rank_positive_ck",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(score__isnull=True) | models.Q(score__range=(1, 5)),
+                name="decision_vote_score_range_ck",
+            ),
         ]
         indexes = [models.Index(fields=["decision", "member"], name="decision_vote_member_idx")]
+
+
+class DecisionTieBreak(TimestampedModel):
+    class Method(models.TextChoices):
+        RANDOM = "random", "Random draw"
+        GAME = "game", "Game duel"
+
+    decision = models.OneToOneField(Decision, on_delete=models.CASCADE, related_name="tie_break")
+    method = models.CharField(max_length=12, choices=Method.choices)
+    winner_option = models.ForeignKey(
+        DecisionOption,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+    )
+    game_match = models.OneToOneField(
+        "games.GameMatch",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="decision_tie_break",
+    )
+    challenger_option = models.ForeignKey(
+        DecisionOption,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+    )
+    opponent_option = models.ForeignKey(
+        DecisionOption,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="decision_tie_breaks_created",
+    )
+    resolved_at = models.DateTimeField(null=True, blank=True, db_index=True)
+
+    class Meta:
+        indexes = [models.Index(fields=["method", "resolved_at"], name="decision_tiebreak_state_idx")]

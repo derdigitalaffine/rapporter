@@ -21,10 +21,10 @@ import './today-layout-v2.css';
 
 const strings={
  de:{
-  edit:'Anpassen',heading:'Today anpassen',hint:'Stelle dein persönliches Today aus wenigen klaren Widgets zusammen. Reihenfolge und Größe bleiben über Gerätebreiten semantisch stabil.',placedHeading:'Dein Heute',placedHint:'Diese Widgets liegen auf deinem Today. Verschiebe, skaliere oder blende sie aus.',libraryHeading:'Widgets hinzufügen',libraryHint:'Die Library zeigt nur Widgets, die in diesem Familienkontext verfügbar sind. Die Vorschauen sind rein illustrativ und laden keine zusätzlichen Inhalte.',add:'Hinzufügen',added:'hinzugefügt',hide:'Ausblenden',hidden:'ausgeblendet',allPlaced:'Alle verfügbaren Widgets sind bereits auf deinem Today.',supportedSizes:'Unterstützte Größen',safePreview:'Illustrative Vorschau ohne Live-Daten',categoryPlanning:'Jetzt & Planung',categoryFamily:'Familie & Kommunikation',categoryHousehold:'Haushalt',categoryTravel:'Unterwegs',save:'Speichern',cancel:'Abbrechen',reset:'Standard wiederherstellen',up:'Nach oben',down:'Nach unten',move:'Verschieben',moveHint:'Leertaste oder Eingabe startet den Tastatur-Verschiebemodus. Danach mit Pfeil hoch oder runter verschieben und erneut bestätigen.',picked:'zum Verschieben aufgenommen',dropped:'abgelegt',moveCancelled:'Verschieben abgebrochen',position:'Position',compact:'Kompakt',medium:'Mittel',wide:'Breit',size:'Größe',empty:'Alle Widgets sind ausgeblendet. Passe dein Today an, um sie einzublenden.',error:'Das Raster konnte nicht gespeichert werden. Dein Entwurf bleibt erhalten.',loadError:'Dein gespeichertes Raster konnte nicht geladen werden.',reload:'Erneut laden',conflict:'Das Raster wurde auf einem anderen Gerät geändert. Lade es erneut, bevor du weiter bearbeitest.',preview:'Live-Vorschau',situation:'Tageslage',focus:'Jetzt wichtig',timeline:'Tagesverlauf',tomorrow:'Morgen','family-load':'Engpässe heute',week:'Wochenkompass',pinboard:'Pinnwand',trip:'Reise',waste:'Müllabfuhr',weather:'Wetter',priority:'Prioritäten',next:'Als Nächstes',todo:'To-dos','quick-actions':'Schnellaktionen',shopping:'Einkauf',birthdays:'Geburtstage',notes:'Notizzettel',loyalty:'Bonuskarten',inbox:'Familien-Inbox',weekEvents:'Normale Termine',weekWaste:'Müllabfuhr',weekHolidays:'Ferien',weekSpecial:'Weitere Spezialereignisse',tripWishes:'Reisewünsche anzeigen',descriptions:{'quick-actions':'Deine erlaubten Schnellaktionen aus Hinzufügen – mit derselben persönlichen Reihenfolge.',situation:'Kompakte Tageslage mit direkten Aktionen für überfällige Routinen.',focus:'Maximal drei erklärbare Punkte, die jetzt wirklich Aufmerksamkeit brauchen.',timeline:'Termine und echte Task-Uhrzeiten in einem chronologischen Tagesverlauf.',tomorrow:'Sieh den ersten Termin und fällige To-dos des nächsten lokalen Kalendertags.','family-load':'Zeigt nur konkrete Terminüberschneidungen und dringende Dinge – ohne Familien-Score.',week:'Behalte die wichtigsten Punkte der Woche im Blick.',priority:'Sieh dringende und hoch priorisierte Dinge zuerst.',trip:'Öffne deine aktuelle Reise und ihren Status direkt von Today.',next:'Sieh den nächsten relevanten Termin oder Tagespunkt.',pinboard:'Springe kompakt zu eurer gemeinsamen Pinnwand.',weather:'Sieh die aktuelle Wetterlage für euren Alltag.',todo:'Arbeite die heute relevanten Aufgaben und Routinen ab.',shopping:'Behalte offene Einkaufspunkte griffbereit.',waste:'Sieh anstehende Abholungen und Mülltermine.',inbox:'Sieh neue Mitteilungen aus der Familien-Inbox.',birthdays:'Behalte anstehende Geburtstage im Blick.',notes:'Öffne eure Notizzettel direkt von Today.',loyalty:'Greife schnell auf wichtige Bonuskarten zu.'}
+  edit:'Anpassen',heading:'Today anpassen',hint:'Stelle dein persönliches Today aus wenigen klaren Widgets zusammen. Reihenfolge und Größe bleiben über Gerätebreiten semantisch stabil.',placedHeading:'Dein Heute',placedHint:'Diese Widgets liegen auf deinem Today. Verschiebe, skaliere oder blende sie aus.',libraryHeading:'Widgets hinzufügen',libraryHint:'Die Library zeigt nur Widgets, die in diesem Familienkontext verfügbar sind. Die Vorschauen sind rein illustrativ und laden keine zusätzlichen Inhalte.',add:'Hinzufügen',added:'hinzugefügt',hide:'Ausblenden',hidden:'ausgeblendet',allPlaced:'Alle verfügbaren Widgets sind bereits auf deinem Today.',supportedSizes:'Unterstützte Größen',safePreview:'Illustrative Vorschau ohne Live-Daten',categoryPlanning:'Jetzt & Planung',categoryFamily:'Familie & Kommunikation',categoryHousehold:'Haushalt',categoryTravel:'Unterwegs',save:'Speichern',cancel:'Abbrechen',reset:'Standard wiederherstellen',up:'Nach oben',down:'Nach unten',move:'Verschieben',moveHint:'Leertaste oder Eingabe startet den Tastatur-Verschiebemodus. Danach mit Pfeil hoch oder runter verschieben und erneut bestätigen.',picked:'zum Verschieben aufgenommen',dropped:'abgelegt',moveCancelled:'Verschieben abgebrochen',position:'Position',compact:'Kompakt',medium:'Mittel',wide:'Breit','wide-compact':'Breit & flach',size:'Größe',empty:'Alle Widgets sind ausgeblendet. Passe dein Today an, um sie einzublenden.',error:'Das Raster konnte nicht gespeichert werden. Dein Entwurf bleibt erhalten.',loadError:'Dein gespeichertes Raster konnte nicht geladen werden.',reload:'Erneut laden',conflict:'Das Raster wurde auf einem anderen Gerät geändert. Lade es erneut, bevor du weiter bearbeitest.',preview:'Live-Vorschau',situation:'Tageslage',focus:'Jetzt wichtig',timeline:'Tagesverlauf',tomorrow:'Morgen','family-load':'Engpässe heute',week:'Wochenkompass',pinboard:'Pinnwand',trip:'Reise',waste:'Müllabfuhr',weather:'Wetter',priority:'Prioritäten',next:'Als Nächstes',todo:'To-dos','quick-actions':'Schnellaktionen',shopping:'Einkauf',birthdays:'Geburtstage',notes:'Notizzettel',loyalty:'Bonuskarten',inbox:'Familien-Inbox',weekEvents:'Normale Termine',weekWaste:'Müllabfuhr',weekHolidays:'Ferien',weekSpecial:'Weitere Spezialereignisse',tripWishes:'Reisewünsche anzeigen',descriptions:{'quick-actions':'Deine erlaubten Schnellaktionen aus Hinzufügen – mit derselben persönlichen Reihenfolge.',situation:'Kompakte Tageslage mit direkten Aktionen für überfällige Routinen.',focus:'Maximal drei erklärbare Punkte, die jetzt wirklich Aufmerksamkeit brauchen.',timeline:'Termine und echte Task-Uhrzeiten in einem chronologischen Tagesverlauf.',tomorrow:'Sieh den ersten Termin und fällige To-dos des nächsten lokalen Kalendertags.','family-load':'Zeigt nur konkrete Terminüberschneidungen und dringende Dinge – ohne Familien-Score.',week:'Behalte die wichtigsten Punkte der Woche im Blick.',priority:'Sieh dringende und hoch priorisierte Dinge zuerst.',trip:'Öffne deine aktuelle Reise und ihren Status direkt von Today.',next:'Sieh den nächsten relevanten Termin oder Tagespunkt.',pinboard:'Springe kompakt zu eurer gemeinsamen Pinnwand.',weather:'Sieh die aktuelle Wetterlage für euren Alltag.',todo:'Arbeite die heute relevanten Aufgaben und Routinen ab.',shopping:'Behalte offene Einkaufspunkte griffbereit.',waste:'Sieh anstehende Abholungen und Mülltermine.',inbox:'Sieh neue Mitteilungen aus der Familien-Inbox.',birthdays:'Behalte anstehende Geburtstage im Blick.',notes:'Öffne eure Notizzettel direkt von Today.',loyalty:'Greife schnell auf wichtige Bonuskarten zu.'}
  },
  en:{
-  edit:'Customize',heading:'Customize Today',hint:'Build your personal Today from a small set of clear widgets. Order and size stay semantically stable across screen widths.',placedHeading:'Your Today',placedHint:'These widgets are on your Today. Reorder, resize, or hide them.',libraryHeading:'Add widgets',libraryHint:'The library only shows widgets available in this family context. Previews are illustrative and never load additional content.',add:'Add',added:'added',hide:'Hide',hidden:'hidden',allPlaced:'All available widgets are already on your Today.',supportedSizes:'Supported sizes',safePreview:'Illustrative preview without live data',categoryPlanning:'Now & planning',categoryFamily:'Family & communication',categoryHousehold:'Household',categoryTravel:'On the go',save:'Save',cancel:'Cancel',reset:'Restore defaults',up:'Move up',down:'Move down',move:'Move',moveHint:'Press Space or Enter to start keyboard move mode. Then use Arrow Up or Arrow Down and confirm again to drop.',picked:'picked up for moving',dropped:'dropped',moveCancelled:'Move cancelled',position:'Position',compact:'Compact',medium:'Medium',wide:'Wide',size:'Size',empty:'All widgets are hidden. Customize your Today to show them.',error:'Could not save your grid. Your draft has been kept.',loadError:'Could not load your saved grid.',reload:'Reload',conflict:'This grid changed on another device. Reload it before continuing to edit.',preview:'Live preview',situation:'Day status',focus:'Important now',timeline:'Day timeline',tomorrow:'Tomorrow','family-load':'Today’s bottlenecks',week:'Week compass',pinboard:'Pinboard',trip:'Trip',waste:'Waste collection',weather:'Weather',priority:'Priorities',next:'Up next',todo:'To-dos','quick-actions':'Quick actions',shopping:'Shopping',birthdays:'Birthdays',notes:'Notes',loyalty:'Loyalty cards',inbox:'Family inbox',weekEvents:'Regular events',weekWaste:'Waste collection',weekHolidays:'School holidays',weekSpecial:'Other special events',tripWishes:'Show trip wishes',descriptions:{'quick-actions':'Your available Add actions in the same personal order.',situation:'Compact day status with direct actions for overdue routines.',focus:'At most three explainable items that genuinely need attention now.',timeline:'Events and real task times in one chronological day timeline.',tomorrow:'See the first event and due to-dos for the next local calendar day.','family-load':'Shows only concrete calendar overlaps and urgent items — never a family score.',week:'Keep the key points of the week in view.',priority:'See urgent and high-priority items first.',trip:'Open your current trip and its status from Today.',next:'See the next relevant event or point in your day.',pinboard:'Jump to your shared pinboard from a compact entry.',weather:'See the current weather context for your day.',todo:'Work through today’s relevant tasks and routines.',shopping:'Keep open shopping items close at hand.',waste:'See upcoming collection and waste dates.',inbox:'See new messages from the family inbox.',birthdays:'Keep upcoming birthdays in view.',notes:'Open your shared notes directly from Today.',loyalty:'Quickly access important loyalty cards.'}
+  edit:'Customize',heading:'Customize Today',hint:'Build your personal Today from a small set of clear widgets. Order and size stay semantically stable across screen widths.',placedHeading:'Your Today',placedHint:'These widgets are on your Today. Reorder, resize, or hide them.',libraryHeading:'Add widgets',libraryHint:'The library only shows widgets available in this family context. Previews are illustrative and never load additional content.',add:'Add',added:'added',hide:'Hide',hidden:'hidden',allPlaced:'All available widgets are already on your Today.',supportedSizes:'Supported sizes',safePreview:'Illustrative preview without live data',categoryPlanning:'Now & planning',categoryFamily:'Family & communication',categoryHousehold:'Household',categoryTravel:'On the go',save:'Save',cancel:'Cancel',reset:'Restore defaults',up:'Move up',down:'Move down',move:'Move',moveHint:'Press Space or Enter to start keyboard move mode. Then use Arrow Up or Arrow Down and confirm again to drop.',picked:'picked up for moving',dropped:'dropped',moveCancelled:'Move cancelled',position:'Position',compact:'Compact',medium:'Medium',wide:'Wide','wide-compact':'Wide & shallow',size:'Size',empty:'All widgets are hidden. Customize your Today to show them.',error:'Could not save your grid. Your draft has been kept.',loadError:'Could not load your saved grid.',reload:'Reload',conflict:'This grid changed on another device. Reload it before continuing to edit.',preview:'Live preview',situation:'Day status',focus:'Important now',timeline:'Day timeline',tomorrow:'Tomorrow','family-load':'Today’s bottlenecks',week:'Week compass',pinboard:'Pinboard',trip:'Trip',waste:'Waste collection',weather:'Weather',priority:'Priorities',next:'Up next',todo:'To-dos','quick-actions':'Quick actions',shopping:'Shopping',birthdays:'Birthdays',notes:'Notes',loyalty:'Loyalty cards',inbox:'Family inbox',weekEvents:'Regular events',weekWaste:'Waste collection',weekHolidays:'School holidays',weekSpecial:'Other special events',tripWishes:'Show trip wishes',descriptions:{'quick-actions':'Your available Add actions in the same personal order.',situation:'Compact day status with direct actions for overdue routines.',focus:'At most three explainable items that genuinely need attention now.',timeline:'Events and real task times in one chronological day timeline.',tomorrow:'See the first event and due to-dos for the next local calendar day.','family-load':'Shows only concrete calendar overlaps and urgent items — never a family score.',week:'Keep the key points of the week in view.',priority:'See urgent and high-priority items first.',trip:'Open your current trip and its status from Today.',next:'See the next relevant event or point in your day.',pinboard:'Jump to your shared pinboard from a compact entry.',weather:'See the current weather context for your day.',todo:'Work through today’s relevant tasks and routines.',shopping:'Keep open shopping items close at hand.',waste:'See upcoming collection and waste dates.',inbox:'See new messages from the family inbox.',birthdays:'Keep upcoming birthdays in view.',notes:'Open your shared notes directly from Today.',loyalty:'Quickly access important loyalty cards.'}
  }
 };
 
@@ -37,7 +37,7 @@ const reorder=(rows,from,to)=>{
  return next;
 };
 
-export default function TodayLayout({family,header,onboarding,widgets}){
+export default function TodayLayout({family,header,onboarding,widgets,persistence='remote',storageKey='',topNotice=null,editorExtras=null,editIcon='edit',gridTestId='',gridClassName=''}){
  const language=i18n.language;
  const baseStrings=strings[language.startsWith('de')?'de':'en'];
  const contextLabels=contextWidgetLabels(language);
@@ -50,6 +50,7 @@ export default function TodayLayout({family,header,onboarding,widgets}){
  }[String(language||'de').split('-')[0]];
  const s={...baseStrings,tomorrow:contextLabels.tomorrow,'family-load':contextLabels.load,descriptions:{...baseStrings.descriptions,tomorrow:contextDescriptions?.tomorrow||baseStrings.descriptions.tomorrow,'family-load':contextDescriptions?.load||baseStrings.descriptions['family-load']}};
  const availableWidgets=widgets||{};
+ const localPersistence=persistence==='local';
  const editButton=useRef(null);
  const editorHeading=useRef(null);
  const dragHandles=useRef(new Map());
@@ -92,6 +93,7 @@ export default function TodayLayout({family,header,onboarding,widgets}){
  };
  const categoryFor=definition=>definition.category==='planning'?'planning':definition.category==='household'?'household':['collaboration','family'].includes(definition.category)?'family':'travel';
  const categoryLabel=category=>s[{planning:'categoryPlanning',family:'categoryFamily',household:'categoryHousehold',travel:'categoryTravel'}[category]];
+ const sizeOptions=id=>sizeOptionsFor(id).filter(size=>localPersistence||size!=='wide-compact');
  const clearLongPress=()=>{
   if(longPress.current?.timer)clearTimeout(longPress.current.timer);
   longPress.current=null;
@@ -112,22 +114,34 @@ export default function TodayLayout({family,header,onboarding,widgets}){
   clearLongPress();setError('');setConflict(false);setFocusWidgetId(widgetId);setDraft(saved.widgets.map(cleanTodayWidget));
  };
  const cancelEditor=()=>{setError('');setConflict(false);finish()};
-
+ const readLocalLayout=()=>{
+  if(!storageKey)return fresh();
+  try{
+   const raw=localStorage.getItem(storageKey);
+   if(!raw)return fresh();
+   return normalizeTodayLayout(JSON.parse(raw))||fresh();
+  }catch{return fresh()}
+ };
  const load=async()=>{
   setBusy(true);
   try{
-   const result=normalizeTodayLayout(await api(`/today-layout/?family=${family.id}`));
+   const result=localPersistence?readLocalLayout():normalizeTodayLayout(await api(`/today-layout/?family=${family.id}`));
    if(!result)throw new Error('layout');
    setSaved(result);setDraft(null);setError('');setConflict(false);setLoaded(family.id);
   }catch{setError(s.loadError);setLoaded(false)}finally{setBusy(false)}
  };
  useEffect(()=>{
   let current=true;clearLongPress();clearDrag();setLoaded(false);setDraft(null);setError('');setSaved(fresh());
+  if(localPersistence){
+   const result=readLocalLayout();
+   if(current){setSaved(result);setLoaded(family.id)}
+   return()=>{current=false;clearLongPress()};
+  }
   api(`/today-layout/?family=${family.id}`).then(result=>{
    if(current){const normalized=normalizeTodayLayout(result);if(!normalized)throw new Error('layout');setSaved(normalized);setLoaded(family.id)}
   }).catch(()=>{if(current)setError(s.loadError)});
   return()=>{current=false;clearLongPress()};
- },[family.id]);
+ },[family.id,localPersistence,storageKey]);
  useEffect(()=>{
   if(!editing)return;
   if(focusWidgetId){requestAnimationFrame(()=>{dragHandles.current.get(focusWidgetId)?.focus();setFocusWidgetId('')})}
@@ -172,9 +186,7 @@ export default function TodayLayout({family,header,onboarding,widgets}){
  const dropActiveDrag=()=>{
   const current=dragState.current;if(!current)return;const placed=placedRowsFrom(draftRef.current);const index=placed.findIndex(widget=>widget.id===current.id);const id=current.id;clearDrag();setAnnouncement(`${positionText(id,Math.max(0,index),placed.length)} · ${s.dropped}`);requestAnimationFrame(()=>dragHandles.current.get(id)?.focus());
  };
- const edgeAutoScroll=clientY=>{
-  scrollAppNearEdge(clientY);
- };
+ const edgeAutoScroll=clientY=>{scrollAppNearEdge(clientY)};
  const pointerDragStart=(widget,index,event)=>{
   if(busy||dragState.current||event.button!==0)return;event.preventDefault();event.currentTarget.focus();try{event.currentTarget.setPointerCapture(event.pointerId)}catch{}
   dragState.current={mode:'pointer',id:widget.id,pointerId:event.pointerId,handle:event.currentTarget,position:index,snapshot:(draftRef.current||[]).map(cleanTodayWidget)};setDraggingId(widget.id);setAnnouncement(`${labelFor(widget.id)}: ${s.picked} · ${s.position} ${index+1} / ${placedRowsFrom(draftRef.current).length}`);
@@ -211,8 +223,14 @@ export default function TodayLayout({family,header,onboarding,widgets}){
 
  const save=async()=>{
   setBusy(true);setError('');
-  try{const body={version:TODAY_LAYOUT_VERSION,revision:saved.revision,widgets:draft.map(cleanTodayWidget)};const result=normalizeTodayLayout(await api(`/today-layout/?family=${family.id}`,{method:'PUT',body:JSON.stringify(body)}));if(!result)throw new Error('layout');setSaved(result);finish()}
-  catch(e){const stale=e.message.includes('another device');setConflict(stale);setError(stale?s.conflict:s.error)}finally{setBusy(false)}
+  try{
+   const body={version:TODAY_LAYOUT_VERSION,revision:saved.revision,widgets:draft.map(cleanTodayWidget)};
+   if(localPersistence){
+    const result=normalizeTodayLayout({...body,revision:saved.revision+1});if(!result)throw new Error('layout');
+    if(storageKey)localStorage.setItem(storageKey,JSON.stringify(result));setSaved(result);finish();return;
+   }
+   const result=normalizeTodayLayout(await api(`/today-layout/?family=${family.id}`,{method:'PUT',body:JSON.stringify(body)}));if(!result)throw new Error('layout');setSaved(result);finish();
+  }catch(e){const stale=!localPersistence&&e.message.includes('another device');setConflict(stale);setError(stale?s.conflict:s.error)}finally{setBusy(false)}
  };
  // Missing module/permission implementations stay in the saved layout but never
  // render a preview or a Library card. This keeps disabled/future widgets lossless.
@@ -224,7 +242,7 @@ export default function TodayLayout({family,header,onboarding,widgets}){
   const legacyMediumClass=widget.size==='medium'?' today-widget-square':'';
   return <div key={widget.id} data-today-widget={widget.id} data-widget-size={widget.size} className={`app-widget today-widget today-widget-${widget.size}${legacyMediumClass}`} {...editProps}>{value}</div>;
  };
- const editAction=<button type="button" ref={editButton} className="secondary today-layout-edit" data-testid="today-layout-edit" aria-label={s.edit} title={s.edit} disabled={busy||!loaded||editing} onClick={()=>openEditor()}><Icon name="edit" size={15}/><span>{s.edit}</span></button>;
+ const editAction=<button type="button" ref={editButton} className="secondary today-layout-edit" data-testid="today-layout-edit" aria-label={s.edit} title={s.edit} disabled={busy||!loaded||editing} onClick={()=>openEditor()}><Icon name={editIcon} size={15}/><span>{s.edit}</span></button>;
  const headerWithAction=isValidElement(header)?(()=>{const children=Children.toArray(header.props.children);if(!children.length)return cloneElement(header,{},editAction);const [lead,...rest]=children;return cloneElement(header,{},<div className="today-hero-heading-row">{lead}{editAction}</div>,...rest)})():header;
  const placedDraft=placedRowsFrom(draft);
  const libraryDefinitions=draft?TodayWidgetRegistry.filter(definition=>isAvailableDefinition(definition)&&!draft.find(widget=>widget.id===definition.id)?.visible):[];
@@ -232,11 +250,13 @@ export default function TodayLayout({family,header,onboarding,widgets}){
 
  return <div className="today-page">
   {headerWithAction}
+  {topNotice}
   {error&&<div className="today-layout-error" role="alert">{error}{(!loaded||conflict)&&<button type="button" className="secondary" onClick={load} disabled={busy}>{s.reload}</button>}</div>}
   {onboarding}
   {draft&&<section className="today-layout-editor" aria-label={s.edit}>
    <h2 ref={editorHeading} tabIndex={-1}>{s.heading}</h2>
    <p>{s.hint}</p>
+   {editorExtras}
    <p id="today-layout-move-help" className="today-layout-sr-only">{s.moveHint}</p>
    <div className="today-layout-sr-only" role="status" aria-live="polite" aria-atomic="true" data-testid="today-layout-live">{announcement}</div>
    <section className="today-layout-placed" aria-labelledby="today-layout-placed-heading">
@@ -246,7 +266,7 @@ export default function TodayLayout({family,header,onboarding,widgets}){
       <button type="button" ref={element=>{if(element)dragHandles.current.set(widget.id,element);else dragHandles.current.delete(widget.id)}} className="ghost icon-button today-layout-drag-handle" data-testid={`today-drag-${widget.id}`} data-drag-handle="true" aria-label={`${labelFor(widget.id)} · ${s.move}`} aria-describedby="today-layout-move-help" aria-pressed={draggingId===widget.id} title={s.move} disabled={busy} onPointerDown={event=>pointerDragStart(widget,index,event)} onPointerMove={pointerDragMove} onPointerUp={pointerDragEnd} onPointerCancel={event=>{if(dragState.current?.pointerId===event.pointerId)cancelActiveDrag()}} onKeyDown={event=>dragKeyDown(widget,index,event)}><span aria-hidden="true">⋮⋮</span></button>
       <span className="today-layout-widget-copy"><strong>{labelFor(widget.id)}</strong>{descriptionFor(widget.id)&&<small>{descriptionFor(widget.id)}</small>}</span>
      </div><div className="today-layout-controls">
-      <select aria-label={`${labelFor(widget.id)} · ${s.size}`} value={widget.size} onChange={event=>change(draftIndex,{size:event.target.value})} disabled={busy}>{sizeOptionsFor(widget.id).map(size=><option key={size} value={size}>{s[size]}</option>)}</select>
+      <select aria-label={`${labelFor(widget.id)} · ${s.size}`} value={widget.size} onChange={event=>change(draftIndex,{size:event.target.value})} disabled={busy}>{sizeOptions(widget.id).map(size=><option key={size} value={size}>{s[size]}</option>)}</select>
       <button type="button" className="ghost icon-button" aria-label={`${labelFor(widget.id)} · ${s.up}`} onClick={()=>moveByDelta(widget.id,-1,true)} disabled={busy||index===0}>↑</button>
       <button type="button" className="ghost icon-button" aria-label={`${labelFor(widget.id)} · ${s.down}`} onClick={()=>moveByDelta(widget.id,1,true)} disabled={busy||index===placedDraft.length-1}>↓</button>
       <button type="button" className="ghost today-layout-hide" onClick={()=>hideWidget(widget.id)} disabled={busy}>{s.hide}</button>
@@ -262,7 +282,7 @@ export default function TodayLayout({family,header,onboarding,widgets}){
      <div className="today-widget-library-grid">{group.definitions.map(definition=><article key={definition.id} className="today-widget-library-card" data-library-widget={definition.id}>
       <div className="today-widget-library-preview" role="img" aria-label={s.safePreview}><span/><span/><span/></div>
       <div className="today-widget-library-copy"><h5>{labelFor(definition.id)}</h5><p>{descriptionFor(definition.id)}</p></div>
-      <div className="today-widget-library-sizes" aria-label={s.supportedSizes}>{definition.supportedSizes.map(size=><span key={size}>{s[size]}</span>)}</div>
+      <div className="today-widget-library-sizes" aria-label={s.supportedSizes}>{sizeOptions(definition.id).map(size=><span key={size}>{s[size]}</span>)}</div>
       <button type="button" ref={element=>{if(element)libraryButtons.current.set(definition.id,element);else libraryButtons.current.delete(definition.id)}} className="secondary" onClick={()=>addWidget(definition.id)} disabled={busy}>{s.add}</button>
      </article>)}</div>
     </section>):<p className="today-widget-library-empty">{s.allPlaced}</p>}
@@ -274,6 +294,6 @@ export default function TodayLayout({family,header,onboarding,widgets}){
    </div>
    <h3>{s.preview}</h3>
   </section>}
-  {active.length>0?<div className="app-widget-grid today-widget-grid">{active.map(render)}</div>:<p className="today-calm">{s.empty}</p>}
+  {active.length>0?<div className={`app-widget-grid today-widget-grid${gridClassName?` ${gridClassName}`:''}`} data-testid={gridTestId||undefined}>{active.map(render)}</div>:<p className="today-calm">{s.empty}</p>}
  </div>;
 }

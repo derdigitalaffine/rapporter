@@ -8,7 +8,12 @@ async function boot(page){
   const body=route.request().postDataJSON()||{};
   const recurrence=body.text?{frequency:'quarterly',interval:1,nth_weekdays:[{weekday:'MO',ordinal:1}]}:body.rule?.recurrence;
   const anchor=body.anchor_date||body.rule?.anchor_date||'2026-01-01';
-  return route.fulfill({json:{rule:{version:'scheduling-rule-v1',timezone:'Europe/Berlin',time_mode:'wall_clock',anchor_date:anchor,recurrence},summary:'Jedes Quartal · erster Montag',occurrences:['2026-01-05','2026-04-06','2026-07-06','2026-10-05','2027-01-04'],timezone:'Europe/Berlin'}});
+  const unit={hourly:'Stunden',daily:'Tage',weekly:'Wochen',monthly:'Monate',quarterly:'Quartale',yearly:'Jahre'}[recurrence?.frequency];
+  const business=recurrence?.business_days;
+  const fixedWeekdays=recurrence?.frequency==='weekly'&&Number(recurrence?.interval||1)===1&&['MO','TU','WE','TH','FR'].every(day=>recurrence?.weekdays?.includes(day))&&recurrence?.weekdays?.length===5;
+  const summary=fixedWeekdays?'Werktags (Mo–Fr)':business?(recurrence.interval===1?'Jeden Werktag':`Alle ${recurrence.interval} Werktage`):recurrence?.times_per_period?`${recurrence.times_per_period}-mal pro Zeitraum`:recurrence?.frequency==='hourly'||recurrence?.interval>1?`Alle ${recurrence.interval} ${unit}`:'Jedes Quartal · erster Montag';
+  const dynamic=recurrence?.times_per_period||recurrence?.frequency==='hourly';
+  return route.fulfill({json:{rule:{version:'scheduling-rule-v1',timezone:'Europe/Berlin',time_mode:'wall_clock',anchor_date:anchor,recurrence},summary,occurrences:dynamic?[]:['2026-01-05','2026-04-06','2026-07-06','2026-10-05','2027-01-04'],timezone:'Europe/Berlin'}});
  });
  const requests=[];let done=false;let dependencies=[];const item={id:'task:task-1',family:'family-1',kind:'task',title:'Müll rausbringen',state:'due',urgency:'normal',assignee:null,icon:'waste',context:{},primary_action:{id:'complete',method:'POST',href:'/api/tasks/task-1/toggle/'},allowed_actions:[{id:'complete',method:'POST',href:'/api/tasks/task-1/toggle/'},{id:'edit',method:'PATCH',href:'/api/tasks/task-1/'}],completion_command:{href:'/api/actions/execute/',version:'action-completion-v1'}};
  await page.route('**/api/scheduling/dependencies/**',async route=>{const req=route.request();const url=new URL(req.url());const body=req.postDataJSON()||{};
@@ -27,6 +32,15 @@ async function boot(page){
   return route.fallback();
  });
  await page.goto('/?page=todo');await page.waitForLoadState('networkidle');return requests;
+}
+
+async function openSchedule(page){
+ const row=page.locator('[data-action-id="task:task-1"]');
+ await row.getByLabel('Schnellaktionen: Müll rausbringen').click();
+ await row.getByRole('button',{name:'Zeitplan & Darstellung'}).click();
+ const dialog=page.getByRole('dialog');
+ await dialog.getByText('Mehr Optionen',{exact:true}).click();
+ return dialog;
 }
 
 test('capture chooses existing action explicitly with duration and undo',async({page})=>{
@@ -55,11 +69,64 @@ test('schedule editor shares server-authoritative recurrence UX with calendar ev
  await expect(dialog.getByLabel('Planungsmodus')).toBeVisible();
  await dialog.getByLabel('In eigenen Worten',{exact:true}).fill('immer am ersten Montag im Quartal');
  await dialog.getByRole('button',{name:'Erkennen',exact:true}).click();
- await expect(dialog.getByText(/erster Montag/)).toBeVisible();
- await expect(dialog.getByLabel('Wiederholung',{exact:true})).toHaveValue('quarterly');
+ await expect(dialog.locator('.scheduling-recurrence-summary')).toContainText('erster Montag');
+ await expect(dialog.getByLabel('Rhythmus',{exact:true})).toHaveValue('quarterly');
  await dialog.getByRole('button',{name:'Speichern',exact:true}).click();
  await expect.poll(()=>requests.at(-1)?.schedule?.recurrence?.frequency).toBe('quarterly');
  expect(requests.at(-1).schedule.recurrence.nth_weekdays).toEqual([{weekday:'MO',ordinal:1}]);
+});
+
+test('advanced recurrence exposes fixed rhythm and flexible target use cases',async({page})=>{
+ await page.setViewportSize({width:390,height:844});
+ const requests=await boot(page);const dialog=await openSchedule(page);
+ const rhythm=dialog.getByLabel('Rhythmus',{exact:true});
+ await expect(rhythm.locator('optgroup[label="Fester Rhythmus"]')).toBeAttached();
+ await expect(rhythm.locator('optgroup[label="Flexibles Ziel"]')).toBeAttached();
+ await expect(rhythm.locator('option[value="interval"]')).toHaveText('Eigenes Intervall');
+ await expect(rhythm.locator('option[value="quota"]')).toHaveText('Anzahl pro Zeitraum festlegen …');
+ await rhythm.selectOption('interval');
+ await dialog.getByLabel('Alle',{exact:true}).fill('3');
+ await dialog.getByLabel('Einheit',{exact:true}).selectOption('weekly');
+ await expect(rhythm.locator('option:checked')).toHaveText('Alle 3 Wochen');
+ await rhythm.selectOption('quota');
+ await dialog.getByLabel('Anzahl',{exact:true}).fill('4');
+ await dialog.getByLabel('Pro Zeitraum',{exact:true}).selectOption('monthly');
+ await expect(rhythm.locator('option:checked')).toHaveText('4× pro Monat');
+ await expect(dialog.getByText(/Flexibles Ziel im Zeitraum/)).toBeVisible();
+ expect(await dialog.evaluate(node=>node.scrollWidth<=node.clientWidth)).toBe(true);
+ const result=await new AxeBuilder({page}).include('.action-options-sheet').withTags(['wcag2a','wcag2aa','wcag21aa']).analyze();
+ expect(result.violations.filter(v=>['critical','serious'].includes(v.impact))).toEqual([]);
+ await dialog.getByRole('button',{name:'Speichern',exact:true}).click();
+ await expect.poll(()=>requests.at(-1)?.schedule?.recurrence?.times_per_period).toBe(4);
+ expect(requests.at(-1).schedule.recurrence).toEqual({frequency:'monthly',interval:1,times_per_period:4});
+});
+
+test('weekday rhythm is calendar-compatible while explicit business-day interval stays action-only',async({page})=>{
+ const requests=await boot(page);const dialog=await openSchedule(page);
+ const rhythm=dialog.getByLabel('Rhythmus',{exact:true});
+ await rhythm.selectOption('business_daily');
+ await expect(rhythm.locator('option:checked')).toHaveText('Werktags (Mo–Fr)');
+ await expect(dialog.getByText(/Fester Rhythmus von Montag bis Freitag/)).toBeVisible();
+ await rhythm.selectOption('interval');
+ await dialog.getByLabel('Alle',{exact:true}).fill('3');
+ await dialog.getByLabel('Einheit',{exact:true}).selectOption('business_daily');
+ await expect(rhythm.locator('option:checked')).toHaveText('Alle 3 Werktage');
+ await expect(dialog.getByText(/Wochenenden werden beim Intervall übersprungen/)).toBeVisible();
+ await dialog.getByRole('button',{name:'Speichern',exact:true}).click();
+ await expect.poll(()=>requests.at(-1)?.schedule?.recurrence?.business_days).toBe(true);
+ expect(requests.at(-1).schedule.recurrence).toEqual({frequency:'daily',interval:3,business_days:true});
+});
+
+test('hourly recurrence explains completion-relative timing and persists interval',async({page})=>{
+ const requests=await boot(page);const dialog=await openSchedule(page);
+ await dialog.getByLabel('Rhythmus',{exact:true}).selectOption('interval');
+ await dialog.getByLabel('Alle',{exact:true}).fill('6');
+ await dialog.getByLabel('Einheit',{exact:true}).selectOption('hourly');
+ await expect(dialog.getByText(/Intervall startet nach jeder Erledigung neu/)).toBeVisible();
+ await expect(dialog.getByText(/Intervall nach Erledigung/)).toBeVisible();
+ await dialog.getByRole('button',{name:'Speichern',exact:true}).click();
+ await expect.poll(()=>requests.at(-1)?.schedule?.recurrence?.frequency).toBe('hourly');
+ expect(requests.at(-1).schedule.recurrence.interval).toBe(6);
 });
 
 test('lead and follow-up editor previews and creates a canonical dependency',async({page})=>{

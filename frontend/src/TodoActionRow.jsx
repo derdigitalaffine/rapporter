@@ -40,6 +40,8 @@ export default function TodoActionRow({item,language,busy=false,onPrimary,onSeco
   const text={...textFor(language),duel:assignmentCopy(language).duel};const actionLabel=primaryLabel(item,text);const secondary=secondaryActions(item);const metadata=[];
   const expected=item.prediction_v2?.expected_at||item.due_at||item.next_due_at;
   if(expected){const date=new Date(expected);if(!Number.isNaN(date.getTime()))metadata.push(date.toLocaleString(language||'de',{dateStyle:'short',...(item.prediction_v2?.day_only?{}:{timeStyle:'short'})}));}
+  const goalCount=Number(item?.repeat?.target_count);const goalDays=Number(item?.repeat?.target_period_days);
+  if(item?.migration?.from==='routine'&&goalCount>0&&goalDays>0)metadata.push(String(language||'').startsWith('en')?`${goalCount}× in ${goalDays} days`:`${goalCount}× in ${goalDays} Tagen`);
   if(item.context?.list?.name)metadata.push(item.context.list.name);
   if(item.context?.workflow?.name)metadata.push(item.context.workflow.name);
   if(item.assignee?.username)metadata.push(item.assignee.username);

@@ -6,7 +6,14 @@ import {readFamilyModuleRuntime} from './family-runtime';
 
 const CAPABILITIES={loyalty:true,messages:false};
 const EMPTY_MODULES={baby:null,pets:null};
+const EMPTY_SNAPSHOT={actions:[],ranked:[],direct:null,options:null,modules:EMPTY_MODULES};
+let currentSnapshot={familyId:null,userId:null,page:'',value:EMPTY_SNAPSHOT};
 const hasOwn=(value,key)=>Boolean(value)&&Object.prototype.hasOwnProperty.call(value,key);
+
+export function readCreateActionsSnapshot({familyId,userId,page}={}){
+  if(String(currentSnapshot.familyId||'')!==String(familyId||'')||String(currentSnapshot.userId||'')!==String(userId||'')||currentSnapshot.page!==page)return EMPTY_SNAPSHOT;
+  return currentSnapshot.value;
+}
 
 // One canonical snapshot shared by the global palette and Today; no widget reads.
 export function useCreateActions({userId,page,family,entitlements}){
@@ -47,5 +54,7 @@ export function useCreateActions({userId,page,family,entitlements}){
   const actions=useMemo(()=>family?availableCreateActions(options):[],[family,options]);
   const ranked=useMemo(()=>rankCreateActions({availableActions:actions,page,profile:rankingProfile}),[actions,page,rankingProfile]);
   const direct=useMemo(()=>resolveDirectCreateAction({availableActions:actions,rankedActions:ranked,profile:rankingProfile}),[actions,ranked,rankingProfile]);
-  return {actions,ranked,direct,options,modules};
+  const value={actions,ranked,direct,options,modules};
+  currentSnapshot={familyId:family?.id||null,userId:userId||null,page,value};
+  return value;
 }

@@ -3,7 +3,7 @@ from unittest.mock import patch
 from uuid import UUID
 from xml.etree import ElementTree as ET
 
-from django.test import RequestFactory, SimpleTestCase
+from django.test import Client, RequestFactory, SimpleTestCase
 
 from . import calendar_subscription_dav as dav_module
 from .calendar_subscription_dav import C, D, q, query_targets_events, report_properties
@@ -97,6 +97,23 @@ class CalDAVQueryComponentTests(SimpleTestCase):
         )
 
         self.assertTrue(query_targets_events(root))
+
+
+class CalDAVWellKnownDiscoveryTests(SimpleTestCase):
+    def test_propfind_bypasses_csrf_and_redirects_to_caldav_context(self):
+        client = Client(enforce_csrf_checks=True)
+        response = client.generic(
+            'PROPFIND',
+            '/.well-known/caldav',
+            data=b'<D:propfind xmlns:D="DAV:"><D:prop><D:current-user-principal/></D:prop></D:propfind>',
+            content_type='application/xml; charset=utf-8',
+            HTTP_DEPTH='0',
+            secure=True,
+        )
+
+        self.assertEqual(response.status_code, 301)
+        self.assertEqual(response['Location'], '/caldav/')
+        self.assertNotIn(b'CSRF', response.content)
 
 
 class CalDAVEndpointCompatibilityTests(SimpleTestCase):

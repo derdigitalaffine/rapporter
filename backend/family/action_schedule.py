@@ -9,6 +9,8 @@ import json
 import re
 from dateutil import rrule, tz
 
+from .recurrence_text import normalize_recurrence_text
+
 WEEKDAYS = ['MO', 'TU', 'WE', 'TH', 'FR', 'SA', 'SU']
 MODES = {'static', 'learning', 'adaptive'}
 FREQUENCIES = {'daily': rrule.DAILY, 'weekly': rrule.WEEKLY, 'monthly': rrule.MONTHLY, 'yearly': rrule.YEARLY}
@@ -68,16 +70,35 @@ def normalize_schedule(value, family_timezone, today=None):
         if value['mode'] != 'learning':
             raise ValueError('A static/adaptive schedule requires recurrence.')
     else:
-        if not isinstance(recurrence, dict) or set(recurrence) - {'frequency', 'date', 'interval', 'weekdays', 'month_days', 'nth_weekdays', 'months'}:
+        allowed_recurrence = {'frequency', 'date', 'interval', 'weekdays', 'month_days', 'nth_weekdays', 'months', 'times_per_period', 'business_days'}
+        if not isinstance(recurrence, dict) or set(recurrence) - allowed_recurrence:
             raise ValueError('Invalid recurrence.')
         frequency = recurrence.get('frequency')
-        if frequency not in {'once', 'quarterly', *FREQUENCIES}:
+        if frequency not in {'once', 'hourly', 'quarterly', *FREQUENCIES}:
             raise ValueError('Invalid frequency.')
         if frequency == 'once':
             date.fromisoformat(recurrence.get('date', ''))
         else:
             if not _integer(recurrence.get('interval', 1), 1, 1200):
                 raise ValueError('Interval must be 1–1200.')
+        business_days = recurrence.get('business_days')
+        if business_days is not None and not isinstance(business_days, bool):
+            raise ValueError('business_days must be a boolean.')
+        if business_days:
+            if frequency != 'daily':
+                raise ValueError('business_days requires daily recurrence.')
+            if any(recurrence.get(key) for key in ('weekdays', 'month_days', 'nth_weekdays', 'months', 'times_per_period')):
+                raise ValueError('business_days cannot be combined with calendar selectors or period targets.')
+        quota = recurrence.get('times_per_period')
+        if quota is not None:
+            if not _integer(quota, 1, 50):
+                raise ValueError('times_per_period must be between 1 and 50.')
+            if frequency not in {'daily', 'weekly', 'monthly'} or recurrence.get('interval', 1) != 1:
+                raise ValueError('times_per_period requires a daily, weekly or monthly interval of 1.')
+            if any(recurrence.get(key) for key in ('weekdays', 'month_days', 'nth_weekdays', 'months', 'business_days')):
+                raise ValueError('times_per_period cannot be combined with calendar selectors.')
+        if frequency == 'hourly' and any(recurrence.get(key) for key in ('weekdays', 'month_days', 'nth_weekdays', 'months', 'times_per_period', 'business_days')):
+            raise ValueError('Hourly recurrence cannot be combined with calendar selectors.')
         if 'weekdays' in recurrence:
             if not _weekdays(recurrence['weekdays']):
                 raise ValueError('Choose at least one weekday.')
@@ -184,6 +205,28 @@ def _quarterly_days(schedule, recurrence, after):
         index += interval
 
 
+def _advance_business_days(day, amount):
+    remaining = amount
+    current = day
+    while remaining:
+        current += timedelta(days=1)
+        if current.weekday() < 5:
+            remaining -= 1
+    return current
+
+
+def _business_days(schedule, recurrence, after):
+    current = date.fromisoformat(schedule['anchor_date'])
+    while current.weekday() >= 5:
+        current += timedelta(days=1)
+    interval = recurrence.get('interval', 1)
+    while current < after:
+        current = _advance_business_days(current, interval)
+    for _ in range(400):
+        yield current
+        current = _advance_business_days(current, interval)
+
+
 def _days(schedule, after):
     recurrence = schedule.get('recurrence')
     if not recurrence:
@@ -197,6 +240,11 @@ def _days(schedule, after):
         return
     if recurrence['frequency'] == 'quarterly':
         yield from _quarterly_days(schedule, recurrence, after)
+        return
+    if recurrence.get('business_days'):
+        yield from _business_days(schedule, recurrence, after)
+        return
+    if recurrence['frequency'] == 'hourly' or recurrence.get('times_per_period'):
         return
     kwargs = {}
     if recurrence.get('weekdays'):
@@ -221,11 +269,79 @@ def _typical(minutes):
     return int(center) % 1440, spread
 
 
+def _quota_bounds(day, frequency):
+    if frequency == 'daily':
+        return day, day
+    if frequency == 'weekly':
+        start = day - timedelta(days=day.weekday())
+        return start, start + timedelta(days=6)
+    if frequency == 'monthly':
+        start = day.replace(day=1)
+        return start, day.replace(day=monthrange(day.year, day.month)[1])
+    raise ValueError('Unsupported quota period.')
+
+
+def _next_period_start(end):
+    return end + timedelta(days=1)
+
+
+def _next_allowed_day(day, end, excluded):
+    while day <= end and WEEKDAYS[day.weekday()] in excluded:
+        day += timedelta(days=1)
+    return day if day <= end else None
+
+
 def predict(schedule, observations, now, rejected=()):
     zone = ZoneInfo(schedule['timezone'])
     local_now = now.astimezone(zone)
     observations = sorted((v for v in observations if v <= now), reverse=True)[:64]
     locals_ = [v.astimezone(zone) for v in observations]
+    recurrence = schedule.get('recurrence') or {}
+    sample_count = len(observations)
+
+    if recurrence.get('frequency') == 'hourly':
+        interval = recurrence.get('interval', 1)
+        expected = locals_[0] + timedelta(hours=interval) if locals_ else local_now
+        excluded = set(schedule.get('excluded_weekdays', []))
+        while WEEKDAYS[expected.weekday()] in excluded:
+            expected = local_datetime(expected.date() + timedelta(days=1), time(expected.hour, expected.minute, expected.second), zone)
+        status = 'due' if local_now >= expected else 'scheduled'
+        return {
+            'version': 'action-prediction-v2', 'status': status, 'expected_at': expected,
+            'window_start': expected, 'window_end': expected, 'day_only': False, 'confidence': 1.0,
+            'basis': ['manual_recurrence', 'completion_time'], 'sample_count': sample_count,
+            'suggested_schedule_change': None,
+        }
+
+    quota = recurrence.get('times_per_period')
+    if quota:
+        period_start, period_end = _quota_bounds(local_now.date(), recurrence['frequency'])
+        completed = sum(period_start <= value.date() <= period_end for value in locals_)
+        remaining = max(0, quota - completed)
+        excluded = set(schedule.get('excluded_weekdays', []))
+        period_window_start = local_datetime(period_start, time(), zone)
+        period_window_end = local_datetime(period_end, time(23, 59, 59), zone)
+        if remaining == 0:
+            next_start = _next_period_start(period_end)
+            expected = local_datetime(next_start, time(12), zone)
+            status = 'scheduled'
+        else:
+            due_day = _next_allowed_day(local_now.date(), period_end, excluded)
+            if due_day is None:
+                expected = local_datetime(period_end, time(23, 59, 59), zone)
+                status = 'overdue'
+            else:
+                expected = local_datetime(due_day, time(12), zone)
+                status = 'due' if due_day == local_now.date() else 'scheduled'
+        return {
+            'version': 'action-prediction-v2', 'status': status, 'expected_at': expected,
+            'window_start': period_window_start, 'window_end': period_window_end, 'day_only': True,
+            'confidence': 1.0, 'basis': ['manual_recurrence', 'completion_count'],
+            'sample_count': sample_count, 'suggested_schedule_change': None,
+            'target_count': quota, 'completed_count': min(completed, quota), 'remaining_count': remaining,
+            'period_start': period_start.isoformat(), 'period_end': period_end.isoformat(),
+        }
+
     day_profiles = {}
     for index, weekday in enumerate(WEEKDAYS):
         samples = [v.hour * 60 + v.minute for v in locals_ if v.weekday() == index]
@@ -235,7 +351,6 @@ def predict(schedule, observations, now, rejected=()):
     suggestion = None
     basis = ['manual_recurrence'] if schedule.get('recurrence') else ['completion_time']
     learning = schedule['mode'] == 'learning'
-    sample_count = len(observations)
     expected = start = end = None
     day_only = False
     for day in _days(schedule, local_now.date()):
@@ -291,14 +406,15 @@ def predict(schedule, observations, now, rejected=()):
 
 
 def parse_schedule(text, family_timezone, today=None):
-    """Small explicit DE/EN grammar. Unsupported input requires visual editing."""
-    value = text.strip().casefold()
-    value = re.sub(r'\s+', ' ', value)
+    """Parse deterministic DE/EN recurrence text into the canonical action schedule."""
+    value, clock, recurrence_override = normalize_recurrence_text(text)
     result = {'version': 'action-schedule-v1', 'timezone': family_timezone, 'mode': 'static'}
-    clock = re.search(r'(?:um |at )?(\d{1,2}:\d{2})(?: uhr)?$', value)
     if clock:
-        result['segments'] = [{'preferred_time': clock[1].zfill(5)}]
-        value = value[:clock.start()].strip()
+        result['segments'] = [{'preferred_time': clock}]
+    if recurrence_override is not None:
+        result['recurrence'] = recurrence_override
+        return normalize_schedule(result, family_timezone, today)
+
     names = {'montag': 'MO', 'monday': 'MO', 'dienstag': 'TU', 'tuesday': 'TU', 'mittwoch': 'WE', 'wednesday': 'WE', 'donnerstag': 'TH', 'thursday': 'TH', 'freitag': 'FR', 'friday': 'FR', 'samstag': 'SA', 'saturday': 'SA', 'sonntag': 'SU', 'sunday': 'SU'}
     ordinals = {'ersten': 1, 'zweiten': 2, 'dritten': 3, 'vierten': 4, 'fünften': 5, 'letzten': -1, 'first': 1, 'second': 2, 'third': 3, 'fourth': 4, 'fifth': 5, 'last': -1}
     weekend_ordinals = {'erste': 1, 'zweite': 2, 'dritte': 3, 'vierte': 4, 'fünfte': 5, 'letzte': -1, 'first': 1, 'second': 2, 'third': 3, 'fourth': 4, 'fifth': 5, 'last': -1}
@@ -309,12 +425,26 @@ def parse_schedule(text, family_timezone, today=None):
     month_nth_en = re.fullmatch(r'(?:always on |every )?(first|second|third|fourth|fifth|last) (\w+) (?:in|of) (\w+)', value)
     weekend_de = re.fullmatch(r'(?:immer )?(?:das )?(erste|zweite|dritte|vierte|fünfte|letzte) wochenende im (monat|quartal)', value)
     weekend_en = re.fullmatch(r'(?:always |every )?(first|second|third|fourth|fifth|last) weekend (?:of|in) (?:the )?(month|quarter)', value)
+    quota_de = re.fullmatch(r'(\d+)\s*(?:x|-?\s*mal)\s+pro\s+(tag|woche|monat)', value)
+    quota_en = re.fullmatch(r'(\d+)\s+times?\s+per\s+(day|week|month)', value)
+    business_de = re.fullmatch(r'alle (\d+) werktage', value)
+    business_en = re.fullmatch(r'every (\d+) business days?', value)
     if value in {'täglich', 'daily', 'jeden tag'}:
         result['recurrence'] = {'frequency': 'daily', 'interval': 1}
     elif value in {'werktags', 'weekdays'}:
-        result['recurrence'] = {'frequency': 'weekly', 'weekdays': WEEKDAYS[:5]}
+        result['recurrence'] = {'frequency': 'weekly', 'interval': 1, 'weekdays': ['MO', 'TU', 'WE', 'TH', 'FR']}
     elif value in {'flexibel', 'learning', 'lernend'}:
         result['mode'] = 'learning'
+    elif business_de:
+        result['recurrence'] = {'frequency': 'daily', 'interval': int(business_de[1]), 'business_days': True}
+    elif business_en:
+        result['recurrence'] = {'frequency': 'daily', 'interval': int(business_en[1]), 'business_days': True}
+    elif quota_de:
+        periods = {'tag': 'daily', 'woche': 'weekly', 'monat': 'monthly'}
+        result['recurrence'] = {'frequency': periods[quota_de[2]], 'interval': 1, 'times_per_period': int(quota_de[1])}
+    elif quota_en:
+        periods = {'day': 'daily', 'week': 'weekly', 'month': 'monthly'}
+        result['recurrence'] = {'frequency': periods[quota_en[2]], 'interval': 1, 'times_per_period': int(quota_en[1])}
     elif re.fullmatch(r'(?:jeden|immer|every) (\w+)', value) and value.split()[-1] in names:
         result['recurrence'] = {'frequency': 'weekly', 'weekdays': [names[value.split()[-1]]]}
     elif period_nth_de and period_nth_de[2] in names:
@@ -330,10 +460,10 @@ def parse_schedule(text, family_timezone, today=None):
     elif month_nth_en and month_nth_en[2] in names and month_nth_en[3] in months:
         result['recurrence'] = {'frequency': 'yearly', 'interval': 1, 'months': [months[month_nth_en[3]]], 'nth_weekdays': [{'weekday': names[month_nth_en[2]], 'ordinal': ordinals[month_nth_en[1]]}]}
     else:
-        interval = re.fullmatch(r'(?:alle|every) (\d+) (tage|days|wochen|weeks|monate|months|quartale|quarters|jahre|years)', value)
+        interval = re.fullmatch(r'(?:alle|every) (\d+) (stunden|hours|tage|days|wochen|weeks|monate|months|quartale|quarters|jahre|years)', value)
         nth = re.fullmatch(r'alle (\d+) monate (?:am|an einem) (ersten|zweiten|dritten|vierten|fünften|letzten) (\w+)', value)
         if interval:
-            unit = {'tage': 'daily', 'days': 'daily', 'wochen': 'weekly', 'weeks': 'weekly', 'monate': 'monthly', 'months': 'monthly', 'quartale': 'quarterly', 'quarters': 'quarterly', 'jahre': 'yearly', 'years': 'yearly'}
+            unit = {'stunden': 'hourly', 'hours': 'hourly', 'tage': 'daily', 'days': 'daily', 'wochen': 'weekly', 'weeks': 'weekly', 'monate': 'monthly', 'months': 'monthly', 'quartale': 'quarterly', 'quarters': 'quarterly', 'jahre': 'yearly', 'years': 'yearly'}
             result['recurrence'] = {'frequency': unit[interval[2]], 'interval': int(interval[1])}
         elif nth and nth[3] in names:
             result['recurrence'] = {'frequency': 'monthly', 'interval': int(nth[1]), 'nth_weekdays': [{'weekday': names[nth[3]], 'ordinal': ordinals[nth[2]]}]}

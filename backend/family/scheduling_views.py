@@ -63,7 +63,7 @@ def scheduling_preview(request):
         after_day = _iso_date(data.get("after"), "after")
         if has_text:
             rule = parse_scheduling_text(
-                data["text"].strip(),
+                data["text"],
                 family.timezone or "UTC",
                 today=anchor_day,
             )

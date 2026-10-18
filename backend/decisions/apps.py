@@ -8,5 +8,6 @@ class DecisionsConfig(AppConfig):
     def ready(self):
         from family.context_links import default_context_registry
         from .context import register_decision_context
+        from . import signals  # noqa: F401
 
         register_decision_context(default_context_registry())

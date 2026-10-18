@@ -25,4 +25,9 @@ def shopping_session_item_activity(sender, instance, created, **kwargs):
             if instance.checked
             else ShoppingSessionActivity.Kind.ITEM_REOPENED
         )
-    record_shopping_item_activity(instance, kind, actor)
+    record_shopping_item_activity(
+        instance,
+        kind,
+        actor,
+        client_activity=getattr(instance, "_shopping_client_activity", None),
+    )

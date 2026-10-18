@@ -1,5 +1,6 @@
 from django.contrib import admin
 from django.urls import include, path
+from django.views.decorators.csrf import csrf_exempt
 
 from auth_identity.password_reset_views import password_reset_confirm, password_reset_request
 from auth_sessions.admin_security_views import (
@@ -21,6 +22,12 @@ from auth_sessions.admin_views import (
 )
 from auth_sessions.views import reauthenticate_password, revoke_other_sessions, session_detail, session_list
 from family.auth_views import login_view, logout_view, refresh_view, session_view
+from family.shopping_reference_operator_views import (
+    superadmin_reference_dataset_action,
+    superadmin_reference_dataset_detail,
+    superadmin_reference_dataset_validate,
+    superadmin_reference_datasets,
+)
 from family.superadmin_analytics_views import superadmin_matomo_report, superadmin_matomo_status
 from family.superadmin_user_crud_views import superadmin_user_crud_detail, superadmin_users_crud
 from family.superadmin_user_views import (
@@ -39,11 +46,12 @@ from telemetry.superadmin_views import superadmin_analytics_overview, superadmin
 from family.sync_views import sync
 
 from family.calendar_subscription_views import subscriptions, subscription_detail
-from family.calendar_subscription_dav import feed, dav, well_known
+from family.calendar_subscription_dav import feed, well_known
+from family.calendar_subscription_scheduling import dav
 from family.calendar_subscription_member_feed import member_feed
 
 urlpatterns = [
-    path(".well-known/caldav", well_known),
+    path(".well-known/caldav", csrf_exempt(well_known)),
     path("caldav/", dav),
     path("caldav/<path:path>", dav),
     path("calendar-feed/<str:token>/family.ics", feed),
@@ -91,6 +99,10 @@ urlpatterns = [
     path("api/superadmin/users/<int:user_id>/email-direct/", superadmin_user_email_direct, name="superadmin_user_email_direct"),
     path("api/superadmin/users/<int:user_id>/password-reset/", superadmin_user_password_reset, name="superadmin_user_password_reset"),
     path("api/superadmin/users/<int:user_id>/password-reset-link/", superadmin_user_password_reset_link, name="superadmin_user_password_reset_link"),
+    path("api/superadmin/reference-datasets/", superadmin_reference_datasets, name="superadmin_reference_datasets"),
+    path("api/superadmin/reference-datasets/validate/", superadmin_reference_dataset_validate, name="superadmin_reference_dataset_validate"),
+    path("api/superadmin/reference-datasets/<uuid:dataset_pk>/", superadmin_reference_dataset_detail, name="superadmin_reference_dataset_detail"),
+    path("api/superadmin/reference-datasets/<uuid:dataset_pk>/<str:action>/", superadmin_reference_dataset_action, name="superadmin_reference_dataset_action"),
     path("api/superadmin/mail-health/", superadmin_mail_health, name="superadmin_mail_health"),
     path("api/superadmin/mail-journal/", superadmin_mail_journal, name="superadmin_mail_journal"),
     path("api/superadmin/smtp/", superadmin_smtp_config, name="superadmin_smtp_config"),

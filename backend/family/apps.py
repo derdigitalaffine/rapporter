@@ -25,6 +25,7 @@ class FamilyConfig(AppConfig):
         from .family_master_models import FamilyMasterData
         from .family_relationship_models import FamilyRelationship
         from .notes_models import Note, NoteRevision, NoteShare
+        from .shopping_autoguess_models import ShoppingItemCreateReceipt
         from .shopping_models import (
             ShoppingListAccess,
             ShoppingListStoreProfile,
@@ -34,6 +35,14 @@ class FamilyConfig(AppConfig):
             ShoppingStore,
             ShoppingTemplate,
             ShoppingTemplateItem,
+        )
+        from .shopping_purchase_context_models import ShoppingPurchaseStoreContext
+        from .shopping_reference_models import (
+            ReferenceDataset,
+            ReferenceDatasetActivationEvent,
+            ReferenceDatasetLease,
+            ReferenceDatasetRecord,
+            ReferenceDatasetSearchTerm,
         )
         from .today_models import TodayLayout
         from .todo_models import TodoActionPreference, TodoPreference
@@ -57,6 +66,7 @@ class FamilyConfig(AppConfig):
         core_models.Note = Note
         core_models.NoteShare = NoteShare
         core_models.NoteRevision = NoteRevision
+        core_models.ShoppingItemCreateReceipt = ShoppingItemCreateReceipt
         core_models.ShoppingStore = ShoppingStore
         core_models.ShoppingListAccess = ShoppingListAccess
         core_models.ShoppingListStoreProfile = ShoppingListStoreProfile
@@ -65,6 +75,12 @@ class FamilyConfig(AppConfig):
         core_models.ShoppingSessionParticipant = ShoppingSessionParticipant
         core_models.ShoppingTemplate = ShoppingTemplate
         core_models.ShoppingTemplateItem = ShoppingTemplateItem
+        core_models.ShoppingPurchaseStoreContext = ShoppingPurchaseStoreContext
+        core_models.ReferenceDataset = ReferenceDataset
+        core_models.ReferenceDatasetActivationEvent = ReferenceDatasetActivationEvent
+        core_models.ReferenceDatasetLease = ReferenceDatasetLease
+        core_models.ReferenceDatasetRecord = ReferenceDatasetRecord
+        core_models.ReferenceDatasetSearchTerm = ReferenceDatasetSearchTerm
         core_models.TodayLayout = TodayLayout
         core_models.TodoPreference = TodoPreference
         core_models.TodoActionPreference = TodoActionPreference
@@ -83,6 +99,7 @@ class FamilyConfig(AppConfig):
         from . import scheduling_dependency_signals  # noqa: F401
         from . import signals  # noqa: F401
         from . import shopping_session_signals  # noqa: F401
+        from . import routine_task_migration_models  # noqa: F401
         from . import unified_action_models  # noqa: F401
         from . import unified_action_signals  # noqa: F401
         from . import travel_signals  # noqa: F401

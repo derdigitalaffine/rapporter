@@ -1,0 +1,27 @@
+/* Messenger keeps its layout shell stable while the OS keyboard animates.
+   The central viewport hook exposes the obscured bottom area separately as
+   --app-keyboard-inset. Moving/resizing the whole fixed shell with
+   VisualViewport makes iOS pan the focused textarea twice and produces the
+   visible composer jump. Keep the shell on the layout viewport and consume
+   only the keyboard inset, like a native chat surface. */
+.messenger-shell{
+  inset:0;
+  height:auto;
+}
+
+html[data-app-keyboard] .messenger-shell{
+  padding-bottom:var(--app-keyboard-inset,0px);
+}
+
+html[data-app-keyboard] .messenger-thread{
+  min-height:0;
+}
+
+html[data-app-keyboard] .messenger-history{
+  scroll-padding-bottom:12px;
+}
+
+@media(max-width:760px),(orientation:landscape) and (max-width:950px) and (max-height:620px){
+  html[data-app-keyboard] .messenger-shell>.content{padding-bottom:0}
+  html[data-app-keyboard] .messenger-thread .messenger-composer{position:relative;z-index:2}
+}

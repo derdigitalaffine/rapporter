@@ -21,7 +21,9 @@ from family.context_models import ContextLink
 from family.models import Family, Membership
 
 from .models import Decision, DecisionOption, DecisionVote
+from .results import option_metrics, summarize_result
 from .serializers import DecisionCreateSerializer, DecisionVoteSerializer
+from .tiebreaks import DecisionTieBreakError, decorate_result, start_tie_break
 
 
 class DecisionApiError(Exception):
@@ -65,7 +67,13 @@ def _membership(user, family_id, *, required=True):
 def _decision_queryset(family):
     return (
         Decision.objects.filter(family=family)
-        .select_related("created_by")
+        .select_related(
+            "created_by",
+            "tie_break__winner_option",
+            "tie_break__game_match",
+            "tie_break__challenger_option",
+            "tie_break__opponent_option",
+        )
         .prefetch_related("options__votes__member__user")
         .order_by("-created_at", "id")
     )
@@ -118,26 +126,43 @@ def _member_name(member):
 def _serialize(decision, membership, context=None):
     options = list(decision.options.all())
     selected = []
+    ranked_selected = []
     voter_ids = set()
     serialized_options = []
+    option_rows = []
     for option in options:
         votes = list(option.votes.all())
         voter_ids.update(vote.member_id for vote in votes)
-        mine = any(vote.member_id == membership.id for vote in votes)
-        if mine:
+        mine = next((vote for vote in votes if vote.member_id == membership.id), None)
+        if mine is not None:
             selected.append(str(option.id))
+            if mine.rank is not None:
+                ranked_selected.append((mine.rank, str(option.id)))
+        metrics = option_metrics(votes)
         payload = {
             "id": str(option.id),
             "label": option.label,
             "position": option.position,
-            "votes": len(votes),
-            "selected_by_me": mine,
+            **metrics,
+            "selected_by_me": mine is not None,
+            "my_rank": mine.rank if mine is not None else None,
+            "my_score": mine.score if mine is not None else None,
         }
         if not decision.anonymous:
-            payload["voters"] = [
-                {"membership": str(vote.member_id), "name": _member_name(vote.member)} for vote in votes
-            ]
+            voters = []
+            for vote in votes:
+                voter = {"membership": str(vote.member_id), "name": _member_name(vote.member)}
+                if vote.rank is not None:
+                    voter["rank"] = vote.rank
+                if vote.score is not None:
+                    voter["score"] = vote.score
+                voters.append(voter)
+            payload["voters"] = voters
         serialized_options.append(payload)
+        option_rows.append((option, payload))
+    if decision.mode == Decision.Mode.RANKING:
+        selected = [option_id for _, option_id in sorted(ranked_selected)]
+    raw_result = summarize_result(decision, option_rows)
     body = {
         "id": str(decision.id),
         "family": str(decision.family_id),
@@ -151,6 +176,7 @@ def _serialize(decision, membership, context=None):
         "options": serialized_options,
         "my_option_ids": selected,
         "total_voters": len(voter_ids),
+        "result": decorate_result(decision, membership, raw_result),
         "can_vote": membership.role != Membership.Role.GUEST and decision.is_open,
         "can_close": decision.created_by_id == membership.user_id
         or membership.role in {Membership.Role.OWNER, Membership.Role.ADULT},
@@ -169,6 +195,39 @@ def _serialize(decision, membership, context=None):
 
 def _fresh(decision_id, family):
     return _decision_queryset(family).get(id=decision_id)
+
+
+def _ballot_votes(decision, member, option_ids, ratings):
+    all_option_ids = list(DecisionOption.objects.filter(decision=decision).values_list("id", flat=True))
+    all_option_set = set(all_option_ids)
+    if decision.mode == Decision.Mode.SINGLE:
+        if ratings or len(option_ids) > 1 or not set(option_ids).issubset(all_option_set):
+            raise DecisionApiError("invalid_vote_selection")
+        return [DecisionVote(decision=decision, option_id=option_id, member=member) for option_id in option_ids]
+    if decision.mode == Decision.Mode.MULTIPLE:
+        if ratings or not set(option_ids).issubset(all_option_set):
+            raise DecisionApiError("invalid_vote_selection")
+        return [DecisionVote(decision=decision, option_id=option_id, member=member) for option_id in option_ids]
+    if decision.mode == Decision.Mode.RANKING:
+        if ratings:
+            raise DecisionApiError("invalid_vote_selection")
+        if option_ids and (len(option_ids) != len(all_option_ids) or set(option_ids) != all_option_set):
+            raise DecisionApiError("ranking_requires_all_options")
+        return [
+            DecisionVote(decision=decision, option_id=option_id, member=member, rank=index + 1)
+            for index, option_id in enumerate(option_ids)
+        ]
+    if decision.mode == Decision.Mode.RATING:
+        if option_ids:
+            raise DecisionApiError("invalid_vote_selection")
+        rating_ids = {row["option_id"] for row in ratings}
+        if not rating_ids.issubset(all_option_set):
+            raise DecisionApiError("invalid_vote_selection")
+        return [
+            DecisionVote(decision=decision, option_id=row["option_id"], member=member, score=row["score"])
+            for row in ratings
+        ]
+    raise DecisionApiError("invalid_vote_selection")
 
 
 @api_view(["GET", "POST"])
@@ -262,21 +321,14 @@ def decision_vote(request, decision_id):
             raise DecisionApiError("vote_forbidden", status.HTTP_403_FORBIDDEN)
         decision, _ = _visible_decision(request.user, membership.family, decision_id)
         option_ids = serializer.validated_data["option_ids"]
-        if decision.mode == Decision.Mode.SINGLE and len(option_ids) > 1:
-            raise DecisionApiError("invalid_vote_selection")
+        ratings = serializer.validated_data["ratings"]
         with transaction.atomic():
             locked = Decision.objects.select_for_update().get(id=decision.id, family=membership.family)
             if not locked.is_open:
                 raise DecisionApiError("decision_closed", status.HTTP_409_CONFLICT)
-            valid_ids = set(
-                DecisionOption.objects.filter(decision=locked, id__in=option_ids).values_list("id", flat=True)
-            )
-            if valid_ids != set(option_ids):
-                raise DecisionApiError("invalid_vote_selection")
+            votes = _ballot_votes(locked, membership, option_ids, ratings)
             DecisionVote.objects.filter(decision=locked, member=membership).delete()
-            DecisionVote.objects.bulk_create(
-                [DecisionVote(decision=locked, option_id=option_id, member=membership) for option_id in option_ids]
-            )
+            DecisionVote.objects.bulk_create(votes)
         decision, context = _visible_decision(request.user, membership.family, decision.id)
         return Response(_serialize(decision, membership, context))
     except DecisionApiError as exc:
@@ -304,3 +356,30 @@ def decision_close(request, decision_id):
         return Response(_serialize(decision, membership, context))
     except DecisionApiError as exc:
         return _error(exc)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def decision_tie_break(request, decision_id):
+    try:
+        membership = _membership(request.user, request.data.get("family"))
+        decision, _ = _visible_decision(request.user, membership.family, decision_id)
+        start_tie_break(
+            decision_id=decision.id,
+            family=membership.family,
+            membership=membership,
+            method=str(request.data.get("method") or ""),
+            game_type=str(request.data.get("game_type") or "") or None,
+        )
+        decision, context = _visible_decision(request.user, membership.family, decision.id)
+        return Response(_serialize(decision, membership, context))
+    except DecisionApiError as exc:
+        return _error(exc)
+    except DecisionTieBreakError as exc:
+        if exc.code == "tie_break_forbidden":
+            http_status = status.HTTP_403_FORBIDDEN
+        elif exc.code in {"decision_still_open", "decision_not_tied", "tie_break_game_active", "game_tie_break_unavailable"}:
+            http_status = status.HTTP_409_CONFLICT
+        else:
+            http_status = status.HTTP_400_BAD_REQUEST
+        return Response({"code": exc.code}, status=http_status)

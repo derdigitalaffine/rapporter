@@ -12,7 +12,7 @@ from rest_framework.response import Response
 from .models import Membership, ShoppingItem, ShoppingList
 from .serializers import ShoppingItemSerializer
 from .shopping_access import visible_shopping_lists
-from .shopping_models import ShoppingSession
+from .shopping_models import ShoppingSession, ShoppingStore
 from .shopping_session_service import start_or_join_shopping_session, touch_shopping_session_participant
 
 
@@ -78,6 +78,7 @@ def _session_payload(session, request_user):
         "id": str(session.id),
         "shopping_list": str(session.shopping_list_id),
         "status": session.status,
+        "revision": session.activity_seq,
         "started_at": session.started_at,
         "completed_at": session.completed_at,
         "last_activity_at": session.last_activity_at,
@@ -94,6 +95,16 @@ def _session_payload(session, request_user):
     }
 
 
+def _active_peer_participants(session, request_user):
+    cutoff = timezone.now() - PRESENCE_WINDOW
+    return list(
+        session.participants.filter(last_seen_at__gte=cutoff)
+        .exclude(user=request_user)
+        .select_related("user")
+        .order_by("joined_at")
+    )
+
+
 def _item_snapshot(item):
     return {
         "id": str(item.id),
@@ -106,6 +117,18 @@ def _item_snapshot(item):
         # The source item is deleted after checkout, so retain just enough ACL
         # metadata to keep gift/surprise items private when history is read later.
         "hidden_from_user_id": item.hidden_from_user_id,
+    }
+
+
+def _store_snapshot(store):
+    if not store:
+        return None
+    return {
+        "id": str(store.id),
+        "name": store.name,
+        "branch_label": store.branch_label,
+        "address": store.address,
+        "display_label": store.display_label,
     }
 
 
@@ -292,7 +315,23 @@ def shopping_session_complete(request):
         return Response({"detail": "Einkaufsliste nicht gefunden."}, status=status.HTTP_404_NOT_FOUND)
 
     session_id = request.data.get("session")
+    scope = str(request.data.get("scope") or "group").strip().lower()
+    if scope not in {"group", "me"}:
+        return Response({"code": "invalid_completion_scope", "detail": "Ungültige Abschlussart."}, status=status.HTTP_400_BAD_REQUEST)
     open_items_policy = str(request.data.get("open_items") or "").strip().lower()
+    store_id = request.data.get("store")
+    expected_revision = request.data.get("expected_revision")
+    confirm_active_peers = request.data.get("confirm_active_peers") is True
+    confirmed_peer_ids_raw = request.data.get("confirmed_active_peer_ids")
+    if confirmed_peer_ids_raw is None:
+        confirmed_peer_ids = set()
+    elif isinstance(confirmed_peer_ids_raw, list):
+        confirmed_peer_ids = {str(value) for value in confirmed_peer_ids_raw}
+    else:
+        return Response(
+            {"code": "invalid_peer_confirmation", "detail": "Ungültige Bestätigung aktiver Personen."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
     with transaction.atomic():
         sessions = (
             ShoppingSession.objects.select_for_update(of=("self",))
@@ -306,9 +345,71 @@ def shopping_session_complete(request):
         session = sessions.first()
         if not session:
             return Response({"detail": "Einkaufssession nicht gefunden."}, status=status.HTTP_404_NOT_FOUND)
+
+        if scope == "me":
+            if session.status == ShoppingSession.Status.ACTIVE:
+                session.participants.filter(user=request.user).delete()
+                return Response({"left": True, "session": _session_payload(session, request.user)})
+            if session.status == ShoppingSession.Status.COMPLETED:
+                return Response({"left": True, "session": _session_payload(session, request.user)})
+            return Response({"detail": "Einkaufssession ist nicht mehr aktiv."}, status=status.HTTP_409_CONFLICT)
+
         if session.status != ShoppingSession.Status.COMPLETED:
             if session.status != ShoppingSession.Status.ACTIVE:
                 return Response({"detail": "Einkaufssession ist nicht mehr aktiv."}, status=status.HTTP_409_CONFLICT)
+
+            if expected_revision is not None:
+                try:
+                    expected_revision = int(expected_revision)
+                    if expected_revision < 0:
+                        raise ValueError
+                except (TypeError, ValueError):
+                    return Response(
+                        {"code": "invalid_revision", "detail": "Ungültiger Einkaufsstand."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                if expected_revision != session.activity_seq:
+                    return Response(
+                        {
+                            "code": "stale_session",
+                            "detail": "Der Einkauf wurde inzwischen geändert. Bitte Abschluss erneut prüfen.",
+                            "revision": session.activity_seq,
+                            "session": _session_payload(session, request.user),
+                        },
+                        status=status.HTTP_409_CONFLICT,
+                    )
+
+            active_peers = _active_peer_participants(session, request.user)
+            active_peer_ids = {str(row.user_id) for row in active_peers}
+            if active_peers and (
+                not confirm_active_peers or confirmed_peer_ids != active_peer_ids
+            ):
+                memberships = _membership_map(session, [row.user for row in active_peers])
+                return Response(
+                    {
+                        "code": "active_peers_confirmation_required",
+                        "detail": "Andere Personen kaufen noch ein. Gruppenabschluss bitte ausdrücklich bestätigen.",
+                        "revision": session.activity_seq,
+                        "participants": [
+                            _person(row.user, memberships.get(row.user_id), request.user)
+                            for row in active_peers
+                        ],
+                    },
+                    status=status.HTTP_409_CONFLICT,
+                )
+
+            store = None
+            if store_id:
+                store = ShoppingStore.objects.filter(
+                    id=store_id,
+                    family_id=shopping_list.family_id,
+                    active=True,
+                ).first()
+                if not store:
+                    return Response(
+                        {"code": "invalid_store", "detail": "Filiale ist für diese Einkaufsliste nicht verfügbar."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
 
             visible_items = list(
                 ShoppingItem.objects.select_for_update()
@@ -329,6 +430,7 @@ def shopping_session_complete(request):
                 open_items_policy = "keep"
 
             completed_at = timezone.now()
+            confirmed_store = _store_snapshot(store)
             session.status = ShoppingSession.Status.COMPLETED
             session.completed_at = completed_at
             session.completed_by = request.user
@@ -338,8 +440,9 @@ def shopping_session_complete(request):
                 "shopping_list": {
                     "id": str(shopping_list.id),
                     "name": shopping_list.name,
-                    "store": shopping_list.store,
+                    "store": confirmed_store["display_label"] if confirmed_store else shopping_list.store,
                 },
+                "confirmed_store": confirmed_store,
                 "purchased_items": [_item_snapshot(item) for item in purchased],
                 "open_items": [_item_snapshot(item) for item in open_items],
                 "purchased_count": len(purchased),

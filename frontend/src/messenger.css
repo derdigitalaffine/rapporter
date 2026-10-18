@@ -145,7 +145,7 @@
 .messenger-attach input{position:absolute;inset:0;opacity:0;width:100%;cursor:pointer}
 .messenger-attach:focus-within{outline:2px solid var(--chat-accent);outline-offset:2px}
 .messenger-attach:has(input:disabled){opacity:.5;cursor:default}
-.messenger-send{background:var(--ink)!important;color:var(--surface)!important}
+
 .messenger-file-hint{display:block;margin:5px 0 0 50px;color:var(--muted);font-size:11px}
 .messenger-files{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;max-height:140px;overflow-y:auto}
 .messenger-files>span{display:flex;align-items:center;max-width:100%;overflow-wrap:anywhere;padding-left:10px;border-radius:6px;background:var(--soft)}
@@ -212,3 +212,25 @@
   .messenger-draft-field textarea{max-height:76px}
 }
 @media(prefers-reduced-motion:reduce){.messenger-page *{animation:none!important;scroll-behavior:auto!important}}
+/* Composition follows the shared surfaces and action tokens. */
+.messenger-chat-list{background:var(--surface)}
+.messenger-thread{position:relative}
+.messenger-bubble{border-radius:var(--radius-md,12px);box-shadow:var(--shadow-sm)}
+.messenger-bubble.own{border-radius:var(--radius-md,12px)}
+.messenger-bubble.deleted{color:var(--muted);box-shadow:none}
+.messenger-day{padding:5px 10px;background:var(--surface);border:1px solid var(--line);border-radius:999px}
+.messenger-history{overflow-anchor:none}
+.messenger-media img{width:280px;aspect-ratio:4/3;object-fit:contain;background:var(--soft)}
+.messenger-compose-tools{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.messenger-compose-tools .text-button{display:flex;gap:6px;font-size:13px;flex:none}
+.messenger-compose-tools .messenger-file-hint{margin:0;max-width:210px;text-align:right}
+.messenger-location-preview{padding:0 20px 20px;display:grid;gap:16px}
+.messenger-location-preview>p{margin:0;color:var(--muted);line-height:1.5}
+.messenger-location-card{display:flex;gap:12px;align-items:flex-start;padding:12px 0;min-width:0;overflow-wrap:anywhere}
+.messenger-location-card>div{display:grid;gap:5px;min-width:0}
+.messenger-location-card span,.messenger-location-card small{font-size:12px}
+.messenger-location-card a{display:flex;align-items:center;min-height:44px;color:var(--ink);text-decoration:underline;text-underline-offset:3px}
+.messenger-location-draft{display:flex;align-items:flex-start;justify-content:space-between;padding-inline:12px;background:var(--soft);border-radius:var(--radius-md,12px);max-height:180px;overflow:auto}
+.messenger-send-error{font-size:13px;margin:0}
+.messenger-jump{align-self:center;flex:none;margin:6px}
+@media(max-height:600px){.messenger-compose-tools .messenger-file-hint{display:none}.messenger-location-draft{max-height:100px}}

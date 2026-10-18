@@ -39,6 +39,29 @@ class ShoppingListAccessTests(TestCase):
         self.assertFalse(can_manage_shopping_access(self.teen, legacy))
         self.assertTrue(can_manage_shopping_access(self.owner, legacy))
 
+    def test_manager_can_permanently_delete_shopping_list(self):
+        shopping = ShoppingList.objects.create(family=self.family, name="Delete me")
+        ShoppingItem.objects.create(shopping_list=shopping, name="Contained item", added_by=self.owner)
+        response = self.client.delete(f"/api/shopping-lists/{shopping.id}/")
+        self.assertEqual(response.status_code, 204)
+        self.assertFalse(ShoppingList.objects.filter(id=shopping.id).exists())
+        self.assertFalse(ShoppingItem.objects.filter(shopping_list_id=shopping.id).exists())
+
+    def test_visible_non_manager_cannot_delete_shopping_list(self):
+        shopping = ShoppingList.objects.create(family=self.family, name="Family list")
+        teen_client = APIClient(); teen_client.force_authenticate(self.teen)
+        response = teen_client.delete(f"/api/shopping-lists/{shopping.id}/")
+        self.assertEqual(response.status_code, 403)
+        self.assertTrue(ShoppingList.objects.filter(id=shopping.id).exists())
+
+    def test_hidden_list_delete_returns_not_found(self):
+        shopping = ShoppingList.objects.create(family=self.family, name="Private")
+        ShoppingListAccess.objects.create(shopping_list=shopping, created_by=self.owner, visibility=ShoppingListAccess.Visibility.PRIVATE)
+        teen_client = APIClient(); teen_client.force_authenticate(self.teen)
+        response = teen_client.delete(f"/api/shopping-lists/{shopping.id}/")
+        self.assertEqual(response.status_code, 404)
+        self.assertTrue(ShoppingList.objects.filter(id=shopping.id).exists())
+
     def test_private_list_is_only_visible_to_creator(self):
         response = self.client.post("/api/shopping-lists/", {
             "family": str(self.family.id), "name": "Surprise", "visibility": "private",
