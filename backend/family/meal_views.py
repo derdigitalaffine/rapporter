@@ -35,6 +35,8 @@ class FamilyScopedSerializer(serializers.ModelSerializer):
         request = self.context.get("request")
         if not request or not Membership.objects.filter(user=request.user, family=family).exists():
             raise serializers.ValidationError("Familie nicht gefunden oder nicht freigegeben.")
+        if self.instance and getattr(self.instance, "family_id", None) != family.id:
+            raise serializers.ValidationError("Die Familie eines bestehenden Eintrags kann nicht geändert werden.")
         return family
 
     def _validate_family_object(self, family, obj, field_name):
