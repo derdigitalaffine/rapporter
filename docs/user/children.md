@@ -26,6 +26,7 @@ angezeigt und können hier nicht scheinbar nur für ein Kind entzogen werden.
 
 Beim Anlegen kann ein Owner das eigene Sorgerecht ausdrücklich bestätigen. Die
 Auswahl ist zunächst aus. Ohne diese Bestätigung wird kein Sorgerecht angenommen.
+Die Bestätigung legt keine Elternschaft oder Art der Familienbeziehung fest.
 Weitere Beziehungen werden unter Profil & Familie verwaltet. Technische Zugriffsrechte
 sind keine Aussage über die rechtliche Zulässigkeit einer einzelnen medizinischen Entscheidung.
 

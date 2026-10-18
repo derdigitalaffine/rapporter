@@ -102,7 +102,7 @@ def managed_children(request):
             if not child_member:
                 raise NotFound("Child membership not found.")
             if confirm_custody:
-                relationship, created = FamilyRelationship.objects.get_or_create(family=family,child_membership=child_member,related_membership=actor,defaults={"kind":"parent","has_custody":True,"status":"active"})
+                relationship, created = FamilyRelationship.objects.get_or_create(family=family,child_membership=child_member,related_membership=actor,defaults={"kind":"none","has_custody":True,"status":"active"})
                 if created:
                     record_audit_event("family.custody.changed",actor=request.user,actor_class="user",family=family,target_type="relationship",target_id=str(relationship.id),metadata={"scope":"custody_granted"})
             baby = attach_existing_child(request.user,child_member,birth_date=serializer.validated_data["birth_date"],client_identity_key=serializer.validated_data["client_identity_key"])
@@ -115,7 +115,7 @@ def managed_children(request):
         if confirm_custody:
             relationship, created = FamilyRelationship.objects.get_or_create(
                 family=family, child_membership=baby.membership, related_membership=actor,
-                defaults={"kind": "parent", "has_custody": True, "status": "active"},
+                defaults={"kind": "none", "has_custody": True, "status": "active"},
             )
             if created:
                 record_audit_event("family.custody.changed", actor=request.user, actor_class="user", family=family,
