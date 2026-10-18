@@ -1,7 +1,9 @@
 from collections import Counter, defaultdict
 
+from django.db.models import Q
+
 from .memory import normalize_name
-from .shopping_models import ShoppingSession, ShoppingSessionActivity
+from .shopping_models import ShoppingListAccess, ShoppingSession, ShoppingSessionActivity
 
 
 MIN_INDEPENDENT_STREAMS = 2
@@ -31,11 +33,14 @@ def _purchased_keys_from_snapshot(session):
 
 
 def learned_order_for_store(store, items):
-    """Project deterministic item order from final client-local checkout paths.
+    """Project deterministic item order from family-visible checkout paths.
 
-    Only item ids present in the immutable ``purchased_items`` checkout snapshot
-    may contribute. Reopen/check state is normalized independently inside each
-    client stream using ``client_sequence``; server receipt order and the global
+    Only family-visible source lists may feed the store-wide learned pool. Lists
+    without an access row retain the canonical legacy family-wide contract;
+    private/selected observations stay outside this broader projection. Only item
+    ids present in the immutable ``purchased_items`` checkout snapshot may
+    contribute. Reopen/check state is normalized independently inside each client
+    stream using ``client_sequence``; server receipt order and the global
     collaboration cursor never create route edges or decide another stream's
     causal state.
     """
@@ -50,7 +55,12 @@ def learned_order_for_store(store, items):
         for session in ShoppingSession.objects.filter(
             family=store.family,
             status=ShoppingSession.Status.COMPLETED,
-        ).only("id", "snapshot")
+        )
+        .filter(
+            Q(shopping_list__access_settings__isnull=True)
+            | Q(shopping_list__access_settings__visibility=ShoppingListAccess.Visibility.FAMILY)
+        )
+        .only("id", "snapshot")
         if _store_id_from_snapshot(session) == str(store.id)
     ]
     if not sessions:

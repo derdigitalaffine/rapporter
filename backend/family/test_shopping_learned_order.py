@@ -4,7 +4,7 @@ from rest_framework.test import APIClient
 
 from .models import Family, Membership, ShoppingItem, ShoppingList
 from .shopping_learned_order import learned_order_for_store
-from .shopping_models import ShoppingSession, ShoppingSessionActivity, ShoppingStore
+from .shopping_models import ShoppingListAccess, ShoppingSession, ShoppingSessionActivity, ShoppingStore
 from .shopping_session_service import record_shopping_item_activity
 
 
@@ -29,15 +29,18 @@ class ShoppingLearnedOrderTests(TestCase):
         self.client = APIClient()
         self.client.force_authenticate(self.owner)
 
-    def _item(self, name):
-        return next(item for item in self.items if item.name == name)
+    def _item(self, name, items=None):
+        source_items = self.items if items is None else items
+        return next(item for item in source_items if item.name == name)
 
-    def _completed_session(self, store=None, purchased_names=None):
-        names = [item.name for item in self.items] if purchased_names is None else purchased_names
-        purchased = [self._item(name) for name in names]
+    def _completed_session(self, store=None, purchased_names=None, shopping_list=None, items=None):
+        source_list = shopping_list or self.shopping_list
+        source_items = self.items if items is None else items
+        names = [item.name for item in source_items] if purchased_names is None else purchased_names
+        purchased = [self._item(name, source_items) for name in names]
         return ShoppingSession.objects.create(
             family=self.family,
-            shopping_list=self.shopping_list,
+            shopping_list=source_list,
             status=ShoppingSession.Status.COMPLETED,
             completed_by=self.owner,
             snapshot={
@@ -49,8 +52,8 @@ class ShoppingLearnedOrderTests(TestCase):
             },
         )
 
-    def _activity(self, session, stream, name, kind, client_sequence, server_sequence):
-        item = self._item(name)
+    def _activity(self, session, stream, name, kind, client_sequence, server_sequence, items=None):
+        item = self._item(name, items)
         return ShoppingSessionActivity.objects.create(
             session=session,
             sequence=server_sequence,
@@ -62,7 +65,7 @@ class ShoppingLearnedOrderTests(TestCase):
             client_sequence=client_sequence,
         )
 
-    def _path(self, session, stream, names, server_sequences):
+    def _path(self, session, stream, names, server_sequences, items=None):
         for client_sequence, (name, server_sequence) in enumerate(zip(names, server_sequences), start=1):
             self._activity(
                 session,
@@ -71,7 +74,23 @@ class ShoppingLearnedOrderTests(TestCase):
                 ShoppingSessionActivity.Kind.ITEM_CHECKED,
                 client_sequence,
                 server_sequence,
+                items,
             )
+
+    def _source_list(self, name, visibility=None):
+        shopping_list = ShoppingList.objects.create(family=self.family, name=name)
+        items = [
+            ShoppingItem.objects.create(shopping_list=shopping_list, name="Apples", position=30, added_by=self.owner),
+            ShoppingItem.objects.create(shopping_list=shopping_list, name="Bread", position=20, added_by=self.owner),
+            ShoppingItem.objects.create(shopping_list=shopping_list, name="Milk", position=10, added_by=self.owner),
+        ]
+        if visibility is not None:
+            ShoppingListAccess.objects.create(
+                shopping_list=shopping_list,
+                created_by=self.owner,
+                visibility=visibility,
+            )
+        return shopping_list, items
 
     def test_two_device_paths_ignore_reversed_server_receipt_order(self):
         first = self._completed_session()
@@ -85,6 +104,70 @@ class ShoppingLearnedOrderTests(TestCase):
         self.assertEqual([row["name"] for row in result["ordered_items"]], ["Apples", "Bread", "Milk"])
         self.assertEqual(result["evidence"]["streams"], 2)
         self.assertGreater(result["confidence"], 0)
+
+    def test_explicit_family_scope_contributes_to_family_pool(self):
+        ShoppingListAccess.objects.create(
+            shopping_list=self.shopping_list,
+            created_by=self.owner,
+            visibility=ShoppingListAccess.Visibility.FAMILY,
+        )
+        for stream in ["family-a", "family-b"]:
+            session = self._completed_session()
+            self._path(session, stream, ["Apples", "Bread", "Milk"], [3, 2, 1])
+
+        result = learned_order_for_store(self.store, self.shopping_list.items.all())
+
+        self.assertEqual(result["source"], "learned")
+        self.assertEqual(result["evidence"]["streams"], 2)
+
+    def test_private_and_selected_scopes_never_feed_family_pool(self):
+        for visibility in [ShoppingListAccess.Visibility.PRIVATE, ShoppingListAccess.Visibility.SELECTED]:
+            with self.subTest(visibility=visibility):
+                source_list, source_items = self._source_list(f"Scoped {visibility}", visibility)
+                first = self._completed_session(shopping_list=source_list, items=source_items)
+                second = self._completed_session(shopping_list=source_list, items=source_items)
+                self._path(first, f"{visibility}-a", ["Apples", "Bread", "Milk"], [1, 2, 3], source_items)
+                self._path(second, f"{visibility}-b", ["Apples", "Bread", "Milk"], [3, 2, 1], source_items)
+
+                result = learned_order_for_store(self.store, self.shopping_list.items.all())
+
+                self.assertEqual(result["source"], "legacy")
+                self.assertEqual(result["evidence"]["streams"], 0)
+
+    def test_scope_narrowing_removes_previously_eligible_evidence(self):
+        source_list, source_items = self._source_list("Narrowed", ShoppingListAccess.Visibility.FAMILY)
+        for stream in ["narrow-a", "narrow-b"]:
+            session = self._completed_session(shopping_list=source_list, items=source_items)
+            self._path(session, stream, ["Apples", "Bread", "Milk"], [3, 2, 1], source_items)
+
+        before = learned_order_for_store(self.store, self.shopping_list.items.all())
+        self.assertEqual(before["source"], "learned")
+
+        access = source_list.access_settings
+        access.visibility = ShoppingListAccess.Visibility.SELECTED
+        access.save(update_fields=["visibility"])
+
+        after = learned_order_for_store(self.store, self.shopping_list.items.all())
+        self.assertEqual(after["source"], "legacy")
+        self.assertEqual(after["evidence"]["streams"], 0)
+
+    def test_deleting_source_list_removes_derived_evidence(self):
+        source_list, source_items = self._source_list("Disposable")
+        source_list_id = source_list.id
+        for stream in ["delete-a", "delete-b"]:
+            session = self._completed_session(shopping_list=source_list, items=source_items)
+            self._path(session, stream, ["Apples", "Bread", "Milk"], [1, 2, 3], source_items)
+
+        before = learned_order_for_store(self.store, self.shopping_list.items.all())
+        self.assertEqual(before["source"], "learned")
+        self.assertEqual(ShoppingSession.objects.filter(shopping_list_id=source_list_id).count(), 2)
+
+        source_list.delete()
+
+        self.assertFalse(ShoppingSession.objects.filter(shopping_list_id=source_list_id).exists())
+        after = learned_order_for_store(self.store, self.shopping_list.items.all())
+        self.assertEqual(after["source"], "legacy")
+        self.assertEqual(after["evidence"]["streams"], 0)
 
     def test_parallel_paths_in_one_session_never_create_cross_stream_edges(self):
         frozen = ShoppingItem.objects.create(
