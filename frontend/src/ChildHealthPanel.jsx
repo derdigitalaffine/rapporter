@@ -34,17 +34,17 @@ export default function ChildHealthPanel({baby}){
    {!bulk&&row.state!=='done'&&<button type="button" className="ghost icon-button" title={c('markDone')} aria-label={`${c('markDone')}: ${row.title}`} disabled={busy} onClick={()=>done(row)}><Icon name="check"/></button>}
   </article>)}</div>
   {data&&!loading&&!error&&!rows.length&&<p className="child-empty">{c(view==='history'?'noHistory':'noCurrent')}</p>}
-  {data?.items?.some(row=>row.event)&&<ProgressiveFieldGroup label={t('babyUi.questionForAppointment')}><BabyPreventivePanel baby={baby} t={t} language={i18n.language.startsWith('de')?'de':'en'} allowPlanning={false}/></ProgressiveFieldGroup>}
-  {editor&&<HealthEditor key={`${baby.id}:${editor.key}`} row={editor} c={c} onSave={save} onClose={()=>setEditor(null)}/>}
+  {data&&<ProgressiveFieldGroup label={t('babyUi.questionForAppointment')}><BabyPreventivePanel baby={baby} t={t} language={i18n.language.startsWith('de')?'de':'en'} allowPlanning={false}/></ProgressiveFieldGroup>}
+  {editor&&<HealthEditor key={`${baby.id}:${editor.key}`} row={editor} c={c} onSave={save} onReload={load} onClose={()=>setEditor(null)}/>}
  </section>;
 }
 
-export function HealthEditor({row,c,onSave,onClose}){
+export function HealthEditor({row,c,onSave,onClose,onReload}){
  const initial={title:row.title||'',state:row.state||'unknown',occurred_on:row.occurred_on||'',planned_at:localDateTime(row.planned_at),practice:row.practice||'',note:row.note||'',batch:row.batch||''};
- const [form,setForm]=useState(initial),[busy,setBusy]=useState(false),[error,setError]=useState('');
+ const [form,setForm]=useState(initial),[busy,setBusy]=useState(false),[error,setError]=useState(''),[conflict,setConflict]=useState(false);
  const set=(key,value)=>setForm(current=>({...current,[key]:value}));
  async function close(){if(busy)return;if(JSON.stringify(initial)!==JSON.stringify(form)&&!await confirmAction({title:c('close'),message:c('unsaved'),confirmLabel:c('discard'),cancelLabel:c('keep')}))return;onClose()}
- async function submit(event){event.preventDefault();setBusy(true);setError('');try{await onSave({...form,key:row.key,expected_version:row.version,reference_checksum:row.reference?.checksum||'',occurred_on:form.occurred_on||null,planned_at:form.planned_at?new Date(form.planned_at).toISOString():null})}catch(err){setError(err.message||c('error'))}finally{setBusy(false)}}
+ async function submit(event){event.preventDefault();setBusy(true);setError('');setConflict(false);try{await onSave({...form,key:row.key,expected_version:row.version,event_starts_at:row.event_starts_at||null,reference_checksum:row.reference?.checksum||'',occurred_on:form.occurred_on||null,planned_at:form.planned_at?new Date(form.planned_at).toISOString():null})}catch(err){setError(err.message||c('error'));setConflict(err.status===409)}finally{setBusy(false)}}
  return <FamilySheet labelledBy="child-health-editor-title" busy={busy} onClose={close}>
   <div className="sheet-head"><h2 id="child-health-editor-title">{row.title||c('vaccination')}</h2><button type="button" className="sheet-close" disabled={busy} aria-label={c('close')} onClick={close}><Icon name="close"/></button></div>
   <form onSubmit={submit} className="child-record-form">
@@ -60,7 +60,7 @@ export function HealthEditor({row,c,onSave,onClose}){
     </ProgressiveFieldGroup>
     {row.reference?.source_version&&<p className="child-muted">{c('healthSource')}: {row.reference.source_title||row.reference.source_key} · {row.reference.source_version}</p>}
    </fieldset>
-   {error&&<div className="integration-notice" role="alert">{error}</div>}
+   {error&&<div className="integration-notice" role="alert">{error}{conflict&&onReload&&<button className="secondary" type="button" disabled={busy} onClick={async()=>{if(await confirmAction({title:c('reload'),message:c('unsaved'),confirmLabel:c('discard'),cancelLabel:c('keep')})){onClose();await onReload()}}}>{c('reload')}</button>}</div>}
    <FormActions><button type="button" className="secondary" disabled={busy} onClick={close}>{c('cancel')}</button><button className="primary" disabled={busy}><Icon name="check"/>{c('save')}</button></FormActions>
   </form>
  </FamilySheet>;

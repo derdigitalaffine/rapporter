@@ -21,7 +21,7 @@ async function children(page,{language='de'}={}){
   if(path==='/baby/profiles/older/health/'){
    if(method==='POST'){
     const body=request.postDataJSON();writes.push({path,body});
-    if(failSave)return json({detail:'Speichern fehlgeschlagen'},503);
+    if(failSave)return json({detail:'Speichern fehlgeschlagen'},failSave);
     for(const value of body.entries||[body]){const row=records.find(row=>row.key===value.key);if(row)Object.assign(row,value,{version:row.version+1})}
    }
    return json({items:records,vaccination_reference_available:false});
@@ -36,7 +36,7 @@ async function children(page,{language='de'}={}){
   return json({});
  });
  await page.route('**/api/auth/reauth/password/',route=>route.fulfill({status:200,contentType:'application/json',body:'{}'}));
- return {app,writes,fail:()=>{failSave=true}};
+ return {app,writes,fail:(status=503)=>{failSave=status}};
 }
 
 test('older child starts with neutral health history; sibling switch preserves scoped rights',async({page})=>{
@@ -94,6 +94,21 @@ test('historical completion is explicit and sends no appointment date',async({pa
  await expect.poll(()=>writes.length).toBe(1);
  expect(writes[0].body.entries).toEqual([expect.objectContaining({key:'exam:U9',state:'done',expected_version:0})]);
  expect(writes[0].body.entries[0].planned_at).toBeUndefined();
+});
+
+test('conflict reload confirms draft discard and can keep editing',async({page})=>{
+ const fixture=await children(page);fixture.fail(409);
+ await page.goto('/?page=baby&baby=older&view=health');
+ await page.getByRole('button',{name:'Impfung dokumentieren'}).click();
+ const dialog=page.getByRole('dialog',{name:'Impfung dokumentieren',exact:true});
+ await dialog.getByRole('textbox',{name:'Impfung / Impfstoff',exact:true}).fill('Nicht verlieren');
+ await dialog.getByRole('button',{name:'Speichern',exact:true}).click();
+ await dialog.getByRole('button',{name:'Erneut laden',exact:true}).click();
+ await page.getByRole('button',{name:'Weiter bearbeiten',exact:true}).click();
+ await expect(dialog.getByRole('textbox',{name:'Impfung / Impfstoff',exact:true})).toHaveValue('Nicht verlieren');
+ await dialog.getByRole('button',{name:'Erneut laden',exact:true}).click();
+ await page.getByRole('button',{name:'Änderungen verwerfen',exact:true}).click();
+ await expect(dialog).toHaveCount(0);
 });
 
 test('unavailable child link never falls back to a sibling',async({page})=>{

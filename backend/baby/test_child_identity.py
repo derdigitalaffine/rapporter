@@ -226,8 +226,6 @@ class ChildIdentityTests(TestCase):
 
 
 class ChildIdentityConcurrencyTests(TransactionTestCase):
-    reset_sequences = True
-
     def setUp(self):
         self.owner = User.objects.create_user(username="owner-concurrent-236", password=PASSWORD)
         self.family = Family.objects.create(name="Concurrency Family", slug="child-concurrency-236")

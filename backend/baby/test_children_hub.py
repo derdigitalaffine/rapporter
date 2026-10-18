@@ -100,6 +100,7 @@ class ChildrenHubTests(TestCase):
                  "planned_at": (timezone.now() + timedelta(days=2)).isoformat()}
         response = self.client.post(path, value, format="json")
         self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(self.client.post(path,value,format="json").status_code,200)
         event = FamilyEvent.objects.get()
         self.assertNotIn(str(self.child.id), str(event.payload))
         self.assertNotIn(self.child.display_name, str(event.payload))
@@ -116,6 +117,46 @@ class ChildrenHubTests(TestCase):
             "state": "done", "expected_version": 0, "occurred_on": timezone.localdate().isoformat(), "batch": "documented-batch"}, format="json")
         self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(ChildHealthRecord.objects.get().reference, {})
+
+    def test_calendar_reschedule_is_projected_and_stale_health_edits_do_not_overwrite_it(self):
+        path = f"/api/baby/profiles/{self.child.id}/health/"
+        planned = timezone.now()+timedelta(days=2)
+        values = {"key":"exam:U9","state":"planned","expected_version":0,"planned_at":planned.isoformat()}
+        self.assertEqual(self.client.post(path,values,format="json").status_code,200)
+        event = FamilyEvent.objects.get()
+        moved = planned+timedelta(days=1)
+        event.starts_at = moved
+        event.payload["location"] = "Calendar-owned detail"
+        event.save()
+        items = self.client.get(path).data["items"]
+        row = next(row for row in items if row["key"] == "exam:U9")
+        self.assertEqual(row["planned_at"],moved.isoformat())
+        stale = {**values,"expected_version":1,"event_starts_at":planned.isoformat(),"note":"Keep my note"}
+        self.assertEqual(self.client.post(path,stale,format="json").status_code,409)
+        event.refresh_from_db()
+        self.assertEqual(event.starts_at,moved)
+        fresh = {**stale,"event_starts_at":row["event_starts_at"],"planned_at":(moved+timedelta(hours=1)).isoformat()}
+        self.assertEqual(self.client.post(path,fresh,format="json").status_code,200)
+        event.refresh_from_db()
+        self.assertEqual(event.payload["location"],"Calendar-owned detail")
+        self.assertEqual(FamilyEvent.objects.count(),1)
+
+    def test_legacy_appointment_is_read_only_projected_with_its_original_reference(self):
+        from .development_service import _private_event_token, _provenance_defaults
+        from .reference_models import PediatricPreventiveEventReference
+        from .reference_service import preventive_exam_rules
+        rule = next(row for row in preventive_exam_rules(locale="de-DE") if row["key"] == "U9")
+        event = FamilyEvent.objects.create(family=self.family,external_id=_private_event_token(self.child,"U9"),
+            type="family.appointment",title="Vorsorgetermin",starts_at=timezone.now()+timedelta(days=1),payload={})
+        reference = PediatricPreventiveEventReference.objects.create(event=event,**_provenance_defaults(self.child,rule))
+        path = f"/api/baby/profiles/{self.child.id}/health/"
+        row = next(row for row in self.client.get(path).data["items"] if row["key"] == "exam:U9")
+        self.assertEqual((row["state"],row["event"],row["version"]),("planned",str(event.id),0))
+        self.assertEqual(row["reference"]["source_version"],reference.source_version)
+        self.assertFalse(ChildHealthRecord.objects.exists())
+        response = self.client.post(path,{**row,"expected_version":0,"reference_checksum":row["reference"]["checksum"]},format="json")
+        self.assertEqual(response.status_code,200,response.data)
+        self.assertEqual(FamilyEvent.objects.count(),1)
 
     def test_cross_family_and_plain_owner_do_not_gain_child_access(self):
         other_family = Family.objects.create(name="Outside", slug="hub-outside")

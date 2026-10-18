@@ -34,6 +34,10 @@ Only explicit planned state creates/updates a canonical FamilyEvent. Recording d
 unknown or later does not cancel an independent calendar appointment. Calendar owns
 reschedule/cancellation; central reminders and reference publication remain in #238.
 No GET-time backfill, historical alarm flood, invented STIKO data or automated decisions.
+Existing preventive events are projected without writes using their original immutable
+provenance. FamilyEvent.starts_at is canonical on reads. Planned edits send the observed
+event_starts_at; a locked comparison rejects stale calendar dates with 409. Identical
+lost-response retries remain safe and unrelated calendar payload fields are preserved.
 Day boundaries use the family's timezone. No extra offline queue or sensitive telemetry.
 
 ## UI and navigation

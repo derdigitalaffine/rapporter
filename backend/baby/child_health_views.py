@@ -20,6 +20,7 @@ class HealthInput(serializers.Serializer):
     title = serializers.CharField(required=False, max_length=160, allow_blank=True)
     occurred_on = serializers.DateField(required=False, allow_null=True)
     planned_at = serializers.DateTimeField(required=False, allow_null=True)
+    event_starts_at = serializers.DateTimeField(required=False, allow_null=True)
     practice = serializers.CharField(required=False, max_length=160, allow_blank=True)
     note = serializers.CharField(required=False, max_length=4000, allow_blank=True)
     batch = serializers.CharField(required=False, max_length=80, allow_blank=True)

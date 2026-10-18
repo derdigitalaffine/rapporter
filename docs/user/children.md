@@ -39,8 +39,10 @@ rückwirkenden Termine oder Erinnerungen.
 Ein tatsächlicher Termin wird nur nach Auswahl von Datum und Uhrzeit als normaler
 Familienkalendereintrag angelegt. Der gemeinsame Kalender zeigt eine neutrale
 Bezeichnung; Kind, Untersuchung, Notizen und Fragen bleiben geschützt. Ein später
-geänderter Dokumentationsstatus löscht keinen Kalendereintrag: Terminänderungen oder
-Absagen werden im Kalender verwaltet.
+geänderter Dokumentationsstatus löscht keinen Kalendereintrag. Verschiebungen betreffen
+denselben Termin; Absagen werden im Kalender verwaltet. Kalenderänderungen werden im
+Kinderbereich übernommen. Bei gleichzeitiger Bearbeitung schützt eine Konfliktmeldung
+vor dem Überschreiben; erneutes Laden verwirft Eingaben erst nach Bestätigung.
 
 Impfungen können anhand vorhandener Unterlagen manuell dokumentiert werden.
 Empfehlungen erscheinen nur aus veröffentlichten Referenzpaketen mit Quellenstand.

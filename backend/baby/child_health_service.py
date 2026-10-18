@@ -43,25 +43,48 @@ def health_rules(baby, language="de"):
 
 
 def serialize_record(row):
+    event = row.event if row.event_id else None
+    planned = event.starts_at if event and row.state == "planned" else row.planned_at
     return {"key": row.key, "kind": row.kind, "title": row.title, "state": row.state,
             "occurred_on": row.occurred_on.isoformat() if row.occurred_on else None,
-            "planned_at": row.planned_at.isoformat() if row.planned_at else None,
+            "planned_at": planned.isoformat() if planned else None,
+            "event_starts_at": event.starts_at.isoformat() if event else None,
             "practice": row.practice, "note": row.note, "batch": row.batch,
             "reference": row.reference, "event": str(row.event_id) if row.event_id else None, "version": row.version}
+
+
+def reference_rule(reference):
+    kind = "vaccination" if ":" in reference.rule_key else "exam"
+    return {"key": f"{kind}:{reference.rule_key}", "rule_key": reference.rule_key, "kind": kind,
+            "title": reference.rule_key, "start_day": reference.start_day, "end_day": reference.end_day,
+            "target_day": reference.target_day, "reference": {
+                "package_id": str(reference.reference_package_id) if reference.reference_package_id else None,
+                "source_key": reference.source_key, "source_version": reference.source_version,
+                "checksum": reference.source_checksum, "locale": reference.locale}}
 
 
 def health_payload(user, baby, language="de"):
     child_scope_access(user, baby, "development")
     rules, package = health_rules(baby, language)
-    records = {row.key: row for row in baby.health_records.all()}
+    records = {row.key: row for row in baby.health_records.select_related("event")}
+    references = {reference_rule(row)["key"]: row for row in baby.preventive_event_references.select_related("event")}
+    current_keys = {row["key"] for row in rules}
+    rules.extend(reference_rule(row) for key, row in references.items() if key not in current_keys and key not in records)
     age_days = (local_date(baby.family) - baby.birth_date).days
     items = []
     for rule in rules:
         record = records.pop(rule["key"], None)
+        reference = references.get(rule["key"])
+        projection = {}
+        if reference:
+            rule = {**rule, **reference_rule(reference), "title": rule["title"]}
+        if reference and not record:
+            projection = {"state": "planned", "planned_at": reference.event.starts_at.isoformat(),
+                          "event_starts_at": reference.event.starts_at.isoformat(), "event": str(reference.event_id)}
         items.append({**rule, "historical": rule["end_day"] < age_days,
                       "window_start": (baby.birth_date + timedelta(days=rule["start_day"])).isoformat(),
                       "window_end": (baby.birth_date + timedelta(days=rule["end_day"])).isoformat(),
-                      "state": "unknown", "version": 0, **(serialize_record(record) if record else {})})
+                      "state": "unknown", "version": 0, **(serialize_record(record) if record else projection)})
     items.extend({**serialize_record(row), "historical": True} for row in records.values())
     return {"baby": str(baby.id), "items": items,
             "vaccination_reference_available": bool(package and package.payload.get("vaccinations")),
@@ -76,6 +99,12 @@ def save_health_record(user, baby, values):
     rules, _ = health_rules(baby)
     rule = next((row for row in rules if row["key"] == values["key"]), None)
     existing = ChildHealthRecord.objects.filter(baby=baby, key=values["key"]).first()
+    token = _private_event_token(baby, values["key"].removeprefix("exam:"))
+    events = FamilyEvent.objects.select_for_update().filter(family=baby.family)
+    linked = events.filter(pk=existing.event_id).first() if existing and existing.event_id else events.filter(external_id=token).first()
+    provenance = PediatricPreventiveEventReference.objects.filter(baby=baby,event=linked).first() if linked else None
+    if provenance:
+        rule = {**(rule or {}), **reference_rule(provenance), "title": rule["title"] if rule else provenance.rule_key}
     if not rule and not existing and not values["key"].startswith("manual:"):
         raise ValidationError({"key": "Choose a current reference or a manual vaccination record."})
     if not existing and rule and "reference_checksum" in values and values["reference_checksum"] != rule["reference"].get("checksum", ""):
@@ -87,7 +116,7 @@ def save_health_record(user, baby, values):
         raise ValidationError({"occurred_on": "Use a date between birth and today."})
     if state == "planned" and not planned:
         raise ValidationError({"planned_at": "Choose the actual appointment date and time."})
-    if state == "planned" and planned < timezone.now():
+    if state == "planned" and not linked and planned < timezone.now():
         raise ValidationError({"planned_at": "Past history must not create a new appointment."})
     fields = {"state": state, "occurred_on": occurred if state == "done" else None,
               "planned_at": planned if state == "planned" else None,
@@ -97,11 +126,13 @@ def save_health_record(user, baby, values):
         if not fields["title"]:
             raise ValidationError({"title": "Enter the documented vaccination name."})
     if existing and values["expected_version"] != existing.version:
-        if all(getattr(existing, key) == value for key, value in fields.items()):
+        if all(getattr(existing, key) == value for key, value in fields.items()) and (state != "planned" or not linked or linked.starts_at == planned):
             return existing
         raise HealthConflict()
     if not existing and values["expected_version"] != 0:
         raise HealthConflict()
+    if state == "planned" and linked and values.get("event_starts_at") != linked.starts_at:
+        raise HealthConflict("The calendar appointment changed. Reload before saving.")
     row = existing or ChildHealthRecord(baby=baby, key=values["key"], kind=rule["kind"] if rule else "vaccination",
                                         title=rule["title"] if rule else values.get("title", ""),
                                         reference=rule["reference"] if rule else {})
@@ -113,14 +144,17 @@ def save_health_record(user, baby, values):
     if existing:
         row.version += 1
     if state == "planned":
-        token = _private_event_token(baby, row.key.removeprefix("exam:"))
-        event, _ = FamilyEvent.objects.get_or_create(family=baby.family, external_id=token, defaults={
-            "type": "family.appointment", "title": "Vorsorgetermin" if baby.family.locale.startswith("de") else "Check-up",
-            "starts_at": planned, "actionable": True,
-            "payload": {"private_context": True},
-        })
+        event = linked
+        if not event:
+            event, created = FamilyEvent.objects.get_or_create(family=baby.family, external_id=token, defaults={
+                "type":"family.appointment", "title":"Vorsorgetermin" if baby.family.locale.startswith("de") else "Check-up",
+                "starts_at":planned, "actionable":True, "payload":{"private_context":True}})
+            if not created:
+                event = events.get(pk=event.pk)
+                if values.get("event_starts_at") != event.starts_at:
+                    raise HealthConflict("The calendar appointment changed. Reload before saving.")
         event.starts_at = planned
-        event.payload = {"private_context": True, "deep_link": f"/?page=baby&event={event.id}&view=health"}
+        event.payload = {**event.payload, "private_context": True, "deep_link": f"/?page=baby&event={event.id}&view=health"}
         event.save(update_fields=["starts_at", "payload", "updated_at"])
         row.event = event
         if rule and not PediatricPreventiveEventReference.objects.filter(event=event).exists():
