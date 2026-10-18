@@ -6,6 +6,10 @@
 .shopping-checkout-section>label{font-size:.9rem;font-weight:650}
 .shopping-checkout-section>select{width:100%;min-height:48px;padding:.7rem .8rem;border:1px solid var(--line);border-radius:12px;font:inherit}
 .shopping-checkout-section>small{color:var(--muted);line-height:1.4}
+.shopping-checkout-collaboration{padding:.75rem;border:1px solid var(--line);border-radius:14px}
+.shopping-checkout-collaboration>button{min-height:48px;justify-content:center}
+.shopping-checkout-collaboration>label{display:flex;align-items:center;gap:.7rem;min-height:48px;cursor:pointer}
+.shopping-checkout-collaboration>label input{inline-size:1.25rem;block-size:1.25rem;flex:none}
 .shopping-store-lookup{border:1px solid var(--line);border-radius:12px;padding:.25rem .7rem}
 .shopping-store-lookup>summary{cursor:pointer;display:flex;align-items:center;min-height:44px;font-weight:650}
 .shopping-store-lookup form{display:grid;gap:.45rem;padding:.25rem 0 .55rem}
