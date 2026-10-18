@@ -35,7 +35,7 @@ function linkFor(item,action){
 }
 function secondaryLabel(action,text){return action.id==='snooze'?text.snooze:action.id==='duel'?text.duel:action.id==='move'?text.move:action.id==='delete'?text.delete:text.edit}
 
-export default function TodoActionRow({item,language,busy=false,onPrimary,onSecondary,onOpen}){
+export default function TodoActionRow({item,language,busy=false,onPrimary,onSecondary,onOpen,density='compact'}){
   const [editing,setEditing]=useState(false);
   const text={...textFor(language),duel:assignmentCopy(language).duel};const actionLabel=primaryLabel(item,text);const secondary=secondaryActions(item);const metadata=[];
   const expected=item.prediction_v2?.expected_at||item.due_at||item.next_due_at;
@@ -47,7 +47,7 @@ export default function TodoActionRow({item,language,busy=false,onPrimary,onSeco
   if(item.assignee?.username)metadata.push(item.assignee.username);
   if(item.state==='overdue')metadata.push(text.overdue);
   else if(item.state==='active'||item.state==='waiting')metadata.push(item.state==='active'?text.active:text.waiting);
-  return <article className={`todo-row urgency-${item.urgency||'normal'}`} data-action-id={item.id} data-accent={item.accent_token||''}>
+  return <article className={`todo-row todo-row--${density} urgency-${item.urgency||'normal'}`} data-action-id={item.id} data-accent={item.accent_token||''}>
     <button className="todo-complete" type="button" onClick={()=>onPrimary?.(item)} disabled={busy||!canRunPrimary(item)} aria-label={`${actionLabel}: ${item.title}`} title={actionLabel}><Icon name={item.kind==='routine'?(item.primary_action?.id==='reactivate'?'refresh':'history'):'check'} size={18}/></button>
     <a className="todo-row-main" href={item.deep_link||fallbackHref(item)} onClick={onOpen?event=>{if(event.button===0&&!event.metaKey&&!event.ctrlKey&&!event.shiftKey&&!event.altKey){event.preventDefault();onOpen(item)}}:undefined}>
       <strong className="todo-row-icon"><Icon name={item.icon||'tasks'} size={16}/>{item.title}</strong>{item.assignee&&<MemberAvatar person={item.assignee} size={22}/>}
