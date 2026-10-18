@@ -23,7 +23,7 @@ async function openStore(page,{count=24,beforeGoto=null}={}){
  return state;
 }
 
-test.only('store · peer checks preserve personal filter, focus, scroll and ordering choice',async({page})=>{
+test('store · peer checks preserve personal filter, focus, scroll and ordering choice',async({page})=>{
  await page.setViewportSize({width:390,height:844});
  let sessionPolls=0;let releaseRemote=false;let sentRemote=false;
  await openStore(page,{beforeGoto:async({page})=>{
@@ -47,8 +47,10 @@ test.only('store · peer checks preserve personal filter, focus, scroll and orde
  await allFilter.focus();
  await expect(allFilter).toBeFocused();
  await page.evaluate(()=>window.scrollTo(0,520));
- const beforeScroll=await page.evaluate(()=>window.scrollY);
- expect(beforeScroll).toBeGreaterThan(200);
+ const viewportAnchor=page.locator('.store-row').filter({hasText:'Artikel 14'}).first();
+ const beforeAnchorTop=await viewportAnchor.evaluate(element=>element.getBoundingClientRect().top);
+ expect(beforeAnchorTop).toBeGreaterThan(100);
+ expect(beforeAnchorTop).toBeLessThan(844);
 
  const pollsBeforeRelease=sessionPolls;
  releaseRemote=true;
@@ -57,11 +59,11 @@ test.only('store · peer checks preserve personal filter, focus, scroll and orde
  await expect(allFilter).toHaveAttribute('aria-pressed','true');
  await expect(allFilter).toBeFocused();
  await expect(page.getByLabel('Sortierung im Laden')).toHaveValue('categories');
- const afterScroll=await page.evaluate(()=>window.scrollY);
- expect(Math.abs(afterScroll-beforeScroll)).toBeLessThanOrEqual(2);
+ const afterAnchorTop=await viewportAnchor.evaluate(element=>element.getBoundingClientRect().top);
+ expect(Math.abs(afterAnchorTop-beforeAnchorTop)).toBeLessThanOrEqual(2);
 });
 
-test.only('store · reduced motion removes row transitions and completion transform',async({page})=>{
+test('store · reduced motion removes row transitions and completion transform',async({page})=>{
  await page.emulateMedia({reducedMotion:'reduce'});
  await page.setViewportSize({width:390,height:844});
  await openStore(page,{count:8});
