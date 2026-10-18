@@ -17,13 +17,27 @@ def _store_id_from_snapshot(session):
     return str(confirmed.get("id") or "")
 
 
-def learned_order_for_store(store, items):
-    """Project deterministic item order from client-local completed checkout paths.
+def _purchased_keys_from_snapshot(session):
+    """Return the immutable checkout truth keyed by the original item id."""
+    purchased = {}
+    for row in (session.snapshot or {}).get("purchased_items") or []:
+        if not isinstance(row, dict):
+            continue
+        item_id = str(row.get("id") or "").strip()
+        key = normalize_name(row.get("name"))
+        if item_id and key:
+            purchased[item_id] = key
+    return purchased
 
-    Server receipt time, ``created_at`` and the collaboration ``sequence`` cursor
-    are intentionally ignored. Each (session, client_stream) is an independent
-    partial path, so offline replay and multiple people/devices cannot manufacture
-    a global timeline.
+
+def learned_order_for_store(store, items):
+    """Project deterministic item order from final client-local checkout paths.
+
+    Only item ids present in the immutable ``purchased_items`` checkout snapshot
+    may contribute. Reopen/check state is normalized independently inside each
+    client stream using ``client_sequence``; server receipt order and the global
+    collaboration cursor never create route edges or decide another stream's
+    causal state.
     """
     items = list(items)
     legacy = sorted(items, key=_legacy_key)
@@ -42,21 +56,51 @@ def learned_order_for_store(store, items):
     if not sessions:
         return _payload(store, legacy, "legacy", 0.0, 0, 0)
 
+    purchased_by_session = {
+        session.id: purchased
+        for session in sessions
+        if (purchased := _purchased_keys_from_snapshot(session))
+    }
+    if not purchased_by_session:
+        return _payload(store, legacy, "legacy", 0.0, 0, 0)
+
     rows = (
         ShoppingSessionActivity.objects.filter(
-            session_id__in=[session.id for session in sessions],
-            kind=ShoppingSessionActivity.Kind.ITEM_CHECKED,
+            session_id__in=list(purchased_by_session),
+            kind__in=[
+                ShoppingSessionActivity.Kind.ITEM_CHECKED,
+                ShoppingSessionActivity.Kind.ITEM_REOPENED,
+            ],
+            item_id__isnull=False,
             client_stream__gt="",
             client_sequence__isnull=False,
         )
-        .only("session_id", "client_stream", "client_sequence", "item_name")
+        .only(
+            "session_id",
+            "kind",
+            "item_id",
+            "client_stream",
+            "client_sequence",
+        )
         .order_by("session_id", "client_stream", "client_sequence")
     )
-    streams = defaultdict(list)
+
+    # A single item can be touched independently by multiple people/devices. Keep
+    # one terminal state per causal stream instead of collapsing those streams by
+    # server arrival order. The final checkout snapshot is the cross-stream truth:
+    # only purchased ids are eligible at all.
+    terminal = {}
     for row in rows:
-        key = normalize_name(row.item_name)
+        item_id = str(row.item_id)
+        key = purchased_by_session.get(row.session_id, {}).get(item_id)
         if key and key in current_keys:
-            streams[(row.session_id, row.client_stream)].append((row.client_sequence, key))
+            terminal[(row.session_id, row.client_stream, item_id)] = (row, key)
+
+    streams = defaultdict(list)
+    for row, key in terminal.values():
+        if row.kind != ShoppingSessionActivity.Kind.ITEM_CHECKED:
+            continue
+        streams[(row.session_id, row.client_stream)].append((row.client_sequence, key))
 
     pair_counts = Counter()
     usable_streams = 0
