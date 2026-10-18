@@ -50,7 +50,7 @@ test('older child starts with neutral health history; sibling switch preserves s
  await page.getByLabel('Kind auswählen').selectOption('younger');
  await expect(page.getByRole('button',{name:/Stillen.*Timer starten/})).toBeVisible();
  await expect(page.getByRole('button',{name:'Vorsorge & Impfungen',exact:true})).toHaveCount(0);
- await page.getByRole('button',{name:'Mehr',exact:true}).click();
+ await page.getByRole('navigation',{name:'Schwangerschaft & Kinder',exact:true}).getByRole('button',{name:'Mehr',exact:true}).click();
  await expect(page.getByRole('button',{name:'Care Circle bearbeiten',exact:true})).toHaveCount(0);
  await page.goBack();
  await expect(page.getByRole('button',{name:/Stillen.*Timer starten/})).toBeVisible();
@@ -66,7 +66,11 @@ test('custodian sees full access and can delegate without a Guardian switch',asy
  await dialog.getByRole('checkbox',{name:'Pflege erfassen'}).check();
  await dialog.getByLabel('Dein aktuelles Passwort').fill('fixture-password');
  await dialog.getByRole('button',{name:'Speichern',exact:true}).click();
- await expect(dialog).toHaveCount(0);
+ await expect.poll(async()=>{
+  if(!await dialog.count())return 'closed';
+  const errors=await dialog.getByRole('alert').allTextContents();
+  return errors.length?errors.join(' | '):`open; writes=${writes.length}; invalid=${await dialog.locator(':invalid').count()}`;
+ }).toBe('closed');
  expect(writes.at(-1).body.care_circle).toContainEqual({membership:'member-2',can_log_care:true,can_view_growth_development:false});
 });
 
