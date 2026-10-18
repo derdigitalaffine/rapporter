@@ -13,9 +13,10 @@ function seedItems(state,count=24){
  }));
 }
 
-async function openStore(page,{count=24}={}){
+async function openStore(page,{count=24,beforeGoto=null}={}){
  const state=await installApiMocks(page,{dismissOnboarding:true});
  seedItems(state,count);
+ if(beforeGoto)await beforeGoto({page,state});
  await page.goto('/?page=shopping&list=shop-1&mode=store');
  await page.waitForLoadState('networkidle');
  await expect(page.locator('.store-focus')).toBeVisible();
@@ -25,15 +26,16 @@ async function openStore(page,{count=24}={}){
 test('store · peer checks preserve personal filter, focus, scroll and ordering choice',async({page})=>{
  await page.setViewportSize({width:390,height:844});
  let releaseRemote=false;let sentRemote=false;
- await page.route('**/api/shopping-sessions/start/',route=>route.fulfill({status:201,contentType:'application/json',body:JSON.stringify({session,cursor:0,activities:[],created:true})}));
- await page.route('**/api/shopping-sessions/current/**',route=>{
-  if(!releaseRemote||sentRemote)return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({session,cursor:sentRemote?1:0,activities:[]})});
-  sentRemote=true;
-  const item={id:'stability-0',shopping_list:'shop-1',name:'Artikel 1',quantity:'1×',category:'Bereich 1',aisle:'',note:'',favorite:false,checked:true,checked_at:now(),position:1000};
-  const activity={sequence:1,kind:'item_checked',item_id:item.id,item_name:item.name,actor:{id:2,name:'Sam',avatar:'S',is_self:false},item,created_at:now()};
-  return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({session,cursor:1,activities:[activity]})});
- });
- await openStore(page);
+ await openStore(page,{beforeGoto:async({page})=>{
+  await page.route('**/api/shopping-sessions/start/',route=>route.fulfill({status:201,contentType:'application/json',body:JSON.stringify({session,cursor:0,activities:[],created:true})}));
+  await page.route('**/api/shopping-sessions/current/**',route=>{
+   if(!releaseRemote||sentRemote)return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({session,cursor:sentRemote?1:0,activities:[]})});
+   sentRemote=true;
+   const item={id:'stability-0',shopping_list:'shop-1',name:'Artikel 1',quantity:'1×',category:'Bereich 1',aisle:'',note:'',favorite:false,checked:true,checked_at:now(),position:1000};
+   const activity={sequence:1,kind:'item_checked',item_id:item.id,item_name:item.name,actor:{id:2,name:'Sam',avatar:'S',is_self:false},item,created_at:now()};
+   return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({session,cursor:1,activities:[activity]})});
+  });
+ }});
  await expect(page.getByText('Einkauf läuft',{exact:true})).toBeVisible();
 
  const allFilter=page.locator('.store-status-filter button').nth(2);
