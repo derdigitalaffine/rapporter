@@ -85,7 +85,7 @@ export function BabyCreateSheet({family,context,onClose,onOpenPage,onSuccessfulC
         <div className="module-create-actions">
           {moduleState.can_manage&&<button type="button" className="secondary" onClick={()=>setView('child')}><Icon name="plus"/>{t('childrenUi.addChild')}</button>}
           {canCare&&babies.length>0&&<button type="button" className="primary" disabled={chooseRequired} onClick={()=>setView('care')}><Icon name="heart"/><span><strong>{t('createUi.babyCare')}</strong><small>{chooseRequired?t('createUi.chooseBaby'):selectedBaby?.display_name}</small></span></button>}
-          {activePregnancy&&moduleState.permissions?.can_view_pregnancy&&<button type="button" className="secondary" onClick={()=>onOpenPage('baby')}><Icon name="baby"/><span><strong>{t('createUi.openPregnancy')}</strong><small>{activePregnancy.expected_due_date||''}</small></span></button>}
+          {activePregnancy&&moduleState.permissions?.can_view_pregnancy&&<button type="button" className="secondary" onClick={()=>onOpenPage('pregnancy')}><Icon name="heart"/><span><strong>{t('createUi.openPregnancy')}</strong><small>{activePregnancy.expected_due_date||''}</small></span></button>}
           <button type="button" className="secondary" onClick={()=>onOpenPage('baby')}><Icon name="next"/><span><strong>{t('createUi.openBaby')}</strong><small>{t('createUi.openModuleHint')}</small></span></button>
         </div>
       </>}

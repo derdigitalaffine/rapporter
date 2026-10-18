@@ -46,7 +46,7 @@ jobs:
       - working-directory: backend
         run: python manage.py makemigrations --check --dry-run && python manage.py migrate && python manage.py check
       - working-directory: backend
-        run: python manage.py test baby family.test_family_relationship_child_privacy family.test_calendar_custody_sync
+        run: python manage.py test baby family.test_today_layout family.test_family_relationship_child_privacy family.test_calendar_custody_sync
 
   browser:
     name: children / ${{ matrix.project }}
@@ -69,7 +69,7 @@ jobs:
       - working-directory: frontend
         run: npx playwright install --with-deps chromium
       - working-directory: frontend
-        run: npm run e2e -- --project=${{ matrix.project }} --reporter=line,github,html e2e/children-hub.spec.js e2e/pregnancy-baby.spec.js e2e/pregnancy-baby-care.spec.js
+        run: npm run e2e -- --project=${{ matrix.project }} --reporter=line,github,html e2e/children-hub.spec.js e2e/pregnancy-navigation.spec.js e2e/pregnancy-baby.spec.js e2e/pregnancy-baby-care.spec.js
       - working-directory: frontend
         run: npm run e2e -- --project=${{ matrix.project }} --reporter=line,github,html e2e/more-page.spec.js --grep "optional care modules|manageable care modules"
       - uses: actions/upload-artifact@v4

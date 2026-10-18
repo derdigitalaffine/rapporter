@@ -1,0 +1,15 @@
+.pregnancy-status{display:grid;gap:1rem;min-width:0}
+.pregnancy-status-heading{display:flex;align-items:center;gap:.8rem}
+.pregnancy-status-icon{display:grid;place-items:center;flex:none;color:var(--primary);width:48px;height:48px;background:var(--primary-soft);border-radius:8px}
+.pregnancy-status-heading>div{display:grid;gap:.25rem;min-width:0;overflow-wrap:anywhere}
+.pregnancy-status-heading small,.pregnancy-status dt{font-size:.8rem;color:var(--muted)}
+.pregnancy-status-heading strong{font-size:1.8rem;line-height:1.2;font-variant-numeric:tabular-nums}
+.pregnancy-status-facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem;margin:0}
+.pregnancy-status-facts>div{display:grid;gap:.35rem;align-content:start;min-width:0}
+.pregnancy-status dd{font-size:1rem;font-weight:650;margin:0;overflow-wrap:anywhere}
+.pregnancy-status progress{width:100%;height:6px;accent-color:var(--primary);border:0}
+.pregnancy-status--compact .pregnancy-status-heading strong{font-size:1.4rem}
+.pregnancy-status--compact .pregnancy-status-facts{grid-template-columns:1fr}
+.today-pregnancy-widget h2{font-size:1rem;line-height:1.35;margin:0 0 1rem;overflow-wrap:anywhere}
+.today-pregnancy-widget .pregnancy-status,.pregnancy-widget-state{min-height:174px}
+.today-pregnancy-widget .today-link{display:flex;align-items:center;gap:.5rem;min-height:44px;margin-top:.75rem;white-space:normal;overflow-wrap:anywhere}

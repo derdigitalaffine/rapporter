@@ -384,6 +384,8 @@ def preventive_exam_rules(*, on_date=None, locale="de-DE"):
     if not package:
         return [dict(row, reference=dict(BUNDLED_SOURCE)) for row in BUNDLED_U_EXAMS]
     validate_reference_package(package)
+    if not package.payload.get("u_exams"):
+        return [dict(row, reference=dict(BUNDLED_SOURCE)) for row in BUNDLED_U_EXAMS]
     metadata = {
         "package_id": str(package.id),
         "source_key": package.source_key,

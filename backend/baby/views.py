@@ -191,6 +191,11 @@ def module_detail(request):
     access, children = child_access_overview(request.user, family) if setting.enabled else (None, [])
     if request.method == "GET":
         can_manage = membership.role in {Membership.Role.OWNER, Membership.Role.ADULT}
+        active_pregnancy = None
+        if setting.enabled and access and access.can_view_pregnancy:
+            journey = PregnancyJourney.objects.filter(family=family, status=PregnancyJourney.Status.ACTIVE).first()
+            if journey:
+                active_pregnancy = {"expected_due_date": journey.expected_due_date.isoformat(), "progress": pregnancy_progress(journey)}
         can_delete_tracking = can_manage and len(children) == BabyProfile.objects.filter(family=family, active=True).count() and all(permissions["can_manage_account"] for _, permissions in children)
         return Response({
             "key": MODULE_KEY,
@@ -200,6 +205,7 @@ def module_detail(request):
             "can_manage": can_manage,
             "can_record_custody_on_create": membership.role == Membership.Role.OWNER,
             "can_delete_tracking": can_delete_tracking,
+            "active_pregnancy": active_pregnancy,
             "permissions": {
                 "can_view_pregnancy": bool(access and access.can_view_pregnancy),
                 "can_log_care": any(permissions["can_log_care"] for _, permissions in children),

@@ -35,6 +35,7 @@ export const TodayWidgetRegistry=[
  entry('birthdays',15,{supportedSizes:standardSizes,defaultSize:'medium',defaultVisible:false}),
  entry('notes',16,{supportedSizes:['compact','medium','wide','wide-compact'],defaultSize:'medium',defaultVisible:false}),
  entry('loyalty',17,{category:'household',supportedSizes:standardSizes,defaultSize:'compact',defaultVisible:false}),
+ {...entry('pregnancy',18,{supportedSizes:['compact','medium','wide'],defaultSize:'compact',defaultVisible:false}),moduleGate:'pregnancy_baby',permissionGate:'can_view_pregnancy',sensitivity:'health'},
 ];
 
 export const TodayWidgetsById=Object.fromEntries(TodayWidgetRegistry.map(widget=>[widget.id,widget]));

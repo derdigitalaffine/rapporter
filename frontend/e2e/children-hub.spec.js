@@ -50,7 +50,7 @@ test('older child starts with neutral health history; sibling switch preserves s
  await page.getByLabel('Kind auswählen').selectOption('younger');
  await expect(page.getByRole('button',{name:/Stillen.*Timer starten/})).toBeVisible();
  await expect(page.getByRole('button',{name:'Vorsorge & Impfungen',exact:true})).toHaveCount(0);
- await page.getByRole('navigation',{name:'Schwangerschaft & Kinder',exact:true}).getByRole('button',{name:'Mehr',exact:true}).click();
+ await page.getByRole('navigation',{name:'Kinder',exact:true}).getByRole('button',{name:'Mehr',exact:true}).click();
  await expect(page.getByRole('button',{name:'Care Circle bearbeiten',exact:true})).toHaveCount(0);
  await page.goBack();
  await expect(page.getByRole('button',{name:/Stillen.*Timer starten/})).toBeVisible();
@@ -73,6 +73,7 @@ test('custodian sees full access and can delegate without a Guardian switch',asy
 test('health editor retains input after failure and confirms dirty dismissal',async({page})=>{
  const fixture=await children(page);fixture.fail();
  await page.goto('/?page=baby&baby=older&view=health');
+ await page.getByRole('button',{name:'Impfkalender',exact:true}).click();
  await page.getByRole('button',{name:'Impfung dokumentieren'}).click();
  const dialog=page.getByRole('dialog');
  await dialog.getByLabel('Impfung / Impfstoff').fill('Dokumentierter Impfstoff');
@@ -102,6 +103,7 @@ test('historical completion is explicit and sends no appointment date',async({pa
 test('conflict reload confirms draft discard and can keep editing',async({page})=>{
  const fixture=await children(page);fixture.fail(409);
  await page.goto('/?page=baby&baby=older&view=health');
+ await page.getByRole('button',{name:'Impfkalender',exact:true}).click();
  await page.getByRole('button',{name:'Impfung dokumentieren'}).click();
  const dialog=page.getByRole('dialog',{name:'Impfung dokumentieren',exact:true});
  await dialog.getByRole('textbox',{name:'Impfung / Impfstoff',exact:true}).fill('Nicht verlieren');

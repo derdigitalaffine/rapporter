@@ -2,6 +2,7 @@ import {useMemo,useState} from 'react';
 import TodayOverview from './TodayOverview';
 import TodayLayout from './TodayLayout';
 import OnboardingCard from './OnboardingCard';
+import PregnancyTodayWidget,{useActivePregnancy} from './PregnancyTodayWidget';
 import {Icon} from './icons';
 import i18n from './i18n';
 import {formatDateTime} from './locale';
@@ -131,8 +132,9 @@ function ShoppingTileSettings({language,lists,excludedIds,onToggle}){
  </fieldset>;
 }
 
-export default function TodayCanonicalHome({data,family,open,unreadMessages=null,viewer=null}){
+export default function TodayCanonicalHome({data,family,open,unreadMessages=null,viewer=null,babyModule=null}){
  const language=i18n.language;
+ const pregnancy=useActivePregnancy(family,babyModule);
  const displayFamily={...family,name:firstName(viewer)||family.name};
  const identity=String(viewer?.user||viewer?.id||'self');
  const layoutKey=`famuhle-today-home-layout:v1:${family.id}:${identity}`;
@@ -153,6 +155,7 @@ export default function TodayCanonicalHome({data,family,open,unreadMessages=null
  const de=language.startsWith('de');
  const shoppingLists=data?.shopping_lists||[];
  const widgets=useMemo(()=>({
+  ...(pregnancy.available?{pregnancy:<PregnancyTodayWidget state={pregnancy} language={language}/>} : {}),
   overview:<TodayOverview family={family} data={data} unreadMessages={unreadMessages} language={language}/>,
   'quick-actions':<TodayQuickActions family={family} viewer={viewer} language={language}/>,
   shopping:<ModuleShortcut page="shopping" icon="shopping" title={de?'Einkauf':'Shopping'} value={openShoppingCount(data,excludedShoppingLists)} detail={de?'Liste öffnen':'Open list'} language={language}/>,
@@ -161,7 +164,7 @@ export default function TodayCanonicalHome({data,family,open,unreadMessages=null
   weather:<ModuleShortcut page="weather" icon="weather" title={de?'Wetter':'Weather'} detail={de?'Wetter öffnen':'Open weather'} language={language}/>,
   trip:<ModuleShortcut page="trips" icon="route" title={de?'Reise':'Trip'} detail={de?'Reisen öffnen':'Open trips'} language={language}/>,
   loyalty:<ModuleShortcut page="loyalty" icon="favorite" title={de?'Bonuskarten':'Loyalty cards'} detail={de?'Karten öffnen':'Open cards'} language={language}/>,
- }),[family.id,data,unreadMessages,language,de,excludedShoppingLists,viewer]);
+ }),[family.id,data,unreadMessages,language,de,excludedShoppingLists,viewer,pregnancy.available,pregnancy.pregnancy,pregnancy.error,pregnancy.loading]);
  const header=<header className="today-hero"><div className="today-greeting"><p>{formatDateTime(language,new Date(),{timeZone:family.timezone||'UTC',weekday:'long',day:'numeric',month:'long'})} · {family.name}</p><h1>{greeting(displayFamily,language)}</h1></div></header>;
  return <div data-testid="today-canonical-home">
   <TodayLayout

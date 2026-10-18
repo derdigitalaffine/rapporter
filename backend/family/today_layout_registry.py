@@ -64,6 +64,8 @@ TODAY_WIDGET_REGISTRY = (
     _entry('birthdays', 15, sizes=TODAY_WIDGET_SIZES, default_size='medium', default_visible=False),
     _entry('notes', 16, sizes=TODAY_WIDGET_SIZES, default_size='medium', default_visible=False),
     _entry('loyalty', 17, category='household', sizes=TODAY_WIDGET_SIZES, default_size='compact', default_visible=False),
+    {**_entry('pregnancy', 18, sizes=TODAY_WIDGET_SIZES, default_size='compact', default_visible=False),
+     'moduleGate': 'pregnancy_baby', 'permissionGate': 'can_view_pregnancy', 'sensitivity': 'health'},
 )
 
 TODAY_WIDGETS_BY_ID = {entry['id']: entry for entry in TODAY_WIDGET_REGISTRY}

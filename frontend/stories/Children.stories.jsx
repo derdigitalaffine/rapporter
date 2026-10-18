@@ -1,6 +1,7 @@
 import React,{useState} from 'react';
-import {expect,userEvent,within} from 'storybook/test';
-import {HealthEditor} from '../src/ChildHealthPanel';
+import {expect,fireEvent,userEvent,within} from 'storybook/test';
+import {HealthEditor,VaccinationReminderEditor} from '../src/ChildHealthPanel';
+import PregnancyStatus from '../src/PregnancyStatus';
 import ChildCreateForm from '../src/ChildCreateForm';
 import ChildCareCircle from '../src/ChildCareCircle';
 import i18n from '../src/i18n';
@@ -9,6 +10,21 @@ import '../src/children-hub.css';
 
 export default {title:'FamilyOS/Children'};
 const c=key=>i18n.t(`childrenUi.${key}`);
+export const PregnancyOverview={render:()=> <PregnancyStatus language="de" pregnancy={{expected_due_date:'2027-01-02',progress:{week:28,day:3,days_until_due:81}}}/>};
+export const PregnancyPastDueDate={render:()=> <PregnancyStatus language="de" pregnancy={{expected_due_date:'2026-10-15',progress:{week:40,day:3,days_until_due:-3}}}/>};
+function Reminder(){
+ const [open,setOpen]=useState(false);
+ return <><button onClick={()=>setOpen(true)}>An Impfungen erinnern</button>{open&&<VaccinationReminderEditor c={c} count={2} onClose={()=>setOpen(false)} onSave={async()=>{throw new Error('Speichern fehlgeschlagen')}}/>}</>;
+}
+export const ReminderRetainsDate={render:()=> <Reminder/>,play:async({canvasElement})=>{
+ await userEvent.click(within(canvasElement).getByRole('button',{name:'An Impfungen erinnern'}));
+ const dialog=within(await within(canvasElement.ownerDocument.body).findByRole('dialog',{name:'An Impfungen erinnern'}));
+ const input=dialog.getByLabelText(/An Terminvereinbarung erinnern am/);
+ fireEvent.change(input,{target:{value:'2030-01-02T10:30'}});
+ await userEvent.click(dialog.getByRole('button',{name:'Aufgabe anlegen',exact:true}));
+ await expect(dialog.getByRole('alert')).toHaveTextContent('Speichern fehlgeschlagen');
+ await expect(input).toHaveValue('2030-01-02T10:30');
+}};
 function Editor({fail=false}){
  const [open,setOpen]=useState(false);
  return <><button onClick={()=>setOpen(true)}>Impfung dokumentieren</button>{open&&<HealthEditor row={{key:'manual:fixture',kind:'vaccination',state:'done',version:0}} c={c} onClose={()=>setOpen(false)} onSave={async()=>{if(fail)throw new Error('Speichern fehlgeschlagen');setOpen(false)}}/>}</>;

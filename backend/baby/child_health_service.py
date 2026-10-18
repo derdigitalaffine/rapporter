@@ -4,7 +4,7 @@ from django.db import transaction
 from django.utils import timezone
 from rest_framework.exceptions import APIException, ValidationError
 
-from family.models import FamilyEvent
+from family.models import FamilyEvent, Task, TaskList
 from .child_identity_service import child_scope_access
 from .development_service import _private_event_token, _provenance_defaults
 from .models import BabyProfile, ChildHealthRecord
@@ -50,7 +50,9 @@ def serialize_record(row):
             "planned_at": planned.isoformat() if planned else None,
             "event_starts_at": event.starts_at.isoformat() if event else None,
             "practice": row.practice, "note": row.note, "batch": row.batch,
-            "reference": row.reference, "event": str(row.event_id) if row.event_id else None, "version": row.version}
+            "reference": row.reference, "event": str(row.event_id) if row.event_id else None, "version": row.version,
+            "reminder": {"task": str(row.reminder_task_id), "due_at": row.reminder_task.due_at.isoformat() if row.reminder_task.due_at else None,
+                         "completed": bool(row.reminder_task.completed_at)} if row.reminder_task_id else None}
 
 
 def reference_rule(reference):
@@ -66,7 +68,7 @@ def reference_rule(reference):
 def health_payload(user, baby, language="de"):
     child_scope_access(user, baby, "development")
     rules, package = health_rules(baby, language)
-    records = {row.key: row for row in baby.health_records.select_related("event")}
+    records = {row.key: row for row in baby.health_records.select_related("event", "reminder_task")}
     references = {reference_rule(row)["key"]: row for row in baby.preventive_event_references.select_related("event")}
     current_keys = {row["key"] for row in rules}
     rules.extend(reference_rule(row) for key, row in references.items() if key not in current_keys and key not in records)
@@ -88,7 +90,55 @@ def health_payload(user, baby, language="de"):
     items.extend({**serialize_record(row), "historical": True} for row in records.values())
     return {"baby": str(baby.id), "items": items,
             "vaccination_reference_available": bool(package and package.payload.get("vaccinations")),
+            "vaccination_reference": {
+                "title": package.source_title, "version": package.source_version,
+                "published_on": package.published_at.date().isoformat() if package.published_at else None,
+                "effective_from": package.effective_from.isoformat() if package.effective_from else None,
+                "checksum": package.checksum,
+            } if package and package.payload.get("vaccinations") else None,
             "notice": "Recorded history and published references, not diagnosis or individual medical advice."}
+
+
+@transaction.atomic
+def create_health_reminders(user, baby, entries, remind_at):
+    # The private association is child-scoped. The shared Task deliberately
+    # contains no child identity, medical title, reference or health deep link.
+    baby = BabyProfile.objects.select_for_update(of=("self",)).select_related("family", "membership").get(pk=baby.id, active=True)
+    child_scope_access(user, baby, "development")
+    if remind_at <= timezone.now():
+        raise ValidationError({"remind_at": "Choose a future reminder date and time."})
+    rules, _ = health_rules(baby)
+    rules = {row["key"]: row for row in rules if row["kind"] == "vaccination"}
+    records = {row.key: row for row in baby.health_records.select_related("reminder_task").select_for_update(of=("self",))}
+    selected = [records.get(entry["key"]) for entry in entries]
+    if all(row and row.reminder_task_id for row in selected):
+        task_ids = {row.reminder_task_id for row in selected}
+        if len(task_ids) == 1 and all(row.reminder_task.due_at == remind_at for row in selected):
+            return selected
+    age = (local_date(baby.family) - baby.birth_date).days
+    for entry, row in zip(entries, selected):
+        rule = rules.get(entry["key"])
+        if not rule or rule["end_day"] < age or row and row.state in {"done", "planned"}:
+            raise ValidationError({"entries": "Choose open current or future vaccination references."})
+        if entry["reference_checksum"] != rule["reference"]["checksum"] or entry["expected_version"] != (row.version if row else 0):
+            raise HealthConflict()
+        if row and row.reminder_task_id:
+            raise HealthConflict("A reminder task already exists. Manage it in Tasks.")
+    task_list, _ = TaskList.objects.get_or_create(family=baby.family, name="Allgemein", defaults={"icon": "list-check"})
+    task = Task.objects.create(family=baby.family, task_list=task_list, created_by=user, assignee=user,
+                              title="Termin vereinbaren" if baby.family.locale.startswith("de") else "Arrange appointment",
+                              due_at=remind_at, source="manual")
+    result = []
+    for entry, row in zip(entries, selected):
+        rule = rules[entry["key"]]
+        row = row or ChildHealthRecord(baby=baby, key=rule["key"], kind="vaccination", title=rule["title"], reference=rule["reference"])
+        if row.pk and entry["expected_version"]:
+            row.version += 1
+        row.reminder_task = task
+        row.updated_by = user
+        row.save()
+        result.append(row)
+    return result
 
 
 @transaction.atomic
