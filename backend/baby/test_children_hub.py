@@ -188,8 +188,8 @@ class ChildrenHubTests(TestCase):
         relation = FamilyRelationship.objects.get(child_membership_id=first.data["membership"],related_membership=self.parent_member)
         self.assertTrue(relation.has_custody)
         self.assertEqual(relation.kind,FamilyRelationship.Kind.NONE)
-        self.assertIsNone(relation.is_legal_parent)
-        self.assertIsNone(relation.is_biological_parent)
+        self.assertFalse(relation.is_legal_parent)
+        self.assertFalse(relation.is_biological_parent)
         relation.has_custody = False
         relation.save()
         self.client.post("/api/baby/managed-children/",payload,format="json")
